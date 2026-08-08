@@ -1,0 +1,62 @@
+---
+// Tenant reservation page (/book). Tenant-only: forbidden on the marketplace
+// zone (see lib/routeZones.ts). Back link goes to the tenant landing (/).
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import BookPage from '@/components/public/BookPage.astro';
+
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+
+const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
+const tenantId = Astro.locals.tenantId;
+
+let tenant: Record<string, unknown> | null = null;
+
+if (!forbidden) {
+  try {
+    const res = await ssrFetch(`/tenants/${tenantId}`);
+    if (res.ok) tenant = (await res.json()) as Record<string, unknown>;
+  } catch (e) {
+    console.error('Error loading reservation page:', e);
+  }
+}
+
+if (!forbidden && !tenant) {
+  return Astro.redirect('/404');
+}
+
+const t = (tenant ?? {}) as Record<string, unknown>;
+const color = (t.primaryColor as string) || '#4a7c4f';
+const tenantName = t.name as string;
+const whatsappNumber = (t.whatsappNumber as string) || (t.phone as string) || '';
+---
+<!--
+  This page renders isolated full-bleed chrome via BookPage (no PublicLayout,
+  no global.css import), so the global prefers-reduced-motion override never
+  applies here. Local equivalent (mirrors global.css): honors reduced motion
+  for the CampBooking modal, smooth scroll, and transitions.
+-->
+<style is:global>
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+{
+  forbidden ? (
+    <ZoneGuard />
+  ) : (
+    <BookPage
+      tenant={t}
+      tenantName={tenantName}
+      tenantId={tenantId}
+      primaryColor={color}
+      whatsappNumber={whatsappNumber}
+      campUrl={'/'}
+    />
+  )
+}

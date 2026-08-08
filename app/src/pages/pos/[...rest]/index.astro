@@ -1,0 +1,28 @@
+---
+import POSLayout from '@/layouts/POSLayout.astro';
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+
+// POS is an operations app owned by the tenant zone. On the marketplace
+// zone (sinaicamps.com/pos) it renders a branded 404 instead of the SPA.
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+---
+{forbidden ? (
+  <ZoneGuard />
+) : (
+  <POSLayout>
+    <div id="pos-app-root"></div>
+  </POSLayout>
+)}
+<script>
+  import { createRoot } from 'react-dom/client';
+  import { createElement } from 'react';
+  import POSApp from '@/components/pos/POSApp';
+  import { ToastProvider } from '@/components/ui/Toast';
+  const rootEl = document.getElementById('pos-app-root');
+  if (rootEl) {
+    createRoot(rootEl).render(
+      createElement(ToastProvider, null, createElement(POSApp))
+    );
+  }
+</script>

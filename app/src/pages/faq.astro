@@ -1,0 +1,73 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { getTenantSSRData } from '@/middleware/tenant';
+import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+
+function escapeUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  return url.replace(/['")\)]/g, '');
+}
+
+const { tenant, primaryColor, tenantName } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+
+const heroImage = normalizeAssetUrl(
+  tenant?.heroImageUrl as string,
+  'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1200&auto=format&fit=crop',
+);
+
+let faqList: { question: string; answer: string }[] = [];
+try {
+  faqList = tenant?.faqItems ? JSON.parse(tenant.faqItems as string) : [];
+} catch {
+  faqList = [];
+}
+---
+<PublicLayout
+  title="FAQ"
+  tenant={tenant}
+  tenantName={tenantName}
+  primaryColor={primaryColor}
+  activePage="faq"
+>
+  <!-- Hero -->
+  <section
+    data-testid="hero-banner"
+    class="relative flex h-[40vh] items-center justify-center overflow-hidden px-6 text-center text-white"
+    style={`background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url(${escapeUrl(heroImage)}) center/cover;`}
+  >
+    <!-- Topographic texture overlay -->
+    <div class="bg-topo pointer-events-none absolute inset-0 text-white opacity-20" aria-hidden="true"></div>
+    <div class="relative z-10">
+      <p class="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-white/80">
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+        Need Help?
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+      </p>
+      <h1 data-testid="hero-title" class="font-display mb-3 text-4xl font-black tracking-tight md:text-5xl">Frequently Asked Questions</h1>
+      <p data-testid="hero-description" class="text-lg opacity-90">Find answers to common questions about lodging, guidelines, and what to pack.</p>
+    </div>
+  </section>
+
+  <!-- FAQ List -->
+  <section class="mx-auto max-w-3xl px-6 py-20">
+    {faqList.length === 0 ? (
+      <p class="py-12 text-center text-lg text-[var(--text-muted)]">No FAQs registered yet. Please contact us directly if you have any questions!</p>
+    ) : (
+      <div data-testid="faq-accordion" class="flex flex-col gap-4">
+        {faqList.map((faq, idx) => (
+          <details data-testid="faq-item" class="group overflow-hidden rounded-xl border border-warm-100 bg-white shadow-card transition-shadow hover:shadow-elevated">
+            <summary
+              class="flex cursor-pointer list-none items-center justify-between p-6 text-lg font-bold transition hover:text-[var(--primary)]"
+            >
+              <span>{escHtml(faq.question)}</span>
+              <span class="ml-4 text-sm text-[var(--text-muted)] transition group-open:rotate-180" aria-hidden="true">▼</span>
+            </summary>
+            <div class="border-t border-warm-100 bg-warm-50 px-6 py-5 text-sm leading-relaxed text-[var(--text-muted)]">
+              {escHtml(faq.answer)}
+            </div>
+          </details>
+        ))}
+      </div>
+    )}
+  </section>
+</PublicLayout>

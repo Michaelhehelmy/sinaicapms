@@ -1,0 +1,65 @@
+{
+  "name": "opencode-workspace",
+  "version": "1.0.0",
+  "description": "Universal OpenCode workspace template for developers",
+  "author": "Michael Helmy",
+  "private": true,
+  "dependencies": {
+    "@gotgenes/opencode-agent-identity": "github:gotgenes/opencode-agent-identity",
+    "@i18nexus/mcp": "latest",
+    "@modelcontextprotocol/server-everything": "latest",
+    "@modelcontextprotocol/server-filesystem": "latest",
+    "@modelcontextprotocol/server-github": "latest",
+    "@modelcontextprotocol/server-memory": "latest",
+    "@modelcontextprotocol/server-postgres": "latest",
+    "@modelcontextprotocol/server-puppeteer": "latest",
+    "@modelcontextprotocol/server-sequential-thinking": "latest",
+    "@playwright/mcp": "latest",
+    "@tarquinen/opencode-smart-title": "github:Tarquinen/opencode-smart-title",
+    "discord-mcp": "latest",
+    "lucide-icons-mcp": "latest",
+    "mcp-server-sqlite": "latest",
+    "mustache": "^4.2.0",
+    "next-devtools-mcp": "latest",
+    "opencode-mem": "github:tickernelz/opencode-mem",
+    "opencode-optimal-model-temps": "github:Lyapsus/opencode-optimal-model-temps",
+    "opencode-pilot": "github:athal7/opencode-pilot",
+    "opencode-plugin-compose": "^0.0.5",
+    "opencode-plugin-inspector": "^0.0.7",
+    "opencode-plugin-notification": "^0.0.5",
+    "opencode-sessions": "github:malhashemi/opencode-sessions",
+    "openskills": "github:numman-ali/openskills",
+    "opentmux": "github:AnganSamadder/opentmux",
+    "ripgrep-mcp": "latest",
+    "tailwindcss-mcp": "latest"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix --max-warnings 0",
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ],
+    "*.sh": [
+      "shellcheck"
+    ]
+  },
+  "scripts": {
+    "render": "node lib/render.js",
+    "prepare": "husky",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "typecheck": "tsc --noEmit",
+    "analyze": "npx next-bundle-analyzer",
+    "audit": "npm audit --audit-level=high",
+    "coverage": "npx typescript-coverage-report",
+    "deadcode": "npx ts-prune"
+  }
+}

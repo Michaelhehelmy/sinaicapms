@@ -1,0 +1,13 @@
+---
+// Branded 404 page (dev + astro dev preview path).
+// Tenant-agnostic: renders on the marketplace host (sinaicamps.com) AND on any
+// tenant/custom host WITHOUT depending on Astro.locals.tenant data. It reuses
+// PublicLayout, which only reads Astro.props (tenant defaults to {}).
+//
+// NOTE: In the deployed @astrojs/cloudflare runtime this special 404 route is
+// not reachable for unmatched paths, so the root-level [...path] catch-all
+// page renders the same shared component for every unknown route. This file is
+// kept for Astro dev/preview where /404 is a real reachable path.
+import NotFoundPage from '@/components/public/NotFoundPage.astro';
+---
+<NotFoundPage />

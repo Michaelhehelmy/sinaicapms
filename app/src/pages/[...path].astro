@@ -1,0 +1,19 @@
+---
+// Root-level catch-all: renders the branded 404 page for ANY unmatched path in
+// the deployed @astrojs/cloudflare runtime.
+//
+// WHY THIS PAGE EXISTS:
+//   In dev (astro dev) Astro renders src/pages/404.astro for unknown routes,
+//   but the deployed Cloudflare Pages worker does NOT — unmatched requests
+//   that bypass the worker fall through to the Pages static-asset store, which
+//   returns an EMPTY 404 body. Because public/_routes.json now routes `/*`
+//   through the worker, this catch-all guarantees every unknown URL serves the
+//   branded 404 document with a real 404 status (instead of a 0-byte body).
+//
+//   `/api/*` is excluded in _routes.json so API traffic continues to hit the
+//   backend Worker and never reaches this page.
+import NotFoundPage from '@/components/public/NotFoundPage.astro';
+
+Astro.response.status = 404;
+---
+<NotFoundPage />

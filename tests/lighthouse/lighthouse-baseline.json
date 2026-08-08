@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-08-07T16:04:07.327Z",
+  "baseUrl": "http://localhost:4320",
+  "preset": "mobile",
+  "throttling": "default (Lighthouse simulated Slow 4G + 4x CPU)",
+  "targets": {
+    "cls": 0.1,
+    "lcpMs": 2500,
+    "tbtMs": 300,
+    "enforced": false
+  },
+  "note": "Dev/preview server baseline (astro dev + wrangler dev --local). Not enforced this pass.",
+  "results": {
+    "http://localhost:4320/admin?tenant=marketplace": {
+      "url": "http://localhost:4320/admin?tenant=marketplace",
+      "scores": {
+        "performance": 55,
+        "accessibility": 95,
+        "best-practices": 96,
+        "seo": 82
+      },
+      "metrics": {
+        "cls": 0,
+        "lcpMs": 25043,
+        "tbtMs": 115
+      }
+    },
+    "http://localhost:4320/camp/acaciacamp": {
+      "url": "http://localhost:4320/camp/acaciacamp",
+      "scores": {
+        "performance": 56,
+        "accessibility": 98,
+        "best-practices": 100,
+        "seo": 92
+      },
+      "metrics": {
+        "cls": 0,
+        "lcpMs": 22722,
+        "tbtMs": 102
+      }
+    },
+    "http://localhost:4320/": {
+      "url": "http://localhost:4320/",
+      "scores": {
+        "performance": 64,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 91
+      },
+      "metrics": {
+        "cls": 0,
+        "lcpMs": 5653,
+        "tbtMs": 152
+      }
+    }
+  }
+}

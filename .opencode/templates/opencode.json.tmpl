@@ -1,0 +1,336 @@
+{
+  "mcp": {
+    {{#mcps.next-devtools}}
+    "next-devtools": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "next-devtools-mcp@latest"],
+      "enabled": true
+    },
+    {{/mcps.next-devtools}}
+    {{#mcps.filesystem}}
+    "filesystem": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/@modelcontextprotocol/server-filesystem/dist/index.js", "."],
+      "enabled": true
+    },
+    {{/mcps.filesystem}}
+    {{#mcps.github}}
+    "github": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/@modelcontextprotocol/server-github/dist/index.js"],
+      "enabled": true
+    },
+    {{/mcps.github}}
+    {{#mcps.playwright}}
+    "playwright": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/@playwright/mcp/cli.js"],
+      "enabled": true
+    },
+    {{/mcps.playwright}}
+    {{#mcps.sqlite}}
+    "sqlite": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/mcp-server-sqlite/dist/index.js", "--db", "./{{techDbFile}}"],
+      "enabled": true
+    },
+    {{/mcps.sqlite}}
+    {{#mcps.tailwindcss}}
+    "tailwindcss": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "tailwindcss-mcp@latest"],
+      "enabled": true
+    },
+    {{/mcps.tailwindcss}}
+    {{#mcps.sequential-thinking}}
+    "sequential-thinking": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/@modelcontextprotocol/server-sequential-thinking/dist/index.js"],
+      "enabled": true
+    },
+    {{/mcps.sequential-thinking}}
+    {{#mcps.lucide-icons}}
+    "lucide-icons": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "lucide-icons-mcp@latest", "--stdio"],
+      "enabled": true
+    },
+    {{/mcps.lucide-icons}}
+    {{#mcps.next-intl}}
+    "next-intl": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@i18nexus/mcp@latest"],
+      "enabled": true
+    },
+    {{/mcps.next-intl}}
+    {{#mcps.lighthouse}}
+    "lighthouse": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "tsx", "packages/mcp-server-lighthouse/src/index.ts"],
+      "enabled": true
+    },
+    {{/mcps.lighthouse}}
+    {{#mcps.better-auth}}
+    "better-auth": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "tsx", "packages/better-auth-mcp/src/index.ts"],
+      "enabled": true
+    },
+    {{/mcps.better-auth}}
+    {{#mcps.email}}
+    "email": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "tsx", "packages/mcp-server-mailgun/src/index.ts"],
+      "enabled": true
+    },
+    {{/mcps.email}}
+    {{#mcps.git}}
+    "git": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@cyanheads/git-mcp-server@latest"],
+      "enabled": true
+    },
+    {{/mcps.git}}
+    {{#mcps.fetch}}
+    "fetch": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "markfetch@latest"],
+      "enabled": true
+    },
+    {{/mcps.fetch}}
+    {{#mcps.docker}}
+    "docker": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@thelord/mcp-server-docker-npx@latest"],
+      "enabled": true
+    },
+    {{/mcps.docker}}
+    {{#mcps.memory}}
+    "memory": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/@modelcontextprotocol/server-memory/dist/index.js"],
+      "enabled": true,
+      "env": {
+        "MEMORY_FILE_PATH": "${MEMORY_FILE_PATH:-./.opencode/memory/memory.json}"
+      }
+    },
+    {{/mcps.memory}}
+    {{#mcps.postgres}}
+    "postgres": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/@modelcontextprotocol/server-postgres/dist/index.js"],
+      "enabled": true,
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}"
+      }
+    },
+    {{/mcps.postgres}}
+    {{#mcps.puppeteer}}
+    "puppeteer": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/@modelcontextprotocol/server-puppeteer/dist/index.js"],
+      "enabled": true
+    },
+    {{/mcps.puppeteer}}
+    {{#mcps.discord}}
+    "discord": {
+      "type": "local",
+      "command": ["{{{nodebin}}}", "{{{opencodeModules}}}/discord-mcp/dist/index.js"],
+      "enabled": true,
+      "env": {
+        "DISCORD_BOT_TOKEN": "${DISCORD_BOT_TOKEN}"
+      }
+    },
+    {{/mcps.discord}}
+    {{#mcps.ripgrep}}
+    "ripgrep": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "ripgrep-mcp@latest"],
+      "enabled": true
+    },
+    {{/mcps.ripgrep}}
+    {{#mcps.everything}}
+    "everything": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@modelcontextprotocol/server-everything@latest"],
+      "enabled": true
+    },
+    {{/mcps.everything}}
+    {{#mcps.pdf}}
+    "pdf": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@modelcontextprotocol/server-pdf@latest", "--stdio"],
+      "enabled": true
+    },
+    {{/mcps.pdf}}
+    {{#mcps.time}}
+    "time": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@modelcontextprotocol/server-time@latest"],
+      "enabled": true
+    },
+    {{/mcps.time}}
+    {{#mcps.codetree}}
+    "codetree": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "codetree-mcp@latest"],
+      "enabled": true
+    },
+    {{/mcps.codetree}}
+    {{#mcps.cloudflare}}
+    "cloudflare": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@cloudflare/mcp@latest"],
+      "enabled": true,
+      "env": {
+        "CLOUDFLARE_API_TOKEN": "${CLOUDFLARE_API_TOKEN}",
+        "CLOUDFLARE_ACCOUNT_ID": "${CLOUDFLARE_ACCOUNT_ID}"
+      }
+    },
+    {{/mcps.cloudflare}}
+    {{#mcps.linear}}
+    "linear": {
+      "type": "local",
+      "command": ["{{{npxbin}}}", "-y", "@linear/mcp@latest"],
+      "enabled": true,
+      "env": {
+        "LINEAR_API_KEY": "${LINEAR_API_KEY}"
+      }
+    }
+    {{/mcps.linear}}
+  },
+  "agent": {
+    "orchestrator": {
+      "description": "{{projectName}} task orchestrator — decomposes any request into atomic subtasks and spawns ephemeral tmp agents per task",
+      "system": "You are the {{projectName}} orchestrator. You NEVER execute work directly. Your only job is to decompose requests into the smallest atomic subtasks, write a dedicated tmp agent file at .opencode/agents/tmp/<YYYY-MM-DD>-<slug>.md for each task, execute them in order, clean up on completion, and log the result in AGENT_LOGBOOK.md. Read .opencode/agents/orchestrator.md for full instructions."
+    },
+    "skill-builder": {
+      "description": "{{projectName}} skill architect — converts repeatable processes into categorized, reusable skill guides",
+      "system": "You are the {{projectName}} skill builder. When a repeatable multi-step process is identified, you codify it as a skill file at .opencode/skills/<category>/<skill-slug>/SKILL.md and register it in .opencode/skills/SKILLS_INDEX.md. Read .opencode/agents/skill-builder.md for full instructions."
+    },
+    {{#agents.deploy}}
+    "deploy": {
+      "description": "{{projectName}} deployment specialist — build locally and push to server",
+      "system": "You are the {{projectName}} deployment agent. Your ONLY job is building and deploying the application.\n\nRules:\n- Always build first using standard framework build steps\n- Deploy via: {{{deployScript}}}\n- Confirm success by checking server processes and logs\n- Use the deploy-to-server skill for step-by-step guidance"
+    },
+    {{/agents.deploy}}
+    {{#agents.qa}}
+    "qa": {
+      "description": "{{projectName}} QA agent — run tests, find and fix failures",
+      "system": "You are the {{projectName}} QA agent. Your job is ensuring all tests pass.\n\nRules:\n- Always run unit or E2E tests before marking anything done\n- Use available E2E test tools to verify UI behaviour visually\n- Target: 100% test pass rate, verify coverage guidelines\n- Never skip a failing test — fix the root cause"
+    },
+    {{/agents.qa}}
+    {{#agents.db}}
+    "db": {
+      "description": "{{projectName}} database agent — schema changes and data queries",
+      "system": "You are the {{projectName}} database agent. You handle all database work.\n\nRules:\n- NEVER write raw SQL strings in application code if an ORM is available\n- EVERY schema change requires a migration file\n- ALWAYS scope tenant queries by site_id/tenant_id to avoid data leaks\n- Use the sqlite or SQL MCP to inspect live data\n- NEVER DROP TABLE without explicit user confirmation\n- Use the db-migration skill for the full checklist"
+    },
+    {{/agents.db}}
+    {{#agents.plugin-dev}}
+    "plugin-dev": {
+      "description": "{{projectName}} plugin developer — scaffold and build new plugins",
+      "system": "You are the {{projectName}} plugin developer. You build modular extensions.\n\nRules:\n- Follow the plugin contract for the project\n- NEVER hardcode business logic in core — keep it modular\n- Always add unit tests for new modules\n- Use the create-feature skill for the full checklist"
+    },
+    {{/agents.plugin-dev}}
+    {{#agents.frontend}}
+    "frontend": {
+      "description": "{{projectName}} frontend developer — design responsive, dynamic pages and settings, logical UI rendering, and CRUD API validation",
+      "system": "You are the {{projectName}} frontend and UI agent. Your job is designing high-end, responsive, state-driven interfaces with absolutely zero hardcoded data.\n\nRules:\n- Always handle auth and session states logically (e.g. no login buttons when authenticated)\n- Make all titles, text, colors, and layout configurations dynamic and editable from settings screens\n- Cooperate with database/backend agents or build proper API routes to save/fetch settings\n- Check all APIs for validation, tenant scoping, and authorization checks\n- Use the frontend-feature skill for step-by-step guidance"
+    },
+    {{/agents.frontend}}
+    {{#agents.pr-reviewer}}
+    "pr-reviewer": {
+      "description": "{{projectName}} PR reviewer — auto-review PRs against project conventions",
+      "system": "You are the {{projectName}} PR reviewer. Your job is reviewing pull requests against project conventions.\n\nRules:\n- Read .opencode/prompts/safety-rules.md before reviewing\n- Check for: test coverage, type safety, security concerns, architectural consistency\n- Comment on each concern with file:line references\n- Use the sequential-thinking MCP to structure your review\n- Mark reviews as APPROVE, REQUEST_CHANGES, or COMMENT"
+    },
+    {{/agents.pr-reviewer}}
+    {{#agents.security-auditor}}
+    "security-auditor": {
+      "description": "{{projectName}} security auditor — scan for secrets, vulns, misconfigurations",
+      "system": "You are the {{projectName}} security auditor. Your job is identifying security issues.\n\nRules:\n- Run security scans: npm audit, detect-secrets, trufflehog\n- Check for: hardcoded secrets, unvalidated input, missing auth, dependency CVEs\n- Review authentication and authorization patterns\n- Validate .env references match actual usage\n- Report critical findings immediately"
+    },
+    {{/agents.security-auditor}}
+    {{#agents.performance-profiler}}
+    "performance-profiler": {
+      "description": "{{projectName}} performance profiler — bundle analysis, Lighthouse, SQL optimization",
+      "system": "You are the {{projectName}} performance agent. Your job is identifying performance bottlenecks.\n\nRules:\n- Run Lighthouse CI for frontend audits\n- Analyze bundle size with next-bundle-analyzer or webpack-bundle-analyzer\n- Check for N+1 queries, missing indexes, slow queries\n- Profile API response times\n- Report findings with before/after metrics"
+    },
+    {{/agents.performance-profiler}}
+    {{#agents.docs-generator}}
+    "docs-generator": {
+      "description": "{{projectName}} docs generator — auto-generate API docs from code",
+      "system": "You are the {{projectName}} documentation agent. Your job is generating and maintaining documentation.\n\nRules:\n- Parse JSDoc/TSDoc comments from source code\n- Generate OpenAPI specs from route definitions\n- Keep AGENTS.md and README.md in sync with project state\n- Update .opencode/skills/SKILLS_INDEX.md when new skills are added\n- Never overwrite developer-written documentation without review"
+    }
+    {{/agents.docs-generator}}
+  },
+  "lsp": {
+    "typescript": {
+      "command": ["typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx"]
+    },
+    "tailwindcss": {
+      "command": ["tailwindcss-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".css"]
+    },
+    "json": {
+      "command": ["vscode-json-language-server", "--stdio"],
+      "extensions": [".json", ".jsonc"]
+    },
+    "html": {
+      "command": ["vscode-html-language-server", "--stdio"],
+      "extensions": [".html"]
+    },
+    "css": {
+      "command": ["vscode-css-language-server", "--stdio"],
+      "extensions": [".css"]
+    },
+    "markdown": {
+      "command": ["marksman", "server"],
+      "extensions": [".md"]
+    },
+    "python": {
+      "command": ["pylsp", "--stdio"],
+      "extensions": [".py", ".pyw", ".pyi"]
+    },
+    "go": {
+      "command": ["gopls", "-rpc.trace", "-serve"],
+      "extensions": [".go", ".mod", ".sum"]
+    },
+    "rust": {
+      "command": ["rust-analyzer"],
+      "extensions": [".rs"]
+    },
+    "ruby": {
+      "command": ["solargraph", "stdio"],
+      "extensions": [".rb", ".erb", ".rake", ".gemspec"]
+    },
+    "php": {
+      "command": ["intelephense", "--stdio"],
+      "extensions": [".php", ".phtml"]
+    },
+    "java": {
+      "command": ["jdtls"],
+      "extensions": [".java"]
+    },
+    "csharp": {
+      "command": ["omnisharp", "--languageserver"],
+      "extensions": [".cs", ".csx"]
+    },
+    "cpp": {
+      "command": ["clangd", "--background-index"],
+      "extensions": [".cpp", ".cc", ".cxx", ".c", ".h", ".hpp"]
+    },
+    "shell": {
+      "command": ["bash-language-server", "start"],
+      "extensions": [".sh", ".bash", ".zsh", ".fish"]
+    },
+    "yaml": {
+      "command": ["yaml-language-server", "--stdio"],
+      "extensions": [".yml", ".yaml"]
+    },
+    "docker": {
+      "command": ["dockerfile-language-server", "--stdio"],
+      "extensions": [".dockerfile", "Dockerfile"]
+    }
+  }
+}

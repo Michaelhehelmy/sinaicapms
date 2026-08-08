@@ -1,0 +1,24 @@
+---
+name: db-migration
+description: Create and apply a database migration safely in {{projectName}}
+---
+
+## When to use
+When you need to add a column, create a table, or modify the schema.
+
+## Steps
+
+1. **Create migration file**
+   - Create a migration script/file using the framework's standard directory.
+   - Name it sequentially or with timestamp as per project patterns.
+
+2. **Write safe SQL/Schema alterations**
+   - Always use `IF NOT EXISTS` for table/index creation.
+   - Avoid dropping columns/tables unless explicitly requested.
+
+3. **Update models/types**
+   - Update Drizzle schemas, ORM definitions, or TS interfaces to reflect the new structure.
+
+4. **Verify**
+   - Run tests to confirm there are no regression issues.
+   - If SQLite is used, inspect `{{techDbFile}}` directly.

@@ -1,0 +1,25 @@
+# Agent Logbook & Memory — {{projectName}}
+
+This file serves as a persistent memory and logbook for the OpenCode AI agents working in this repository.
+
+> **AGENT INSTRUCTIONS:**
+> 1. **Read** this file at the start of every task to learn about past changes, codebase quirks, and design decisions.
+> 2. **Update** the "Persistent Learnings & Codebase Gotchas" section below if you discover new rules, API changes, or debugging gotchas.
+> 3. **Append** a log entry in the "Task Logs" section at the end of every task you perform.
+
+---
+
+## Persistent Learnings & Codebase Gotchas
+
+*This section lists persistent lessons, structural details, and API quirks discovered by agents during development. Update this list as you find new gotchas.*
+
+- **Initial Setup**: Universal OpenCode workspace successfully configured and bootstrapped.
+
+---
+
+## Task Logs
+
+### [2026-05-22] Workspace Template Bootstrap
+- **Task**: Standardize the project developer environment using the universal template.
+- **Changes**: Configured `workspace.config.json` at the project root, bootstrapped MCPs, and generated agent/prompt assets dynamically.
+- **Lessons**: Moving agent configs into `.opencode/` keeps the root project repository clean and prevents prompt-drift across different developer environments.

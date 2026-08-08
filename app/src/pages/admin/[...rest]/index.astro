@@ -1,0 +1,25 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+<AdminLayout>
+  <div id="admin-mount"></div>
+</AdminLayout>
+
+<script>
+  import { createRoot } from 'react-dom/client';
+  import { createElement } from 'react';
+  import { AuthProvider } from '@/lib/auth';
+  import { ToastProvider } from '@/components/ui/Toast';
+  import AdminApp from '@/components/admin/AdminApp';
+
+  const container = document.getElementById('admin-mount');
+  if (container) {
+    createRoot(container).render(
+      createElement(ToastProvider, null,
+        createElement(AuthProvider, null,
+          createElement(AdminApp)
+        )
+      )
+    );
+  }
+</script>

@@ -1,0 +1,64 @@
+name = "campmaster-backend"
+main = "src/index.js"
+compatibility_date = "2025-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "sinaicamps.com/api/*"
+zone_name = "sinaicamps.com"
+
+[[routes]]
+pattern = "*.sinaicamps.com/api/*"
+zone_name = "sinaicamps.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "campmaster-db"
+database_id = "1008d7ef-c64a-4594-a500-2e09e07e0e12"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "2fde00629aad498380db0c0d3dd7a442"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "a805b180d603419fb11eee8c4ed52171"
+
+# R2 media bucket — POST /api/upload writes here; GET /api/media/* streams from it.
+# Bucket name read from $R2_BUCKET_NAME (campmaster-media). NOTE: `wrangler r2 bucket list`
+# currently shows only `campops-uploads` — campmaster-media must be created in the CF dashboard
+# before the worker can store/stream images (tests mock env.MEDIA_BUCKET, so this is non-blocking).
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "campmaster-media"
+
+# Per-tenant SSE broadcast hub (Phase 5). One DO instance per tenant
+# (idFromName(tenantId)); SQLite-backed (compatibility_date 2025-07-01+).
+[[durable_objects.bindings]]
+name = "BROADCASTER"
+class_name = "Broadcaster"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Broadcaster"]
+
+[vars]
+ENVIRONMENT = "production"
+# false = use in-memory rate limiting (no KV writes). Re-enable distributed
+# KV rate limiting by setting this to "true" once the account's KV write quota
+# (free plan: 1,000/day) is no longer exhausted or the plan is upgraded.
+RATE_LIMIT_KV_ENABLED = "false"
+MAX_LOGIN_ATTEMPTS = "5"
+LOCKOUT_DURATION = "1800"
+SESSION_TIMEOUT = "86400"
+RATE_LIMIT_LOGIN = "20"
+RATE_LIMIT_API = "100"
+DEFAULT_CURRENCY = "USD"
+DEFAULT_TAX_RATE = "0.08"
+LOG_LEVEL = "info"
+FEATURE_USER_REGISTRATION = "true"
+FEATURE_FORGOT_PASSWORD = "true"
+FEATURE_TWO_FACTOR_AUTH = "false"
+FEATURE_MULTI_LOCATION = "false"
+FEATURE_AI_FEATURES = "false"

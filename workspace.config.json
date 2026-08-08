@@ -1,0 +1,67 @@
+{
+  "project": {
+    "name": "SinaiCamps",
+    "slug": "sinaicamps",
+    "description": "Multi-tenant hospitality marketplace",
+    "author": "Michael Helmy",
+    "github": "Michaelhehelmy/campops-marketplace",
+    "url": "https://sinaicamps.com"
+  },
+  "tech": {
+    "framework": "Astro",
+    "language": "JavaScript",
+    "database": "SQLite",
+    "db_file": "sinaicamps.db",
+    "styling": "Tailwind CSS",
+    "test_unit": "Vitest",
+    "test_e2e": "Playwright",
+    "package_manager": "npm"
+  },
+  "deploy": {
+    "method": "cloudflare",
+    "script": "./deploy.sh",
+    "cloudflare_account_id": "${CLOUDFLARE_ACCOUNT_ID}",
+    "cloudflare_api_token": "${CLOUDFLARE_API_TOKEN}"
+  },
+  "mcps": {
+    "filesystem": true,
+    "github": true,
+    "playwright": true,
+    "sqlite": true,
+    "sequential-thinking": true,
+    "tailwindcss": true,
+    "lucide-icons": false,
+    "next-devtools": true,
+    "next-intl": true,
+    "lighthouse": false,
+    "better-auth": false,
+    "email": false,
+    "git": true,
+    "fetch": false,
+    "ripgrep": true,
+    "pdf": false,
+    "time": false,
+    "codetree": false,
+    "cloudflare": false,
+    "linear": false,
+    "memory": true,
+    "postgres": false,
+    "puppeteer": true,
+    "everything": false,
+    "discord": true
+  },
+  "agents": {
+    "orchestrator": true,
+    "skill-builder": true,
+    "deploy": true,
+    "qa": true,
+    "db": true,
+    "plugin-dev": true,
+    "frontend": true
+  },
+  "rules": [
+    "Always run tests before marking any task complete",
+    "Never commit .env files or API keys",
+    "Always scope DB queries by tenant ID"
+  ]
+}

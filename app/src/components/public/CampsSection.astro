@@ -1,0 +1,285 @@
+---
+// Marketplace camps listing section: search/filter form + camps grid + the
+// client-side applyFilters pipeline. Shared by the marketplace home
+// (MarketplaceHome.astro) and the dedicated listing page (pages/camps.astro)
+// so the listing markup and behavior live in exactly one place.
+import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+
+interface Props {
+  tenants: Record<string, unknown>[];
+  apiBase: string;
+  title?: string;
+}
+
+const { tenants, apiBase, title = 'Registered Adventure Camps' } = Astro.props;
+---
+
+<!-- Search & Filters -->
+<section class="relative z-30 mx-auto -mt-10 max-w-6xl px-6">
+  <div class="rounded-2xl border border-warm-100 bg-white p-6 shadow-elevated">
+    <form id="filterForm" data-testid="filter-form" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5" onsubmit="applyFilters(event)">
+      <div>
+        <label for="filterSearch" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Search</label>
+        <input
+          id="filterSearch"
+          data-testid="search-input"
+          type="text"
+          placeholder="Search by name, description..."
+          class="input"
+        />
+      </div>
+      <div>
+        <label for="filterLocation" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Location</label>
+        <select id="filterLocation" data-testid="location-filter" class="input">
+          <option value="">All Locations</option>
+          <option value="Sinai">Sinai Peninsula</option>
+          <option value="Dahab">Dahab</option>
+        </select>
+      </div>
+      <div>
+        <label for="filterCapacity" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Capacity</label>
+        <select id="filterCapacity" data-testid="capacity-filter" class="input">
+          <option value="0">Any Capacity</option>
+          <option value="30">30+ guests</option>
+          <option value="60">60+ guests</option>
+          <option value="100">100+ guests</option>
+        </select>
+      </div>
+      <div>
+        <label for="filterActivity" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Activity</label>
+        <select id="filterActivity" data-testid="activity-filter" class="input">
+          <option value="">All Activities</option>
+          <option value="Hiking">Hiking</option>
+          <option value="Yoga">Yoga</option>
+          <option value="Snorkeling">Snorkeling</option>
+          <option value="Windsurfing">Windsurfing</option>
+        </select>
+      </div>
+      <div class="flex items-end">
+        <button type="submit" data-testid="search-submit" class="btn btn-primary w-full">Search</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- Camp Listing -->
+<section id="camps" data-testid="camps-section" class="mx-auto max-w-6xl px-6 py-16">
+  <h2 class="section-heading mb-10 text-center">{title}</h2>
+  <div id="campsGrid" data-testid="camps-grid" class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+    {tenants.length === 0 ? (
+      <p class="col-span-full py-12 text-center text-[var(--text-muted)]">No camps registered yet. Be the first!</p>
+    ) : (
+      tenants.map((t) => {
+        const color = (t.primaryColor as string) || '#4a7c4f';
+        const detailUrl = t.customDomain
+          ? `https://${t.customDomain}`
+          : t.subdomain
+            ? `https://${t.subdomain}.sinaicamps.com`
+            : `/camp/${t.id}`;
+        return (
+          <div data-testid="camp-card" class="group flex flex-col overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-elevated transition hover:-translate-y-1 hover:shadow-md">
+            <div class="relative h-20 overflow-hidden" style={`background: linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`}>
+              <div aria-hidden="true" class="pointer-events-none absolute inset-0 bg-topo" style={`color: ${color}`}></div>
+            </div>
+            <div class="flex flex-1 flex-col p-6 pt-0">
+              <div class="-mt-10 mb-4">
+                {normalizeAssetUrl(t.logoUrl as string) ? (
+                  <img
+                    src={escHtml(normalizeAssetUrl(t.logoUrl as string))}
+                    alt={escHtml(t.name as string)}
+                    class="h-14 w-14 rounded-full object-cover shadow-md ring-4 ring-white"
+                  />
+                ) : (
+                  <div
+                    class="flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold text-white shadow-md ring-4 ring-white"
+                    style={`background-color: ${color}`}
+                  >
+                    {escHtml(((t.name as string) || '').charAt(0).toUpperCase())}
+                  </div>
+                )}
+              </div>
+              <h3 data-testid="camp-name" class="mb-1 text-lg font-extrabold text-gray-900">{escHtml(t.name as string)}</h3>
+              <span class="mb-4 text-sm text-[var(--text-muted)]">{t.customDomain ? escHtml(t.customDomain as string) : `${escHtml(t.subdomain as string)}.sinaicamps.com`}</span>
+              <p data-testid="camp-description" class="mb-4 flex-1 text-sm text-gray-600">
+                {escHtml((t.description as string) || 'Premium summer adventure programs, cabins lodging, and outdoor wilderness courses.')}
+              </p>
+              <div class="mb-4 flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+                <svg class="h-4 w-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <span data-testid="camp-location">{escHtml((t.location as string) || 'Sinai, Egypt')}</span>
+              </div>
+              {t.activities && (
+                <div class="mb-4 flex flex-wrap gap-1.5">
+                  {(t.activities as string).split(',').map((a) => (
+                    <span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">{escHtml(a.trim())}</span>
+                  ))}
+                </div>
+              )}
+              <div class="mt-auto flex items-center justify-between border-t border-warm-200 pt-4">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  style={`background-color: ${color}1A; color: var(--color-brand-deep)`}
+                >
+                  Capacity: {parseInt(String(t.capacity)) || 50}
+                </span>
+                <a
+                  href={detailUrl}
+                  data-testid="explore-camp-link"
+                  class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                  style={`background-color: ${color}`}
+                >
+                  Explore Camp
+                  <span aria-hidden="true" class="transition-transform duration-200 group-hover:translate-x-0.5">→</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })
+    )}
+  </div>
+</section>
+
+<script define:vars={{ API_BASE: apiBase }}>
+  window.__API_BASE = API_BASE;
+</script>
+
+<script is:inline>
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s || '');
+    return d.innerHTML;
+  }
+
+  function normalizeAssetUrl(url, fallback) {
+    fallback = fallback || '';
+    if (!url || typeof url !== 'string') return fallback;
+    const trimmed = url.trim();
+    if (!trimmed) return fallback;
+    let parsed;
+    try { parsed = new URL(trimmed); } catch (e) { return fallback; }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return fallback;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (host === 'localhost' || host === '0.0.0.0' || host === '::1' || host === '::'
+      || host.endsWith('.localhost')
+      || host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.')) {
+      return fallback;
+    }
+    if (parsed.protocol === 'http:') parsed.protocol = 'https:';
+    return parsed.toString();
+  }
+
+  // Skeleton cards mirror the camp card grid (color band, -mt-10 logo overlap,
+  // text lines, CTA slot) so the loading state swaps in at the same shape.
+  function skeletonCardsHtml() {
+    var cards = '';
+    for (var i = 0; i < 3; i++) {
+      cards += '<div class="flex flex-col overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-elevated" aria-hidden="true">'
+        + '<div class="skeleton-shimmer h-20"></div>'
+        + '<div class="flex flex-1 flex-col p-6 pt-0">'
+        + '<div class="-mt-10 mb-4"><div class="skeleton-shimmer h-14 w-14 rounded-full ring-4 ring-white"></div></div>'
+        + '<div class="skeleton-shimmer mb-3 h-5 w-2/3 rounded-full"></div>'
+        + '<div class="skeleton-shimmer mb-2 h-3 w-full rounded-full"></div>'
+        + '<div class="skeleton-shimmer mb-2 h-3 w-5/6 rounded-full"></div>'
+        + '<div class="skeleton-shimmer mb-6 h-3 w-1/2 rounded-full"></div>'
+        + '<div class="skeleton-shimmer h-10 w-24 rounded-full"></div>'
+        + '</div></div>';
+    }
+    return cards;
+  }
+
+  async function applyFilters(e) {
+    if (e) e.preventDefault();
+    const search = document.getElementById('filterSearch').value.trim();
+    const location = document.getElementById('filterLocation').value;
+    const capacity = document.getElementById('filterCapacity').value;
+    const activities = document.getElementById('filterActivity').value;
+
+    const grid = document.getElementById('campsGrid');
+    if (!grid) return;
+    grid.innerHTML = skeletonCardsHtml();
+
+    try {
+      const url = window.__API_BASE + '/tenants/public?search=' + encodeURIComponent(search) + '&location=' + encodeURIComponent(location) + '&capacity=' + encodeURIComponent(capacity) + '&activities=' + encodeURIComponent(activities);
+      const res = await fetch(url);
+      const data = await res.json();
+      const camps = data.filter(function(t) { return t.id !== 'marketplace'; });
+
+      if (camps.length === 0) {
+        grid.innerHTML = '<div class="col-span-full py-12 text-center text-gray-600">No camps match your search criteria.</div>';
+        return;
+      }
+
+      grid.innerHTML = camps.map(function(t) {
+        var color = t.primaryColor || '#4a7c4f';
+        var detailUrl = t.customDomain
+          ? 'https://' + t.customDomain
+          : (t.subdomain || t.id)
+            ? 'https://' + (t.subdomain || t.id) + '.sinaicamps.com'
+            : '/camp/' + t.id;
+        var logoUrl = normalizeAssetUrl(t.logoUrl);
+        var logoHtml = logoUrl
+          ? '<img src="' + escHtml(logoUrl) + '" alt="' + escHtml(t.name) + '" class="h-14 w-14 rounded-full object-cover shadow-md ring-4 ring-white" />'
+          : '<div class="flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold text-white shadow-md ring-4 ring-white" style="background-color:' + escHtml(color) + '">' + escHtml((t.name || '').charAt(0).toUpperCase()) + '</div>';
+        var actsHtml = t.activities
+          ? '<div class="mb-4 flex flex-wrap gap-1.5">' + t.activities.split(',').map(function(a) { return '<span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">' + escHtml(a.trim()) + '</span>'; }).join('') + '</div>'
+          : '';
+
+        return '<div data-testid="camp-card" class="group flex flex-col overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-elevated transition hover:-translate-y-1 hover:shadow-md">'
+          + '<div class="relative h-20 overflow-hidden" style="background: linear-gradient(135deg, ' + escHtml(color) + ' 0%, ' + escHtml(color) + 'cc 100%)"><div aria-hidden="true" class="pointer-events-none absolute inset-0 bg-topo" style="color:' + escHtml(color) + '"></div></div>'
+          + '<div class="flex flex-1 flex-col p-6 pt-0">'
+          + '<div class="-mt-10 mb-4">' + logoHtml + '</div>'
+          + '<h3 data-testid="camp-name" class="mb-1 text-lg font-extrabold text-gray-900">' + escHtml(t.name) + '</h3>'
+          + '<span class="mb-4 text-sm text-gray-600">' + escHtml(t.customDomain || ((t.subdomain || '') + '.sinaicamps.com')) + '</span>'
+          + '<p data-testid="camp-description" class="mb-4 flex-1 text-sm text-gray-600">' + escHtml(t.description || 'Premium summer adventure programs, cabins lodging, and outdoor wilderness courses.') + '</p>'
+          + '<div class="mb-4 flex items-center gap-1.5 text-sm text-gray-600"><svg class="h-4 w-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg><span data-testid="camp-location">' + escHtml(t.location || 'Sinai, Egypt') + '</span></div>'
+          + actsHtml
+          + '<div class="mt-auto flex items-center justify-between border-t border-warm-200 pt-4">'
+          + '<span class="rounded-full px-3 py-1 text-xs font-bold" style="background-color:' + escHtml(color) + '1A;color:var(--color-brand-deep)">Capacity: ' + (parseInt(t.capacity) || 50) + '</span>'
+          + '<a href="' + escHtml(detailUrl) + '" data-testid="explore-camp-link" class="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold text-white transition hover:opacity-90" style="background-color:' + escHtml(color) + '">Explore Camp<span aria-hidden="true" class="transition-transform duration-200 group-hover:translate-x-0.5">→</span></a>'
+          + '</div></div></div>';
+      }).join('');
+    } catch (err) {
+      console.error('Error loading camps:', err);
+      grid.innerHTML = '<div class="col-span-full flex flex-col items-center justify-center gap-2 rounded-2xl border border-warm-100 bg-white px-6 py-16 text-center shadow-elevated">'
+        + '<p class="font-display text-lg font-bold text-gray-900">Could not load camps</p>'
+        + '<p class="max-w-sm text-sm text-[var(--text-muted)]">We hit a snag while fetching the latest listings. Please try again.</p>'
+        + '<button type="button" class="btn btn-secondary mt-3" onclick="applyFilters()">Try Again</button>'
+        + '</div>';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() { applyFilters(); });
+</script>
+
+<style is:global>
+  /* Brand-tint shimmer for camps grid skeletons. Global (not scoped) because
+     the skeleton markup is injected via innerHTML in applyFilters(). Uses the
+     brand-50/100 token tints, no hardcoded hex. */
+  .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-brand-50);
+    background-image: linear-gradient(
+      100deg,
+      var(--color-brand-50) 40%,
+      var(--color-brand-100) 50%,
+      var(--color-brand-50) 60%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-sweep 1.6s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer {
+      animation: none;
+    }
+  }
+</style>

@@ -1,0 +1,58 @@
+---
+// Marketplace camp menu deep link (/camp/{id}/menu). Marketplace-only:
+// forbidden on tenant zones (see lib/routeZones.ts). Renders the shared
+// MenuPage with marketplace-zone back link (/camp/{id}).
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import MenuPage from '@/components/public/MenuPage.astro';
+
+const { id } = Astro.params;
+
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+
+const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
+
+let tenant: Record<string, unknown> | null = null;
+let meals: Record<string, unknown>[] = [];
+let mealCategories: Record<string, unknown>[] = [];
+
+if (!forbidden) {
+  try {
+    const [tenantRes, mealsRes, catsRes] = await Promise.all([
+      ssrFetch(`/tenants/${id}`),
+      ssrFetch(`/meals`, { headers: { 'x-tenant-id': String(id) } }),
+      ssrFetch(`/meal-categories`, { headers: { 'x-tenant-id': String(id) } }),
+    ]);
+    if (tenantRes.ok) tenant = (await tenantRes.json()) as Record<string, unknown>;
+    if (mealsRes.ok) meals = await mealsRes.json() as Record<string, unknown>[];
+    if (catsRes.ok) mealCategories = await catsRes.json() as Record<string, unknown>[];
+  } catch (e) {
+    console.error('Error loading menu:', e);
+  }
+}
+
+if (!forbidden && !tenant) {
+  return Astro.redirect('/404');
+}
+
+const t = (tenant ?? {}) as Record<string, unknown>;
+const color = (t.primaryColor as string) || '#4a7c4f';
+const tenantName = t.name as string;
+const tenantId = t.id as string;
+const whatsappNumber = (t.whatsappNumber as string) || '';
+---
+{
+  forbidden ? (
+    <ZoneGuard />
+  ) : (
+    <MenuPage
+      tenant={t}
+      meals={meals}
+      mealCategories={mealCategories}
+      tenantName={tenantName}
+      primaryColor={color}
+      whatsappNumber={whatsappNumber}
+      campUrl={`/camp/${tenantId}`}
+    />
+  )
+}

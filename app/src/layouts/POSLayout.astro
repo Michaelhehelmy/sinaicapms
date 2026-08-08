@@ -1,0 +1,50 @@
+---
+import '@/styles/global.css';
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💳 SinaiCamps POS</title>
+  <link rel="icon" type="image/png" href="/favicon.ico" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+
+  <style is:inline>
+    @layer base {
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    }
+    html, body {
+      height: 100%;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #313131;
+      line-height: 1.5;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    h1, h2, h3, h4 { font-family: 'Sora', 'Plus Jakarta Sans', system-ui, sans-serif; }
+    #pos-root { height: 100vh; }
+  </style>
+  <!-- Pre-set React Fast Refresh preamble globals to prevent detection error on Vite 6 -->
+  <script is:inline>
+    window.$RefreshReg$ = function() {};
+    window.$RefreshSig$ = function(type) { return type; };
+    window.__vite_plugin_react_preamble_installed__ = true;
+  </script>
+</head>
+<body>
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-[9999] focus:bg-white focus:p-2 focus:text-blue-600">Skip to content</a>
+
+  <!-- React POS app mounts here -->
+  <div id="pos-root"><slot /></div>
+</body>
+</html>

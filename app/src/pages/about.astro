@@ -1,0 +1,117 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { getTenantSSRData } from '@/middleware/tenant';
+import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+import { hexToRgb, luminance } from '@/lib/theme';
+
+function escapeUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  return url.replace(/['")\)]/g, '');
+}
+
+/** Readable CTA text on a user-supplied primaryColor background (luminance rule). */
+function ctaInk(color: string): string {
+  return luminance(hexToRgb(color)) < 0.55 ? '#ffffff' : '#1a241d';
+}
+
+const { tenant, primaryColor, tenantName } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+
+const tenantParam = Astro.url.searchParams.get('tenant');
+const querySuffix = tenantParam ? `?tenant=${tenantParam}` : '';
+const accommodationsUrl = Astro.locals.zone === 'tenant' ? `/rooms${querySuffix}` : `/camps${querySuffix}`;
+
+const heroImage = normalizeAssetUrl(
+  tenant?.heroImageUrl as string,
+  'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1200&auto=format&fit=crop',
+);
+---
+<PublicLayout
+  title="About Us"
+  tenant={tenant}
+  tenantName={tenantName}
+  primaryColor={primaryColor}
+  activePage="about"
+>
+  <!-- Hero -->
+  <section
+    data-testid="hero-banner"
+    class="relative flex min-h-[60vh] items-end overflow-hidden px-6 pb-16 pt-24 text-center text-white"
+    style={`background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0.8) 100%), url(${escapeUrl(heroImage)}) center/cover;`}
+  >
+    <!-- Topographic texture overlay -->
+    <div class="bg-topo pointer-events-none absolute inset-0 text-white opacity-20" aria-hidden="true"></div>
+    <div class="relative z-10 mx-auto w-full max-w-5xl">
+      <p class="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-white/80">
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+        Our Story
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+      </p>
+      <h1 data-testid="hero-title" class="font-display mb-3 text-4xl font-black tracking-tight md:text-5xl">About {escHtml(tenantName)}</h1>
+      <p data-testid="hero-description" class="text-lg opacity-90">Learn more about our mission, camp history, and wilderness roots.</p>
+      <div class="mt-7">
+        <a
+          href={accommodationsUrl}
+          class="inline-block rounded-full px-6 py-3 text-center font-bold shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+          style={`background: linear-gradient(135deg, ${primaryColor}, ${primaryColor}d9); color: ${ctaInk(primaryColor)}; box-shadow: 0 10px 24px -8px ${primaryColor}59;`}
+        >
+          Explore Accommodations
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Content -->
+  <section class="mx-auto max-w-4xl px-6 py-20">
+    <div class="grid gap-12 md:grid-cols-[3fr_2fr]">
+      <!-- Story & Mission -->
+      <div>
+        <p class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[var(--primary)]">
+          <span class="inline-block h-0.5 w-4 rounded-full bg-[var(--primary)]" aria-hidden="true"></span>
+          About
+        </p>
+        <h2 class="section-heading mb-5">Our Story & Heritage</h2>
+        <p class="mb-5 leading-relaxed text-[var(--text-muted)]">
+          {escHtml(
+            tenant?.aboutText ||
+            'Welcome to our camp! We have been hosting outdoor enthusiasts, families, and campers for over 15 years. We focus on outdoor exploration, survival skills, wilderness lodging, and fostering a deep respect for the natural environment.'
+          )}
+        </p>
+        <h3 class="mb-3 mt-8 font-bold">Our Core Mission</h3>
+        <p class="leading-relaxed text-[var(--text-muted)]">
+          We believe in the power of disconnection. In a highly connected digital world, our camps offer the physical and mental space to unplug, rediscover nature, and build meaningful relationships around the campfire.
+        </p>
+      </div>
+
+      <!-- Feature Cards -->
+      <div class="flex flex-col gap-5">
+        <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
+          <svg class="mb-3 block h-5 w-5 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3 3 20h18L12 3Z" />
+            <path d="m7 20 5-8 5 8" />
+          </svg>
+          <h4 class="mb-2 text-lg font-extrabold">Eco-Friendly Lodging</h4>
+          <p class="text-sm text-[var(--text-muted)]">Our cabins are constructed with minimal carbon footprint, utilizing local materials and solar power grids.</p>
+        </div>
+        <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
+          <svg class="mb-3 block h-5 w-5 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+          </svg>
+          <h4 class="mb-2 text-lg font-extrabold">Expert Wilderness Guides</h4>
+          <p class="text-sm text-[var(--text-muted)]">All hiking, climbing, and water sports activities are supervised by certified local survival experts.</p>
+        </div>
+        <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
+          <svg class="mb-3 block h-5 w-5 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m11 17 2 2a1 1 0 1 0 3-3" />
+            <path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4" />
+            <path d="m21 3 1 11h-2" />
+            <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3" />
+            <path d="M3 4h8" />
+          </svg>
+          <h4 class="mb-2 text-lg font-extrabold">Community Vibe</h4>
+          <p class="text-sm text-[var(--text-muted)]">Enjoy communal dining lodges, shared bonfire stargazing, and group workshops during your stay.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</PublicLayout>

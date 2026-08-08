@@ -1,0 +1,74 @@
+---
+// Full-bleed Arabic menu page content. Shared by:
+//   - pages/menu.astro           → tenant zone (`/menu`)
+//   - pages/camp/[id]/menu.astro → marketplace zone (`/camp/{id}/menu`)
+import TenantMenu from '@/components/public/TenantMenu.tsx';
+
+interface Props {
+  tenant: Record<string, unknown> | null;
+  meals: Record<string, unknown>[];
+  mealCategories: Record<string, unknown>[];
+  tenantName: string;
+  primaryColor: string;
+  whatsappNumber: string;
+  /** Zone-aware back-to-camp URL for the empty state. */
+  campUrl: string;
+}
+
+const { tenantName, primaryColor, whatsappNumber, campUrl } = Astro.props;
+const meals = Astro.props.meals || [];
+const mealCategories = Astro.props.mealCategories || [];
+
+const color = primaryColor || '#4a7c4f';
+
+const hasMeals = meals.length > 0;
+const pageTitle = `${tenantName} — القائمة | Sinai Camps`;
+
+// Dynamic RTL support (defaults to Arabic for menu page)
+const queryLang = Astro.url.searchParams.get('lang');
+const cookieLang = Astro.cookies.get('sc_lang')?.value;
+const lang = queryLang || cookieLang || 'ar';
+const dir = lang === 'ar' ? 'rtl' : 'ltr';
+---
+
+<html lang={lang} dir={dir}>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{pageTitle}</title>
+  <meta name="description" content={`${tenantName} — قائمة الطعام والوجبات`} />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <style>
+    @layer base {
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Cairo', 'Noto Sans Arabic', sans-serif; background: #f4ead2; }
+  </style>
+</head>
+<body data-testid="menu-page">
+  {hasMeals ? (
+    <TenantMenu
+      client:load
+      meals={meals}
+      mealCategories={mealCategories}
+      tenantName={tenantName}
+      primaryColor={color}
+      whatsappNumber={whatsappNumber}
+    />
+  ) : (
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Cairo',sans-serif;background:#f4ead2;">
+      <div style="text-align:center;padding:3rem;">
+        <p style="font-size:3rem;margin-bottom:1rem;">🍽️</p>
+        <h1 style="font-size:1.5rem;font-weight:700;margin-bottom:0.5rem;">القائمة غير متوفرة حالياً</h1>
+        <p style="opacity:0.6;">لم يتم إعداد قائمة الطعام لهذا المخيم بعد</p>
+        <a href={campUrl} style="display:inline-block;margin-top:1.5rem;padding:0.75rem 2rem;background:${color};color:#fff;border-radius:9999px;font-weight:700;text-decoration:none;">
+          العودة لصفحة المخيم
+        </a>
+      </div>
+    </div>
+  )}
+</body>
+</html>

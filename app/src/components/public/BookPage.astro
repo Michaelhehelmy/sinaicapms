@@ -1,0 +1,59 @@
+---
+// Full-bleed reservation summary page content. Shared by:
+//   - pages/book.astro            → tenant zone (`/book`)
+//   - pages/camp/[id]/book.astro  → marketplace zone (`/camp/{id}/book`)
+import ReservationSummary from '@/components/public/ReservationSummary.tsx';
+
+interface Props {
+  tenant: Record<string, unknown> | null;
+  tenantName: string;
+  tenantId: string;
+  primaryColor: string;
+  whatsappNumber: string;
+  /** Zone-aware back-to-camp URL passed through to ReservationSummary. */
+  campUrl?: string;
+}
+
+const { tenant, tenantName, tenantId, primaryColor, whatsappNumber, campUrl } = Astro.props;
+
+const color = primaryColor || '#4a7c4f';
+
+const pageTitle = `Reservation — ${tenantName} | Sinai Camps`;
+
+// Dynamic RTL support
+const queryLang = Astro.url.searchParams.get('lang');
+const cookieLang = Astro.cookies.get('sc_lang')?.value;
+const lang = queryLang || cookieLang || 'en';
+const dir = lang === 'ar' ? 'rtl' : 'ltr';
+---
+
+<html lang={lang} dir={dir}>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{pageTitle}</title>
+  <meta name="description" content={`Review your reservation at ${tenantName}`} />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    @layer base {
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
+</head>
+<body data-testid="reservation-page">
+  <main role="main">
+    <ReservationSummary
+      client:load
+      tenantId={tenantId}
+      tenantName={tenantName}
+      primaryColor={color}
+      whatsappNumber={whatsappNumber}
+      campUrl={campUrl}
+    />
+  </main>
+</body>
+</html>

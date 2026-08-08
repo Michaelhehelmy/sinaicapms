@@ -1,0 +1,285 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — ported from tailwind.config.mjs (Tailwind 3)
+   into the Tailwind 4 CSS-first theme. All utility names in the
+   codebase (bg-brand, shadow-card, z-toast, animate-slide-in,
+   rounded-lg, font-sans, ...) resolve from these tokens.
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  /* Brand — DEFAULT uses the runtime CSS var so tenant theming can
+     override the accent via --brand-primary on a scope (Phase 1
+     tenant theme engine). */
+  --color-brand: var(--brand-primary, #4a7c4f);
+  --color-brand-50: #f0f7f1;
+  --color-brand-100: #dceede;
+  --color-brand-200: #b8dcbe;
+  --color-brand-300: #88c494;
+  --color-brand-400: #5aab6a;
+  --color-brand-500: #4a7c4f;
+  --color-brand-600: #3a633f;
+  --color-brand-700: #2f4f33;
+  --color-brand-800: #283f2b;
+  --color-brand-900: #213524;
+
+  --color-warm-50: #fdfcf9;
+  --color-warm-100: #f4f1ec;
+  --color-warm-200: #e8e3da;
+  --color-warm-300: #d9d3c9;
+  --color-warm-400: #b8b0a3;
+  --color-warm-500: #9a9185;
+  --color-warm-600: #7d7469;
+  --color-warm-700: #655d53;
+  --color-warm-800: #534d45;
+  --color-warm-900: #46413b;
+
+  /* Sinai wilderness accent + sand + ink (design refresh T1) */
+  --color-brand-deep: #1e5c35;
+  --color-sand-50: #fbf7f0;
+  --color-sand-100: #f5ecdd;
+  --color-sand-200: #ecdcbf;
+  --color-sand-300: #dcc49a;
+  --color-sand-400: #c4a878;
+  --color-ink: #22301f;
+
+  --color-sidebar: #2c3e2d;
+  --color-sidebar-text: #d4cec4;
+  --color-sidebar-hover: #3a5240;
+
+  /* Semantic status colors */
+  --color-success-50: #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+
+  --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+
+  --color-info-50: #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-500: #3b82f6;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-display: 'Sora', 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  --spacing-18: 4.5rem;
+  --spacing-88: 22rem;
+  --spacing-128: 32rem;
+
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  --shadow-toast: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  --animate-slide-in: slideIn 0.3s ease-out;
+  --animate-slide-out: slideOut 0.2s ease-in;
+  --animate-fade-in: fadeIn 0.2s ease-out;
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-spin-slow: spin 3s linear infinite;
+  --animate-bounce-gentle: bounceGentle 2s ease-in-out infinite;
+
+  --z-index-dropdown: 1000;
+  --z-index-sticky: 1020;
+  --z-index-fixed: 1030;
+  --z-index-modal-backdrop: 1040;
+  --z-index-modal: 1050;
+  --z-index-popover: 1060;
+  --z-index-tooltip: 1070;
+  --z-index-toast: 1080;
+
+  @keyframes slideIn {
+    0% { transform: translateX(100%); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes slideOut {
+    0% { transform: translateX(0); opacity: 1; }
+    100% { transform: translateX(100%); opacity: 0; }
+  }
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes bounceGentle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+}
+
+@layer base {
+  :root {
+    --brand-primary: #4a7c4f;
+    --brand-hover: #3a633f;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-sans text-gray-800 bg-warm-50 antialiased;
+  }
+
+  /* Display type: headings use the Sora display font (body stays Plus Jakarta Sans) */
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+  }
+
+  a {
+    @apply transition-colors;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-500;
+  }
+
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+
+  .skip-link {
+    @apply absolute -top-10 left-4 z-[9999] bg-brand text-white px-4 py-2 rounded;
+  }
+  .skip-link:focus {
+    @apply top-4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer components {
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-ghost {
+    @apply inline-flex items-center justify-center px-4 py-2 font-semibold rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-brand text-white hover:bg-brand-600 focus:ring-brand shadow hover:-translate-y-0.5 hover:shadow-md hover:brightness-110;
+    background-image: linear-gradient(135deg, var(--color-brand-500), var(--color-brand-deep));
+  }
+  .btn-secondary {
+    @apply bg-warm-100 text-gray-700 hover:bg-warm-200 focus:ring-warm-300 border border-warm-200;
+  }
+  .btn-danger {
+    @apply bg-red-500 text-white hover:bg-red-600 focus:ring-red-400;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-gray-600 hover:bg-warm-100;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  .card {
+    @apply bg-white rounded-xl border border-warm-100 shadow-card hover:shadow-elevated transition-shadow p-6;
+  }
+
+  /* ── Sinai wilderness design refresh (T1): gradient / texture / section utilities ── */
+  .gradient-primary {
+    background-image: linear-gradient(135deg, var(--color-brand-500), var(--color-brand-deep));
+  }
+  .gradient-soft {
+    background-image: linear-gradient(180deg, #ffffff, var(--color-warm-50));
+  }
+  /* Decorative topographic/contour pattern, tinted with currentColor at ~6% opacity */
+  .bg-topo {
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2280%22%20height%3D%2280%22%20viewBox%3D%220%200%2080%2080%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-opacity%3D%220.06%22%20stroke-width%3D%221%22%3E%3Cpath%20d%3D%22M40%2040m-5%200a5%205%200%201%200%2010%200a5%205%200%201%200-10%200%22%2F%3E%3Cpath%20d%3D%22M40%2040m-12%200a12%2012%200%201%200%2024%200a12%2012%200%201%200-24%200%22%2F%3E%3Cpath%20d%3D%22M40%2040m-21%200a21%2021%200%201%200%2042%200a21%2021%200%201%200-42%200%22%2F%3E%3Cpath%20d%3D%22M40%2040m-30%200a30%2030%200%201%200%2060%200a30%2030%200%201%200-60%200%22%2F%3E%3Cpath%20d%3D%22M0%2012c16%200%2026-6%2040-6s24%206%2040%206%22%2F%3E%3Cpath%20d%3D%22M0%2028c16%200%2026-6%2040-6s24%206%2040%206%22%2F%3E%3Cpath%20d%3D%22M0%2052c16%200%2026-6%2040-6s24%206%2040%206%22%2F%3E%3Cpath%20d%3D%22M0%2068c16%200%2026-6%2040-6s24%206%2040%206%22%2F%3E%3Cpath%20d%3D%22M12%200c0%2016-6%2026-6%2040s6%2024%206%2040%22%2F%3E%3Cpath%20d%3D%22M28%200c0%2016-6%2026-6%2040s6%2024%206%2040%22%2F%3E%3Cpath%20d%3D%22M52%200c0%2016-6%2026-6%2040s6%2024%206%2040%22%2F%3E%3Cpath%20d%3D%22M68%200c0%2016-6%2026-6%2040s6%2024%206%2040%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-brand-600;
+  }
+  .eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 2px;
+    flex-shrink: 0;
+    background: var(--color-brand-400);
+    border-radius: 999px;
+  }
+  .section-heading {
+    @apply text-3xl md:text-4xl font-extrabold tracking-tight;
+    font-family: var(--font-display);
+    color: var(--text, var(--color-ink));
+  }
+  .text-gradient {
+    background-image: linear-gradient(135deg, var(--color-brand-500), var(--color-brand-deep));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 border border-warm-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors;
+  }
+  .input-error {
+    @apply border-red-400 focus:ring-red-300 focus:border-red-400;
+  }
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+  .error-text {
+    @apply text-sm text-red-500 mt-1;
+  }
+
+  .tag {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .tag-confirmed { @apply bg-green-100 text-green-800; }
+  .tag-pending { @apply bg-yellow-100 text-yellow-800; }
+  .tag-cancelled { @apply bg-red-100 text-red-800; }
+  .tag-active { @apply bg-blue-100 text-blue-800; }
+  .tag-inactive { @apply bg-gray-100 text-gray-600; }
+
+  .toast-container {
+    @apply fixed top-4 right-4 z-[9999] flex flex-col gap-2;
+  }
+  .toast {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg shadow-toast min-w-[300px] max-w-[450px] animate-slide-in;
+  }
+  .toast-success { @apply bg-green-600 text-white; }
+  .toast-error { @apply bg-red-600 text-white; }
+  .toast-warning { @apply bg-yellow-500 text-white; }
+  .toast-info { @apply bg-blue-600 text-white; }
+}
+
+/* Custom scrollbar for modern browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-warm-100 rounded;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-warm-300 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-warm-400;
+}

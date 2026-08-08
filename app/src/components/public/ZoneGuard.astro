@@ -1,0 +1,16 @@
+---
+// Zone-exclusivity guard: renders the branded 404 (with an HTTP 404 status)
+// when the current request's route is forbidden for the resolved zone.
+//
+// Usage in any page whose route can be forbidden (see lib/routeZones.ts):
+//   ---
+//   if (Astro.locals.routeForbidden) {
+//     Astro.response.status = 404;
+//     return <ZoneGuard />;
+//   }
+//   ---
+import NotFoundPage from '@/components/public/NotFoundPage.astro';
+
+Astro.response.status = 404;
+---
+<NotFoundPage />

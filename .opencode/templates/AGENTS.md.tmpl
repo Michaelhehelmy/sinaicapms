@@ -1,0 +1,91 @@
+# {{projectName}} — OpenCode Developer Guidelines
+
+This file is the primary system prompt instruction manual for OpenCode agents working inside this project. Read this thoroughly before analyzing code or proposing changes.
+
+---
+
+## 1. Project Specifications
+
+| Property | Value |
+| --- | --- |
+| **Project Name** | {{projectName}} |
+| **Developer** | {{projectAuthor}} |
+| **Github** | [{{projectGithub}}](https://github.com/{{projectGithub}}) |
+{{#projectUrl}}
+| **Production URL** | [{{projectUrl}}]({{projectUrl}}) |
+{{/projectUrl}}
+| **Framework** | {{techFramework}} |
+| **Language** | {{techLanguage}} |
+| **Database** | {{techDatabase}} |
+| **Styling** | {{techStyling}} |
+| **Unit Test Framework** | {{techUnit}} |
+| **E2E Test Framework** | {{techE2e}} |
+| **Package Manager** | {{techPackageManager}} |
+
+---
+
+## 2. Agent Model — Dynamic Task Decomposition
+
+### Meta-Agents (always available)
+
+- **@orchestrator** — The entry point for any non-trivial task. Decomposes requests into atomic subtasks, spawns a dedicated tmp agent file (`.opencode/agents/tmp/`) per subtask, and executes them in dependency order. Call this agent first for any multi-step work.
+- **@skill-builder** — Creates new reusable, categorized skill guides in `.opencode/skills/<category>/` and registers them in `.opencode/skills/SKILLS_INDEX.md`. Call when a repeatable process is identified.
+
+### Tmp Agents (ephemeral, created by @orchestrator)
+
+Tmp agents live in `.opencode/agents/tmp/<YYYY-MM-DD>-<task-slug>.md`. Each one is:
+- Scoped to a **single atomic task** with a clear done-condition.
+- Tagged with a `category` (backend, frontend, database, testing, devops, refactor, docs, integration).
+- **Deleted after completion** to keep the workspace clean.
+
+### Role Agents (project-specific, conditionally rendered)
+{{#agents.deploy}}
+- **@deploy**: Specializes in local builds, environment packaging, and server deployment.
+{{/agents.deploy}}
+{{#agents.qa}}
+- **@qa**: Focuses on test coverage execution, visual regression checkouts, and smoke testing.
+{{/agents.qa}}
+{{#agents.db}}
+- **@db**: Responsible for migrations, indexes, schemas, and query optimization.
+{{/agents.db}}
+{{#agents.plugin-dev}}
+- **@plugin-dev**: Creates modular features and scaffolds plugins/packages.
+{{/agents.plugin-dev}}
+{{#agents.frontend}}
+- **@frontend**: Designs responsive pages and forms, handles dynamic configurations, ensures auth-aware logical rendering, and creates supporting backend routes/APIs.
+{{/agents.frontend}}
+{{#agents.pr-reviewer}}
+- **@pr-reviewer**: Auto-reviews PRs against project conventions, coding standards, and test coverage requirements.
+{{/agents.pr-reviewer}}
+{{#agents.security-auditor}}
+- **@security-auditor**: Scans for secrets, vulnerabilities, dependency CVEs, and misconfigurations.
+{{/agents.security-auditor}}
+{{#agents.performance-profiler}}
+- **@performance-profiler**: Runs bundle analysis, Lighthouse audits, and SQL query optimization.
+{{/agents.performance-profiler}}
+{{#agents.docs-generator}}
+- **@docs-generator**: Auto-generates API documentation, OpenAPI specs, and keeps project docs in sync.
+{{/agents.docs-generator}}
+
+---
+
+## 3. General Implementation Checklist
+
+When solving coding tasks, always structure your execution using this sequence:
+1. **Plan**: Run analytical checks and outline files to edit. Use `sequential-thinking` MCP to structure your execution plan.
+2. **Execute**: Modify target files or write new modules. Ensure proper encapsulation and follow the project design system.
+3. **Verify**: Run `run-tests` to ensure zero regressions.
+4. **Safety Verification**: Ensure no credentials, log directories, or secret tokens are left unstaged.
+
+---
+
+## 4. Persistent Memory and Logbook (`AGENT_LOGBOOK.md`)
+
+This repository contains a file named `AGENT_LOGBOOK.md` in the project root.
+- **Rule**: You MUST read `AGENT_LOGBOOK.md` at the start of any work to check for recent changes or warnings left by previous agent sessions.
+- **Rule**: You MUST update the logbook when you finish a task, appending a log entry describing:
+  - Date
+  - Task done
+  - Files changed
+  - Learned lessons or codebase bugs/gotchas encountered during the task
+- **Rule**: If you discover a recurring codebase pattern, database locking issue, styling requirement, or gotcha, document it directly under the "Persistent Learnings & Codebase Gotchas" section in `AGENT_LOGBOOK.md`.

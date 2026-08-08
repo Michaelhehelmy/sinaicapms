@@ -1,0 +1,40 @@
+---
+name: frontend-feature
+description: Design responsive, state-aware frontend views and CRUD config APIs in {{projectName}}
+---
+
+## When to use
+When asked to build, modify, or extend frontend UI pages, forms, settings screens, or navigation elements, or when creating configuration controls.
+
+## Steps
+
+1. **Verify Authentication & Session Integration**
+   - Identify the session provider or auth client in use (e.g., `authClient`).
+   - Ensure the UI dynamically handles logged-in vs logged-out views (e.g., hiding login actions, showing user avatar, name, and role-based links).
+   - Show loading/skeleton states while checking session status.
+
+2. **Define Schema & Dynamic Fields**
+   - Outline all text, colors, settings, or values that are editable.
+   - Do NOT hardcode strings, camp attributes, branding details, or lists. All must map to database configurations or configuration endpoints.
+   - Define localization variables if using translation helpers (e.g., `next-intl`).
+
+3. **Design Administrative Settings Screen**
+   - Create or update a dashboard/settings panel allowing admins/owners to edit the dynamic fields from the browser.
+   - Implement proper input constraints (e.g., color selectors, clear validation error highlights, file uploaders for logos).
+   - Use form states to disable submit buttons during pending requests and display loading spinners (`Loader2`).
+
+4. **Implement Secure Backend API Routes**
+   - Code corresponding REST/Next.js/Hono API routes to retrieve and save the settings data.
+   - **Crucial Rule**: Protect API writing actions with session authentication check middleware.
+   - **Crucial Rule**: Restrict updates based on role authorization (e.g., only `admin`, `master`, or `manager` roles can update settings).
+   - Scope all updates and queries by tenant/site ID.
+   - Validate incoming request payloads and return clean error responses.
+
+5. **Style with Premium Design Guidelines**
+   - Apply styling consistent with the project's styling tool (e.g., Tailwind).
+   - Add animations, subtle shadows, rounded borders, and transitions on interactive elements.
+   - Verify layout is mobile-responsive.
+
+6. **Validate & Test**
+   - Run local unit tests and Playwright E2E tests to confirm no UI breakages or regressions.
+   - Verify APIs return correct error codes (401 for unauthorized, 400 for bad payloads, 200 for success).

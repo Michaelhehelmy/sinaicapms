@@ -1,0 +1,66 @@
+---
+// Branded 404 section, shared by 404.astro and the [...path] catch-all page.
+// Tenant-agnostic: renders on the marketplace host (sinaicamps.com) AND on any
+// tenant/custom host WITHOUT depending on Astro.locals.tenant data. It reuses
+// PublicLayout, which only reads Astro.props (tenant defaults to {}).
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import en from '@/i18n/en.json';
+import ar from '@/i18n/ar.json';
+
+// Language detection (same priority as PublicLayout): query > cookie > 'en'.
+// Pulls copy from the shared translation files (en.json / ar.json) so no
+// module-level locale state is shared across SSR requests.
+const queryLang = Astro.url.searchParams.get('lang');
+const cookieLang = Astro.cookies.get('sc_lang')?.value;
+const lang = queryLang || cookieLang || 'en';
+const dict = lang === 'ar' ? ar : en;
+
+const pageTitle = dict.errors.notFound;
+const pageDesc = dict.errors.notFoundMessage;
+const brandColor = '#4a7c4f';
+---
+<PublicLayout
+  title={pageTitle}
+  tenantName="SinaiCamps"
+  primaryColor={brandColor}
+  description={pageDesc}
+  activePage=""
+>
+  <!-- 404 Hero -->
+  <section
+    data-testid="not-found-page"
+    class="relative overflow-hidden px-6 py-24 md:py-32"
+    style={`background: linear-gradient(135deg, ${brandColor}0D 0%, ${brandColor}1E 100%)`}
+  >
+    <div class="mx-auto max-w-2xl text-center">
+      <div
+        class="mx-auto mb-8 flex h-24 w-24 items-center justify-center rounded-full text-4xl shadow-lg"
+        style={`background-color: ${brandColor}1A; color: var(--color-brand-deep)`}
+        aria-hidden="true"
+      >
+        🏕️
+      </div>
+      <p
+        class="mb-2 text-7xl font-black leading-none tracking-tight md:text-8xl"
+        style={`color: var(--color-brand-deep)`}
+        data-testid="not-found-code"
+      >
+        404
+      </p>
+      <h1 data-testid="not-found-title" class="mb-4 text-3xl font-extrabold tracking-tight text-[var(--text)] md:text-4xl">
+        {dict.errors.notFound}
+      </h1>
+      <p data-testid="not-found-message" class="mx-auto mb-10 max-w-xl text-lg text-[var(--text-muted)]">
+        {dict.errors.notFoundMessage}
+      </p>
+      <div class="flex flex-wrap justify-center gap-4">
+        <a href="/" data-testid="not-found-home-link" class="btn btn-primary btn-lg">
+          {dict.errors.notFoundHome}
+        </a>
+        <a href="/camps" data-testid="not-found-browse-link" class="btn btn-secondary btn-lg">
+          {dict.errors.notFoundBrowse}
+        </a>
+      </div>
+    </div>
+  </section>
+</PublicLayout>

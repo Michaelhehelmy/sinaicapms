@@ -1,0 +1,43 @@
+---
+// Home page — zone router.
+//   - tenant zone (subdomain / custom domain / ?tenant=): full tenant landing
+//     (hero + about/CTA + rooms booking + reviews + map).
+//   - marketplace zone (sinaicamps.com / localhost without ?tenant=):
+//     marketplace home (hero + camps listing + onboarding).
+import MarketplaceHome from '@/components/public/MarketplaceHome.astro';
+import TenantLanding from '@/components/public/TenantLanding.astro';
+import { getTenantSSRData } from '@/middleware/tenant';
+
+let tenantProps: {
+  tenant: Record<string, unknown> | null;
+  roomTypes: Record<string, unknown>[];
+  primaryColor: string;
+  tenantName: string;
+  tenantId: string;
+} | null = null;
+
+if (Astro.locals.zone === 'tenant') {
+  const { tenant, roomTypes, primaryColor, tenantName, tenantId } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+  tenantProps = {
+    tenant: tenant as unknown as Record<string, unknown> | null,
+    roomTypes: roomTypes as unknown as Record<string, unknown>[],
+    primaryColor,
+    tenantName,
+    tenantId,
+  };
+}
+---
+{
+  tenantProps ? (
+    <TenantLanding
+      tenant={tenantProps.tenant}
+      roomTypes={tenantProps.roomTypes}
+      primaryColor={tenantProps.primaryColor}
+      tenantName={tenantProps.tenantName}
+      tenantId={tenantProps.tenantId}
+      zone="tenant"
+    />
+  ) : (
+    <MarketplaceHome />
+  )
+}

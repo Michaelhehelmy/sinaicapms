@@ -1,0 +1,173 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { getTenantSSRData } from '@/middleware/tenant';
+import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+import { hexToRgb, luminance } from '@/lib/theme';
+
+function escapeUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  return url.replace(/['")\)]/g, '');
+}
+
+/** Readable CTA text on a user-supplied primaryColor background (luminance rule). */
+function ctaInk(color: string): string {
+  return luminance(hexToRgb(color)) < 0.55 ? '#ffffff' : '#1a241d';
+}
+
+const { tenant, primaryColor, tenantName } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+
+const heroImage = normalizeAssetUrl(
+  tenant?.heroImageUrl as string,
+  'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1200&auto=format&fit=crop',
+);
+---
+<PublicLayout
+  title="Contact Us"
+  tenant={tenant}
+  tenantName={tenantName}
+  primaryColor={primaryColor}
+  activePage="contact"
+>
+  <!-- Hero -->
+  <section
+    data-testid="hero-banner"
+    class="relative flex min-h-[60vh] items-end overflow-hidden px-6 pb-16 pt-24 text-center text-white"
+    style={`background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0.8) 100%), url(${escapeUrl(heroImage)}) center/cover;`}
+  >
+    <!-- Topographic texture overlay -->
+    <div class="bg-topo pointer-events-none absolute inset-0 text-white opacity-20" aria-hidden="true"></div>
+    <div class="relative z-10 mx-auto w-full max-w-5xl">
+      <p class="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-white/80">
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+        Get in Touch
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+      </p>
+      <h1 data-testid="hero-title" class="font-display mb-3 text-4xl font-black tracking-tight md:text-5xl">Contact Us</h1>
+      <p data-testid="hero-description" class="text-lg opacity-90">Get in touch with our team for custom group bookings, directions, or support.</p>
+    </div>
+  </section>
+
+  <!-- Content -->
+  <section class="mx-auto max-w-4xl px-6 py-20">
+    <div class="grid gap-12 md:grid-cols-[2fr_3fr]">
+      <!-- Contact Info -->
+      <div>
+        <p class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[var(--primary)]">
+          <span class="inline-block h-0.5 w-4 rounded-full bg-[var(--primary)]" aria-hidden="true"></span>
+          Contact
+        </p>
+        <h2 class="section-heading mb-4">Reach Out to Us</h2>
+        <p class="mb-8 text-[var(--text-muted)]">We're happy to answer any questions or help arrange your travel to Sinai.</p>
+
+        <div class="mb-6 flex gap-5">
+          <svg class="mt-1 h-5 w-5 flex-none text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+          <div>
+            <strong class="mb-1 block text-xs uppercase tracking-wider text-[var(--text-muted)]">Address</strong>
+            <p class="font-bold">{escHtml(tenant?.location || 'Sinai Peninsula, Egypt')}</p>
+          </div>
+        </div>
+        <div class="mb-6 flex gap-5">
+          <svg class="mt-1 h-5 w-5 flex-none text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
+          <div>
+            <strong class="mb-1 block text-xs uppercase tracking-wider text-[var(--text-muted)]">Phone</strong>
+            <p class="font-bold">{escHtml(tenant?.phone || 'N/A')}</p>
+          </div>
+        </div>
+        <div class="mb-6 flex gap-5">
+          <svg class="mt-1 h-5 w-5 flex-none text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="m22 6-10 7L2 6" />
+          </svg>
+          <div>
+            <strong class="mb-1 block text-xs uppercase tracking-wider text-[var(--text-muted)]">Email</strong>
+            <p class="font-bold">{escHtml(tenant?.email || 'N/A')}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contact Form -->
+      <div class="rounded-xl border border-warm-100 bg-white p-8 shadow-card">
+        <h3 class="mb-6 text-xl font-extrabold">Send a Message</h3>
+        <form id="contactForm" data-testid="contact-form" data-tenant-id={tenant?.id || ''} class="space-y-5" onsubmit="handleContactSubmit(event)">
+          <div>
+            <label for="cName" class="mb-1 block text-sm font-semibold text-gray-600">Your Name</label>
+            <input id="cName" data-testid="contact-name" type="text" required placeholder="e.g. John Doe" class="input" />
+          </div>
+          <div>
+            <label for="cEmail" class="mb-1 block text-sm font-semibold text-gray-600">Email Address</label>
+            <input id="cEmail" data-testid="contact-email" type="email" required placeholder="e.g. john@doe.com" class="input" />
+          </div>
+          <div>
+            <label for="cMessage" class="mb-1 block text-sm font-semibold text-gray-600">Message</label>
+            <textarea id="cMessage" data-testid="contact-message" rows="5" required placeholder="How can we help you?" class="input"></textarea>
+          </div>
+          <button type="submit" class="btn w-full hover:brightness-110" style={`background: var(--primary); color: ${ctaInk(primaryColor)}; box-shadow: 0 10px 24px -8px var(--primary);`}>Send Message</button>
+        </form>
+        <div id="contactSuccess" data-testid="contact-success" class="hidden mt-4 rounded-xl bg-green-50 p-4 text-center text-sm font-semibold text-green-700"></div>
+      </div>
+    </div>
+  </section>
+</PublicLayout>
+
+<script is:inline>
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = String(s || '');
+    return d.innerHTML;
+  }
+
+  async function handleContactSubmit(e) {
+    e.preventDefault();
+    var form = document.getElementById('contactForm');
+    var tenantId = form.getAttribute('data-tenant-id');
+    var name = document.getElementById('cName').value.trim();
+    var email = document.getElementById('cEmail').value.trim();
+    var msg = document.getElementById('cMessage').value.trim();
+
+    var submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+
+    try {
+      var host = window.location.hostname;
+      var isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost') || host.endsWith('.127.0.0.1');
+      var isSinaicampsDomain = host === 'sinaicamps.com' || host === 'www.sinaicamps.com' || host.endsWith('.sinaicamps.com');
+      var API = isLocal ? 'http://localhost:8787/api' : isSinaicampsDomain ? window.location.origin + '/api' : 'https://sinaicamps.com/api';
+      var response = await fetch(API + '/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tenantId ? { 'x-tenant-id': tenantId } : {})
+        },
+        body: JSON.stringify({
+          name: name,
+          email: email,
+          message: msg,
+          source: 'contact_form'
+        })
+      });
+
+      var successBox = document.getElementById('contactSuccess');
+      if (!response.ok) {
+        throw new Error('Server returned ' + response.status);
+      }
+      successBox.textContent = 'Thank you, ' + escHtml(name) + '! Your message has been sent. We will reply to ' + escHtml(email) + ' shortly.';
+      successBox.classList.remove('hidden');
+      form.reset();
+    } catch (err) {
+      var errorBox = document.getElementById('contactSuccess');
+      errorBox.textContent = 'Sorry, there was an error sending your message. Please try again or contact us directly.';
+      errorBox.classList.remove('hidden');
+      errorBox.className = 'mt-4 rounded-xl bg-red-50 p-4 text-center text-sm font-semibold text-red-700';
+      form.reset();
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send Message';
+    }
+  }
+</script>

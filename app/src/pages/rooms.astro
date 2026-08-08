@@ -1,0 +1,142 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import { getTenantSSRData } from '@/middleware/tenant';
+import { escHtml, normalizeAssetUrl, formatCurrency } from '@/lib/utils';
+import { hexToRgb, luminance } from '@/lib/theme';
+
+// `/rooms` is a tenant-zone route - forbidden on the marketplace zone.
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+
+function escapeUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  return url.replace(/['")\)]/g, '');
+}
+
+/** Readable CTA text on a user-supplied primaryColor background (luminance rule). */
+function ctaInk(color: string): string {
+  return luminance(hexToRgb(color)) < 0.55 ? '#ffffff' : '#1a241d';
+}
+
+const { tenant, roomTypes, primaryColor, tenantName, tenantId } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+
+const heroImage = normalizeAssetUrl(
+  tenant?.heroImageUrl as string,
+  'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1200&auto=format&fit=crop',
+);
+
+const tenantParam = Astro.url.searchParams.get('tenant');
+const querySuffix = tenantParam ? `?tenant=${tenantParam}` : '';
+const campSlug = tenant?.subdomain || tenantId;
+const bookingUrl = Astro.locals.zone === 'tenant' ? `/book${querySuffix}` : `/camp/${campSlug}${querySuffix}`;
+---
+{
+  forbidden ? (
+    <ZoneGuard />
+  ) : (
+    <PublicLayout
+      title="Accommodations"
+      tenant={tenant}
+      tenantName={tenantName}
+      primaryColor={primaryColor}
+      activePage="rooms"
+    >
+      <!-- Hero -->
+      <section
+        data-testid="hero-banner"
+        class="relative flex min-h-[200px] max-h-[40vh] items-center justify-center overflow-hidden px-6 text-center text-white"
+        style={`background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url(${escapeUrl(heroImage)}) center/cover;`}
+      >
+        <!-- Topographic texture overlay -->
+        <div class="bg-topo pointer-events-none absolute inset-0 text-white opacity-20" aria-hidden="true"></div>
+        <div class="relative z-10">
+          <p class="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-white/80">
+            <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+            Where You'll Stay
+            <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+          </p>
+          <h1 data-testid="hero-title" class="font-display mb-3 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">Our Accommodations</h1>
+          <p data-testid="hero-description" class="text-lg opacity-90">Choose from rustic cabins, beach houses, or premium suites designed for your comfort.</p>
+        </div>
+      </section>
+
+      <!-- Room Listing -->
+      <section class="mx-auto max-w-4xl px-6 py-20">
+        {roomTypes.length === 0 ? (
+          <p class="py-12 text-center text-lg text-[var(--text-muted)]">No accommodation types registered yet. Please check back later!</p>
+        ) : (
+          <div class="flex flex-col gap-8 sm:gap-12">
+            {roomTypes.map((rt) => {
+              return (
+                <article data-testid="room-card" class="overflow-hidden rounded-xl border border-warm-100 bg-white shadow-card transition-shadow hover:shadow-elevated md:grid md:grid-cols-[2fr_3fr]">
+                  {normalizeAssetUrl(rt.imageUrl as string) ? (
+                    <img
+                      src={escHtml(normalizeAssetUrl(rt.imageUrl as string))}
+                      alt={escHtml(rt.name as string)}
+                      class="h-48 w-full object-cover sm:h-64 md:h-full md:min-h-[300px]"
+                    />
+                  ) : (
+                    <div
+                      class="flex min-h-[160px] items-center justify-center sm:min-h-[200px] md:min-h-full"
+                      style={`background-color: ${primaryColor}`}
+                      aria-hidden="true"
+                    >
+                      <svg class="h-14 w-14 text-black/35" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 3 3 20h18L12 3Z" />
+                        <path d="m7 20 5-8 5 8" />
+                      </svg>
+                    </div>
+                  )}
+
+                  <div class="flex flex-col justify-between gap-5 p-5 sm:p-8">
+                    <div>
+                      <h2 data-testid="room-name" class="mb-3 text-2xl font-extrabold">{escHtml(rt.name as string)}</h2>
+                      <p class="text-[var(--text-muted)]">
+                        {escHtml((rt.description as string) || 'Enjoy comfortable, rustic lodging facilities with scenic natural views.')}
+                      </p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 rounded-xl border border-warm-100 bg-warm-50 p-5">
+                      <div class="flex items-center gap-3">
+                        <svg class="h-5 w-5 flex-none text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                        <div>
+                          <strong class="block text-xs uppercase tracking-wider text-[var(--text-muted)]">Capacity</strong>
+                          <span class="font-bold">Up to {rt.capacity} guests</span>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-3">
+                        <svg class="h-5 w-5 flex-none text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <rect x="2" y="6" width="20" height="12" rx="2" />
+                          <circle cx="12" cy="12" r="2" />
+                          <path d="M6 12h.01M18 12h.01" />
+                        </svg>
+                        <div>
+                          <strong class="block text-xs uppercase tracking-wider text-[var(--text-muted)]">Base Price</strong>
+                          <span class="font-bold">{formatCurrency(Number(rt.basePrice || 0), 'EGP')}<span class="text-sm font-semibold text-[var(--text-muted)]">/night</span></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <a
+                      href={bookingUrl}
+                      class="inline-block rounded-full px-6 py-3 text-center font-bold shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+                      style={`background: linear-gradient(135deg, ${primaryColor}, ${primaryColor}d9); color: ${ctaInk(primaryColor)}; box-shadow: 0 10px 24px -8px ${primaryColor}59;`}
+                    >
+                      Check Availability
+                    </a>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </PublicLayout>
+  )
+}

@@ -1,0 +1,49 @@
+---
+// Marketplace camp reservation deep link (/camp/{id}/book). Marketplace-only:
+// forbidden on tenant zones (see lib/routeZones.ts). Renders the shared
+// BookPage with marketplace-zone back link (/camp/{id}).
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import BookPage from '@/components/public/BookPage.astro';
+
+const { id } = Astro.params;
+
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+
+const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
+
+let tenant: Record<string, unknown> | null = null;
+
+if (!forbidden) {
+  try {
+    const res = await ssrFetch(`/tenants/${id}`);
+    if (res.ok) tenant = (await res.json()) as Record<string, unknown>;
+  } catch (e) {
+    console.error('Error loading reservation page:', e);
+  }
+}
+
+if (!forbidden && !tenant) {
+  return Astro.redirect('/404');
+}
+
+const t = (tenant ?? {}) as Record<string, unknown>;
+const color = (t.primaryColor as string) || '#4a7c4f';
+const tenantName = t.name as string;
+const tenantId = t.id as string;
+const whatsappNumber = (t.whatsappNumber as string) || (t.phone as string) || '';
+---
+{
+  forbidden ? (
+    <ZoneGuard />
+  ) : (
+    <BookPage
+      tenant={t}
+      tenantName={tenantName}
+      tenantId={tenantId}
+      primaryColor={color}
+      whatsappNumber={whatsappNumber}
+      campUrl={`/camp/${tenantId}`}
+    />
+  )
+}

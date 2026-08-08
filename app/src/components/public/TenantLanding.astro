@@ -1,0 +1,269 @@
+---
+// Full tenant landing page content (hero + about/CTA + rooms booking + reviews
+// + map). Shared by:
+//   - pages/index.astro        → tenant zone (tenant `/` = landing)
+//   - pages/camp/[id]/index.astro → marketplace zone (camp deep link)
+// Zone-aware links: tenant zone links to `/book` `/menu`; marketplace zone
+// links to `/camp/{tenantId}/book` `/camp/{tenantId}/menu`.
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import CampBooking from '@/components/public/CampBooking.tsx';
+import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+
+interface Props {
+  tenant: Record<string, unknown> | null;
+  roomTypes: Record<string, unknown>[];
+  primaryColor: string;
+  tenantName: string;
+  tenantId: string;
+  zone: 'marketplace' | 'tenant';
+  /** Back-to-marketplace link; only rendered on the marketplace zone. */
+  marketplaceUrl?: string | null;
+}
+
+const { tenant, roomTypes, primaryColor, tenantName, tenantId, zone, marketplaceUrl = null } = Astro.props;
+
+// Unknown tenant on the tenant zone → branded 404 (never leak another camp).
+const tenantMissing = !tenant;
+if (tenantMissing) Astro.response.status = 404;
+
+// The template only renders the landing when `tenantMissing` is false; cast to
+// satisfy the type checker (frontmatter below must stay null-safe).
+const t = tenant as Record<string, unknown> | null;
+
+const color = primaryColor || (t?.primaryColor as string) || '#4a7c4f';
+const defaultHero = 'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1200&auto=format&fit=crop';
+const heroImage = normalizeAssetUrl(t?.heroImageUrl as string, defaultHero);
+const mapEmbed = normalizeAssetUrl(t?.mapEmbedUrl as string);
+const aboutText = (t?.aboutText as string) || (t?.description as string) || '';
+const activities = t?.activities ? (t.activities as string).split(',') : [];
+const hasMenu = (t?.hasMeals as number) > 0 || !!t?.menuConfig;
+
+let reviewsList: Record<string, unknown>[] = [];
+try { reviewsList = t?.reviews ? JSON.parse(t.reviews as string) : []; } catch { reviewsList = []; }
+
+// Zone-aware deep links: tenant `/` landing ↔ marketplace /camp/{id}.
+const menuUrl = zone === 'tenant' ? '/menu' : `/camp/${tenantId}/menu`;
+const reservationUrl = zone === 'tenant' ? '/book' : `/camp/${tenantId}/book`;
+
+// The tenant `primaryColor` is user-supplied and may be light, so hardcoded
+// white text can fail WCAG contrast. Pick readable ink from the background's
+// relative luminance: white on dark fills, ink on light fills.
+function luminance(hex: string): number {
+  let h = (hex || '').replace('#', '').trim();
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  const int = parseInt(h, 16);
+  if (Number.isNaN(int)) return 0;
+  const r = (int >> 16) & 255;
+  const g = (int >> 8) & 255;
+  const b = int & 255;
+  const linear = (v: number) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+/** Ink for text sitting on a solid brand background: white on dark, ink on light. */
+function getReadableTextOn(bg: string): string {
+  return luminance(bg) < 0.55 ? '#ffffff' : '#1a241d';
+}
+const ctaTextColor = getReadableTextOn(color);
+
+const pageTitle = tenantMissing ? 'Not Found' : `${t?.name} - Sinai Camps Directory`;
+const pageDesc = aboutText || `${t?.name} - premium adventure camp in ${t?.location || 'Sinai, Egypt'}.`;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'LodgingBusiness',
+  name: t?.name,
+  description: aboutText,
+  image: heroImage,
+  url: Astro.url.href,
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: (t?.location as string) || 'Sinai, Egypt',
+  },
+  telephone: t?.phone || undefined,
+  email: t?.email || undefined,
+};
+
+// Sanitize JSON-LD to prevent script injection
+function sanitizeForJsonLd(obj: Record<string, unknown>): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'string') {
+      clean[k] = v.replace(/<\/script/gi, '');
+    } else if (v && typeof v === 'object') {
+      clean[k] = sanitizeForJsonLd(v as Record<string, unknown>);
+    } else {
+      clean[k] = v;
+    }
+  }
+  return clean;
+}
+---
+{
+  tenantMissing ? (
+    <ZoneGuard />
+  ) : (
+    <PublicLayout
+      title={pageTitle}
+      tenant={tenant}
+      tenantName={tenantName}
+      primaryColor={color}
+      description={pageDesc}
+    >
+      <script type="application/ld+json" set:html={JSON.stringify(sanitizeForJsonLd(jsonLd))}></script>
+
+      {marketplaceUrl && (
+        <div class="mx-auto max-w-5xl px-6 py-5">
+          <a href={marketplaceUrl} data-testid="back-to-marketplace" class="inline-flex items-center gap-1 text-sm font-bold text-[var(--text-muted)] transition hover:text-[var(--primary)]">
+            <span aria-hidden="true">←</span> Back to Marketplace
+          </a>
+        </div>
+      )}
+
+      <!-- Hero Banner -->
+      <section
+        data-testid="hero-banner"
+        class="relative flex min-h-[60vh] items-end overflow-hidden bg-warm-100"
+      >
+        <img
+          src={heroImage}
+          alt=""
+          class="absolute inset-0 h-full w-full object-cover"
+          loading="eager"
+          fetchpriority="high"
+        />
+        <!-- Legibility scrim anchored to the content zone (bottom) -->
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/35 to-black/15" aria-hidden="true"></div>
+        <!-- Topographic texture overlay -->
+        <div class="bg-topo pointer-events-none absolute inset-0 text-white opacity-20" aria-hidden="true"></div>
+        <div class="relative z-10 w-full">
+          <div class="mx-auto max-w-5xl px-6 pb-14 pt-24 sm:pb-16">
+            <p class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-white/80"><span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span> Welcome to</p>
+            <h1 data-testid="hero-title" class="font-display mb-4 max-w-2xl text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">{escHtml((t?.name as string) || tenantName)}</h1>
+            <p data-testid="hero-description" class="mb-7 flex max-w-xl items-center gap-2 text-base text-white/90 sm:text-lg">
+              <svg class="h-5 w-5 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              {escHtml((t?.location as string) || 'Sinai, Egypt')}
+            </p>
+            <a
+              href="#rooms"
+              data-testid="hero-cta"
+              class="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+              style={`background: linear-gradient(135deg, ${color}, ${color}d9); color: ${ctaTextColor}; box-shadow: 0 10px 24px -8px ${color}59;`}
+            >
+              Explore the Camp
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <div data-testid="page-content" class="mx-auto max-w-5xl px-6">
+        <!-- About + CTA -->
+        <section data-testid="camp-detail-about" class="grid gap-10 py-16 md:grid-cols-[3fr_2fr]">
+          <div>
+            <h2 data-testid="about-heading" class="section-heading mb-5">About The Camp</h2>
+            <p data-testid="about-description" class="mb-5 text-[var(--text-muted)] leading-relaxed">
+              {escHtml(aboutText || 'Experience premium summer camp programs and wilderness lodges designed to bring you closer to nature.')}
+            </p>
+            {activities.length > 0 && (
+              <div data-testid="activities-list" class="mt-5">
+                <h4 class="mb-2 font-bold">Offered Activities</h4>
+                <div class="flex flex-wrap gap-2">
+                  {activities.map((a) => (
+                    <span class="rounded-full px-3 py-1 text-sm font-semibold" style={`background-color: ${color}14; color: ${color}`}>{escHtml(a.trim())}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div data-testid="cta-card" class="flex flex-col items-center gap-4 rounded-xl border border-warm-100 bg-white p-5 text-center shadow-card transition-shadow hover:shadow-elevated sm:p-8">
+            <h3 class="text-xl font-extrabold">Plan Your Stay</h3>
+            <p class="text-sm text-[var(--text-muted)]">Select dates and rooms below, then review your stay.</p>
+            {hasMenu && (
+              <a
+                href={menuUrl}
+                data-testid="menu-link"
+                class="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 py-3 text-center font-bold transition hover:opacity-90"
+                style={`border-color: ${color}; color: ${color}`}
+              >
+                <svg class="h-5 w-5 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+                  <path d="M7 2v20" />
+                  <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+                </svg>
+                View Menu
+              </a>
+            )}
+            <a
+              href={reservationUrl}
+              data-testid="reservation-link"
+              class="w-full rounded-full py-3 text-center font-bold shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+              style={`background: linear-gradient(135deg, ${color}, ${color}d9); color: ${ctaTextColor}; box-shadow: 0 10px 24px -8px ${color}59;`}
+            >
+              Review Your Stay
+            </a>
+          </div>
+        </section>
+
+        <!-- Rooms - Interactive Booking -->
+        <div data-testid="camp-detail-rooms">
+          <section id="rooms" data-testid="rooms-section" class="border-t border-[var(--border)] py-16">
+            <h2 class="section-heading mb-8 text-center">Accommodations</h2>
+            <CampBooking
+              client:load
+              tenantId={tenantId}
+              tenantName={tenantName}
+              primaryColor={color}
+              roomTypes={roomTypes as any}
+              bookUrl={reservationUrl}
+            />
+          </section>
+        </div>
+
+        <!-- Reviews - horizontal scroll-snap rail on md+, single column below -->
+        {reviewsList.length > 0 && (
+          <section data-testid="reviews-section" class="border-t border-[var(--border)] py-16">
+            <h2 class="section-heading mb-8">Camp Reviews</h2>
+            <div class="grid gap-6 md:flex md:snap-x md:snap-mandatory md:gap-6 md:overflow-x-auto md:pb-2 md:scroll-pl-2">
+              {reviewsList.map((r) => (
+                <article class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated md:shrink-0 md:snap-start md:w-[380px]">
+                  <div class="mb-3 text-[#ffc000]">
+                    {'★'.repeat(r.rating as number)}{'☆'.repeat(5 - (r.rating as number))}
+                  </div>
+                  <p class="mb-4 text-sm italic text-gray-600">"{escHtml(r.text as string)}"</p>
+                  <div class="flex justify-between text-xs text-[var(--text-muted)]">
+                    <strong>{escHtml(r.author as string)}</strong>
+                    <span>{escHtml(r.date as string)}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <!-- Map - full width, left-aligned header -->
+        {mapEmbed && (
+          <section data-testid="map-section" class="border-t border-[var(--border)] py-16">
+            <h2 class="section-heading mb-8">Location Map</h2>
+            <div class="overflow-hidden rounded-xl border border-warm-100 shadow-card" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;">
+              <iframe
+                src={escHtml(mapEmbed)}
+                style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;"
+                allowfullscreen=""
+                loading="lazy"
+                title={`Map of ${t?.name || tenantName}`}
+              ></iframe>
+            </div>
+          </section>
+        )}
+      </div>
+    </PublicLayout>
+  )
+}

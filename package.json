@@ -1,0 +1,30 @@
+{
+  "name": "campmaster-integration-tests",
+  "version": "1.0.0",
+  "description": "Integration test suite for CampMaster Pro",
+  "scripts": {
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit/",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:unit:watch": "vitest watch tests/unit/",
+    "test:e2e": "playwright test",
+    "test:e2e:auth": "playwright test --project=auth",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report tests/e2e/results/html"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "axe-core": "^4.12.1",
+    "chrome-launcher": "^1.2.1",
+    "lighthouse": "^13.4.1",
+    "playwright": "^1.61.1",
+    "tsx": "^4.23.11",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.112.0"
+  },
+  "overrides": {
+    "sharp": ">=0.35.0",
+    "esbuild": ">=0.25.0"
+  }
+}

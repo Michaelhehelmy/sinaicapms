@@ -1,0 +1,192 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { getTenantSSRData } from '@/middleware/tenant';
+import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+import { hexToRgb, luminance } from '@/lib/theme';
+
+function escapeUrl(url: string | undefined | null): string {
+  if (!url) return '';
+  return url.replace(/['")\)]/g, '');
+}
+
+/** Readable CTA text on a user-supplied primaryColor background (luminance rule). */
+function ctaInk(color: string): string {
+  return luminance(hexToRgb(color)) < 0.55 ? '#ffffff' : '#1a241d';
+}
+
+const { tenant, primaryColor, tenantName } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+
+const tenantParam = Astro.url.searchParams.get('tenant');
+const querySuffix = tenantParam ? `?tenant=${tenantParam}` : '';
+const accommodationsUrl = Astro.locals.zone === 'tenant' ? `/rooms${querySuffix}` : `/camps${querySuffix}`;
+
+const heroImage = normalizeAssetUrl(
+  tenant?.heroImageUrl as string,
+  'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1200&auto=format&fit=crop',
+);
+
+let galleryList: string[] = [];
+try {
+  galleryList = tenant?.galleryImages ? JSON.parse(tenant.galleryImages as string) : [];
+} catch {
+  galleryList = [];
+}
+// Drop any localhost / invalid asset URLs so they never reach rendered markup.
+galleryList = galleryList
+  .map((img) => normalizeAssetUrl(img as string))
+  .filter((u) => u !== '');
+---
+<PublicLayout
+  title="Gallery"
+  tenant={tenant}
+  tenantName={tenantName}
+  primaryColor={primaryColor}
+  activePage="gallery"
+>
+  <!-- Hero -->
+  <section
+    data-testid="hero-banner"
+    class="relative flex min-h-[60vh] items-end overflow-hidden px-6 pb-16 pt-24 text-center text-white"
+    style={`background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0.8) 100%), url(${escapeUrl(heroImage)}) center/cover;`}
+  >
+    <!-- Topographic texture overlay -->
+    <div class="bg-topo pointer-events-none absolute inset-0 text-white opacity-20" aria-hidden="true"></div>
+    <div class="relative z-10 mx-auto w-full max-w-5xl">
+      <p class="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-white/80">
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+        Explore
+        <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
+      </p>
+      <h1 data-testid="hero-title" class="font-display mb-3 text-4xl font-black tracking-tight md:text-5xl">Photo Gallery</h1>
+      <p data-testid="hero-description" class="text-lg opacity-90">Take a look around our campsite facilities, community lodges, and scenery.</p>
+      <div class="mt-7">
+        <a
+          href={accommodationsUrl}
+          class="inline-block rounded-full px-6 py-3 text-center font-bold shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+          style={`background: linear-gradient(135deg, ${primaryColor}, ${primaryColor}d9); color: ${ctaInk(primaryColor)}; box-shadow: 0 10px 24px -8px ${primaryColor}59;`}
+        >
+          View Accommodations
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Gallery Grid -->
+  <section class="mx-auto max-w-5xl px-6 py-20">
+    {galleryList.length === 0 ? (
+      <p class="py-12 text-center text-lg text-[var(--text-muted)]">No gallery photos uploaded yet. Please check back soon!</p>
+    ) : (
+      <div data-testid="gallery-grid" class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {galleryList.map((img, idx) => (
+          <button
+            data-testid="gallery-item"
+            type="button"
+            class="group relative cursor-pointer overflow-hidden rounded-xl border border-warm-100 shadow-card transition-shadow hover:shadow-elevated focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2"
+            onclick={`openLightbox(${idx})`}
+            aria-label={`View photo ${idx + 1}`}
+          >
+            <div
+              class="h-64 bg-cover bg-center transition-transform duration-300 group-hover:scale-105"
+              style={`background-image: url(${escHtml(img)})`}
+              role="img"
+              aria-label={`Gallery photo ${idx + 1}`}
+            ></div>
+            <div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+              <span class="rounded-full border-2 border-white px-4 py-1.5 text-sm font-bold text-white">View Photo</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    )}
+
+    <!-- Lightbox Modal -->
+    <div
+      id="lightboxModal"
+      data-testid="lightbox-modal"
+      class="fixed inset-0 z-[10000] hidden items-center justify-center bg-black/90"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Photo lightbox"
+    >
+      <button
+        type="button"
+        class="absolute right-5 top-5 z-10 text-4xl font-bold text-white/80 transition hover:text-white"
+        onclick="closeLightbox()"
+        aria-label="Close lightbox"
+      >
+        &times;
+      </button>
+      <button
+        type="button"
+        class="absolute left-4 top-1/2 -translate-y-1/2 text-4xl font-bold text-white/60 transition hover:text-white md:left-8"
+        onclick="prevPhoto()"
+        aria-label="Previous photo"
+      >
+        &#8249;
+      </button>
+      <button
+        type="button"
+        class="absolute right-4 top-1/2 -translate-y-1/2 text-4xl font-bold text-white/60 transition hover:text-white md:right-8"
+        onclick="nextPhoto()"
+        aria-label="Next photo"
+      >
+        &#8250;
+      </button>
+      <img
+        id="lightboxImg"
+        data-testid="lightbox-img"
+        class="max-h-[85vh] max-w-[85vw] rounded-lg shadow-2xl"
+        alt="Enlarged gallery photo"
+      />
+      <div id="lightboxCounter" class="absolute bottom-6 left-1/2 -translate-x-1/2 text-sm font-semibold text-white/70"></div>
+    </div>
+  </section>
+</PublicLayout>
+
+<script is:inline define:vars={{ galleryList: JSON.stringify(galleryList) }}>
+  window.__galleryImages = JSON.parse(galleryList);
+
+  var currentIdx = 0;
+
+  window.openLightbox = function openLightbox(idx) {
+    currentIdx = idx;
+    var modal = document.getElementById('lightboxModal');
+    var img = document.getElementById('lightboxImg');
+    var counter = document.getElementById('lightboxCounter');
+    modal.style.display = 'flex';
+    var url = window.__galleryImages[currentIdx];
+    if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/'))) {
+      img.src = url;
+    }
+    counter.textContent = (currentIdx + 1) + ' / ' + window.__galleryImages.length;
+    document.body.style.overflow = 'hidden';
+  };
+
+  window.closeLightbox = function closeLightbox() {
+    document.getElementById('lightboxModal').style.display = 'none';
+    document.body.style.overflow = '';
+  };
+
+  window.nextPhoto = function nextPhoto() {
+    currentIdx = (currentIdx + 1) % window.__galleryImages.length;
+    updateLightbox();
+  };
+
+  window.prevPhoto = function prevPhoto() {
+    currentIdx = (currentIdx - 1 + window.__galleryImages.length) % window.__galleryImages.length;
+    updateLightbox();
+  };
+
+  function updateLightbox() {
+    document.getElementById('lightboxImg').src = window.__galleryImages[currentIdx];
+    document.getElementById('lightboxCounter').textContent = (currentIdx + 1) + ' / ' + window.__galleryImages.length;
+  }
+
+  document.addEventListener('keydown', function(e) {
+    var modal = document.getElementById('lightboxModal');
+    if (modal.style.display !== 'flex') return;
+    if (e.key === 'Escape') window.closeLightbox();
+    if (e.key === 'ArrowRight') window.nextPhoto();
+    if (e.key === 'ArrowLeft') window.prevPhoto();
+  });
+</script>

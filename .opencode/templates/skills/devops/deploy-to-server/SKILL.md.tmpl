@@ -1,0 +1,31 @@
+---
+name: deploy-to-server
+description: Build and deploy {{projectName}} to production
+---
+
+## When to use
+When requested to release, deploy, or push changes to the production server.
+
+## Steps
+
+1. **Verify all tests pass**
+   - Run `{{techPackageManager}} run test` before building.
+
+2. **Run framework build step**
+   - Execute the appropriate build command (e.g. `{{techPackageManager}} run build`).
+
+3. **Deploy**
+   {{#deployScript}}
+   - Run the deploy script: `{{deployScript}}`
+   {{/deployScript}}
+
+4. **Verify online status**
+   {{#deployRemoteHost}}
+   - SSH to `{{deployRemoteHost}}` and inspect status.
+   {{/deployRemoteHost}}
+   {{#deployPm2App}}
+   - Check PM2 status: `pm2 list` (should show `{{deployPm2App}}` as online).
+   {{/deployPm2App}}
+   {{#deployLogFile}}
+   - Tail logs: `tail -n 20 {{deployLogFile}}`.
+   {{/deployLogFile}}

@@ -1,0 +1,71 @@
+---
+// Tenant menu page (/menu). Tenant-only: forbidden on the marketplace zone
+// (see lib/routeZones.ts). Back link goes to the tenant landing (/).
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import MenuPage from '@/components/public/MenuPage.astro';
+
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+
+const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
+const tenantId = Astro.locals.tenantId;
+
+let tenant: Record<string, unknown> | null = null;
+let meals: Record<string, unknown>[] = [];
+let mealCategories: Record<string, unknown>[] = [];
+
+if (!forbidden) {
+  try {
+    const [tenantRes, mealsRes, catsRes] = await Promise.all([
+      ssrFetch(`/tenants/${tenantId}`),
+      ssrFetch(`/meals`, { headers: { 'x-tenant-id': String(tenantId) } }),
+      ssrFetch(`/meal-categories`, { headers: { 'x-tenant-id': String(tenantId) } }),
+    ]);
+    if (tenantRes.ok) tenant = (await tenantRes.json()) as Record<string, unknown>;
+    if (mealsRes.ok) meals = await mealsRes.json() as Record<string, unknown>[];
+    if (catsRes.ok) mealCategories = await catsRes.json() as Record<string, unknown>[];
+  } catch (e) {
+    console.error('Error loading menu:', e);
+  }
+}
+
+if (!forbidden && !tenant) {
+  return Astro.redirect('/404');
+}
+
+const t = (tenant ?? {}) as Record<string, unknown>;
+const color = (t.primaryColor as string) || '#4a7c4f';
+const tenantName = t.name as string;
+const whatsappNumber = (t.whatsappNumber as string) || '';
+---
+<!--
+  This page renders isolated full-bleed chrome via MenuPage (no PublicLayout,
+  no global.css import), so the global prefers-reduced-motion override never
+  applies here. Local equivalent (mirrors global.css): honors reduced motion
+  for the TenantMenu drawer, smooth scroll, and transitions.
+-->
+<style is:global>
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+{
+  forbidden ? (
+    <ZoneGuard />
+  ) : (
+    <MenuPage
+      tenant={t}
+      meals={meals}
+      mealCategories={mealCategories}
+      tenantName={tenantName}
+      primaryColor={color}
+      whatsappNumber={whatsappNumber}
+      campUrl={'/'}
+    />
+  )
+}

@@ -1,0 +1,47 @@
+# Project Context — {{projectName}}
+
+This document details the architecture, data models, and structures for **{{projectName}}**.
+
+---
+
+## 1. Stack and Environment
+
+- **Framework**: {{techFramework}}
+- **Language**: {{techLanguage}}
+- **Database**: {{techDatabase}}
+{{#techDbFile}}
+- **Local DB File**: `{{techDbFile}}`
+{{/techDbFile}}
+- **Styling**: {{techStyling}}
+- **Unit Testing**: {{techUnit}}
+- **E2E Testing**: {{techE2e}}
+- **Package Manager**: {{techPackageManager}}
+
+---
+
+## 2. Core Architecture
+
+The architecture of **{{projectName}}** is built around modular, scalable development patterns:
+- **Clean Separation of Concerns**: Keep business logic separated from visual component layouts.
+- **Hook-driven Customization**: Leverage application hooks, actions, or middleware to intercept and customize execution without altering core files.
+- **Strict Multi-Tenant Isolation**: Every database interaction and request scope must validate the tenant ID context.
+
+---
+
+## 3. Directory Layout Guidelines
+
+When creating or modifying files, follow the project convention:
+- **App/Routes**: Check folders under `src/app/` or `src/routes/` to see where routing is defined.
+- **Components**: Shared visual UI components go to `src/components/` or `components/`.
+- **Hooks**: Custom logic hooks go to `src/hooks/` or `hooks/`.
+- **Database schemas/migrations**: Database-related configurations reside under `src/db/` or `db/`.
+- **E2E Tests**: Scenarios are located in the `e2e/` or `tests/` directories.
+
+---
+
+## 4. Dynamic Configuration & Auth Architecture
+
+To support the no-hardcoding requirement, the project leverages:
+- **Database Configuration Stores**: App settings, branding colors, listing attributes, and copy text reside in SQLite tables (e.g., tenant or property tables).
+- **Authentication State**: Handled using `authClient` (e.g., `authClient.useSession()` for React Client Components, and standard server actions/middleware checks for Server Components). Check `src/lib/auth-client.ts` or similar for implementation.
+- **API and CRUD Endpoints**: All UI settings are updated by triggering authenticated API endpoints (such as `POST /api/settings` or dynamic admin/owner endpoints). Verify validation is enforced and queries are properly scoped by tenant ID context.

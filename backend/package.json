@@ -1,0 +1,30 @@
+{
+  "name": "campmaster-backend",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.1.0",
+    "@hono/zod-openapi": "^0.19.0",
+    "@tsndr/cloudflare-worker-jwt": "^3.2.1",
+    "bcryptjs": "^3.0.3",
+    "hono": "^4.12.29",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.10",
+    "better-sqlite3": "^12.11.1",
+    "vite-node": "^6.0.0",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.112.0"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "gen:openapi": "vite-node scripts/generate-openapi.js"
+  },
+  "overrides": {
+    "sharp": ">=0.35.0",
+    "esbuild": ">=0.25.0"
+  }
+}

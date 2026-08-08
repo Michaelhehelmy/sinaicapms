@@ -1,0 +1,51 @@
+---
+// Marketplace camp deep link (/camp/{id}). Marketplace-only: forbidden on
+// tenant zones (see lib/routeZones.ts). Renders the shared TenantLanding with
+// marketplace-zone links and a back-to-marketplace link.
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import TenantLanding from '@/components/public/TenantLanding.astro';
+
+const { id } = Astro.params;
+
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+
+const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
+const isMarketplace = Astro.url.hostname === 'sinaicamps.com' || Astro.url.hostname === 'www.sinaicamps.com';
+const marketplaceUrl = isMarketplace ? '/' : 'https://sinaicamps.com/';
+
+let tenant: Record<string, unknown> | null = null;
+let roomTypes: Record<string, unknown>[] = [];
+
+if (!forbidden) {
+  try {
+    const [tenantRes, productsRes] = await Promise.all([
+      ssrFetch(`/tenants/${id}`),
+      ssrFetch(`/products`, { headers: { 'x-tenant-id': String(id) } }),
+    ]);
+    if (tenantRes.ok) tenant = (await tenantRes.json()) as Record<string, unknown>;
+    if (productsRes.ok) roomTypes = await productsRes.json() as Record<string, unknown>[];
+  } catch (e) {
+    console.error('Error loading camp detail:', e);
+  }
+}
+
+const color = (tenant?.primaryColor as string) || '#4a7c4f';
+const tenantName = (tenant?.name as string) || 'Camp';
+const tenantId = (tenant?.id as string) || id || '';
+---
+{
+  forbidden ? (
+    <ZoneGuard />
+  ) : (
+    <TenantLanding
+      tenant={tenant}
+      roomTypes={roomTypes}
+      primaryColor={color}
+      tenantName={tenantName}
+      tenantId={tenantId}
+      zone="marketplace"
+      marketplaceUrl={marketplaceUrl}
+    />
+  )
+}

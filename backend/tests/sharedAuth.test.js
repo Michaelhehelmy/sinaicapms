@@ -1,0 +1,259 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import {
+  isValidEmail,
+  hashPassword,
+  verifyPassword,
+  generateToken,
+  verifyToken,
+  getUserById,
+  authMiddleware,
+  hasRolePermission,
+} from '../src/middleware/sharedAuth.js';
+
+vi.mock('@tsndr/cloudflare-worker-jwt', () => ({
+  default: {
+    sign: vi.fn(),
+    verify: vi.fn(),
+    decode: vi.fn(),
+  },
+}));
+
+import jwt from '@tsndr/cloudflare-worker-jwt';
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+function makeCtx({ auth = 'Bearer tok', env = { JWT_SECRET: 'secret' } } = {}) {
+  return {
+    req: { header: (name) => (name === 'Authorization' ? auth : null) },
+    env,
+    set: vi.fn(),
+    json: vi.fn((body, status) => ({ status, body, ok: status < 400 })),
+  };
+}
+
+function sha256Hex(plaintext) {
+  return createHash('sha256').update(plaintext).digest('hex');
+}
+
+describe('sharedAuth', () => {
+  describe('isValidEmail', () => {
+    it('accepts valid emails', () => {
+      expect(isValidEmail('user@example.com')).toBe(true);
+      expect(isValidEmail('a.b+tag@sub.domain.co')).toBe(true);
+    });
+
+    it('rejects invalid emails', () => {
+      expect(isValidEmail('not-an-email')).toBe(false);
+      expect(isValidEmail('@example.com')).toBe(false);
+      expect(isValidEmail('user@')).toBe(false);
+      expect(isValidEmail('')).toBe(false);
+    });
+  });
+
+  describe('hashPassword', () => {
+    it('returns a bcrypt hash', async () => {
+      const hash = await hashPassword('mypassword');
+      expect(hash).toMatch(/^\$2[aby]\$/);
+    });
+
+    it('different calls produce different hashes', async () => {
+      const a = await hashPassword('mypassword');
+      const b = await hashPassword('mypassword');
+      expect(a).not.toBe(b);
+    });
+  });
+
+  describe('verifyPassword', () => {
+    it('verifies correct password against bcrypt hash', async () => {
+      const hash = await hashPassword('mypassword');
+      expect(await verifyPassword('mypassword', hash)).toBe(true);
+    });
+
+    it('rejects incorrect password against bcrypt hash', async () => {
+      const hash = await hashPassword('mypassword');
+      expect(await verifyPassword('wrongpassword', hash)).toBe(false);
+    });
+
+    it('returns false when no stored hash', async () => {
+      expect(await verifyPassword('mypassword', null)).toBe(false);
+      expect(await verifyPassword('mypassword', '')).toBe(false);
+    });
+
+    it('verifies legacy SHA-256 hash', async () => {
+      expect(await verifyPassword('mypassword', `$sha256$${sha256Hex('mypassword')}`)).toBe(true);
+    });
+
+    it('rejects wrong password against legacy SHA-256 hash', async () => {
+      expect(await verifyPassword('different', `$sha256$${sha256Hex('mypassword')}`)).toBe(false);
+    });
+
+    it('rejects SHA-256 hash with mismatched length', async () => {
+      expect(await verifyPassword('mypassword', '$sha256$abc')).toBe(false);
+    });
+  });
+
+  describe('generateToken', () => {
+    it('signs an access token with default ttl', async () => {
+      jwt.sign.mockResolvedValue('signed-jwt');
+      const out = await generateToken({ sub: 'u1' }, 'secret');
+      expect(out).toBe('signed-jwt');
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 'u1', type: 'access' }),
+        'secret',
+        { algorithm: 'HS256' }
+      );
+    });
+
+    it('signs a refresh token', async () => {
+      jwt.sign.mockResolvedValue('signed-jwt');
+      await generateToken({ sub: 'u1' }, 'secret', 'refresh');
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'refresh' }),
+        'secret',
+        { algorithm: 'HS256' }
+      );
+    });
+  });
+
+  describe('verifyToken', () => {
+    it('returns null when token or secret missing', async () => {
+      expect(await verifyToken(null, 'secret')).toBeNull();
+      expect(await verifyToken('tok', null)).toBeNull();
+    });
+
+    it('returns null when signature is invalid', async () => {
+      jwt.verify.mockResolvedValue(false);
+      expect(await verifyToken('tok', 'secret')).toBeNull();
+    });
+
+    it('returns null when decode yields no payload', async () => {
+      jwt.verify.mockResolvedValue(true);
+      jwt.decode.mockReturnValue({});
+      expect(await verifyToken('tok', 'secret')).toBeNull();
+    });
+
+    it('returns null for expired token', async () => {
+      jwt.verify.mockResolvedValue(true);
+      jwt.decode.mockReturnValue({ payload: { exp: 1 } });
+      expect(await verifyToken('tok', 'secret')).toBeNull();
+    });
+
+    it('returns payload for valid token', async () => {
+      jwt.verify.mockResolvedValue(true);
+      jwt.decode.mockReturnValue({ payload: { sub: 'u1', exp: Math.floor(Date.now() / 1000) + 3600 } });
+      const payload = await verifyToken('tok', 'secret');
+      expect(payload).toEqual(expect.objectContaining({ sub: 'u1' }));
+    });
+
+    it('returns null when verify throws', async () => {
+      jwt.verify.mockRejectedValue(new Error('bad'));
+      expect(await verifyToken('tok', 'secret')).toBeNull();
+    });
+  });
+
+  describe('getUserById', () => {
+    it('returns the user row', async () => {
+      const user = { id: 'u1', email: 'a@b.com' };
+      const env = {
+        DB: { prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue(user) }) }) },
+      };
+      expect(await getUserById('u1', env)).toEqual(user);
+    });
+
+    it('returns null on DB error', async () => {
+      const env = { DB: { prepare: () => { throw new Error('DB boom'); } } };
+      expect(await getUserById('u1', env)).toBeNull();
+    });
+  });
+
+  describe('authMiddleware', () => {
+    it('returns 401 when Authorization header missing', async () => {
+      const c = makeCtx({ auth: null });
+      const res = await authMiddleware(c, vi.fn());
+      expect(res.status).toBe(401);
+      expect(res.body.error).toContain('Unauthorized');
+    });
+
+    it('returns 401 when token is invalid', async () => {
+      jwt.verify.mockResolvedValue(false);
+      const c = makeCtx();
+      const res = await authMiddleware(c, vi.fn());
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 401 when payload missing role claim', async () => {
+      jwt.verify.mockResolvedValue(true);
+      jwt.decode.mockReturnValue({ payload: { sub: 'u1' } });
+      const c = makeCtx();
+      const res = await authMiddleware(c, vi.fn());
+      expect(res.status).toBe(401);
+      expect(res.body.error).toContain('role claim');
+    });
+
+    it('returns 403 for POS sessions', async () => {
+      jwt.verify.mockResolvedValue(true);
+      jwt.decode.mockReturnValue({ payload: { sub: 'u1', role: 'cashier', posType: 'pos' } });
+      const c = makeCtx();
+      const res = await authMiddleware(c, vi.fn());
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('POS');
+    });
+
+    it('returns 401 when account is deactivated', async () => {
+      jwt.verify.mockResolvedValue(true);
+      jwt.decode.mockReturnValue({ payload: { sub: 'u1', role: 'admin' } });
+      const c = makeCtx();
+      c.env.DB = {
+        prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue({ id: 'u1', is_active: 0 }) }) }),
+      };
+      const res = await authMiddleware(c, vi.fn());
+      expect(res.status).toBe(401);
+      expect(res.body.error).toContain('deactivated');
+    });
+
+    it('sets user and calls next on success', async () => {
+      jwt.verify.mockResolvedValue(true);
+      jwt.decode.mockReturnValue({ payload: { sub: 'u1', role: 'admin', tenantId: 't1' } });
+      const next = vi.fn();
+      const c = makeCtx();
+      c.env.DB = {
+        prepare: vi.fn().mockReturnValue({
+          bind: vi.fn().mockReturnValue({
+            first: vi.fn().mockResolvedValue({
+              id: 'u1', email: 'a@b.com', first_name: 'Ann', last_name: null,
+              role: 'admin', is_active: 1, tenant_id: 't1', last_login: null, created_at: null, updated_at: null,
+            }),
+          }),
+        }),
+      };
+      await authMiddleware(c, next);
+      expect(next).toHaveBeenCalled();
+      expect(c.set).toHaveBeenCalledWith('user', expect.objectContaining({ id: 'u1', email: 'a@b.com', role: 'admin', tenantId: 't1' }));
+    });
+
+    it('throws when JWT_SECRET is missing', async () => {
+      const c = makeCtx({ env: {} });
+      await expect(authMiddleware(c, vi.fn())).rejects.toThrow('JWT_SECRET is not configured');
+    });
+  });
+
+  describe('hasRolePermission', () => {
+    it('allows super_admin to access admin routes', () => {
+      expect(hasRolePermission('super_admin', 'admin')).toBe(true);
+      expect(hasRolePermission('super_admin', 'super_admin')).toBe(true);
+    });
+
+    it('denies admin for super_admin routes', () => {
+      expect(hasRolePermission('admin', 'super_admin')).toBe(false);
+    });
+
+    it('handles unknown roles with level 0', () => {
+      expect(hasRolePermission('nobody', 'admin')).toBe(false);
+      expect(hasRolePermission('nobody', 'nobody')).toBe(true);
+      expect(hasRolePermission('admin', 'nobody')).toBe(true);
+    });
+  });
+});

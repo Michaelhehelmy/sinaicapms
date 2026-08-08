@@ -1,0 +1,244 @@
+---
+// Marketplace home content: hero + camps listing (CampsSection) + onboarding
+// form. Rendered by pages/index.astro when the resolved zone is 'marketplace'.
+// Self-contained: fetches public tenants + marketplace branding via the SSR
+// API fetcher (binding-aware on Pages production).
+import CampsSection from '@/components/public/CampsSection.astro';
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { normalizeAssetUrl, escHtml } from '@/lib/utils';
+
+const API_BASE = Astro.locals.API_BASE as string;
+const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
+
+let tenants: Record<string, unknown>[] = [];
+let marketplaceBranding: Record<string, unknown> | null = null;
+
+try {
+  const res = await ssrFetch('/tenants/public');
+  if (res.ok) {
+    const all: Record<string, unknown>[] = (await res.json()) as Record<string, unknown>[];
+    const allCamel = all;
+    marketplaceBranding = allCamel.find((t) => t.id === 'marketplace') || null;
+    tenants = allCamel.filter((t) => t.id !== 'marketplace');
+  }
+} catch (e) {
+  console.error('Error fetching public tenants:', e);
+}
+
+const primaryColor = (marketplaceBranding?.primaryColor as string) || '#4a7c4f';
+const marketplaceName = (marketplaceBranding?.name as string) || 'Sinai Camps';
+const pageTitle = `${marketplaceName} - Discover Premium Camps`;
+const pageDesc = 'Discover premium adventure camps near Sinai. Browse camp accommodations, check availability, and connect with camp directors.';
+
+// Hero stats strip: computed from the live tenants payload, never hardcoded.
+// Each segment is guarded so empty datasets render nothing instead of "0".
+const heroStats: { value: number; label: string }[] = (() => {
+  const camps = tenants.length;
+  const activities = new Set(
+    tenants.flatMap((t) =>
+      String(t.activities ?? '')
+        .split(',')
+        .map((a) => a.trim())
+        .filter(Boolean),
+    ),
+  ).size;
+  const destinations = new Set(
+    tenants.map((t) => String(t.location ?? '').trim()).filter(Boolean),
+  ).size;
+  const segments: { value: number; label: string }[] = [];
+  if (camps > 0) segments.push({ value: camps, label: 'adventure camps' });
+  if (activities > 0) segments.push({ value: activities, label: 'activities' });
+  if (destinations > 0) segments.push({ value: destinations, label: 'destinations' });
+  return segments;
+})();
+---
+
+<PublicLayout
+  title={pageTitle}
+  tenant={marketplaceBranding}
+  tenantName={marketplaceName}
+  primaryColor={primaryColor}
+  description={pageDesc}
+>
+  <!-- Hero -->
+  <section
+    data-testid="hero-banner"
+    class="gradient-soft relative overflow-hidden py-16 md:py-24"
+  >
+    <!-- Radial mesh accents tinted with the marketplace primary color at low alpha -->
+    <div
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-0"
+      style={`background-image: radial-gradient(circle at 20% 20%, ${primaryColor}22 0%, transparent 45%), radial-gradient(circle at 80% 80%, ${primaryColor}1A 0%, transparent 45%)`}
+    ></div>
+    <!-- Topographic contour overlay, tinted with the primary color via currentColor -->
+    <div
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-topo opacity-40"
+      style={`color: ${primaryColor}`}
+    ></div>
+
+    <div class="relative mx-auto max-w-4xl px-6 text-center">
+      <div class="mb-5 flex justify-center">
+        <p class="eyebrow">Curated adventures in South Sinai</p>
+      </div>
+      <div class="mb-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4">
+        {normalizeAssetUrl(marketplaceBranding?.logoUrl as string) ? (
+          <img
+            src={escHtml(normalizeAssetUrl(marketplaceBranding?.logoUrl as string))}
+            alt={escHtml(marketplaceName)}
+            class="h-16 w-16 rounded-full border-2 border-white/30 object-cover shadow-md"
+          />
+        ) : (
+          <div
+            class="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold text-white shadow-md ring-4 ring-white"
+            style={`background-color: ${primaryColor}`}
+            aria-hidden="true"
+          >
+            {escHtml(marketplaceName.charAt(0).toUpperCase())}
+          </div>
+        )}
+        <h1 data-testid="hero-title" class="font-display text-4xl font-extrabold tracking-tight text-[var(--text)] sm:text-5xl md:text-6xl">
+          {escHtml(marketplaceName)}
+        </h1>
+      </div>
+      <p data-testid="hero-description" class="mx-auto mb-8 max-w-2xl text-lg text-[var(--text-muted)] md:text-xl">
+        Explore premium camps near you, check room availability instantly, and connect with directors on WhatsApp.
+      </p>
+      <div class="flex justify-center">
+        <a href="#camps" data-testid="browse-camps-link" class="btn btn-primary">Browse Camps</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hero stats strip: its own section directly below the hero -->
+  {heroStats.length > 0 && (
+    <section aria-label="Marketplace highlights" class="relative mx-auto max-w-4xl px-6 pb-16 md:pb-24">
+      <div class="flex flex-wrap items-center justify-center gap-y-2">
+        {heroStats.map((s, i) => (
+          <span class="inline-flex items-baseline gap-2">
+            {i > 0 && (
+              <span aria-hidden="true" class="mx-4 text-[var(--text-muted)] opacity-50">·</span>
+            )}
+            <span class="font-display text-2xl font-extrabold" style={`color: ${primaryColor}`}>{s.value}</span>
+            <span class="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">{s.label}</span>
+          </span>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <CampsSection tenants={tenants} apiBase={API_BASE} />
+
+  <!-- Onboarding -->
+  <section id="register" class="mx-auto max-w-2xl px-6 pb-16">
+    <h2 class="mb-10 text-center text-3xl font-extrabold">Register a New Camp Platform</h2>
+    <div class="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-xs sm:p-8">
+      <form id="onboardingForm" data-testid="onboarding-form" class="space-y-5" onsubmit="handleOnboarding(event)">
+        <div>
+          <label for="tenantName" class="mb-1 block text-sm font-semibold text-gray-600">Camp Display Name</label>
+          <input id="tenantName" data-testid="tenant-name" type="text" placeholder="e.g. Mountain Ridge Camps" required class="input" />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="tenantSubdomain" class="mb-1 block text-sm font-semibold text-gray-600">Subdomain Slug</label>
+            <input id="tenantSubdomain" data-testid="tenant-subdomain" type="text" placeholder="e.g. mountain" required class="input" />
+          </div>
+          <div>
+            <label for="tenantColor" class="mb-1 block text-sm font-semibold text-gray-600">Primary Color</label>
+            <input id="tenantColor" data-testid="tenant-color" type="color" value="#4a7c4f" required class="input h-12" />
+          </div>
+        </div>
+        <div>
+          <label for="tenantLocation" class="mb-1 block text-sm font-semibold text-gray-600">Physical Location</label>
+          <input id="tenantLocation" data-testid="tenant-location" type="text" placeholder="e.g. Dahab, South Sinai" required class="input" />
+        </div>
+        <div>
+          <label for="tenantActivities" class="mb-1 block text-sm font-semibold text-gray-600">Activities (comma-separated)</label>
+          <input id="tenantActivities" data-testid="tenant-activities" type="text" placeholder="e.g. Hiking, Yoga, Diving" required class="input" />
+        </div>
+        <div>
+          <label for="tenantDesc" class="mb-1 block text-sm font-semibold text-gray-600">Short Description</label>
+          <textarea id="tenantDesc" data-testid="tenant-description" rows="3" placeholder="A brief summary of what your camp offers..." required class="input"></textarea>
+        </div>
+        <hr class="border-gray-200" />
+        <p class="text-xs font-bold uppercase tracking-wider text-gray-600">Admin Account</p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="adminFirstName" class="mb-1 block text-sm font-semibold text-gray-600">Admin First Name</label>
+            <input id="adminFirstName" data-testid="admin-first-name" type="text" placeholder="e.g. John" class="input" />
+          </div>
+          <div>
+            <label for="adminLastName" class="mb-1 block text-sm font-semibold text-gray-600">Admin Last Name</label>
+            <input id="adminLastName" data-testid="admin-last-name" type="text" placeholder="e.g. Smith" class="input" />
+          </div>
+        </div>
+        <div>
+          <label for="adminEmail" class="mb-1 block text-sm font-semibold text-gray-600">Admin Email</label>
+          <input id="adminEmail" data-testid="admin-email" type="email" placeholder="e.g. admin@camp.com" class="input" />
+        </div>
+        <div>
+          <label for="adminPassword" class="mb-1 block text-sm font-semibold text-gray-600">Admin Password *</label>
+          <input id="adminPassword" data-testid="admin-password" type="password" placeholder="Min 8 characters" required minlength="8" class="input" />
+        </div>
+        <button type="submit" class="btn btn-primary w-full">Create Your Portal</button>
+      </form>
+    </div>
+  </section>
+</PublicLayout>
+
+<script is:inline>
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s || '');
+    return d.innerHTML;
+  }
+
+  function normalizeAssetUrl(url, fallback) {
+    fallback = fallback || '';
+    if (!url || typeof url !== 'string') return fallback;
+    const trimmed = url.trim();
+    if (!trimmed) return fallback;
+    let parsed;
+    try { parsed = new URL(trimmed); } catch (e) { return fallback; }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return fallback;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (host === 'localhost' || host === '0.0.0.0' || host === '::1' || host === '::'
+      || host.endsWith('.localhost')
+      || host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.')) {
+      return fallback;
+    }
+    if (parsed.protocol === 'http:') parsed.protocol = 'https:';
+    return parsed.toString();
+  }
+
+  async function handleOnboarding(e) {
+    e.preventDefault();
+    var name = document.getElementById('tenantName').value.trim();
+    var subdomain = document.getElementById('tenantSubdomain').value.trim().toLowerCase();
+    var primary_color = document.getElementById('tenantColor').value;
+    var location = document.getElementById('tenantLocation').value.trim();
+    var activities = document.getElementById('tenantActivities').value.trim();
+    var description = document.getElementById('tenantDesc').value.trim();
+    var admin_first_name = document.getElementById('adminFirstName').value.trim();
+    var admin_last_name = document.getElementById('adminLastName').value.trim();
+    var admin_email = document.getElementById('adminEmail').value.trim();
+    var admin_password = document.getElementById('adminPassword').value;
+
+    try {
+      var response = await fetch(window.__API_BASE + '/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, subdomain: subdomain, primary_color: primary_color, location: location, activities: activities, description: description, capacity: 50, admin_first_name: admin_first_name, admin_last_name: admin_last_name, admin_email: admin_email, admin_password: admin_password })
+      });
+      var data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to onboard tenant');
+      }
+      alert('Successfully onboarded "' + name + '"!\nPortal: https://' + subdomain + '.sinaicamps.com');
+      window.location.reload();
+    } catch (err) {
+      alert('Error setting up camp: ' + err.message);
+    }
+  }
+</script>

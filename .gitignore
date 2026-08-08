@@ -1,0 +1,42 @@
+node_modules/
+dist/
+.wrangler/
+.env
+.env.*
+*.log
+backups/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+tests/e2e/results/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+
+# Build artifacts
+*.tsbuildinfo
+
+# Cloudflare local secrets
+backend/.dev.vars
+.dev.vars
+
+# Local SQLite dev databases (runtime artifacts, not the D1 store)
+database.db
+database.db-shm
+database.db-wal
+sinaicamps.db
+
+# Astro/Storybook build artifacts
+.astro/
+app/storybook-static/

@@ -1,0 +1,22 @@
+---
+name: new-e2e-test
+description: Add a new E2E test to the {{projectName}} test suite
+---
+
+## When to use
+When writing automated end-to-end user flows.
+
+## Steps
+
+1. **Locate or create POMs (Page Object Models)**
+   - Keep page selectors and actions inside a dedicated class/file.
+   - Use semantic selectors (like `data-testid`).
+
+2. **Write Spec File**
+   - Create a test file using the framework standard (`{{techE2e}}`).
+
+3. **Verify locally**
+   - Run the specific E2E test.
+
+4. **Verify suite**
+   - Run the full suite: `{{techPackageManager}} run test:e2e` (or equivalent).
