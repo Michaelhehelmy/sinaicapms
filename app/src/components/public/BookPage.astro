@@ -17,6 +17,7 @@ interface Props {
 const { tenant, tenantName, tenantId, primaryColor, whatsappNumber, campUrl } = Astro.props;
 
 const color = primaryColor || '#4a7c4f';
+const apiBase = Astro.locals.API_BASE as string | undefined;
 
 const pageTitle = `Reservation — ${tenantName} | Sinai Camps`;
 
@@ -52,7 +53,9 @@ const dir = lang === 'ar' ? 'rtl' : 'ltr';
       tenantName={tenantName}
       primaryColor={color}
       whatsappNumber={whatsappNumber}
+      apiBase={apiBase}
       campUrl={campUrl}
+      lang={lang as 'en' | 'ar'}
     />
   </main>
 </body>

@@ -34,6 +34,12 @@ interface Props {
    * `/camp/{tenantId}/book`; tenant-zone pages pass `/book`.
    */
   bookUrl?: string;
+  /**
+   * SSR-resolved language (query param + sc_lang cookie). Used as the initial
+   * state so the server-rendered island HTML matches the first client paint —
+   * prevents the English/LTR flash before the localStorage sync effect runs.
+   */
+  lang?: 'en' | 'ar';
 }
 
 const STORAGE_KEY = 'sc_reservation';
@@ -116,8 +122,8 @@ function saveReservation(items: ReservationItem[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-export default function CampBooking({ tenantId, tenantName, primaryColor, roomTypes, bookUrl }: Props) {
-  const [lang, setLang] = useState<'en' | 'ar'>('en');
+export default function CampBooking({ tenantId, tenantName, primaryColor, roomTypes, bookUrl, lang: initialLang }: Props) {
+  const [lang, setLang] = useState<'en' | 'ar'>(initialLang ?? 'en');
   const [items, setItems] = useState<ReservationItem[]>([]);
   const [modalRoom, setModalRoom] = useState<RoomType | null>(null);
   const [checkIn, setCheckIn] = useState('');

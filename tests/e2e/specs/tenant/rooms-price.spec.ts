@@ -1,20 +1,18 @@
 import { test, expect } from '@playwright/test';
-import { TEST_TENANT } from '../../fixtures/test-data';
+import { TEST_TENANT, tenantUrl } from '../../fixtures/test-data';
 
 const TENANT_ID = TEST_TENANT.id;
 
 test.describe('Tenant Rooms — Price Display', () => {
   test('rooms page loads and shows content', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     const content = await page.locator('body').textContent() ?? '';
     expect(content.length).toBeGreaterThan(0);
   });
 
   test('rooms page has a heading', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     const heading = page.locator('h1');
     const count = await heading.count();
@@ -25,8 +23,7 @@ test.describe('Tenant Rooms — Price Display', () => {
   });
 
   test('room cards or room list items display price', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     // Rooms page uses <article> elements with price in text content
     const articles = page.locator('[data-testid="room-card"]');
@@ -43,8 +40,7 @@ test.describe('Tenant Rooms — Price Display', () => {
   });
 
   test('room price contains currency symbol or shows empty state', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     const body = await page.locator('body').textContent() ?? '';
     const hasCurrency =
@@ -65,8 +61,7 @@ test.describe('Tenant Rooms — Price Display', () => {
   });
 
   test('room cards show room name', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     // Rooms page renders <article> with <h2> for room name
     const roomNames = page.locator('[data-testid="room-name"]');
@@ -81,8 +76,7 @@ test.describe('Tenant Rooms — Price Display', () => {
   });
 
   test('room cards show capacity or description', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     const content = await page.locator('body').textContent() ?? '';
     const hasRoomInfo =
@@ -101,8 +95,7 @@ test.describe('Tenant Rooms — Price Display', () => {
 
 test.describe('Tenant Homepage — Room Price Integration', () => {
   test('homepage room cards show price with currency', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const roomsSection = page.locator('[data-testid="rooms-section"]');
     await expect(roomsSection).toBeVisible();
@@ -117,8 +110,7 @@ test.describe('Tenant Homepage — Room Price Integration', () => {
   });
 
   test('homepage room cards have price as a number', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const roomsSection = page.locator('[data-testid="rooms-section"]');
     const content = await roomsSection.textContent() ?? '';
@@ -132,8 +124,7 @@ test.describe('Tenant Homepage — Room Price Integration', () => {
 
 test.describe('Tenant Booking — Price in Flow', () => {
   test('booking page shows price or rate information', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
 
     const content = await page.locator('body').textContent() ?? '';
     const hasPriceInfo =
@@ -153,8 +144,7 @@ test.describe('Tenant Booking — Price in Flow', () => {
   });
 
   test('booking form has guest info inputs', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
 
     // ReservationSummary has text and tel inputs
     const inputs = page.locator('input[type="text"], input[type="tel"]');
@@ -170,8 +160,7 @@ test.describe('Tenant Rooms — No JS Errors', () => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
 
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')

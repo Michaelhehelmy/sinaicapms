@@ -23,10 +23,22 @@ interface Props {
   whatsappNumber: string;
   currency?: string;
   /**
+   * Backend API base (with `/api` suffix) used to capture the booking as a
+   * lead server-side. When omitted the WhatsApp handoff still works — the
+   * lead is best-effort and never blocks the handoff.
+   */
+  apiBase?: string;
+  /**
    * "Back to Camp" target. Defaults to the marketplace deep link
    * `/camp/{tenantId}`; tenant-zone pages pass `/`.
    */
   campUrl?: string;
+  /**
+   * SSR-resolved language (query param + sc_lang cookie). Used as the initial
+   * state so the server-rendered island HTML matches the first client paint —
+   * prevents the English/LTR flash before the localStorage sync effect runs.
+   */
+  lang?: 'en' | 'ar';
 }
 
 const STORAGE_KEY = 'sc_reservation';
@@ -152,8 +164,8 @@ export default function ReservationSummaryPage(props: Props) {
   );
 }
 
-function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappNumber, currency = 'EGP', campUrl }: Props) {
-  const [lang, setLang] = useState<'en' | 'ar'>('en');
+function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappNumber, currency = 'EGP', apiBase, campUrl, lang: initialLang = 'en' }: Props) {
+  const [lang, setLang] = useState<'en' | 'ar'>(initialLang);
   const [items, setItems] = useState<ReservationItem[]>([]);
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
@@ -193,10 +205,43 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
       return `🏕️ ${t.newBooking.replace('{name}', escHtml(tenantName))}\n\n👤 ${escHtml(guestName)}${guestPhone ? ' - ' + escHtml(guestPhone) : ''}\n\n${lines.join('\n\n')}\n\n💰 ${t.waTotal}: ${formatPrice(totalAmount)}`;
   }, [items, guestName, guestPhone, lang, t, tenantName, totalAmount]);
 
+  // Best-effort server-side lead capture. The reservation previously lived
+  // only in localStorage + the WhatsApp handoff, so the camp owner had no
+  // record unless the guest actually messaged. Failure must never block the
+  // WhatsApp handoff (hence .catch, fire-and-forget).
+  const submitLead = useCallback(() => {
+    if (!apiBase) return;
+    const lines = items.map((item, i) => {
+      return `${i + 1}. ${item.roomType.name} — ${item.checkIn} → ${item.checkOut} (${item.nights} nights, ${item.guests} guests) — ${formatPrice(item.price)}`;
+    });
+    const message = [
+      `New booking request at ${tenantName}`,
+      `Guest: ${guestName}${guestPhone ? ` / ${guestPhone}` : ''}`,
+      '',
+      ...lines,
+      '',
+      `${t.waTotal}: ${formatPrice(totalAmount)}`,
+    ].join('\n');
+    fetch(`${apiBase}/leads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: guestName,
+        phone: guestPhone || undefined,
+        subject: `Booking request — ${tenantName}`,
+        message,
+        source: 'booking',
+      }),
+    }).catch(() => {
+      // Lead capture is best-effort — the WhatsApp handoff still works.
+    });
+  }, [apiBase, items, guestName, guestPhone, tenantName, totalAmount, t]);
+
   const sendWhatsApp = () => {
     if (!whatsappNumber || items.length === 0 || !guestName) return;
     const msg = buildMessage();
     window.open(`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    submitLead();
   };
 
   const copySummary = () => {

@@ -4,7 +4,10 @@ export class CampDetailPage {
   constructor(private page: Page) {}
 
   async goto(campId: string) {
-    await this.page.goto(`/camp/${campId}`);
+    // Tenant pages can hang on `load` in astro dev (logo/favicon point at dead
+    // localhost:8001) — per AGENTS.md use domcontentloaded; assertions below
+    // use auto-waiting locators, so nothing depends on `load` firing.
+    await this.page.goto(`/camp/${campId}`, { waitUntil: 'domcontentloaded' });
   }
 
   async getBannerTitle(): Promise<string> {

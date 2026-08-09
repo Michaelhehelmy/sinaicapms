@@ -9,9 +9,14 @@ interface Props {
   tenants: Record<string, unknown>[];
   apiBase: string;
   title?: string;
+  /** True when the SSR fetch of /tenants/public succeeded, so the grid is
+   *  already rendered server-side. Skips the client-side refetch on load
+   *  (avoids a skeleton flash + duplicate API call). Filter submissions still
+   *  fetch client-side. */
+  ssrRendered?: boolean;
 }
 
-const { tenants, apiBase, title = 'Registered Adventure Camps' } = Astro.props;
+const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = false } = Astro.props;
 ---
 
 <!-- Search & Filters -->
@@ -142,8 +147,12 @@ const { tenants, apiBase, title = 'Registered Adventure Camps' } = Astro.props;
   </div>
 </section>
 
-<script define:vars={{ API_BASE: apiBase }}>
+<script define:vars={{ API_BASE: apiBase, SSR_RENDERED: ssrRendered }}>
   window.__API_BASE = API_BASE;
+  // define:vars only scopes SSR_RENDERED to this module script. Expose it on
+  // window so the classic inline script (below) can gate its DOMContentLoaded
+  // refetch without a ReferenceError.
+  window.__SSR_RENDERED = SSR_RENDERED;
 </script>
 
 <script is:inline>
@@ -251,7 +260,10 @@ const { tenants, apiBase, title = 'Registered Adventure Camps' } = Astro.props;
     }
   }
 
-  document.addEventListener('DOMContentLoaded', function() { applyFilters(); });
+  // SSR already rendered the grid (and the server fetch is binding-aware and
+  // fresh per request) — only auto-fetch on load when the page arrived without
+  // server data (e.g. SSR fetch failed). Filter form submits still fetch below.
+  document.addEventListener('DOMContentLoaded', function() { if (!window.__SSR_RENDERED) applyFilters(); });
 </script>
 
 <style is:global>

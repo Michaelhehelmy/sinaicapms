@@ -7,8 +7,7 @@ const TENANT_B = 'nonexistent-isolation-test-tenant';
 test.describe('Multi-Tenancy Isolation', () => {
   test.describe('Tenant Data Isolation', () => {
     test('tenant A homepage loads with distinct content', async ({ page }) => {
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
       const bodyText = await page.locator('body').textContent() ?? '';
       expect(bodyText.length).toBeGreaterThan(0);
     });
@@ -17,8 +16,7 @@ test.describe('Multi-Tenancy Isolation', () => {
       const jsErrors: string[] = [];
       page.on('pageerror', (error) => { jsErrors.push(error.message); });
 
-      await page.goto(`/?tenant=${TENANT_B}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_B}`, { waitUntil: 'domcontentloaded' });
       const status = await page.locator('body').isVisible();
       expect(status).toBeTruthy();
 
@@ -30,14 +28,12 @@ test.describe('Multi-Tenancy Isolation', () => {
 
     test('tenant A rooms page shows only tenant A rooms', async ({ page }) => {
       await page.goto(`/rooms?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
       const url = page.url();
       expect(url).toContain(`tenant=${TENANT_A}`);
     });
 
     test('tenant A camp detail page shows only tenant A camp', async ({ page }) => {
-      await page.goto(`/camp/${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/camp/${TENANT_A}`, { waitUntil: 'domcontentloaded' });
       const content = await page.locator('body').textContent() ?? '';
       expect(content.length).toBeGreaterThan(0);
     });
@@ -45,8 +41,7 @@ test.describe('Multi-Tenancy Isolation', () => {
 
   test.describe('Tenant URL Parameter Preservation', () => {
     test('navigating from tenant home to rooms preserves tenant param', async ({ page }) => {
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
 
       const roomsLink = page.locator('nav a:has-text("Accommodations"), nav a:has-text("Rooms")').first();
       const count = await roomsLink.count();
@@ -58,8 +53,7 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('navigating from tenant home to about preserves tenant param', async ({ page }) => {
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
 
       const aboutLink = page.locator('nav a:has-text("About")').first();
       const count = await aboutLink.count();
@@ -70,8 +64,7 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('navigating from tenant home to FAQ preserves tenant param', async ({ page }) => {
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
 
       const faqLink = page.locator('nav a:has-text("FAQ")').first();
       const count = await faqLink.count();
@@ -82,8 +75,7 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('navigating from tenant home to gallery preserves tenant param', async ({ page }) => {
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
 
       const galleryLink = page.locator('nav a:has-text("Gallery")').first();
       const count = await galleryLink.count();
@@ -94,8 +86,7 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('navigating from tenant home to contact preserves tenant param', async ({ page }) => {
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
 
       const contactLink = page.locator('nav a:has-text("Contact")').first();
       const count = await contactLink.count();
@@ -141,8 +132,7 @@ test.describe('Multi-Tenancy Isolation', () => {
 
   test.describe('Marketplace vs Tenant Visual Distinction', () => {
     test('marketplace (no tenant param) shows camp listing grid', async ({ page }) => {
-      await page.goto('/');
-      await page.waitForLoadState('networkidle');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       const grid = page.locator('[data-testid="camps-grid"]');
       const count = await grid.count();
       expect(typeof count).toBe('number');
@@ -150,8 +140,7 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('tenant page (with tenant param) shows tenant-specific hero', async ({ page }) => {
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
       const hero = page.locator('[data-testid="hero-banner"]');
       const count = await hero.count();
       expect(typeof count).toBe('number');
@@ -159,12 +148,10 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('marketplace and tenant pages have different body content', async ({ page }) => {
-      await page.goto('/');
-      await page.waitForLoadState('networkidle');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       const mpText = await page.locator('body').textContent() ?? '';
 
-      await page.goto(`/?tenant=${TENANT_A}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
       const tenantText = await page.locator('body').textContent() ?? '';
 
       expect(mpText).not.toBe(tenantText);

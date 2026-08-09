@@ -5,8 +5,7 @@ const TENANT_ID = process.env.TEST_TENANT_ID || TEST_TENANT.id;
 
 test.describe('Accessibility — ARIA Landmarks', () => {
   test('marketplace page has at least one landmark role', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const landmarks = page.locator(
       'header, nav, main, footer, aside, [role="banner"], [role="navigation"], [role="main"], [role="contentinfo"], [role="complementary"]'
@@ -16,8 +15,7 @@ test.describe('Accessibility — ARIA Landmarks', () => {
   });
 
   test('marketplace page has a <main> or role="main" element', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const main = page.locator('main, [role="main"]');
     const count = await main.count();
@@ -25,8 +23,7 @@ test.describe('Accessibility — ARIA Landmarks', () => {
   });
 
   test('marketplace nav has role="navigation" or is a <nav> element', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const nav = page.locator('nav, [role="navigation"]');
     const count = await nav.count();
@@ -34,8 +31,7 @@ test.describe('Accessibility — ARIA Landmarks', () => {
   });
 
   test('tenant page has landmark roles (header/nav/main/footer)', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const landmarks = page.locator(
       'header, nav, main, footer, [role="banner"], [role="navigation"], [role="main"], [role="contentinfo"]'
@@ -45,8 +41,7 @@ test.describe('Accessibility — ARIA Landmarks', () => {
   });
 
   test('all images on tenant homepage have alt text', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const images = page.locator('img');
     const count = await images.count();
@@ -58,8 +53,7 @@ test.describe('Accessibility — ARIA Landmarks', () => {
   });
 
   test('page lang attribute is set on marketplace', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const lang = await page.locator('html').getAttribute('lang');
     expect(lang).toBeTruthy();
@@ -67,8 +61,7 @@ test.describe('Accessibility — ARIA Landmarks', () => {
   });
 
   test('page lang attribute is set on tenant', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const lang = await page.locator('html').getAttribute('lang');
     expect(lang).toBeTruthy();
@@ -79,8 +72,7 @@ test.describe('Accessibility — ARIA Landmarks', () => {
 test.describe('Accessibility — High Contrast Mode', () => {
   test('page renders correctly with forced-colors: active', async ({ page }) => {
     await page.emulateMedia({ forcedColors: 'active' });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const body = page.locator('body');
     const isVisible = await body.isVisible();
@@ -93,8 +85,7 @@ test.describe('Accessibility — High Contrast Mode', () => {
 
   test('buttons remain visible in forced-colors mode', async ({ page }) => {
     await page.emulateMedia({ forcedColors: 'active' });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const buttons = page.locator('button');
     const count = await buttons.count();
@@ -113,8 +104,7 @@ test.describe('Accessibility — High Contrast Mode', () => {
 
   test('tenant page renders correctly in forced-colors mode', async ({ page }) => {
     await page.emulateMedia({ forcedColors: 'active' });
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const body = page.locator('body');
     const isVisible = await body.isVisible();
@@ -123,7 +113,7 @@ test.describe('Accessibility — High Contrast Mode', () => {
 
   test('POS login renders in forced-colors mode', async ({ page }) => {
     await page.emulateMedia({ forcedColors: 'active' });
-    await page.goto(`/pos/login?tenant=${TENANT_ID}`);
+    await page.goto(`/pos/login?tenant=${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="pos-login"]', { timeout: 10_000 });
 
     const heading = page.locator('[data-testid="pos-branding"]');
@@ -136,8 +126,7 @@ test.describe('Accessibility — High Contrast Mode', () => {
 test.describe('Accessibility — Print Stylesheet', () => {
   test('page renders without error in print media', async ({ page }) => {
     await page.emulateMedia({ media: 'print' });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const body = page.locator('body');
     const isVisible = await body.isVisible();
@@ -146,8 +135,7 @@ test.describe('Accessibility — Print Stylesheet', () => {
 
   test('tenant page renders without error in print media', async ({ page }) => {
     await page.emulateMedia({ media: 'print' });
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const body = page.locator('body');
     const isVisible = await body.isVisible();
@@ -156,8 +144,7 @@ test.describe('Accessibility — Print Stylesheet', () => {
 
   test('navigation elements are hidden or de-emphasized in print', async ({ page }) => {
     await page.emulateMedia({ media: 'print' });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const nav = page.locator('nav').first();
     if (await nav.count() > 0) {
@@ -170,8 +157,7 @@ test.describe('Accessibility — Print Stylesheet', () => {
 
   test('footer is visible in print mode on tenant page', async ({ page }) => {
     await page.emulateMedia({ media: 'print' });
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('footer');
     const footerCount = await footer.count();
@@ -186,8 +172,7 @@ test.describe('Accessibility — Print Stylesheet', () => {
 test.describe('Accessibility — Reduced Motion', () => {
   test('page respects prefers-reduced-motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const body = page.locator('body');
     const isVisible = await body.isVisible();
@@ -196,8 +181,7 @@ test.describe('Accessibility — Reduced Motion', () => {
 
   test('animations are disabled with reduced-motion', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const headings = page.locator('h1, h2, h3');
     const count = await headings.count();

@@ -6,8 +6,7 @@ const TENANT_ID = process.env.TEST_TENANT_ID || TEST_TENANT.id;
 
 test.describe('Accessibility — Automated axe Checks', () => {
   test('marketplace homepage has no critical axe violations', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Run axe-core via page evaluate
     const results = await page.evaluate((source) => {
@@ -34,8 +33,7 @@ test.describe('Accessibility — Automated axe Checks', () => {
   });
 
   test('tenant homepage has no critical axe violations', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const results = await page.evaluate((source) => {
       // @ts-ignore
@@ -51,8 +49,7 @@ test.describe('Accessibility — Automated axe Checks', () => {
   });
 
   test('booking page has no critical axe violations', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
 
     const results = await page.evaluate((source) => {
       // @ts-ignore
@@ -68,8 +65,7 @@ test.describe('Accessibility — Automated axe Checks', () => {
   });
 
   test('marketplace has no color contrast critical violations', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const results = await page.evaluate((source) => {
       // @ts-ignore
@@ -86,8 +82,7 @@ test.describe('Accessibility — Automated axe Checks', () => {
   });
 
   test('marketplace has no missing-alt violations', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const results = await page.evaluate((source) => {
       // @ts-ignore
@@ -103,8 +98,7 @@ test.describe('Accessibility — Automated axe Checks', () => {
   });
 
   test('marketplace has no label violations on form inputs', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
 
     const results = await page.evaluate((source) => {
       // @ts-ignore
@@ -120,8 +114,7 @@ test.describe('Accessibility — Automated axe Checks', () => {
   });
 
   test('marketplace has no link-name violations', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const results = await page.evaluate((source) => {
       // @ts-ignore

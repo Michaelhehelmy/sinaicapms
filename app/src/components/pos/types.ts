@@ -13,6 +13,8 @@ export type PosUser = {
   role: string;
   organizationId?: number | string;
   storeId?: number | string | unknown;
+  /** Org-level tax rate from the login response; undefined → fall back to 0.1 */
+  taxRate?: number | null;
 };
 
 export type PosProduct = {

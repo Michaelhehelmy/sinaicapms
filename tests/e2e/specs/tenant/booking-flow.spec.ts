@@ -31,7 +31,6 @@ test.describe('Tenant Booking Flow', () => {
   });
 
   test('reservation page has a heading', async ({ page }) => {
-    await page.waitForLoadState('networkidle');
     const heading = page.locator('h1').first();
     await expect(heading).toBeVisible();
     const text = await heading.textContent();
@@ -90,8 +89,7 @@ test.describe('Tenant Booking Flow', () => {
   test('booking page has no critical JS errors', async ({ page }) => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')
         && !e.includes('Text content does not match') && !e.includes('hydrat')

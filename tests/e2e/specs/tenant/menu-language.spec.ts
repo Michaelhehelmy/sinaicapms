@@ -5,16 +5,14 @@ const TENANT_ID = TEST_TENANT.id;
 
 test.describe('Camp Menu — Language Rendering', () => {
   test('menu page loads with content in default language', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const content = await page.locator('body').textContent() ?? '';
     expect(content.length).toBeGreaterThan(0);
   });
 
   test('menu page heading is in correct language', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const heading = page.locator('h1');
     const count = await heading.count();
@@ -25,8 +23,7 @@ test.describe('Camp Menu — Language Rendering', () => {
   });
 
   test('menu search placeholder is localized', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const searchInput = page.locator('input[type="text"], input[placeholder*="search"], input[placeholder*="ابحث"]').first();
     if (await searchInput.count() > 0) {
@@ -38,8 +35,7 @@ test.describe('Camp Menu — Language Rendering', () => {
   });
 
   test('menu category chips have text content', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const chips = page.locator('[data-testid="tenant-nav-link"]');
     const count = await chips.count();
@@ -53,8 +49,7 @@ test.describe('Camp Menu — Language Rendering', () => {
   });
 
   test('menu page lang attribute matches page content direction', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const lang = await page.locator('html').getAttribute('lang');
     expect(lang).toBeTruthy();
@@ -70,14 +65,13 @@ test.describe('Camp Menu — Language Rendering', () => {
 test.describe('Camp Menu — Arabic RTL', () => {
   test('menu page renders correctly when lang=ar', async ({ page }) => {
     // Set language to Arabic before navigating
-    await page.goto(`/camp/${TENANT_ID}/menu`);
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     const lang = await page.locator('html').getAttribute('lang');
     expect(lang).toBe('ar');
@@ -87,28 +81,26 @@ test.describe('Camp Menu — Arabic RTL', () => {
   });
 
   test('menu page text is readable in Arabic mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     const content = await page.locator('body').textContent() ?? '';
     expect(content.length).toBeGreaterThan(0);
   });
 
   test('menu page has no horizontal overflow in RTL mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     const scrollWidth = await page.evaluate(() => document.body.scrollWidth);
     const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
@@ -118,14 +110,13 @@ test.describe('Camp Menu — Arabic RTL', () => {
 
 test.describe('Camp Menu — English LTR', () => {
   test('menu page renders correctly when lang=en', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'en');
       document.documentElement.lang = 'en';
       document.documentElement.dir = 'ltr';
     });
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     // menu.astro is a standalone page that hardcodes lang="ar" dir="rtl",
     // so after reload the html attributes may revert. Verify body content is present.
@@ -134,28 +125,26 @@ test.describe('Camp Menu — English LTR', () => {
   });
 
   test('menu page content is readable in English mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'en');
       document.documentElement.lang = 'en';
       document.documentElement.dir = 'ltr';
     });
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     const content = await page.locator('body').textContent() ?? '';
     expect(content.length).toBeGreaterThan(0);
   });
 
   test('menu page has no horizontal overflow in LTR mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'en');
       document.documentElement.lang = 'en';
       document.documentElement.dir = 'ltr';
     });
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     const scrollWidth = await page.evaluate(() => document.body.scrollWidth);
     const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
@@ -165,8 +154,7 @@ test.describe('Camp Menu — English LTR', () => {
 
 test.describe('Camp Menu — WhatsApp Button Language', () => {
   test('WhatsApp order button text is localized', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const waBtn = page.locator('button:has-text("WhatsApp"), button:has-text("واتساب")');
     if (await waBtn.count() > 0) {
@@ -176,8 +164,7 @@ test.describe('Camp Menu — WhatsApp Button Language', () => {
   });
 
   test('WhatsApp button is visible when meals exist', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     // TenantMenu uses data-testid="tenant-nav-link" for category chips
     const mealCards = page.locator('[data-testid="tenant-nav-link"], .grid > div');
@@ -197,8 +184,7 @@ test.describe('Camp Menu — No JS Errors', () => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
 
-    await page.goto(`/camp/${TENANT_ID}/menu`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')

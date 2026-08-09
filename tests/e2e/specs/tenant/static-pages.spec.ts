@@ -5,7 +5,7 @@ import { TenantContactPage } from '../../pages/tenant/contact.page';
 import { TenantFaqPage } from '../../pages/tenant/faq.page';
 import { TenantGalleryPage } from '../../pages/tenant/gallery.page';
 import { TenantHomePage } from '../../pages/tenant/home.page';
-import { TEST_TENANT } from '../../fixtures/test-data';
+import { TEST_TENANT, tenantUrl } from '../../fixtures/test-data';
 
 const TENANT_ID = TEST_TENANT.id;
 
@@ -403,7 +403,7 @@ test.describe('Tenant Static Pages', () => {
     });
 
     test('active page is highlighted in nav on rooms page', async ({ page }) => {
-      await page.goto(`/rooms?tenant=${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
       const nav = page.locator('[data-testid="site-nav"]');
 

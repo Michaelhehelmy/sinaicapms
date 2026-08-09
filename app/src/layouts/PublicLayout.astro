@@ -61,6 +61,13 @@ const menuNavUrl = zone === 'tenant'
   ? `/menu${querySuffix}`
   : `/camp/${(tenant?.id as string) || ''}/menu${querySuffix}`;
 
+// Accommodations deep link is zone-aware. The tenant zone lists rooms at
+// /rooms; the marketplace zone lists all camps at /camps. Pointing the nav
+// (and the Book Now CTA) at /rooms on the marketplace zone produced a 404.
+const accommodationsHref = zone === 'tenant' ? `/rooms${querySuffix}` : `/camps${querySuffix}`;
+const accommodationsLabel = zone === 'tenant' ? 'Accommodations' : 'Camps';
+const accommodationsActive = (activePage === 'rooms' || activePage === 'camps') ? 'active-nav-link' : '';
+
 const isPageActive = (path: string) => activePage === path ? 'active-nav-link' : '';
 
 function sanitizeForHtml(str: string | undefined | null): string {
@@ -631,7 +638,7 @@ const jsonLd = sanitizeForJsonLd({
           </a>
         )}
         <a href={`/${querySuffix}`} class={isPageActive('home')}>Home</a>
-        <a href={`/rooms${querySuffix}`} class={isPageActive('rooms')}>Accommodations</a>
+        <a href={accommodationsHref} class={accommodationsActive}>{accommodationsLabel}</a>
         <a href={`/about${querySuffix}`} class={isPageActive('about')}>About</a>
         {tenant?.menuConfig && (
           <a href={menuNavUrl} class={isPageActive('menu')}>
@@ -658,7 +665,7 @@ const jsonLd = sanitizeForJsonLd({
         <a href={`/faq${querySuffix}`} class={isPageActive('faq')}>FAQ</a>
         <a href={`/contact${querySuffix}`} class={isPageActive('contact')}>Contact</a>
         <button id="langToggle" data-testid="lang-toggle" class="lang-toggle" aria-label="Switch language">عربي</button>
-        <a href={`/rooms${querySuffix}`} class={`cta-btn ${isPageActive('rooms')}`}>Book Now</a>
+        <a href={accommodationsHref} class={`cta-btn ${accommodationsActive}`}>Book Now</a>
       </nav>
     </div>
   </header>

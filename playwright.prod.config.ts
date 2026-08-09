@@ -26,8 +26,17 @@ export default defineConfig({
     baseURL: 'https://sinaicamps.com',
   },
 
-  // CRITICAL: never boot local dev servers for a production run.
+  // Point the shared API_BASE fixture at the production API (the fixtures
+  // default to the local wrangler port 127.0.0.1:8787; without this override
+  // security-headers / multi-tenancy API tests ECONNREFUSED against prod).
+  // The config module is evaluated in the main process before worker
+  // processes are forked, so the assignment is inherited by workers before
+  // the fixtures are imported.
   webServer: [],
+  ...(() => {
+    process.env.API_BASE_URL ||= 'https://sinaicamps.com';
+    return {};
+  })(),
 
   fullyParallel: true,
   workers: 4,
@@ -65,6 +74,10 @@ export default defineConfig({
       //  - browser-behavior / keyboard-nav: assert hardcoded localhost:4320 URLs
       //  - error-handling: hardcoded 127.0.0.1 API base + localhost-only logic
       //  - visual-regression: localhost screenshot baselines
+      //  - grepInvert /POS/: POS-zone tests navigate /pos/* which is tenant-only
+      //    on production (branded 404 on the marketplace root by design).
+      //  - security-headers / multi-tenancy use the shared API_BASE fixture which
+      //    is redirected to the production API via API_BASE_URL above (read-only).
       testIgnore: [
         'api-comprehensive.spec.ts',
         'api-endpoints.spec.ts',
@@ -75,6 +88,7 @@ export default defineConfig({
         'error-handling.spec.ts',
         'visual-regression.spec.ts',
       ],
+      grepInvert: /POS/,
       use: { ...devices['Desktop Chrome'], baseURL: 'https://sinaicamps.com' },
     },
     {

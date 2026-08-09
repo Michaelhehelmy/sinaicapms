@@ -8,7 +8,7 @@ const POS_PASSWORD = process.env.POS_PASSWORD || TEST_POS_USER.password;
 const ADMIN_URL = '/admin/';
 
 async function loginToPOS(page: import('@playwright/test').Page) {
-  await page.goto(`/pos/login?tenant=${TENANT_ID}`);
+  await page.goto(`/pos/login?tenant=${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-testid="pos-identifier"]', { timeout: 10_000 });
   await page.locator('[data-testid="pos-identifier"]').fill(POS_IDENTIFIER);
   await page.locator('[data-testid="pos-password"]').fill(POS_PASSWORD);
@@ -23,7 +23,7 @@ test.describe('Responsive Design', () => {
     test('marketplace: camp cards stack vertically (second card y >= first card y)', async ({
       page,
     }) => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-testid="camp-card"]', { timeout: 10_000 });
 
       const cards = page.locator('[data-testid="camp-card"]');
@@ -46,7 +46,7 @@ test.describe('Responsive Design', () => {
     });
 
     test('marketplace: hero text is visible and readable', async ({ page }) => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-testid="hero-banner"]', { timeout: 10_000 });
 
       const hero = page.locator('[data-testid="hero-banner"]');
@@ -70,14 +70,12 @@ test.describe('Responsive Design', () => {
     });
 
     test('admin: mobile toggle is visible on mobile', async ({ page }) => {
-      await page.goto(ADMIN_URL);
-      await page.waitForLoadState('networkidle');
+      await page.goto(ADMIN_URL, { waitUntil: 'domcontentloaded' });
 
       const toggle = page.locator('[data-testid="mobile-toggle"]');
       const toggleCount = await toggle.count();
       if (toggleCount > 0 && await toggle.isVisible()) {
         await toggle.click();
-        await page.waitForLoadState('networkidle');
 
         await expect(page.locator('[data-testid="admin-sidebar"]')).toBeVisible({ timeout: 5000 });
       }
@@ -96,7 +94,7 @@ test.describe('Responsive Design', () => {
     test.use({ viewport: { width: 768, height: 1024 } });
 
     test('marketplace: grid width > 400px', async ({ page }) => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-testid="camps-grid"]', { timeout: 10_000 });
 
       const grid = page.locator('[data-testid="camps-grid"]');
@@ -117,7 +115,7 @@ test.describe('Responsive Design', () => {
     test('marketplace: cards can be side-by-side (y positions similar)', async ({
       page,
     }) => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-testid="camp-card"]', { timeout: 10_000 });
 
       const cards = page.locator('[data-testid="camp-card"]');
@@ -143,8 +141,7 @@ test.describe('Responsive Design', () => {
     });
 
     test('tenant: body width >= 760, no horizontal scroll', async ({ page }) => {
-      await page.goto(`/?tenant=${TEST_TENANT.id}`);
-      await page.waitForLoadState('networkidle');
+      await page.goto(`/?tenant=${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
 
       const body = page.locator('body');
       const bodyBox = await body.boundingBox();
@@ -161,7 +158,6 @@ test.describe('Responsive Design', () => {
 
     test('POS: sidebar is visible at tablet width', async ({ page }) => {
       await loginToPOS(page);
-      await page.waitForLoadState('networkidle');
 
       // Handle shift overlay if present
       const shiftOverlay = page.locator('[data-testid="shift-overlay"]');
@@ -175,7 +171,6 @@ test.describe('Responsive Design', () => {
         const openShiftBtnCount = await openShiftBtn.count();
         if (openShiftBtnCount > 0) {
           await openShiftBtn.click();
-          await page.waitForLoadState('networkidle');
         }
       }
 
@@ -187,7 +182,7 @@ test.describe('Responsive Design', () => {
     test.use({ viewport: { width: 1280, height: 720 } });
 
     test('marketplace: grid width > 800px', async ({ page }) => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-testid="camps-grid"]', { timeout: 10_000 });
 
       const grid = page.locator('[data-testid="camps-grid"]');
@@ -208,7 +203,7 @@ test.describe('Responsive Design', () => {
     test('marketplace: 3+ cards in grid (unique x positions >= 2)', async ({
       page,
     }) => {
-      await page.goto('/');
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('[data-testid="camp-card"]', { timeout: 10_000 });
 
       const cards = page.locator('[data-testid="camp-card"]');
@@ -253,8 +248,7 @@ test.describe('Responsive Design', () => {
     });
 
     test('admin: content area is full width', async ({ page }) => {
-      await page.goto(ADMIN_URL);
-      await page.waitForLoadState('networkidle');
+      await page.goto(ADMIN_URL, { waitUntil: 'domcontentloaded' });
 
       const bodyBox = await page.locator('body').boundingBox();
       expect(bodyBox).not.toBeNull();

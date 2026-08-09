@@ -1,10 +1,12 @@
 import { Page } from '@playwright/test';
+import { tenantUrl } from '../../fixtures/test-data';
 
 export class TenantGalleryPage {
   constructor(private page: Page) {}
 
   async goto(tenantId?: string) {
-    const url = tenantId ? `/gallery?tenant=${tenantId}` : '/gallery';
+    // Tenant-zone route: custom-domain origin in production, `?tenant=` locally.
+    const url = await tenantUrl(this.page, tenantId ?? '', '/gallery');
     // See rooms.page.ts: tenant pages hang on `load` in astro dev.
     await this.page.goto(url, { waitUntil: 'domcontentloaded' });
   }

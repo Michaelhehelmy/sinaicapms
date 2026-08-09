@@ -44,10 +44,19 @@ export async function createTestTenantAdmin(): Promise<void> {
 }
 
 export async function tenantAdminLogin(): Promise<string> {
+  // `tenantId` is required for tenant admins — without it the auth route only
+  // matches super admins (tenant_id IS NULL) and login returns 401, leaving
+  // the token undefined and every authed follow-up (GET/DELETE /api/leads)
+  // silently broken. The UI login form passes it from the tenant host header;
+  // the API helper must pass it explicitly.
   const res = await apiRequest('POST', '/api/auth/login', {
     email: TEST_TENANT_ADMIN.email,
     password: TEST_TENANT_ADMIN.password,
+    tenantId: TEST_TENANT.id,
   });
+  if (!res.ok) {
+    throw new Error(`tenantAdminLogin failed: ${res.status()} ${await res.text()}`);
+  }
   const data = await res.json();
   tenantAdminToken = data.token;
   return tenantAdminToken;

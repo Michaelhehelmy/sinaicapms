@@ -174,7 +174,8 @@ describe('sharedAuth', () => {
       const c = makeCtx({ auth: null });
       const res = await authMiddleware(c, vi.fn());
       expect(res.status).toBe(401);
-      expect(res.body.error).toContain('Unauthorized');
+      const data = await res.json();
+      expect(data.error).toContain('Unauthorized');
     });
 
     it('returns 401 when token is invalid', async () => {
@@ -190,7 +191,8 @@ describe('sharedAuth', () => {
       const c = makeCtx();
       const res = await authMiddleware(c, vi.fn());
       expect(res.status).toBe(401);
-      expect(res.body.error).toContain('role claim');
+      const data = await res.json();
+      expect(data.error).toContain('role claim');
     });
 
     it('returns 403 for POS sessions', async () => {
@@ -199,7 +201,8 @@ describe('sharedAuth', () => {
       const c = makeCtx();
       const res = await authMiddleware(c, vi.fn());
       expect(res.status).toBe(403);
-      expect(res.body.error).toContain('POS');
+      const data = await res.json();
+      expect(data.error).toContain('POS');
     });
 
     it('returns 401 when account is deactivated', async () => {
@@ -211,7 +214,8 @@ describe('sharedAuth', () => {
       };
       const res = await authMiddleware(c, vi.fn());
       expect(res.status).toBe(401);
-      expect(res.body.error).toContain('deactivated');
+      const data = await res.json();
+      expect(data.error).toContain('deactivated');
     });
 
     it('sets user and calls next on success', async () => {

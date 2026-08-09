@@ -34,6 +34,12 @@ interface Props {
   tenantName: string;
   primaryColor?: string;
   whatsappNumber?: string;
+  /**
+   * SSR-resolved language (query param + sc_lang cookie). Used as the initial
+   * state so the server-rendered island HTML matches the first client paint —
+   * prevents the English/LTR flash before the localStorage sync effect runs.
+   */
+  lang?: 'en' | 'ar';
 }
 
 const DEFAULT_CURRENCY = 'EGP';
@@ -122,12 +128,12 @@ function loadCart(): CartItem[] {
   } catch { return []; }
 }
 
-export default function TenantMenu({ meals, mealCategories, tenantName, primaryColor, whatsappNumber }: Props) {
+export default function TenantMenu({ meals, mealCategories, tenantName, primaryColor, whatsappNumber, lang: initialLang = 'ar' }: Props) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartItem[]>(loadCart);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(0);
-  const [lang, setLang] = useState<'en' | 'ar'>('ar');
+  const [lang, setLang] = useState<'en' | 'ar'>(initialLang);
   const categoryRefs = useRef<(HTMLDivElement | null)[]>([]);
   const chipsRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);

@@ -35,8 +35,7 @@ test.describe('Security Headers', () => {
   });
 
   test('marketplace page does not leak API keys in HTML', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const html = await page.content();
     expect(html).not.toContain('JWT_SECRET');
     expect(html).not.toContain('API_KEY');
@@ -46,8 +45,7 @@ test.describe('Security Headers', () => {
   });
 
   test('marketplace page does not expose env vars in script tags', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const scripts = page.locator('script');
     const count = await scripts.count();
     for (let i = 0; i < count; i++) {
@@ -59,8 +57,7 @@ test.describe('Security Headers', () => {
   });
 
   test('admin page does not leak secrets in HTML source', async ({ page }) => {
-    await page.goto('/admin/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/admin/', { waitUntil: 'domcontentloaded' });
     const html = await page.content();
     expect(html).not.toContain('JWT_SECRET');
     expect(html).not.toContain('API_KEY');
@@ -68,8 +65,7 @@ test.describe('Security Headers', () => {
   });
 
   test('POS page does not leak secrets in HTML source', async ({ page }) => {
-    await page.goto(`/pos/login?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/pos/login?tenant=${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
     const html = await page.content();
     expect(html).not.toContain('JWT_SECRET');
     expect(html).not.toContain('API_KEY');
@@ -83,8 +79,7 @@ test.describe('Security Headers', () => {
   });
 
   test('marketplace page has no mixed content (HTTP on HTTPS)', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     const html = await page.content();
     // Check for http:// URLs in src/href attributes (excluding localhost)
     const httpMatches = html.match(/(href|src)="http:\/\/(?!localhost)[^"]+"/g);

@@ -1,23 +1,22 @@
 import { test, expect } from '@playwright/test';
-import { TEST_TENANT } from '../../fixtures/test-data';
+import { TEST_TENANT, tenantUrl } from '../../fixtures/test-data';
 
 const TENANT_ID = TEST_TENANT.id;
 
 test.describe('Arabic RTL Deep Rendering', () => {
   test.beforeEach(async ({ page }) => {
     // Set Arabic before navigation
-    await page.goto(`/camp/${TENANT_ID}`);
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
+    await page.reload({ waitUntil: 'domcontentloaded' });
     // Wait for RTL to be applied (may be async via client-side JS)
     await page.waitForFunction(() => {
       return document.documentElement.dir === 'rtl' || document.documentElement.lang === 'ar';
     }, { timeout: 8000 }).catch(() => {});
-    await page.waitForLoadState('networkidle');
   });
 
   test('page direction is RTL', async ({ page }) => {
@@ -72,14 +71,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('booking page renders content in RTL mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     // book.astro is a standalone page that hardcodes lang="en" dir="ltr",
     // so after reload the html attributes may revert. Verify content is present.
@@ -88,14 +86,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('rooms page renders in RTL', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     const dir = await page.locator('html').getAttribute('dir');
     const bodyDir = await page.evaluate(() => window.getComputedStyle(document.body).direction);
@@ -103,14 +100,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('menu page renders in RTL', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`);
+    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     // menu.astro hardcodes dir="rtl" lang="ar" — check body content as fallback
     const dir = await page.locator('html').getAttribute('dir');
@@ -119,14 +115,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('FAQ page renders in RTL', async ({ page }) => {
-    await page.goto(`/faq?tenant=${TENANT_ID}`);
+    await page.goto(await tenantUrl(page, TENANT_ID, '/faq'), { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     const dir = await page.locator('html').getAttribute('dir');
     const bodyDir = await page.evaluate(() => window.getComputedStyle(document.body).direction);
@@ -134,14 +129,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('gallery page renders in RTL', async ({ page }) => {
-    await page.goto(`/gallery?tenant=${TENANT_ID}`);
+    await page.goto(await tenantUrl(page, TENANT_ID, '/gallery'), { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     const dir = await page.locator('html').getAttribute('dir');
     const bodyDir = await page.evaluate(() => window.getComputedStyle(document.body).direction);
@@ -149,14 +143,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('contact page renders in RTL', async ({ page }) => {
-    await page.goto(`/contact?tenant=${TENANT_ID}`);
+    await page.goto(await tenantUrl(page, TENANT_ID, '/contact'), { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     const dir = await page.locator('html').getAttribute('dir');
     const bodyDir = await page.evaluate(() => window.getComputedStyle(document.body).direction);
@@ -164,14 +157,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('about page renders in RTL', async ({ page }) => {
-    await page.goto(`/about?tenant=${TENANT_ID}`);
+    await page.goto(await tenantUrl(page, TENANT_ID, '/about'), { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     const dir = await page.locator('html').getAttribute('dir');
     const bodyDir = await page.evaluate(() => window.getComputedStyle(document.body).direction);
@@ -179,14 +171,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
   });
 
   test('marketplace renders in RTL', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     const dir = await page.locator('html').getAttribute('dir');
     const bodyDir = await page.evaluate(() => window.getComputedStyle(document.body).direction);
@@ -197,14 +188,13 @@ test.describe('Arabic RTL Deep Rendering', () => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
 
-    await page.goto(`/camp/${TENANT_ID}`);
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => {
       localStorage.setItem('sc_lang', 'ar');
       document.documentElement.lang = 'ar';
       document.documentElement.dir = 'rtl';
     });
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')

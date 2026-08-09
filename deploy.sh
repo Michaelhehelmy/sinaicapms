@@ -413,13 +413,13 @@ if [ "$DEPLOY_ENV" = "staging" ]; then
   echo "Environment:  STAGING"
   echo "Frontend:     https://staging.sinaicamps.com"
   echo "Admin:        https://staging.sinaicamps.com/admin"
-  echo "POS:          https://staging.sinaicamps.com/pos"
+  echo "POS:          https://staging.sinaicamps.com/pos (tenant-only; branded 404 on apex)"
   echo "Backend API:  https://staging.sinaicamps.com/api/*"
 else
   echo "Environment:  PRODUCTION"
   echo "Frontend:     https://sinaicamps.com"
   echo "Admin:        https://sinaicamps.com/admin"
-  echo "POS:          https://sinaicamps.com/pos"
+  echo "POS:          https://acaciacamp.com/pos (tenant-only; sinaicamps.com/pos = branded 404 by design)"
   echo "Backend API:  https://sinaicamps.com/api/*"
   echo "Menu:         https://sinaicamps.com/camp/{id}/menu"
 fi

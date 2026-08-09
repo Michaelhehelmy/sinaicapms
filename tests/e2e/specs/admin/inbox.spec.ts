@@ -17,6 +17,13 @@ import {
  * before the suite and removed after it, so assertions are robust to any
  * ambient inbox data left by other specs.
  *
+ * Isolation: the D1 backing the local `wrangler dev` server persists between
+ * runs, so beforeAll first deletes ambient E2E test leads left behind by
+ * interrupted/aborted runs. Without this, ~100+ stale unread rows render the
+ * nav badge at its "99+" cap and the mark-read decrement assertion can never
+ * pass (99 !== 98). Only rows whose email looks like test data are removed —
+ * real guest inquiries are never touched.
+ *
  * Tests are declared in dependency order — the status update and mark-read
  * tests mutate the seeded leads and the delete test removes them last.
  */
@@ -45,10 +52,47 @@ async function seedLead(name: string): Promise<string> {
   return data.id;
 }
 
+/**
+ * Remove ambient E2E leads for the test tenant so the suite starts from a
+ * hermetic baseline (unread = 0). Lists leads via the tenant-scoped GET
+ * endpoint (pageSize capped at 200 — loops pages) and deletes every row whose
+ * email matches test-data patterns. Deleting is preferred over marking read:
+ * the delete test later asserts on absence, and a clean slate makes the nav
+ * badge assertions exact rather than capped.
+ */
+async function cleanAmbientLeads(): Promise<void> {
+  const token = await tenantAdminLogin();
+  const headers = { Authorization: `Bearer ${token}`, 'x-tenant-id': TEST_TENANT.id };
+  let page = 1;
+  for (;;) {
+    const res = await apiRequest('GET', `/api/leads?page=${page}&pageSize=200`, undefined, headers);
+    if (!res.ok) throw new Error(`Failed to list leads for cleanup: ${res.status}`);
+    const data = (await res.json()) as { data?: { id: string; email?: string }[] };
+    const rows = data.data ?? [];
+    const toDelete = rows.filter((r) => {
+      const email = r.email ?? '';
+      return (
+        email.endsWith('@test.com') ||
+        email.endsWith('@example.com') ||
+        email.startsWith('e2e-') ||
+        email.startsWith('reset@')
+      );
+    });
+    for (const lead of toDelete) {
+      await apiRequest('DELETE', `/api/leads/${lead.id}`, undefined, headers).catch((err) => {
+        console.warn(`Ambient lead cleanup failed for ${lead.id}: ${err}`);
+      });
+    }
+    if (rows.length < 200) break;
+    page += 1;
+  }
+}
+
 test.beforeAll(async () => {
   await createTestTenant();
   await createTestTenantAdmin();
   await tenantAdminLogin();
+  await cleanAmbientLeads();
   await seedLead('E2E Inbox Lead One');
   await seedLead('E2E Inbox Lead Two');
 });
@@ -132,7 +176,13 @@ test.describe('Inbox panel (tenant admin)', () => {
     await inbox.markRead(target);
 
     await expect(inbox.unreadDot(target)).toHaveCount(0);
-    await expect.poll(() => inbox.navBadgeCount()).toBe(before - 1);
+    // Longer poll than the 10s expect default: the nav badge is refreshed by
+    // query invalidation, and `wrangler dev` (workerd) can hiccup with
+    // connection resets under parallel E2E load (documented env flake) —
+    // give the refetch time to ride through it.
+    await expect
+      .poll(() => inbox.navBadgeCount(), { timeout: 20_000 })
+      .toBe(before - 1);
   });
 
   test('live badge appears when the SSE stream connects', async ({ page }) => {

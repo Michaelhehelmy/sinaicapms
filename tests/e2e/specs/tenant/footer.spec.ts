@@ -1,12 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { TEST_TENANT } from '../../fixtures/test-data';
+import { TEST_TENANT, tenantUrl } from '../../fixtures/test-data';
 
 const TENANT_ID = TEST_TENANT.id;
 
 test.describe('Tenant Footer — Content', () => {
   test('footer section exists on tenant homepage', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]');
     const count = await footer.count();
@@ -14,8 +13,7 @@ test.describe('Tenant Footer — Content', () => {
   });
 
   test('footer contains camp name or description', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]').first();
     const text = await footer.textContent() ?? '';
@@ -24,8 +22,7 @@ test.describe('Tenant Footer — Content', () => {
   });
 
   test('footer contains location information', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]').first();
     const text = await footer.textContent() ?? '';
@@ -34,8 +31,7 @@ test.describe('Tenant Footer — Content', () => {
   });
 
   test('footer contains contact information section', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]').first();
     const text = await footer.textContent() ?? '';
@@ -53,8 +49,7 @@ test.describe('Tenant Footer — Content', () => {
   });
 
   test('footer shows powered-by text', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]').first();
     const text = await footer.textContent() ?? '';
@@ -69,8 +64,7 @@ test.describe('Tenant Footer — Content', () => {
 
 test.describe('Tenant Footer — Copyright', () => {
   test('footer contains copyright symbol or year or custom text', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]').first();
     const text = await footer.textContent() ?? '';
@@ -90,8 +84,7 @@ test.describe('Tenant Footer — Copyright', () => {
   });
 
   test('footer bottom section exists', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footerBottom = page.locator('[data-testid="footer-bottom"]');
     const count = await footerBottom.count();
@@ -101,8 +94,7 @@ test.describe('Tenant Footer — Copyright', () => {
 
 test.describe('Tenant Footer — Presence Across Pages', () => {
   test('footer is present on homepage', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]');
     const count = await footer.count();
@@ -110,8 +102,7 @@ test.describe('Tenant Footer — Presence Across Pages', () => {
   });
 
   test('footer is present on about page', async ({ page }) => {
-    await page.goto(`/about?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/about'), { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]');
     const count = await footer.count();
@@ -119,8 +110,7 @@ test.describe('Tenant Footer — Presence Across Pages', () => {
   });
 
   test('footer is present on rooms page', async ({ page }) => {
-    await page.goto(`/rooms?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/rooms'), { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]');
     const count = await footer.count();
@@ -128,8 +118,7 @@ test.describe('Tenant Footer — Presence Across Pages', () => {
   });
 
   test('footer is present on FAQ page', async ({ page }) => {
-    await page.goto(`/faq?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/faq'), { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]');
     const count = await footer.count();
@@ -137,8 +126,7 @@ test.describe('Tenant Footer — Presence Across Pages', () => {
   });
 
   test('footer is present on gallery page', async ({ page }) => {
-    await page.goto(`/gallery?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/gallery'), { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]');
     const count = await footer.count();
@@ -146,8 +134,7 @@ test.describe('Tenant Footer — Presence Across Pages', () => {
   });
 
   test('footer is present on contact page', async ({ page }) => {
-    await page.goto(`/contact?tenant=${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(await tenantUrl(page, TENANT_ID, '/contact'), { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]');
     const count = await footer.count();
@@ -157,8 +144,7 @@ test.describe('Tenant Footer — Presence Across Pages', () => {
 
 test.describe('Tenant Footer — Accessibility', () => {
   test('footer uses semantic <footer> element', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footerSemantic = page.locator('footer');
     const count = await footerSemantic.count();
@@ -166,8 +152,7 @@ test.describe('Tenant Footer — Accessibility', () => {
   });
 
   test('footer links are focusable via keyboard', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const footer = page.locator('[data-testid="site-footer"]').first();
     const links = footer.locator('a');
@@ -187,8 +172,7 @@ test.describe('Tenant Footer — Accessibility', () => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
 
-    await page.goto(`/camp/${TENANT_ID}`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}`, { waitUntil: 'domcontentloaded' });
 
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')

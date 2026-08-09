@@ -182,7 +182,23 @@ describe('POST /api/leads', () => {
     expect(data.error).toContain('Required');
   });
 
-  it('rejects missing email', async () => {
+  it('creates a lead with phone only (email optional)', async () => {
+    const { DB } = createMockDb();
+    const req = makeRequest('POST', '/api/leads', {
+      name: 'Sara Ali',
+      phone: '+201001234567',
+      subject: 'Booking inquiry',
+    });
+
+    const res = await handleLeadsRoute(req, { DB }, TENANT_ID);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.id).toMatch(/^lead_/);
+  });
+
+  it('rejects when neither email nor phone is provided', async () => {
     const { DB } = createMockDb();
     const req = makeRequest('POST', '/api/leads', {
       name: 'Test User',
@@ -192,7 +208,7 @@ describe('POST /api/leads', () => {
     const data = await res.json();
 
     expect(res.status).toBe(400);
-    expect(data.error).toContain('Required');
+    expect(data.error).toContain('Email or phone is required');
   });
 
   it('rejects invalid email format', async () => {

@@ -40,7 +40,7 @@ SinaiCamps is **four isolated layers connected by a strict contract**. Each laye
 
 Every route resolves to a zone via `app/src/lib/routeZones.ts` (single source of truth, with unit tests):
 - `resolveZone(url, tenantId)` → `'marketplace'` (no/`marketplace` tenant) or `'tenant'` (real tenant).
-- `isRouteForbidden`: `/camps /camp /camp/*` forbidden when zone ≠ marketplace; `/book /menu /rooms` forbidden when zone ≠ tenant; `/ /about /contact /faq /gallery` never forbidden; system prefixes (`/admin /pos /api /auth /register /login /robots.txt /sitemap.xml /404 /_astro /favicon`) never forbidden. **Exact-path matching** — siblings like `/bookings`, `/rooms/extra`, `/camps/other` are NOT forbidden.
+- `isRouteForbidden`: `/camps /camp /camp/*` forbidden when zone ≠ marketplace; `/book /menu /rooms` AND `/pos /pos/*` forbidden when zone ≠ tenant (POS is tenant-only — sinaicamps.com/pos renders a branded 404, tenant hosts like acaciacamp.com/pos serve the SPA); `/ /about /contact /faq /gallery` never forbidden; system prefixes (`/admin /api /auth /register /login /robots.txt /sitemap.xml /404 /_astro /favicon`) never forbidden. **Exact-path matching** — siblings like `/bookings`, `/rooms/extra`, `/camps/other` are NOT forbidden.
 - Forbidden routes render a branded 404 via `ZoneGuard`; Astro guards are template ternaries, never a frontmatter JSX `return`, and the tenant fetch is skipped when forbidden (no `Astro.redirect('/404')` on `!tenant` before the guard).
 
 ### Rate Limiting & KV (production lesson)

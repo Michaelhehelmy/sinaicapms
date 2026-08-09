@@ -5,15 +5,13 @@ const TENANT_ID = TEST_TENANT.id;
 
 test.describe('Camp Booking Page (/camp/[id]/book)', () => {
   test('booking page loads with reservation content', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     const content = await page.locator('body').textContent() ?? '';
     expect(content.length).toBeGreaterThan(0);
   });
 
   test('booking page shows reservation title', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     const heading = page.locator('h1');
     const count = await heading.count();
     expect(count).toBeGreaterThanOrEqual(1);
@@ -22,8 +20,7 @@ test.describe('Camp Booking Page (/camp/[id]/book)', () => {
   });
 
   test('booking page has guest name input or empty state', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     // When reservation is empty, no inputs are shown — check for either inputs or empty state
     const nameInput = page.locator('input[type="text"]');
     const inputCount = await nameInput.count();
@@ -37,8 +34,7 @@ test.describe('Camp Booking Page (/camp/[id]/book)', () => {
   });
 
   test('booking page has phone input or empty state', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     // When reservation is empty, no inputs are shown — check for either inputs or empty state
     const phoneInput = page.locator('input[type="tel"]');
     const inputCount = await phoneInput.count();
@@ -52,8 +48,7 @@ test.describe('Camp Booking Page (/camp/[id]/book)', () => {
   });
 
   test('booking page has WhatsApp send button or empty state', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     const waBtn = page.locator('button:has-text("WhatsApp"), button:has-text("واتساب")');
     const waCount = await waBtn.count();
     const waVisible = waCount > 0 && await waBtn.isVisible();
@@ -65,8 +60,7 @@ test.describe('Camp Booking Page (/camp/[id]/book)', () => {
   });
 
   test('booking page has copy summary button or empty state', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     const copyBtn = page.locator('button:has-text("Copy"), button:has-text("نسخ")');
     const copyCount = await copyBtn.count();
     const copyVisible = copyCount > 0 && await copyBtn.isVisible();
@@ -78,16 +72,19 @@ test.describe('Camp Booking Page (/camp/[id]/book)', () => {
   });
 
   test('booking page has back to camp link', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
-    const backLink = page.locator('a:has-text("Back"), a:has-text("عودة"), a[href*="/camp/"]');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
+    // The empty-state back control renders as a <button> containing a
+    // "Back to Camp" span (ReservationSummary.tsx), while the populated-state
+    // back control is an <a href="/camp/{id}">. Accept either element.
+    const backLink = page.locator(
+      'button:has-text("Back"), button:has-text("عودة"), a:has-text("Back"), a:has-text("عودة"), a[href*="/camp/"]'
+    );
     const count = await backLink.count();
     expect(count).toBeGreaterThanOrEqual(1);
   });
 
   test('booking page empty state shows message', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     const content = await page.locator('body').textContent() ?? '';
     // Should show either reservation content or empty state
     expect(content.length).toBeGreaterThan(0);
@@ -96,8 +93,7 @@ test.describe('Camp Booking Page (/camp/[id]/book)', () => {
   test('booking page has no critical JS errors', async ({ page }) => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
-    await page.goto(`/camp/${TENANT_ID}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')
         && !e.includes('Text content does not match') && !e.includes('hydrat')

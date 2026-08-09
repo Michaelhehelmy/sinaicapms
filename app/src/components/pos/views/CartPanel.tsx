@@ -24,7 +24,9 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
   }
 
   const subtotal = cart.reduce((sum, i) => sum + i.product.sellingPrice * i.quantity, 0);
-  const tax = subtotal * 0.1;
+  // Server-driven tax: org tax_rate from the POS login response; fall back to 10%.
+  const taxRate = typeof user.taxRate === 'number' && user.taxRate >= 0 ? user.taxRate : 0.1;
+  const tax = subtotal * taxRate;
   const total = subtotal + tax;
 
   const splitCashAmt = payMethod === 'split' ? (parseFloat(splitCash) || 0) : 0;
@@ -106,7 +108,7 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
       </div>
       <div className="px-5 py-4 border-t border-gray-200 space-y-2 bg-gray-50">
         <div className="flex justify-between text-sm text-gray-600" data-testid="cart-subtotal"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-        <div className="flex justify-between text-sm text-gray-600" data-testid="cart-tax"><span>Tax (10%)</span><span>${tax.toFixed(2)}</span></div>
+        <div className="flex justify-between text-sm text-gray-600" data-testid="cart-tax"><span>Tax ({Math.round(taxRate * 100)}%)</span><span>${tax.toFixed(2)}</span></div>
         <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t border-gray-300" data-testid="cart-total"><span>Total</span><span>${total.toFixed(2)}</span></div>
 
         {/* Payment method selector */}

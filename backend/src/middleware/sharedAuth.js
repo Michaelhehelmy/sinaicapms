@@ -7,6 +7,7 @@
 
 import jwt from '@tsndr/cloudflare-worker-jwt';
 import bcrypt from 'bcryptjs';
+import { errorResponse } from '../utils/response.js';
 
 // ─── JWT Configuration ────────────────────────────────────
 
@@ -181,27 +182,27 @@ export async function getUserById(userId, env) {
 export const authMiddleware = async (c, next) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ success: false, error: 'Unauthorized: Missing or invalid token' }, 401);
+    return errorResponse('Unauthorized: Missing or invalid token', 401);
   }
   const token = authHeader.split(' ')[1];
 
   const secret = getJwtSecret(c.env);
   const payload = await verifyToken(token, secret);
   if (!payload) {
-    return c.json({ success: false, error: 'Unauthorized: Session expired or invalid signature' }, 401);
+    return errorResponse('Unauthorized: Session expired or invalid signature', 401);
   }
 
   if (!payload.role) {
-    return c.json({ success: false, error: 'Unauthorized: Token missing role claim' }, 401);
+    return errorResponse('Unauthorized: Token missing role claim', 401);
   }
 
   if (payload.posType === 'pos') {
-    return c.json({ success: false, error: 'Forbidden: POS sessions cannot access admin routes' }, 403);
+    return errorResponse('Forbidden: POS sessions cannot access admin routes', 403);
   }
 
   const user = await getUserById(payload.userId || payload.sub, c.env);
   if (!user || user.is_active === 0) {
-    return c.json({ success: false, error: 'Unauthorized: Account deactivated' }, 401);
+    return errorResponse('Unauthorized: Account deactivated', 401);
   }
 
   c.set('user', {

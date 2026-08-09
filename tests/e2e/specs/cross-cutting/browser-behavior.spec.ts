@@ -18,12 +18,15 @@ test.describe('Page Reload State Persistence', () => {
   });
 
   test('tenant: reload preserves hero content', async ({ page }) => {
-    await page.goto(`/?tenant=${TEST_TENANT.id}`);
-    await page.waitForLoadState('networkidle');
+    // Tenant pages can hang on `load` in astro dev (dead localhost:8001
+    // logo/favicon; Google Maps subresources in sandboxed nets) — use
+    // domcontentloaded and wait for the hero element instead of networkidle.
+    await page.goto(`/?tenant=${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="hero-banner"]', { timeout: 10_000 });
     const heroBefore = await page.locator('[data-testid="hero-banner"]').first().textContent() ?? '';
 
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="hero-banner"]', { timeout: 10_000 });
     const heroAfter = await page.locator('[data-testid="hero-banner"]').first().textContent() ?? '';
 
     expect(heroAfter.length).toBeGreaterThan(0);
@@ -57,14 +60,27 @@ test.describe('Page Reload State Persistence', () => {
 
 test.describe('Browser Back/Forward Navigation', () => {
   test('marketplace: navigate to camp detail, back returns to home', async ({ page }) => {
+    // The fixture camp acaciacamp has custom_domain=acaciacamp.com, so the
+    // grid's explore link points at the production domain — in the sandbox
+    // that navigation never settles (external maps/analytics hang). Intercept
+    // the tenant domain and redirect to the dev-server camp page so the back
+    // navigation stays on localhost. Avoid networkidle (maps subresources hang).
+    await page.route(/^https:\/\/acaciacamp\.com(\/|$)/, (route) =>
+      route.fulfill({
+        status: 302,
+        headers: { location: `http://localhost:4320/camp/${TEST_TENANT.id}` },
+      })
+    );
     await page.goto('/');
     await page.waitForSelector('[data-testid="camp-card"]', { timeout: 10_000 });
 
     await page.locator('[data-testid="explore-camp-link"]').first().click();
-    await page.waitForLoadState('networkidle');
+    // Element wait, not waitForURL: waitForURL defaults to waitUntil:'load',
+    // which never fires on the camp detail page (Google Maps subresources hang).
+    await page.waitForSelector('[data-testid="hero-title"]', { timeout: 10_000 });
 
     await page.goBack();
-    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('[data-testid="camp-card"]', { timeout: 10_000 });
 
     const url = page.url();
     const isHome = url.includes('localhost:4320') || url.endsWith('/');
@@ -127,8 +143,10 @@ test.describe('No Horizontal Scroll on Any Page', () => {
 
   test('tenant: no horizontal scroll at 375px', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`/?tenant=${TEST_TENANT.id}`);
-    await page.waitForLoadState('networkidle');
+    // Tenant page — see reload/JS-error tests: domcontentloaded + landmark
+    // instead of load/networkidle (dead localhost:8001 assets can hang).
+    await page.goto(`/?tenant=${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="hero-banner"], #main-content, header', { timeout: 10_000 });
 
     const overflow = await page.evaluate(() => document.body.scrollWidth <= document.body.clientWidth + 10);
     expect(overflow).toBeTruthy();
@@ -160,8 +178,9 @@ test.describe('No JavaScript Console Errors', () => {
   test('tenant: no critical JS errors', async ({ page }) => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
-    await page.goto(`/?tenant=${TEST_TENANT.id}`);
-    await page.waitForLoadState('networkidle');
+    // Tenant page — see camp detail test above re: load/networkidle hang.
+    await page.goto(`/?tenant=${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="hero-banner"], #main-content, header', { timeout: 10_000 });
 
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')
@@ -172,8 +191,12 @@ test.describe('No JavaScript Console Errors', () => {
   test('camp detail: no critical JS errors', async ({ page }) => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
-    await page.goto(`/camp/${TEST_TENANT.id}`);
-    await page.waitForLoadState('networkidle');
+    // Google Maps subresources hang on `load` in the sandboxed CI net (maps
+    // requests never complete) — tenant pages can hang on `load` in astro dev
+    // anyway (dead localhost:8001 logo/favicon). Use domcontentloaded + wait
+    // for the SSR hero instead of networkidle.
+    await page.goto(`/camp/${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="hero-title"]');
 
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')
@@ -184,8 +207,10 @@ test.describe('No JavaScript Console Errors', () => {
   test('rooms page: no critical JS errors', async ({ page }) => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
-    await page.goto(`/rooms?tenant=${TEST_TENANT.id}`);
-    await page.waitForLoadState('networkidle');
+    // Tenant page — can hang on `load`/`networkidle` (dead localhost:8001
+    // logo/favicon; Google Maps subresources). Use domcontentloaded + landmark.
+    await page.goto(`/rooms?tenant=${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="rooms-page"], #main-content, header', { timeout: 10_000 });
 
     const criticalErrors = jsErrors.filter(
       (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')

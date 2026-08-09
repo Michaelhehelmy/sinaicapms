@@ -77,8 +77,11 @@ test.describe('Keyboard Navigation', () => {
 
   test.describe('Tenant Pages', () => {
     test('Tab through tenant nav links', async ({ page }) => {
-      await page.goto(`/?tenant=${TEST_TENANT.id}`);
-      await page.waitForLoadState('networkidle');
+      // Tenant pages can hang on `load`/`networkidle` in astro dev (dead
+      // localhost:8001 logo/favicon; Google Maps subresources) — use
+      // domcontentloaded + landmark per AGENTS.md.
+      await page.goto(`/?tenant=${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-testid="hero-banner"], #main-content, header', { timeout: 10_000 });
 
       const focusedTags: string[] = [];
       for (let i = 0; i < 8; i++) {
@@ -94,8 +97,10 @@ test.describe('Keyboard Navigation', () => {
     });
 
     test('Enter on FAQ question toggles answer', async ({ page }) => {
-      await page.goto(`/faq?tenant=${TEST_TENANT.id}`);
-      await page.waitForLoadState('networkidle');
+      // Tenant page — domcontentloaded + landmark (see above; /faq?tenant= is
+      // a tenant-zone page and can hang on load in astro dev).
+      await page.goto(`/faq?tenant=${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('[data-testid="faq-item"] summary, details summary, #main-content, header', { timeout: 10_000 });
 
       const questions = page.locator('[data-testid="faq-item"] summary, details summary');
       const count = await questions.count();

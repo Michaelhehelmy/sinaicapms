@@ -251,10 +251,20 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
     expect(errors, `console errors on /admin: ${errors.join(' | ')}`).toEqual([]);
   });
 
-  test('8. POS login page renders (NO auth attempted)', async ({ page }) => {
+  test('8. POS login page renders on a tenant origin (NO auth attempted)', async ({ page, request }) => {
     const errors = collectConsoleErrors(page);
+    const tenants = await getTenants(request);
+    test.skip(tenants.length === 0, 'No active tenants on production');
 
-    await page.goto('/pos/login');
+    const tenant = pickPortalTenant(tenants);
+    const customDomain = tenant.custom_domain || tenant.customDomain;
+
+    // POS is tenant-only by design (zone model): /pos/* on the marketplace root
+    // (sinaicamps.com) renders a branded 404. The SPA lives on the tenant origin
+    // (e.g. acaciacamp.com/pos/login) — navigate there. NO credentials submitted.
+    test.skip(!customDomain, `Tenant '${tenant.id}' has no custom_domain; POS origin not reachable`);
+
+    await page.goto(`https://${customDomain}/pos/login`);
 
     // POS is a client-rendered React SPA; wait for hydration, then verify the
     // login card is present. NO credentials are submitted.

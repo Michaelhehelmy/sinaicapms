@@ -1,8 +1,29 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { verifyToken, verifyPassword, generateToken } from '../../middleware/sharedAuth.js';
 import { jsonResponse, errorResponse } from '../../utils/response.js';
+import { validationError } from '../../utils/errors.js';
 
 const pos = new Hono();
+
+// ─── POS order validation ───────────────────────────────────
+// Structural validation only: per-item quantity/price checks stay in the handler
+// so their error messages can include the product name (asserted by unit tests).
+const posOrderItemSchema = z.object({
+  productId: z.string({ message: 'Product ID is required' }).min(1, 'Product ID is required'),
+  quantity: z.number({ message: 'Quantity must be a number' }),
+}).strip();
+
+const posOrderSchema = z.object({
+  items: z.array(posOrderItemSchema)
+    .min(1, 'Order must contain at least one item')
+    .max(100, 'Order has too many items (max 100)'),
+  paymentMethod: z.enum(['cash', 'card', 'split'], { message: 'Invalid payment method' }).optional(),
+  notes: z.string({ message: 'Notes must be text' }).max(500, 'Notes must be 500 characters or less').optional(),
+  amountCash: z.number({ message: 'Cash amount must be a number' }).min(0, 'Cash amount cannot be negative').optional(),
+  amountCard: z.number({ message: 'Card amount must be a number' }).min(0, 'Card amount cannot be negative').optional(),
+  idempotencyKey: z.string({ message: 'Idempotency key must be text' }).max(64, 'Idempotency key is too long').optional(),
+}).strip();
 
 // ─── POS Auth Middleware ────────────────────────────────────
 async function posAuth(c, next) {
@@ -70,6 +91,19 @@ pos.post('/auth/login', async (c) => {
       // Fallback to organization_id as string if mapping table doesn't exist
       console.warn('[POS AUTH] tenant_org_mapping lookup failed, using organization_id:', e.message);
     }
+
+    // Expose the org tax rate so the POS terminal renders server-driven tax
+    // instead of a client-side hardcoded rate. Falls back to null → client uses 0.1.
+    let taxRate = null;
+    try {
+      const { results: orgRows } = await env.DB.prepare(
+        "SELECT tax_rate FROM pos_organizations WHERE id = ?"
+      ).bind(user.organization_id).all();
+      if (orgRows.length > 0 && orgRows[0].tax_rate != null) {
+        taxRate = parseFloat(orgRows[0].tax_rate);
+      }
+    } catch { /* taxRate stays null */ }
+
     const token = await generateToken(
       {
         sub: String(user.id),
@@ -99,6 +133,7 @@ pos.post('/auth/login', async (c) => {
         role: user.role,
         organizationId: user.organization_id,
         storeId: user.store_id,
+        taxRate,
       },
     });
   } catch (e) {
@@ -132,16 +167,17 @@ pos.post('/orders', async (c) => {
   const env = c.env;
   try {
     const body = await c.req.json();
+    const parsed = posOrderSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
     const posUser = c.get('posUser');
     const tenantId = posUser.tenantId;
     const storeId = posUser.storeId || 1;
-    const { items, paymentMethod, notes, amountCash, amountCard } = body;
-    const idempotencyKeyRaw = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
+    const organizationId = posUser.organizationId;
+    const { items, paymentMethod, notes, amountCash, amountCard } = parsed.data;
+    const idempotencyKeyRaw = typeof parsed.data.idempotencyKey === 'string' ? parsed.data.idempotencyKey.trim() : '';
     const idempotencyKey = idempotencyKeyRaw.length > 0 && idempotencyKeyRaw.length <= 64 ? idempotencyKeyRaw : null;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return errorResponse('Order must contain at least one item', 400);
-    }
 
     const loadExistingOrder = async (key) => {
       const { results: existing } = await env.DB.prepare(
@@ -196,15 +232,21 @@ pos.post('/orders', async (c) => {
     const orderNumber = 'ORD-' + Date.now().toString(36).toUpperCase();
     let subtotal = 0;
 
+    // Bulk-fetch all ordered products in one query (was N+1 per line item)
+    const productIds = items.map((i) => i.productId);
+    const placeholders = productIds.map(() => '?').join(',');
+    const { results: productRows } = await env.DB.prepare(
+      `SELECT id, selling_price, name FROM pos_products
+       WHERE id IN (${placeholders}) AND organization_id = ?`
+    ).bind(...productIds, organizationId).all();
+    const productMap = new Map(productRows.map((p) => [p.id, p]));
+
     const itemRows = [];
     for (const item of items) {
-      const { results: products } = await env.DB.prepare(
-        `SELECT id, selling_price, name FROM pos_products WHERE id = ? AND organization_id = ?`
-      ).bind(item.productId, posUser.organizationId).all();
-      if (products.length === 0) {
+      const product = productMap.get(item.productId);
+      if (!product) {
         return errorResponse(`Product ${item.productId} not found`, 400);
       }
-      const product = products[0];
       const qty = Number(item.quantity);
       if (!Number.isInteger(qty) || qty < 1 || qty > 9999) {
         return errorResponse(`Invalid quantity for ${product.name}: must be an integer between 1 and 9999`, 400);
@@ -228,7 +270,6 @@ pos.post('/orders', async (c) => {
     }
 
     // F10 fix: org tax rate lives in pos_organizations (tenants has no tax_rate column)
-    const organizationId = posUser.organizationId;
     let taxRate = 0.1;
     try {
       const { results: orgRows } = await env.DB.prepare(
@@ -245,6 +286,7 @@ pos.post('/orders', async (c) => {
     // ── Split payment amounts ─────────────────────────────
     let finalAmountCash = 0;
     let finalAmountCard = 0;
+    // `paymentMethod` was validated against the enum by zod; missing → cash.
     const method = paymentMethod || 'cash';
     if (method === 'split') {
       finalAmountCash = parseFloat(amountCash) || 0;
@@ -278,9 +320,10 @@ pos.post('/orders', async (c) => {
         const stock = parseFloat(ingredient.stock_quantity) || 0;
 
         if (stock < required) {
-          return jsonResponse({
-            error: `Insufficient stock for ingredient: ${ingredient.name} (Need ${required}, Have ${stock})`,
-          }, 400);
+          return errorResponse(
+            `Insufficient stock for ingredient: ${ingredient.name} (Need ${required}, Have ${stock})`,
+            400
+          );
         }
         stockDeductions.push({ id: recipe.ingredient_id, deduct: required });
       }
@@ -288,12 +331,17 @@ pos.post('/orders', async (c) => {
 
     // ── Commit all mutations atomically in one batch ──────
     const statements = [];
+    const deductionIndexes = [];
 
     for (const deduction of stockDeductions) {
+      deductionIndexes.push(statements.length);
+      // Atomic conditional deduction: affects 0 rows if stock ran out between the
+      // read check above and commit (concurrent terminal) — stock never goes negative.
       statements.push(
         env.DB.prepare(
-          `UPDATE pos_products SET stock_quantity = stock_quantity - ? WHERE id = ?`
-        ).bind(deduction.deduct, deduction.id)
+          `UPDATE pos_products SET stock_quantity = stock_quantity - ?
+           WHERE id = ? AND organization_id = ? AND stock_quantity >= ?`
+        ).bind(deduction.deduct, deduction.id, organizationId, deduction.deduct)
       );
     }
 
@@ -327,14 +375,53 @@ pos.post('/orders', async (c) => {
       );
     }
 
+    let batchResults;
     try {
-      await env.DB.batch(statements);
+      batchResults = await env.DB.batch(statements);
     } catch (e) {
       if (idempotencyKey && String(e.message).includes('UNIQUE constraint failed')) {
         const existingResponse = await loadExistingOrder(idempotencyKey);
         if (existingResponse) return existingResponse;
       }
       throw e;
+    }
+
+    // Post-batch guard: if a conditional deduction affected 0 rows (stock raced out
+    // under a concurrent terminal), compensate — undo the stock already applied and
+    // remove the orphan order so the ledger stays consistent. The read check above
+    // catches the common case; this closes the remaining race window. D1 batch()
+    // resolves one result per statement, in order.
+    if (
+      deductionIndexes.length > 0 &&
+      Array.isArray(batchResults) &&
+      batchResults.length >= deductionIndexes.length
+    ) {
+      const shortedIdx = deductionIndexes.findIndex((idx) => (batchResults[idx]?.meta?.changes ?? 1) === 0);
+      if (shortedIdx !== -1) {
+        const compensate = [];
+        for (let i = 0; i < deductionIndexes.length; i++) {
+          if (i !== shortedIdx && (batchResults[deductionIndexes[i]]?.meta?.changes ?? 0) > 0) {
+            compensate.push(
+              env.DB.prepare(
+                `UPDATE pos_products SET stock_quantity = stock_quantity + ? WHERE id = ?`
+              ).bind(stockDeductions[i].deduct, stockDeductions[i].id)
+            );
+          }
+        }
+        compensate.push(
+          env.DB.prepare(`DELETE FROM pos_transaction_items WHERE order_id = ?`).bind(orderId)
+        );
+        compensate.push(
+          env.DB.prepare(`DELETE FROM pos_transactions WHERE id = ?`).bind(orderId)
+        );
+        if (compensate.length > 0) {
+          await env.DB.batch(compensate).catch(() => {});
+        }
+        return errorResponse(
+          'Insufficient stock for an ingredient (stock changed under concurrent checkout). Please retry.',
+          400
+        );
+      }
     }
 
     return jsonResponse({

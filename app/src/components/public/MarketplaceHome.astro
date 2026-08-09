@@ -12,10 +12,12 @@ const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) =>
 
 let tenants: Record<string, unknown>[] = [];
 let marketplaceBranding: Record<string, unknown> | null = null;
+let tenantsLoaded = false;
 
 try {
   const res = await ssrFetch('/tenants/public');
   if (res.ok) {
+    tenantsLoaded = true;
     const all: Record<string, unknown>[] = (await res.json()) as Record<string, unknown>[];
     const allCamel = all;
     marketplaceBranding = allCamel.find((t) => t.id === 'marketplace') || null;
@@ -59,6 +61,7 @@ const heroStats: { value: number; label: string }[] = (() => {
   tenantName={marketplaceName}
   primaryColor={primaryColor}
   description={pageDesc}
+  activePage="home"
 >
   <!-- Hero -->
   <section
@@ -128,7 +131,7 @@ const heroStats: { value: number; label: string }[] = (() => {
     </section>
   )}
 
-  <CampsSection tenants={tenants} apiBase={API_BASE} />
+  <CampsSection tenants={tenants} apiBase={API_BASE} ssrRendered={tenantsLoaded} />
 
   <!-- Onboarding -->
   <section id="register" class="mx-auto max-w-2xl px-6 pb-16">

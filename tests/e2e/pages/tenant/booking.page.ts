@@ -5,7 +5,8 @@ export class TenantBookingPage {
 
   async goto(tenantId?: string) {
     const url = tenantId ? `/camp/${tenantId}/book` : '/book';
-    await this.page.goto(url);
+    // Tenant pages hang on `load` in astro dev — use domcontentloaded.
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' });
   }
 
   async getTitle(): Promise<string> {

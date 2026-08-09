@@ -1,3 +1,5 @@
+import type { APIRequestContext, Page } from '@playwright/test';
+
 export const API_BASE = process.env.API_BASE_URL || 'http://127.0.0.1:8787';
 
 export const SUPER_ADMIN = {
@@ -57,3 +59,48 @@ export const TEST_POS_USER = {
 
 export const TENANT_URL = (path: string, tenantId?: string) =>
   tenantId ? `${path}?tenant=${tenantId}` : path;
+
+/**
+ * Resolve the production tenant-portal origin (custom domain) for a tenant id.
+ *
+ * - Local dev: the Astro dev server (baseURL localhost:4320) does not serve
+ *   `/api/tenants`, so this returns null and callers fall back to the dev-only
+ *   `?tenant=` convention (unchanged behavior).
+ * - Production: tenant-zone routes (`/`, `/rooms`, `/about`, `/contact`,
+ *   `/faq`, `/gallery`) live on the tenant's custom domain (e.g.
+ *   https://acaciacamp.com). The marketplace root IGNORES `?tenant=` and
+ *   returns a branded 404 for tenant-only routes like `/rooms`, so the portal
+ *   origin must be discovered from the public API and used directly.
+ */
+export async function resolvePortalOrigin(
+  request: APIRequestContext,
+  tenantId?: string
+): Promise<string | null> {
+  if (!tenantId) return null;
+  try {
+    const res = await request.get('/api/tenants');
+    if (!res.ok()) return null;
+    const body = await res.json();
+    const tenants = Array.isArray(body) ? body : [];
+    const tenant = tenants.find((t) => t && t.id === tenantId);
+    const domain = tenant && (tenant.custom_domain || tenant.customDomain);
+    return domain ? `https://${domain}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build the URL for a tenant-zone path. On production this is the tenant
+ * portal origin (custom domain); in local dev it is the `?tenant=` convention.
+ * Uses `page.request` so it works from page objects and raw specs alike.
+ */
+export async function tenantUrl(
+  page: Page,
+  tenantId: string,
+  path: string
+): Promise<string> {
+  const portal = await resolvePortalOrigin(page.request, tenantId);
+  if (portal) return `${portal}${path}`;
+  return tenantId ? `${path}?tenant=${tenantId}` : path;
+}

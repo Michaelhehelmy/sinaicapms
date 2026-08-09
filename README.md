@@ -144,8 +144,9 @@ Every request resolves to a **zone** (`marketplace` or `tenant`) via `app/src/li
 | `/` (tenant landing) | marketplace home | tenant home |
 | `/camps`, `/camp/*` | ✅ camps directory | ❌ branded 404 |
 | `/book`, `/menu`, `/rooms` | ❌ branded 404 | ✅ tenant pages |
+| `/pos`, `/pos/*` | ❌ branded 404 | ✅ POS SPA |
 | `/about`, `/contact`, `/faq`, `/gallery` | ✅ | ✅ |
-| `/admin`, `/pos`, `/api/*`, `/auth/*`, `/register`, `/login` | system prefixes — never forbidden | same |
+| `/admin`, `/api/*`, `/auth/*`, `/register`, `/login` | system prefixes — never forbidden | same |
 
 Custom domains (e.g. `acaciacamp.com`) resolve to their tenant zone automatically; unknown/missing tenants render branded 404s.
 
@@ -240,7 +241,7 @@ npx playwright test
 **Output URLs:**
 - Frontend / marketplace: `https://sinaicamps.com`
 - Admin: `https://sinaicamps.com/admin`
-- POS: `https://sinaicamps.com/pos`
+- POS (tenant-only): `https://acaciacamp.com/pos` (sinaicamps.com/pos is a branded 404 by zone design)
 - **API: `https://sinaicamps.com/api/*`** (same-origin; not a separate subdomain)
 
 ---

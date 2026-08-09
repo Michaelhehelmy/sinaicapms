@@ -7,7 +7,7 @@ const POS_PASSWORD = process.env.POS_PASSWORD || TEST_POS_USER.password;
 
 test.describe('Accessibility', () => {
   test('all marketplace images have non-null alt attribute', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="camps-grid"]', { timeout: 10_000 });
 
     const images = page.locator('img');
@@ -76,7 +76,7 @@ test.describe('Accessibility', () => {
   test('Tab key moves focus to interactive elements on marketplace', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="camps-grid"]', { timeout: 10_000 });
 
     const focusedElements: string[] = [];
@@ -102,7 +102,7 @@ test.describe('Accessibility', () => {
   test('focused element has tag a/button/input/select or tabindex', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="camps-grid"]', { timeout: 10_000 });
 
     await page.keyboard.press('Tab');
@@ -127,7 +127,7 @@ test.describe('Accessibility', () => {
   test('heading colors are not transparent (h1, h2, h3 on marketplace)', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="camps-grid"], h1, h2, h3', { timeout: 10_000 });
 
     const headings = page.locator('h1, h2, h3');
@@ -194,8 +194,7 @@ test.describe('Accessibility', () => {
   });
 
   test('marketplace nav links are focusable', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const navLinks = page.locator('nav a');
     const count = await navLinks.count();
@@ -217,7 +216,7 @@ test.describe('Accessibility', () => {
   });
 
   test('all buttons have visible text content (not empty)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="camps-grid"]', { timeout: 10_000 });
 
     const buttons = page.locator('button');
@@ -251,8 +250,7 @@ test.describe('Accessibility', () => {
   test('form submit buttons have type="submit" or are inside a form', async ({
     page,
   }) => {
-    await page.goto(`/camp/${TEST_TENANT.id}/book`);
-    await page.waitForLoadState('networkidle');
+    await page.goto(`/camp/${TEST_TENANT.id}/book`, { waitUntil: 'domcontentloaded' });
 
     const submitBtns = page.locator(
       'button[type="submit"], button:has-text("Submit"), button:has-text("Book")'
@@ -284,7 +282,7 @@ test.describe('Accessibility', () => {
   test('no elements with role="button" missing accessible name', async ({
     page,
   }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="camps-grid"]', { timeout: 10_000 });
 
     const roleButtons = page.locator('[role="button"]');

@@ -10,12 +10,22 @@ import { z } from 'zod';
 
 export const leadPostSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Valid email is required'),
+  email: z.string().email('Valid email is required').optional().or(z.literal('')),
   phone: z.string().optional(),
   subject: z.string().optional(),
   message: z.string().optional(),
   source: z.string().optional(),
-}).strip();
+}).strip().superRefine((d, ctx) => {
+  // Booking-style submissions may arrive with only a phone number (the public
+  // reservation form has no email field). Require at least one contact channel.
+  if (!d.email && !d.phone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Email or phone is required',
+      path: ['email'],
+    });
+  }
+});
 
 export const leadPutSchema = z.object({
   status: z.enum(['new', 'contacted', 'converted', 'archived'], { required_error: 'Invalid status' }),
@@ -103,7 +113,7 @@ export async function handleLeadsRoute(request, env, tenantId) {
       await env.DB.prepare(
         `INSERT INTO leads (id, tenant_id, name, email, phone, subject, message, source, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', datetime('now'))`
-      ).bind(leadId, resolvedTenantId, name.trim(), email.trim(), phone || null, subject || null, message || null, source || 'contact').run();
+      ).bind(leadId, resolvedTenantId, name.trim(), (email || '').trim() || null, phone || null, subject || null, message || null, source || 'contact').run();
 
       broadcastNewLead(env, resolvedTenantId, { leadId, name: name.trim(), subject: subject || null });
 
