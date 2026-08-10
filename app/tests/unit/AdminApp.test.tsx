@@ -96,6 +96,9 @@ vi.mock('@/components/admin/SuperOrdersPanel', () => ({
 vi.mock('@/components/admin/InboxPanel', () => ({
   default: () => <div data-testid="inbox-panel">Inbox</div>,
 }));
+vi.mock('@/components/admin/StaffPanel', () => ({
+  default: () => <div data-testid="staff-panel">Staff</div>,
+}));
 
 describe('AdminApp', () => {
   beforeEach(() => {

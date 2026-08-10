@@ -2047,6 +2047,145 @@ export const adminRoutes = [
   }),
 ];
 
+// ─── POS Users (staff management): /api/pos-users/* ─────────────────────────────
+// Wire rows from pos_users (SELECT in pos-users.js): id, username, email,
+// first_name, last_name, name, phone, role, is_active, status, department,
+// employee_id, organization_id, store_id, tenant_id, last_login, created_at,
+// updated_at. All keys camelCase via the jsonResponse toCamel choke point.
+const posUserSchema = z
+  .object({
+    id: z.number().int(),
+    username: z.string(),
+    email: z.string(),
+    firstName: z.string(),
+    lastName: z.string(),
+    name: z.string(),
+    phone: z.string().nullable().optional(),
+    role: z.string(),
+    isActive: z.boolean(),
+    status: z.string(),
+    department: z.string().nullable().optional(),
+    employeeId: z.string().nullable().optional(),
+    organizationId: z.number().int().nullable().optional(),
+    storeId: z.number().int().nullable().optional(),
+    tenantId: z.string().nullable().optional(),
+    lastLogin: z.string().nullable().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('PosUser');
+
+const paginatedPosUsersSchema = paginatedEnvelope(posUserSchema, 'PaginatedPosUsers');
+
+const posUserCreateRequestSchema = z.object({
+  email: z.string(),
+  username: z.string().optional(),
+  password: z.string().min(8),
+  firstName: z.string(),
+  lastName: z.string(),
+  phone: z.string().optional(),
+  role: z.enum(['cashier', 'manager', 'admin']).optional(),
+  department: z.string().optional(),
+  employeeId: z.string().optional(),
+  storeId: z.number().int().optional(),
+});
+
+const posUserPatchRequestSchema = z.object({
+  email: z.string().optional(),
+  username: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  phone: z.string().optional(),
+  role: z.enum(['cashier', 'manager', 'admin']).optional(),
+  isActive: z.boolean().optional(),
+  department: z.string().optional(),
+  employeeId: z.string().optional(),
+  storeId: z.number().int().optional(),
+});
+
+const posUserResetPasswordRequestSchema = z.object({
+  password: z.string().min(8),
+});
+
+const posUserActionResponseSchema = z
+  .object({
+    success: z.boolean(),
+    id: z.number().int(),
+  })
+  .openapi('PosUserActionResponse');
+
+export const posUsersRoutes = [
+  createRoute({
+    method: 'get',
+    path: '/api/pos-users',
+    tags: ['admin'],
+    summary: 'List POS staff (tenant-admin scoped to own tenant; super-admin via ?tenantId=)',
+    request: {
+      query: z.object({
+        page: z.string().optional(),
+        pageSize: z.string().optional(),
+        role: z.string().optional(),
+        search: z.string().optional(),
+        tenantId: z.string().optional(),
+      }),
+    },
+    responses: {
+      200: { description: 'Paginated POS users', content: { 'application/json': { schema: paginatedPosUsersSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/pos-users',
+    tags: ['admin'],
+    summary: 'Create a POS user (tenant-admin scoped to own tenant; super-admin via ?tenantId=)',
+    request: { body: { content: { 'application/json': { schema: posUserCreateRequestSchema } } } },
+    responses: {
+      200: { description: 'POS user created', content: { 'application/json': { schema: posUserActionResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'patch',
+    path: '/api/pos-users/{id}',
+    tags: ['admin'],
+    summary: 'Update a POS user',
+    request: {
+      params: z.object({ id: z.number().int() }),
+      body: { content: { 'application/json': { schema: posUserPatchRequestSchema } } },
+    },
+    responses: {
+      200: { description: 'POS user updated', content: { 'application/json': { schema: posUserActionResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/api/pos-users/{id}',
+    tags: ['admin'],
+    summary: 'Soft-delete a POS user',
+    request: { params: z.object({ id: z.number().int() }) },
+    responses: {
+      200: { description: 'POS user deleted', content: { 'application/json': { schema: posUserActionResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/pos-users/{id}/reset-password',
+    tags: ['admin'],
+    summary: 'Reset a POS user password',
+    request: {
+      params: z.object({ id: z.number().int() }),
+      body: { content: { 'application/json': { schema: posUserResetPasswordRequestSchema } } },
+    },
+    responses: {
+      200: { description: 'Password reset', content: { 'application/json': { schema: posUserActionResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+];
+
 // ─── Payments (T8-B3) ──────────────────────────────────────────────────────────
 // Request schemas are the module's OWN paymentIntentSchema / confirmPaymentSchema —
 // they are already camelCase and parsed WITHOUT toSnake (wire-identical). The
@@ -2520,6 +2659,7 @@ export const openApiRoutes = [
   ...planRoutes,
   ...leadRoutes,
   ...adminRoutes,
+  ...posUsersRoutes,
   ...paymentRoutes,
   ...posRoutes,
   ...mediaRoutes,

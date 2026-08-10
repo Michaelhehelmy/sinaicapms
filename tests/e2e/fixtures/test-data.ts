@@ -54,7 +54,8 @@ export const TEST_RATE_PLAN = {
 
 export const TEST_POS_USER = {
   identifier: process.env.POS_IDENTIFIER || 'cashier',
-  password: process.env.POS_PASSWORD || 'pass123',
+  // NOTE: must be 8+ chars — POST /api/pos-users enforces min(8) on create.
+  password: process.env.POS_PASSWORD || 'pass1234',
 };
 
 export const TENANT_URL = (path: string, tenantId?: string) =>

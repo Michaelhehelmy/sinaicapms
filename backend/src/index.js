@@ -12,6 +12,7 @@ import { handlePriceOverridesRoute } from './api/priceOverrides';
 import { handleUploadRoute, handleMediaRoute } from './api/upload';
 import { handleMealsRoute } from './api/meals';
 import { handleMealSchedulesRoute } from './api/meal-schedules';
+import { handlePosUsersRoute } from './api/pos-users';
 import { handlePlansRoute } from './api/others';
 import { handleCategoriesRoute } from './api/categories';
 import { handleMealCategoriesRoute } from './api/meal-categories';
@@ -223,6 +224,36 @@ app.all('/api/meal-schedules/*', async (c) => {
     return errorResponse('Forbidden: Access denied to this tenant partition', 403);
   }
   return handleMealSchedulesRoute(c.req.raw, c.env, tenantId);
+});
+
+// ── POS Users routes (tenant-admin + super-admin staff management) ──
+app.all('/api/pos-users', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return errorResponse('Missing or invalid Authorization header', 401);
+  }
+  const token = authHeader.split(' ')[1];
+  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
+  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
+  if (decoded.posType === 'pos') return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
+  if (decoded.role !== 'super_admin' && decoded.role !== 'admin') return errorResponse('Forbidden: Insufficient permissions', 403);
+  const tenantId = await getTenant(c.req.raw, c.env);
+  if (decoded.role !== 'super_admin' && !tenantId) return errorResponse('Tenant not found', 404);
+  return handlePosUsersRoute(c.req.raw, c.env, tenantId);
+});
+app.all('/api/pos-users/*', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return errorResponse('Missing or invalid Authorization header', 401);
+  }
+  const token = authHeader.split(' ')[1];
+  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
+  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
+  if (decoded.posType === 'pos') return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
+  if (decoded.role !== 'super_admin' && decoded.role !== 'admin') return errorResponse('Forbidden: Insufficient permissions', 403);
+  const tenantId = await getTenant(c.req.raw, c.env);
+  if (decoded.role !== 'super_admin' && !tenantId) return errorResponse('Tenant not found', 404);
+  return handlePosUsersRoute(c.req.raw, c.env, tenantId);
 });
 
 // ── SSE live stream (per-tenant Durable Object broadcast hub) ────────

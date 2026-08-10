@@ -119,7 +119,7 @@ test.describe('POS Token Lifecycle', () => {
       await identifierInput.fill(process.env.POS_IDENTIFIER || 'cashier');
       await page
         .locator('[data-testid="pos-password"]')
-        .fill(process.env.POS_PASSWORD || 'pass123');
+        .fill(process.env.POS_PASSWORD || 'pass1234');
       await page.locator('[data-testid="pos-signin-btn"]').click();
 
       // POS uses hash routing
@@ -149,7 +149,7 @@ test.describe('POS Token Lifecycle', () => {
       await identifierInput.fill(process.env.POS_IDENTIFIER || 'cashier');
       await page
         .locator('[data-testid="pos-password"]')
-        .fill(process.env.POS_PASSWORD || 'pass123');
+        .fill(process.env.POS_PASSWORD || 'pass1234');
       await page.locator('[data-testid="pos-signin-btn"]').click();
 
       try {

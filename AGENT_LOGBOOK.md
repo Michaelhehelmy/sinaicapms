@@ -81,7 +81,17 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 
 ## Task Logs
 
-### [2026-08-08] POS dashboard — org-local day boundary (timezone-aware today stats)
+### [2026-08-10] T2 — POS-users OpenAPI routes registered + contract regenerated
+- **Task**: Add POS-users route definitions to `backend/src/routes/registry.js` (schemas + 5 routes + registration in `openApiRoutes`), then regenerate `backend/openapi.json` and `app/src/lib/api-types.ts`.
+- **Changes**:
+  - `backend/src/routes/registry.js` — Inserted a `─── POS Users (staff management): /api/pos-users/* ───` section immediately after `adminRoutes` closes (before Payments T8-B3). Schemas: `posUserSchema` (.openapi('PosUser')), `paginatedPosUsersSchema` (via existing `paginatedEnvelope(itemSchema, name)` helper), `posUserCreateRequestSchema`, `posUserPatchRequestSchema`, `posUserResetPasswordRequestSchema`, `posUserActionResponseSchema` (.openapi('PosUserActionResponse')). Routes use the dominant `adminRoutes` style — `request: { query/params: z.object({...}), body: {...} }` — params INSIDE `request`. 5 `createRoute` defs: GET/POST `/api/pos-users`, PATCH/DELETE `/api/pos-users/{id}`, POST `/api/pos-users/{id}/reset-password`, all tags `['admin']`, all `...errorResponses()`. Registered `...posUsersRoutes,` in `openApiRoutes` between `...adminRoutes` and `...paymentRoutes`. Wire field names confirmed against `backend/src/api/pos-users.js` (camelCase on the wire via `toCamel` choke point).
+  - `backend/openapi.json` (regenerated via `npm run gen:openapi` → vite-node) — now 70 paths / 120 schemas.
+  - `app/src/lib/api-types.ts` (regenerated via `npm run gen:types` → openapi-typescript).
+- **Result**: `grep -c "pos-users"` registry.js = 7 (≥5), openapi.json = 3 (>0), `grep -c "PosUser"` api-types.ts = 9 (>0). Backend suite `npx vitest run` → **1065 passed / 36 files** (matches baseline, no count-assertion contracts in `tests/openapi-doc.test.js` — it only asserts the 8 auth paths, not an exhaustive list). `npx tsc --noEmit` in `app` = 156 errors IDENTICAL to baseline (pre-existing in `tests/unit/*`), so no regressions.
+- **Generated type names (CRITICAL for next task)**: `PosUser`, `PaginatedPosUsers`, `PosUserActionResponse` are the ONLY named schemas — request bodies are INLINED into the path types (no `PosUserCreateRequest` / `PosUserPatchRequest` / `PosUserResetPasswordRequest` component types exist). The frontend API layer must use `components["schemas"]["PosUser"]` / `PaginatedPosUsers` / `PosUserActionResponse` and inline request shapes.
+- **Lessons**: A previous agent attempt "failed silently" (registry had ZERO `pos-users` matches) — always grep-verify after writes. `node --check` catches syntax but not import/resolve errors; the vitest suite + `gen:openapi` exercising `buildOpenApiDocument()` is the real validity gate. `openapi-typescript` inlines request-body schemas that have no `.openapi(name)` name — only `.openapi()`-named objects become `components["schemas"]`.
+
+
 
 - **Task**: `GET /dashboard` in `backend/src/routes/pos/index.js` filtered `pos_transactions` with `date(created_at) = ?` where `?` was the UTC date (`new Date().toISOString().slice(0, 10)`). That is internally consistent with SQLite's UTC `datetime('now')`, but reports the wrong "today" for orgs whose `pos_organizations.timezone` is not UTC (e.g. `Africa/Cairo`, `Asia/Ho_Chi_Minh`).
 - **Changes**:
@@ -5645,3 +5655,205 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 1. **`tenantAdminLogin()` REQUIRES `tenantId` in the login body** — the API helper previously returned an undefined token and every authed follow-up (GET/DELETE /api/leads) silently failed. Login without `tenantId` only matches super admins. The UI login form passes tenantId from the tenant host header; API helpers must pass it explicitly. `POST /api/leads` is PUBLIC (contact form) — do not assume a failing token broke it.
 2. **The E2E local D1 is persistent and accumulates test data between runs** — specs that seed rows must clean up at beforeAll (hermetic baseline), not only afterAll, or assertions on capped UI values ("99+" badge) become impossible. Only delete rows matching test-data patterns so real data is never touched.
 3. **Nav badge "99+" cap**: `navBadgeCount()` parses "99+" → 99 — decrement assertions only work when the tenant's unread count is < 99. Keep the tenant's inbox cleaned in beforeAll.
+
+---
+
+## 2026-08-09 — deploy-prod-e2e: Design-polish sprint deployed to live + full prod E2E green
+
+**Task**: Finalize the design-polish sprint (T1–T7) + inbox E2E fix: run local gates, commit, deploy to production, and gate on the live E2E suite.
+
+**What happened**:
+- Local gates: app vitest **1485/1485**, backend vitest **1023/1023**, `npm run build` clean.
+- Committed as `9fc26e0b` — `chore: SinaiCamps — design-polish sprint (T1–T7) + hermetic inbox E2E fix` (56 files). NOTE: repo has `GIT_SIGN_COMMITS` enabled but no GPG key on this machine → commit is unsigned.
+- Deploy initially blocked: `.env` `CLOUDFLARE_API_TOKEN` was **401 (invalid/expired)** AND the wrangler OAuth session had expired (2026-08-09T10:20Z). Nothing was mutated (deploy fails fast in `check_auth` before backup/migrations).
+- **`deploy.sh` auth change**: `check_auth()` no longer hard-exits on a missing/expired OAuth session — it now interactively runs `npx wrangler login` (browser auth) and continues the SAME deploy run once the session is written. Falls back to manual instructions if login fails. Interactive-only; do not use in CI.
+- User deployed from their own terminal (browser auth) — confirmed live.
+- **Full live prod E2E** (`npx playwright test --config playwright.prod.config.ts`): **230 passed / 3 skipped / 1 flaky → 0 failed**. The 1 flake: `production/critical-flows.spec.ts:133` "camp detail page renders for a real camp" — first attempt hit the 30s `load`-navigation timeout on a cold route, retry #1 passed in 3.6s. Known cold-load latency class (see earlier persistent learning #1 on `/camp/{id}` `load`-hang); NOT a regression.
+
+**Lessons (persistent)**:
+1. **Wrangler OAuth sessions expire** and the `.env` token can silently go stale — the deploy script now self-heals via interactive `wrangler login`. Any headless/CI deploy still needs a valid `CLOUDFLARE_API_TOKEN`.
+2. **`camp detail` cold-load flake on prod**: the first navigation to `https://sinaicamps.com/camp/{id}` can exceed the 30s navigation timeout even though the page renders fine; retry passes. Do not treat single-attempt timeouts on this route as regressions without reproducing.
+3. **GPG signing unavailable** on this box (`GIT_SIGN_COMMITS` set, no secret key) — commits land unsigned; git does not fail the commit.
+
+---
+
+## 2026-08-10 — T1 (POS users backend handler): `backend/src/api/pos-users.js`
+
+**Task**: Write the self-contained `handlePosUsersRoute(request, env, tenantId)` handler for POS staff CRUD (GET paginated list, POST create, PATCH, DELETE soft, POST `:id/reset-password`), per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t1-pos-users-backend.md`. Registration in `index.js` is T2; tests are T4; openapi/types regeneration is T5.
+
+**What was done**:
+- New file `backend/src/api/pos-users.js` (342 lines). Exports: `handlePosUsersRoute`, `scopeTenant`, `ensureTenantOrg`, `POS_USER_ROLES`, `posUserCreateSchema`, `posUserPatchSchema`, `resetPasswordSchema`.
+- Authz first on every method: Bearer → `verifyToken` (imported as `verifyJWT`) → 401 "Session expired or invalid signature"; `posType==='pos'` → 403 "POS sessions..."; role must be `super_admin`/`admin` → 403 "Insufficient permissions".
+- Scope: `scopeTenant(decoded, url, tenantId)` — super_admin reads `?tenantId=` (falls back to the host-resolved arg, 400 if both null); admin hard-scopes `decoded.tenantId` (403 if missing).
+- Org resolution via `tenant_org_mapping`; `resolveOrganization` auto-provisions via `ensureTenantOrg` (INSERT OR IGNORE on UNIQUE slug/code, idempotent retry) instead of failing — matches the contract's auto-provision option.
+- GET list: `parsePagination` + `paginationEnvelope`, explicit columns (NEVER `password_hash`), `role` filter, `search` LIKE on first_name/last_name/email/username, scoped by BOTH `organization_id` and `tenant_id`-carrying columns (`pu.organization_id = ? AND pu.deleted_at IS NULL`); super_admin additionally LEFT JOINs `tenants` for `tenant_name`.
+- POST/PATCH/reset: `toSnake(await request.json())` → snake-keyed zod schemas (meals.js pattern), `.strip()`, `validationError(parsed)` on failure, camel→snake PATCH field map, uniqueness pre-checks (409 "Email or username already exists"), soft-delete sets `deleted_at`/`is_active=0`/`status='inactive'`.
+- `node --check` clean; import smoke test prints all 7 exports; zod smoke test confirms camelCase→snake parsing, role default `cashier`, min-8 password enforcement, `isActive`→`is_active` mapping, and `.strip()` removing unknown keys.
+
+**Lessons (persistent / deviations to carry forward)**:
+1. **The contract's text id `'pu_' + randomUUID().slice(0,12)` is WRONG for the live schema**: `pos_users.id` is `INTEGER PRIMARY KEY AUTOINCREMENT` (migration 0010); inserting a text id raises `datatype mismatch` in D1 (verified empirically with better-sqlite3 — same class as the logged `stf_*` SQLITE_MISMATCH gotcha). The handler OMITS `id` on INSERT and returns `result.meta.last_row_id` (numeric) as `id`. T3's test spec ("INSERT with `pu_` prefix id") and any openapi/types docs are STALE on this point — numeric ids should be the contract going forward.
+2. **`sharedAuth.js` exports `verifyToken`, NOT `verifyJWT`** — alias at import. It also exports `hashPassword` (async, bcrypt).
+3. **`toSnake` is imported from `../utils/response.js`** (not errors.js) and returns a NEW object with the provided keys lower-snake-mapped; unknown keys are then dropped by zod `.strip()`.
+4. **PATCH field map keys** are already snake (`first_name`, `store_id`, `is_active`) so camelCase wire → `toSnake` → snake keys align with the map; `is_active` accepts boolean or 0/1 and is normalized to 1/0.
+
+---
+
+## 2026-08-10 — T3 (POS users unit tests): `backend/tests/pos-users-unit.test.js`
+
+**Task**: Write backend unit tests covering `handlePosUsersRoute` (authz, scoping, CRUD, auto-provision, validation) per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t3-pos-users-tests.md`. Do NOT touch `backend/src/api/pos-users.js` (T1 owns it), `index.js`, migrations, or other tests.
+
+**What was done**:
+- New file `backend/tests/pos-users-unit.test.js` — **42 tests**, scaffolding copied from `admin-unit.test.js` (makeRequest + chained prepare/bind/all/first/run DB mock dispatching on SQL substrings; real `generateToken` with fixed test `JWT_SECRET`).
+- Coverage of matrix cases 1–25: POS-token 403, cashier 403, missing header 401, garbage token 401, super_admin arg/query scoping, admin hard-scope + missing tenantId 403, pagination envelope + no `password_hash`, role filter, LIKE search, super_admin tenant JOIN, POST create (INSERT omits id, bcrypt hash, numeric `last_row_id` → id 99, username falls back to full email), validation 400s (firstName/password/role), duplicate email/username 409, run()-no-meta → id null, DB-throw 400s, auto-provision success (chained org/store/mapping inserts → 200) + provisioning failure 409, PATCH success (snake field map + is_active→1/0) / 404 / no-fields 400 / invalid 400 / dup 409 / throw 400, DELETE soft-delete (`deleted_at`, `is_active = 0`, NOT `DELETE FROM`) / 404 / throw 400, reset-password (bcrypt update, short-password 400 before DB, 404, throw 400), 405 fallback, plus direct `ensureTenantOrg` unit tests (existing mapping short-circuit, idempotent provisioning, throw → null).
+
+**Verification**:
+- `cd backend && npx vitest run tests/pos-users-unit.test.js` → **42/42 passed**.
+- `cd backend && npx vitest run` → **36 files / 1065 passed** (baseline 1023 + 42 new; zero regressions).
+- Coverage of `pos-users.js` alone: **99.32% stmts / 94.59% branch / 100% funcs / 99.24% lines** (all above the global thresholds).
+- NOTE: full-suite `--coverage` exits 1 on global thresholds (lines 99 / statements 99 / functions 100) — **pre-existing at baseline** (verified by stashing this file: baseline 35 files / 1023 tests also exited 1, with worse aggregate 92.07/84.5/89.34/92.57). This task IMPROVED the aggregate (97.53/≥85/91.71/97.77) and made the branch threshold pass; it did not introduce the failure. Plain `npx vitest run` (the spec's required gate) is fully green.
+
+**Lessons (persistent)**:
+1. **The `--coverage` gate is red at baseline** — don't treat threshold errors from `npx vitest run --coverage` as a regression from new tests; compare against a stashed baseline instead. Global thresholds (99/100/99) can only be met by covering the long tail of 0%-covered files (`middleware/auth.js`, `services/*`, etc.), which is out of scope for feature tasks.
+2. **Coverage runs collect only loaded files** — running a single test file with `--coverage` shows every other src file at 0% and fails global thresholds; that's expected, not a signal. Run `--coverage` on the whole suite to compare apples-to-apples.
+3. **`username` falls back to the FULL email** (`parsed.data.username || email`), not a local-part derivation — assert `args[2] === 'cashier1@test.com'` in INSERT bind checks.
+4. **Mock substring collisions**: the PATCH/DELETE/reset exists checks share `'AND deleted_at IS NULL'`; disambiguate the UPDATEs with `'SET deleted_at = datetime'` (DELETE) vs `'UPDATE pos_users SET'` (PATCH) vs `'SET password_hash = ?'` (reset). `'SELECT id FROM pos_users'` matches the dup check too — always key mocks on the most specific substring.
+5. **Write very large test files in chunks** — a single oversized tool-call payload truncated mid-JSON ("Unterminated string in JSON at position 21258") and wrote nothing. `write` part 1 with a marker line, then `edit`-replace the marker with part 2.
+
+---
+
+## 2026-08-10 — T5 (POS users frontend API client): `app/src/lib/api.ts`
+
+**Task**: Add the 5 typed API client functions for the pos-users CRUD contract in `app/src/lib/api.ts` (new `// ─── POS Users (Staff) ───` section placed after the admin/bulk-tenant block), per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t5-pos-users-frontend-api.md`. Do NOT touch `api-types.ts` (T4 regenerates), `StaffPanel.tsx` / AdminApp / i18n (T6 owns).
+
+**What was done**:
+- Added section with `getPosUsers`, `createPosUser`, `updatePosUser`, `deletePosUser`, `resetPosUserPassword` — all plain `apiFetch<...>` wrappers in the existing `getOrders`/`createAdminUser` style (no explicit `Promise<...>` annotations, inferred return types are exactly the spec'd ones).
+- **Type-name adaptation (important)**: the tmp spec text guessed `PosUserList` / `PosUserCreateResponse` / `SuccessResponse`, but the ACTUAL T4-generated names in `api-types.ts` are `Schemas['PaginatedPosUsers']` (list) and `Schemas['PosUserActionResponse']` (create/PATCH/DELETE/reset — `{ success, id }`). No dedicated request-body schemas exist (bodies are inlined into the `/api/pos-users` path operations), so request payloads are inline literal object types with `role?: 'cashier' | 'manager' | 'admin'` and `storeId?: number`.
+- `getPosUsers` builds a `Record<string, string>` query record — `tenantId` is appended ONLY when truthy (super-admin cross-tenant path) and serialized via `new URLSearchParams(qp)` which yields the camelCase `tenantId=` the backend `scopeTenant()` reads directly. `page`/`pageSize` accept `number | string` and are `String()`-coerced; falsy/empty values are skipped so no empty `?page=` leaks.
+- Paths are admin endpoints, NOT `/pos/`-prefixed — apiFetch default `sinaicamps_token` + auto `x-tenant-id` behavior applies.
+
+**Verification**:
+- `cd app && npx tsc --noEmit` → **156 errors — identical to the pre-existing baseline** (all in `tests/unit/`), zero errors in `api.ts`, zero pos-user-related errors.
+- `cd app && npx vitest run` → **76 files / 1485 passed** — green, no regressions.
+
+**Lessons (persistent)**:
+1. **Verify schema names against the regenerated `api-types.ts` BEFORE coding** — tmp specs may guess names (`PosUserList`/`PosUserCreateResponse`) that T4's registry (`paginatedEnvelope(posUserSchema, 'PaginatedPosUsers')`, `PosUserActionResponse`) did not produce. The authoritative names here: `PosUser`, `PaginatedPosUsers`, `PosUserActionResponse`.
+2. **`URLSearchParams` doesn't accept `number | string` record values** — coerce numerics with `String()` into a plain `Record<string, string>` before building qs (same coercion style as `getBookingsReport`'s `String(opts.days)`).
+3. **`getPosUsers` must NOT default `tenantId` to `getTenantId()` in the qs** — backend `scopeTenant()` reads `?tenantId=` only for `super_admin` and falls back to host-resolution otherwise; passing it always would leak scope intent. Only include when the caller passes it.
+
+---
+
+## 2026-08-10 — T6 (POS users admin panel): `app/src/components/admin/StaffPanel.tsx`
+
+**Task**: Build the admin "Staff" panel (`StaffPanel.tsx`) for POS user management — CRUD table + create/edit modal + reset-password — wire it into `AdminApp.tsx` (lazy panel + nav + super-admin tenant selector), add `IconStaff`, add en/ar `staff.*` i18n keys, and add the panel mock to `AdminApp.test.tsx`, per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t6-pos-users-panel.md`.
+
+**What was done**:
+- New `app/src/components/admin/StaffPanel.tsx` (631 lines, default export). `useAuth` + `hasRole('super_admin')` (via `user?.role === 'super_admin'` — the hook's `hasRole` type predicate was tricky to satisfy, see lesson 2). Super-admin branch: `getAdminTenants()` + auto-select `list[0].id` + tenant `Select` filter card, then `getPosUsers({ tenantId })`; tenant admin: `getPosUsers()` with no tenantId (server hard-scopes). `PosUser = components['schemas']['PosUser']` from `@/lib/api-types`; local `PosRole` union for the form select.
+- DataTable columns: Name (first+last, strong), Email, Username, Role (colored pill), Department, Status (`StatusTag` active/inactive), Last Login (`formatDate`), Actions (Edit ghost / Reset Password secondary / Delete danger with inline SVG icons). Pagination `{page,total,pageSize:10}`, searchable + `onSearch={setSearch}` (debounced via effect), rowKey `id`, size `md`.
+- FormModal create/edit (`size="lg"`): firstName*/lastName*/email* (regex-validated), username, password* (create-only, min 8, `editUserId == null` conditional), role select (cashier|manager|admin), phone, department, employeeId, isActive Select (edit-only). Reset modal `size="sm"` single password field. Delete: `ConfirmDialog` (danger) interpolating `{name}` into `staff.confirmDelete` — NOT `window.confirm` (project has the component). Success toasts `userCreated/userUpdated/userDeleted/passwordReset`; validation warnings reuse existing `errors.required/invalidEmail/passwordTooShort`.
+- Wired into `AdminApp.tsx`: `IconStaff` import, `React.lazy(() => import('./StaffPanel'))`, nav `{ id: 'staff', label: 'Staff', icon: IconStaff }` between low-stock and settings (hardcoded English label matches ALL existing nav items — AdminApp does not use `useI18n`), render case `'staff'`.
+- Added `IconStaff` (heroicons user-group outline) to `admin/icons.tsx` after `IconPos` (the spec said `ui/icons.tsx`, but the ACTUAL icon module panels import is `components/admin/icons.tsx` — verified via AdminApp imports).
+- i18n: added 33-key `staff` section to BOTH `en.json` and `ar.json` (before `errors`), covering every `t('staff.*')` call incl. the arg-form `confirmDelete` and the panel-added `editUser`/`name` keys not in the spec list.
+- Added `vi.mock('@/components/admin/StaffPanel')` (data-testid `staff-panel`) to `AdminApp.test.tsx` alongside the other 17 panel mocks.
+
+**Verification**:
+- `cd app && npx tsc --noEmit` → **156 errors — identical to the pre-existing baseline** (all in `tests/unit/` + pre-existing `src/hooks/useSse*`/`stories`), zero errors in `StaffPanel.tsx` / `AdminApp.tsx` / `icons.tsx`.
+- `cd app && npx vitest run` → **76 files / 1485 passed**; `tests/unit/AdminApp.test.tsx` → **40/40 passed** (baseline 1485).
+- `cd app && npm run build` → green; `StaffPanel.Bfwth-Qs.js` emitted as its own lazy chunk (11.26 kB / gzip 3.73 kB).
+
+**Lessons (persistent)**:
+1. **`StatusTag` import was initially MISSING from the written file** — it renders the active/inactive pill. Grep the rendered JSX for every `<Component>` and cross-check against the import block before wiring (tsc would have caught it, but only after the write — the LSP at write time only reported pre-existing errors in OTHER files).
+2. **`hasRole` is a type-predicate `(role: string) => role is "admin"`** — assign `hasRole` to a variable typed for a generic role string (or compare `user?.role === 'super_admin'` directly) to avoid `TS2322` in tests; the test file has 3 pre-existing instances of this exact pattern.
+3. **The spec path `components/ui/icons.tsx` is STALE** — admin icons live in `components/admin/icons.tsx`; check the panel's actual import line first. Similarly the spec's "prompt-style reset" is overridden by the existing `FormModal`/`ConfirmDialog` components (prefer existing ui components — the spec says to check first).
+4. **Hardcoded English nav labels are the established pattern in AdminApp** (`label: 'Dashboard'`, etc.) — do NOT try to i18n them; the panel body carries the localization (`t('staff.*')`), and `useI18n` falls back to `en` because the admin mount (`pages/admin/[...rest]/index.astro`) has no `I18nProvider`.
+5. **`'Saving...'`/placeholder literals in modals match MealsPanel exactly** — keep consistent with the template rather than adding new keys for pending-state text (spec keys list has no saving key; template uses the literal).
+
+---
+
+## 2026-08-10 — T2 (POS users route registration): `backend/src/index.js`
+
+**Task**: Register the T1 `handlePosUsersRoute` behind auth/RBAC wrappers per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t2-pos-users-register.md`.
+
+**What was done**:
+- Import at line 15: `import { handlePosUsersRoute } from './api/pos-users';`
+- Block at **lines 229–258** after meal-schedules, before the SSE stream:
+  - `app.all('/api/pos-users', ...)` (230–243): middleware — bearer `verifyJWT` (401 on fail), POS-session reject, role gate (`super_admin`/`admin`, else 403); `getTenant(c.req.raw, c.env)`; non-super_admin without a tenant → 404; dispatch `handlePosUsersRoute(request, env, tenantId)`.
+  - `app.all('/api/pos-users/*', ...)` (244–258): identical wrapper for subpaths (`/api/pos-users/:id`, `/api/pos-users/:id/reset-password`).
+- `node --check` pass; `tests/index-unit.test.js` 34/34 pass.
+
+**Verification**: `cd backend && npx vitest run` → green.
+
+**Lessons (persistent)**:
+1. **`getTenant(c.req.raw, c.env)`** — NOT `c.req`; the helper expects the raw Request. Precedence: `tenant_id` query → `x-tenant-id` header → hostname (exact match; localhost excluded).
+2. **`app.all` with wildcard requires `/api/pos-users/*`** (trailing `/*`), not `/api/pos-users*` — Hono treats bare `*` as a literal.
+
+---
+
+## 2026-08-10 — T4 (POS users OpenAPI + generated types): `backend/src/routes/registry.js`
+
+**Task**: Expose the pos-users endpoints in the OpenAPI registry and regenerate `backend/openapi.json` + `app/src/lib/api-types.ts` per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t4-pos-users-openapi.md`.
+
+**What was done**:
+- `backend/src/routes/registry.js` +140 lines: PosUser zod schemas after `adminRoutes` closes + `posUsersRoutes` array of 5 `createRoute` defs (`GET /pos-users`, `POST /pos-users`, `PATCH /pos-users/{id}`, `DELETE /pos-users/{id}`, `POST /pos-users/{id}/reset-password`), spread into `openApiRoutes`.
+- Regenerated `backend/openapi.json` (70 paths / 120 schemas) and `app/src/lib/api-types.ts`.
+- **Generated type names are authoritative**: `PosUser`, `PaginatedPosUsers`, `PosUserActionResponse`; request bodies are inlined into path operations (no standalone Create/Patch/Reset request types).
+
+**Verification**: backend suite 1065 passed; openapi-doc.test.js has no exhaustive route-count assertion; `cd app && npx tsc --noEmit` = 156 errors (identical pre-existing baseline).
+
+**Lessons (persistent)**:
+1. **First regeneration attempt failed silently (zero changes)** — the script required prescriptive line references / exact insertion points; retry with explicit anchors (open-after-`adminRoutes`, array spread) succeeded. ALWAYS diff the generated files after regen — a "successful" run that changes nothing is a failure.
+2. **Registry is the single source of truth** — hand-editing `openapi.json` or `api-types.ts` is forbidden; edit `registry.js` zod schemas, regenerate, then check the emitted type names before coding consumers.
+
+---
+
+## 2026-08-10 — T7 (E2E: recreate POS cashier after 0051)
+
+**Task**: Migration 0051 deleted the 0043-seeded E2E cashier; recreate it through the NEW `POST /api/pos-users` endpoint in global-setup per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t7-pos-users-e2e.md`.
+
+**What was done**:
+- `tests/e2e/utils/api-helpers.ts`: new `createTestPosUser()` — tenant-admin token + `x-tenant-id: TEST_TENANT.id`, POST `/api/pos-users` with `{ email: 'cashier@test.com', username: 'cashier', password: TEST_POS_USER.password, firstName: 'Cashier', lastName: 'Test', role: 'cashier' }`; 409 treated as idempotent OK, other failures throw loudly. Handler auto-provisions org/store/mapping when the tenant has none, so a fresh DB works.
+- `tests/e2e/global-setup.ts`: `await createTestPosUser()` AFTER `seedTestData()`.
+- **Password-length bug fixed (critical)**: the create endpoint enforces `min(8)` but the fixture defaulted to `'pass123'` (7 chars) → create would 400. Changed `tests/e2e/fixtures/test-data.ts` default to `'pass1234'` (8+ chars, override via `POS_PASSWORD`) and updated the hardcoded `'pass123'`/`'sinaiadmin'`/`'admin'` fallbacks in `token-lifecycle.spec.ts` (×2) and `browser-behavior.spec.ts` to `cashier`/`pass1234`.
+
+**Verification (Playwright, local servers booted by config)**:
+- `--project=auth` → **39 passed / 4 skipped** — incl. "POS login → token stored in localStorage" (17s) proving the recreated cashier logs in.
+- `--project=pos --project=cross-cutting` → **190 passed / 6 skipped** — full POS order/payment/product/cart/nav workflows green.
+- `--project=admin` (login.spec 4/4, navigation.spec 7/7 — nav clicks every tab incl. new Staff tab) → green. NOTE: a combined `admin+tenant` run overran the 9-min timeout and produced a spurious all-fail batch; re-running the same specs individually passed 100% — the failure was the killed run's stale webServers, NOT a regression.
+
+**Lessons (persistent)**:
+1. **POS login resolves tenant via `tenant_org_mapping`** (`organization_id → tenant_id`), NOT by filtering on a tenant param — the cashier's org mapping must exist; `POST /api/pos-users` auto-provisions it (that is why the helper works on a fresh DB where 0051 wiped the old org/mapping).
+2. **`POST /api/pos-users` enforces `min(8)` password; POS login does NOT** — the fixture default MUST stay 8+ chars (`'pass1234'`) or the create 400s while login still accepts shorter input, producing confusing "login fails" symptoms.
+3. **Keep create+login credentials in sync via one source** — `TEST_POS_USER.password` + `POS_PASSWORD` env override; never hardcode a bare literal in a spec (3 stale literals found and fixed).
+4. **E2E admin/tenant combined runs are heavy (~9+ min)** — when verifying a change, run the affected project(s) individually rather than the whole suite; a timed-out run leaves orphaned `wrangler dev`/`astro dev` servers that make the NEXT run fail en masse (kill them before re-running).
+
+---
+
+## 2026-08-10 — T8 (POS users sprint: final verification + commit)
+
+**Task**: Full-suite verification, logbook consolidation, tmp-agent cleanup, and commit per the tmp-agent spec `.opencode/agents/tmp/2026-08-10-t8-verify-commit.md`.
+
+**Final verification matrix**:
+- Backend: `cd backend && npx vitest run` → **36 files / 1065 passed** (1023 baseline + 42 new pos-users tests; pos-users.js coverage 99.32% stmts / 94.59% branch / 100% funcs / 99.24% lines — above thresholds).
+- App: `cd app && npx vitest run` → **76 files / 1485 passed**; `AdminApp.test.tsx` 40/40.
+- Root integration: `npx vitest run` → **10 files / 169 passed**.
+- tsc: `cd app && npx tsc --noEmit` → **156 errors — identical to the pre-existing baseline** (all pre-existing files), zero in new code.
+- App build: green (StaffPanel emitted as own lazy chunk).
+- Playwright E2E (subset): auth 39p/4s, pos+cross-cutting 190p/6s, admin login 4/4 + nav 7/7.
+
+**Sprint summary** (all 8 tmp tasks complete):
+- New backend endpoint family `/api/pos-users*` (list/create/patch/delete/reset-password) with bearer-JWT authz, POS-session rejection, super_admin cross-tenant (`?tenantId=`) vs admin hard-scope, org/store/mapping auto-provision.
+- Migration `0051_remove_seed_data.sql` (FK-safe seed cleanup, already applied live to prod D1).
+- OpenAPI + generated frontend types (`PosUser`/`PaginatedPosUsers`/`PosUserActionResponse`).
+- Frontend: `api.ts` 5 client functions + admin StaffPanel (CRUD, tenant selector, en/ar i18n).
+- E2E: cashier recreated via endpoint in global-setup; stale password literals fixed.
+
+**Commit**: single `feat:` commit (see git log) covering backend handler/tests/registration/registry/openapi, migration, frontend api.ts/StaffPanel/i18n, E2E wiring.
+
+**Deploy note**: run `./deploy.sh` to apply 0051 on fresh D1 (prod already cleaned), deploy the Worker, and ship the new frontend. Stale OAuth → `wrangler login` first.
+
+**Persistent lessons consolidated**:
+1. `pos_users.id` is INTEGER AUTOINCREMENT — INSERT omits id and returns numeric `last_row_id` (NOT a `pu_` text prefix).
+2. New POS staff must be created via `POST /api/pos-users` (auto-provisions org/store/mapping); never seed `pos_users` directly in a migration going forward.
+3. `POST /api/pos-users` password `min(8)` — E2E fixture default must stay 8+ chars.
+4. `?tenantId=` is camelCase end-to-end (registry zod schema, `scopeTenant`, `getPosUsers` qs builder).
+5. Keep seed-cleanup migrations FK-safe (delete children before parents; `pos_users` soft-delete respects `pos_transactions.cashier_id` FK).
+6. Always diff regenerated `openapi.json`/`api-types.ts` after a "successful" regen — silent zero-change runs have happened twice in this codebase.

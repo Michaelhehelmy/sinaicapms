@@ -108,8 +108,8 @@ test.describe('Browser Back/Forward Navigation', () => {
     await page.goto(`/pos/login?tenant=${TENANT_ID}`);
     await page.waitForSelector('[data-testid="pos-identifier"]', { timeout: 10_000 });
 
-    await page.locator('[data-testid="pos-identifier"]').fill(process.env.POS_IDENTIFIER || 'admin');
-    await page.locator('[data-testid="pos-password"]').fill(process.env.POS_PASSWORD || 'sinaiadmin');
+    await page.locator('[data-testid="pos-identifier"]').fill(process.env.POS_IDENTIFIER || 'cashier');
+    await page.locator('[data-testid="pos-password"]').fill(process.env.POS_PASSWORD || 'pass1234');
     await page.locator('[data-testid="pos-signin-btn"]').click();
     await page.waitForURL('**/pos/**', { timeout: 10_000 }).catch(() => {});
 

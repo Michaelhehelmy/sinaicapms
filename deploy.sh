@@ -44,7 +44,11 @@ elapsed() { echo "$(( $(date +%s) - START_TIME ))s"; }
 
 # ─────────────────────────────────────────────
 # Auth (Path 1 = CLOUDFLARE_API_TOKEN in .env, Path 2 = wrangler OAuth)
-# Falls back automatically: invalid/missing token → OAuth session → clear error.
+# Falls back automatically: invalid/missing token → OAuth session.
+# If the OAuth session is also missing/expired, INTERACTIVELY launches
+# `wrangler login` (browser auth) and continues the deploy in the same run.
+# NOTE: browser auth is interactive — run ./deploy.sh from a terminal where
+# the user can complete the Cloudflare login page.
 # ─────────────────────────────────────────────
 check_auth() {
   section "Auth"
@@ -66,34 +70,49 @@ check_auth() {
   # Path 2: wrangler OAuth session (from `wrangler login`).
   # Gate on the LOCAL config file, not `wrangler whoami` — whoami polls the CF
   # API which is network-flaky in this sandbox (can hang 40s+ or flake).
-  # wrangler handles token refresh itself during the deploy; if the OAuth
-  # session is truly dead it fails with a clear "Invalid OAuth token" error.
+  # Respect the WRANGLER_OAUTH_CONFIG override; unparseable expiration_time is
+  # warned about but never blocks a possibly-valid session.
   local oauth_cfg="${WRANGLER_OAUTH_CONFIG:-$HOME/.config/.wrangler/config/default.toml}"
-  if [ -s "$oauth_cfg" ] && grep -q "^oauth_token" "$oauth_cfg" 2>/dev/null; then
-    log "✅ wrangler OAuth session found — deploying with login credentials (Path 2)"
-    # Fail FAST on an EXPIRED session: otherwise wrangler auto-triggers a doomed
-    # browser OAuth flow mid-deploy (fails with "fetch failed" in this sandbox).
-    # Respect the WRANGLER_OAUTH_CONFIG override; unparseable expiration_time is
-    # warned about but never blocks a possibly-valid session.
+
+  _session_valid() {
+    [ -s "$oauth_cfg" ] || return 1
+    grep -q "^oauth_token" "$oauth_cfg" 2>/dev/null || return 1
     local exp_raw=""
     exp_raw=$(sed -n 's/^expiration_time[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$oauth_cfg" 2>/dev/null | head -1) || true
     if [ -n "$exp_raw" ]; then
       local exp_epoch=""
       if exp_epoch=$(date -u -d "$exp_raw" +%s 2>/dev/null); then
-        if [ "$exp_epoch" -le "$(date -u +%s)" ]; then
-          log "⛔ wrangler OAuth session expired (expired $exp_raw). Re-authenticate with:  unset CLOUDFLARE_API_TOKEN && cd backend && npx wrangler login  — then re-run ./deploy.sh"
-          exit 1
-        fi
-      else
-        log "⚠️  Could not parse wrangler OAuth expiration_time ('$exp_raw') — proceeding; wrangler will report auth errors itself if the session is invalid."
+        # Fail FAST on an EXPIRED session: otherwise wrangler auto-triggers a
+        # doomed browser OAuth flow mid-deploy (fails with "fetch failed").
+        [ "$exp_epoch" -gt "$(date -u +%s)" ] || return 1
       fi
+      # Unparseable expiration_time → proceed optimistically.
     fi
+    return 0
+  }
+
+  if _session_valid; then
+    log "✅ wrangler OAuth session found — deploying with login credentials (Path 2)"
     return 0
   fi
 
-  log "❌ No valid Cloudflare credentials found."
+  log "⚠️  wrangler OAuth session missing or expired — launching browser login…"
+  log "     Complete the Cloudflare login in your browser, then return here."
+  # Interactive browser OAuth flow. Uses the backend install of wrangler.
+  # unset the token vars so wrangler login/deploy actually use the OAuth session.
+  unset CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+  if (cd "$SCRIPT_DIR/backend" && npx wrangler login); then
+    if _session_valid; then
+      log "✅ wrangler OAuth login completed — session active (Path 2)"
+      return 0
+    fi
+    log "⚠️  wrangler login finished but no OAuth session was found in $oauth_cfg"
+  else
+    log "❌ wrangler login failed or was cancelled."
+  fi
+
   log ""
-  log "   Fix one of:"
+  log "   Manual fallback:"
   log "     1) Put a valid CLOUDFLARE_API_TOKEN in .env (see README), OR"
   log "     2) Run:  cd backend && npx wrangler login   (opens browser; then re-run ./deploy.sh)"
   log ""

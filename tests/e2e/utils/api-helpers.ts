@@ -1,4 +1,4 @@
-import { API_BASE, SUPER_ADMIN, TEST_TENANT, TEST_TENANT_ADMIN, TEST_PRODUCT, TEST_CUSTOMER, TEST_CAMPS, TEST_PRODUCTS, TEST_RATE_PLAN } from '../fixtures/test-data';
+import { API_BASE, SUPER_ADMIN, TEST_TENANT, TEST_TENANT_ADMIN, TEST_POS_USER, TEST_PRODUCT, TEST_CUSTOMER, TEST_CAMPS, TEST_PRODUCTS, TEST_RATE_PLAN } from '../fixtures/test-data';
 
 let superAdminToken = '';
 let tenantAdminToken = '';
@@ -75,6 +75,48 @@ export async function seedTestData(): Promise<void> {
   }
 
   await apiRequest('POST', '/api/rateplans', TEST_RATE_PLAN, headers);
+}
+
+/**
+ * Recreate the E2E POS cashier that migration 0051 removed from seed data.
+ *
+ * Creates the user via POST /api/pos-users using the tenant admin's JWT
+ * (role `admin`, scoped to TEST_TENANT through the login tenantId and the
+ * `x-tenant-id` header). The handler auto-provisions the tenant's POS
+ * organization/store/tenant_org_mapping when the tenant has none, so this
+ * works even against a fresh DB where 0051 deleted the old seed org/mapping.
+ *
+ * Body values mirror TEST_POS_USER (identifier → username, password), with the
+ * fixed email/first/last names the POS fixtures expect. Idempotent: a 409
+ * (email/username already exists — e.g. reruns against an already-seeded DB)
+ * is treated as OK; any other non-2xx response throws so global-setup reports
+ * it loudly.
+ *
+ * NOTE: `POST /api/pos-users` enforces a minimum 8-char password, so the
+ * TEST_POS_USER.password default is 'pass1234' (8+ chars). Override with
+ * `POS_PASSWORD` if you change it — the login specs read the same env var,
+ * keeping create + login consistent.
+ */
+export async function createTestPosUser(): Promise<void> {
+  const token = tenantAdminToken || await tenantAdminLogin();
+  const headers = { Authorization: `Bearer ${token}`, 'x-tenant-id': TEST_TENANT.id };
+
+  const res = await apiRequest('POST', '/api/pos-users', {
+    email: 'cashier@test.com',
+    username: TEST_POS_USER.identifier,
+    password: TEST_POS_USER.password,
+    firstName: 'Cashier',
+    lastName: 'Test',
+    role: 'cashier',
+  }, headers);
+
+  if (res.status === 409) {
+    console.log('  ℹ️  POS cashier already exists (409) — nothing to do');
+    return;
+  }
+  if (!res.ok) {
+    throw new Error(`createTestPosUser failed: ${res.status} ${await res.text()}`);
+  }
 }
 
 export async function deleteTestTenant(): Promise<void> {

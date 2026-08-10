@@ -542,6 +542,43 @@ export function bulkDeleteTenants(ids: string[]) {
   });
 }
 
+// ─── POS Users (Staff) ────────────────────────────────────────────────
+export function getPosUsers(params?: { page?: number | string; pageSize?: number | string; role?: string; search?: string; tenantId?: string }) {
+  const qp: Record<string, string> = {};
+  if (params?.page !== undefined && params.page !== '') qp.page = String(params.page);
+  if (params?.pageSize !== undefined && params.pageSize !== '') qp.pageSize = String(params.pageSize);
+  if (params?.role) qp.role = params.role;
+  if (params?.search) qp.search = params.search;
+  if (params?.tenantId) qp.tenantId = params.tenantId; // super-admin cross-tenant listing
+  const qs = Object.keys(qp).length ? '?' + new URLSearchParams(qp).toString() : '';
+  return apiFetch<Schemas['PaginatedPosUsers']>(`/pos-users${qs}`);
+}
+
+export function createPosUser(data: { email: string; username?: string; password: string; firstName: string; lastName: string; phone?: string; role?: 'cashier' | 'manager' | 'admin'; department?: string; employeeId?: string; storeId?: number }) {
+  return apiFetch<Schemas['PosUserActionResponse']>('/pos-users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updatePosUser(id: number | string, data: Partial<{ email: string; username: string; firstName: string; lastName: string; phone?: string; role?: 'cashier' | 'manager' | 'admin'; isActive?: boolean; department?: string; employeeId?: string; storeId?: number }>) {
+  return apiFetch<Schemas['PosUserActionResponse']>(`/pos-users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deletePosUser(id: number | string) {
+  return apiFetch<Schemas['PosUserActionResponse']>(`/pos-users/${id}`, { method: 'DELETE' });
+}
+
+export function resetPosUserPassword(id: number | string, password: string) {
+  return apiFetch<Schemas['PosUserActionResponse']>(`/pos-users/${id}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+}
+
 // ─── Password Management ──────────────────────────────────────────────
 export function forgotPassword(email: string) {
   return apiFetch<Schemas['MessageEnvelope']>('/auth/forgot-password', {
