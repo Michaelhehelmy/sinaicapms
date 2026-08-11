@@ -47,6 +47,14 @@ const sampleTenant = {
   type: 'camp',
 };
 
+const sampleTenantWithCustomDomain = {
+  id: 'acaciacamp',
+  name: 'Acacia Camp',
+  subdomain: 'acacia',
+  customDomain: 'acaciacamp.com',
+  type: 'camp',
+};
+
 const onBack = vi.fn();
 
 beforeEach(() => {
@@ -64,6 +72,14 @@ describe('TenantDrilldown (T9 super-admin drill-down)', () => {
     });
   });
 
+  it('shows ONLY the custom domain in the header when one exists', async () => {
+    render(<TenantDrilldown tenant={sampleTenantWithCustomDomain} onBack={onBack} />);
+    await waitFor(() => {
+      expect(screen.getByText('acaciacamp.com')).toBeInTheDocument();
+      expect(screen.queryByText('acacia.sinaicamps.com')).not.toBeInTheDocument();
+    });
+  });
+
   it('sets the tenant scope on mount and clears it on unmount', async () => {
     const { unmount } = render(<TenantDrilldown tenant={sampleTenant} onBack={onBack} />);
     await waitFor(() => {
@@ -73,14 +89,16 @@ describe('TenantDrilldown (T9 super-admin drill-down)', () => {
     expect(mockSetTenantScope).toHaveBeenLastCalledWith(null);
   });
 
-  it('switches sub-tabs and passes scoped camps to the panels', async () => {
+  it('switches sub-tabs and passes the single camp to the panels', async () => {
     render(<TenantDrilldown tenant={sampleTenant} onBack={onBack} />);
     await waitFor(() => {
       expect(screen.getByTestId('panel-stub-camps')).toBeInTheDocument();
     });
     fireEvent.click(screen.getByTestId('drilldown-tab-rooms'));
     await waitFor(() => {
-      expect(screen.getByTestId('panel-stub-rooms')).toHaveTextContent('ROOMS:2:2');
+      // B3: the drilldown hub pins every panel to the tenant's one camp —
+      // camps[0] only, even if the API returns more.
+      expect(screen.getByTestId('panel-stub-rooms')).toHaveTextContent('ROOMS:1:1');
     });
     fireEvent.click(screen.getByTestId('drilldown-tab-rateplans'));
     await waitFor(() => {

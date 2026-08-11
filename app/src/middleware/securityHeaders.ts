@@ -13,7 +13,7 @@ import { defineMiddleware } from 'astro:middleware';
  *
  * CSP rationale (verified against the built HTML output):
  *  - Inline scripts are required by the Astro/React build (Fast Refresh
- *    preamble, lang-toggle cookie script, `window.__API_BASE` bootstrap,
+ *    preamble, `window.__API_BASE` bootstrap,
  *    admin/POS global helpers) -> `script-src 'self' 'unsafe-inline'`.
  *  - Inline <style> blocks are required by AdminLayout / POSLayout / book &
  *    menu pages + Google Fonts stylesheet -> `style-src 'self' 'unsafe-inline'

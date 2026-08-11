@@ -13,7 +13,6 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { StatusTag } from '@/components/ui/StatusTag';
-import { useI18n } from '@/hooks/useI18n';
 import { formatDate } from '@/lib/utils';
 import { IconStaff } from './icons';
 
@@ -113,7 +112,6 @@ const trashIcon = (
 export default function StaffPanel() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const { t } = useI18n();
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -200,31 +198,22 @@ export default function StaffPanel() {
     loadUsers(1, search);
   }, [isSuperAdmin, selectedTenantId, search, loadUsers]);
 
-  const roleOptions = useMemo(
-    () => [
-      { value: 'cashier', label: t('staff.roleCashier') },
-      { value: 'manager', label: t('staff.roleManager') },
-      { value: 'admin', label: t('staff.roleAdmin') },
-    ],
-    [t],
-  );
+  const roleOptions = [
+    { value: 'cashier', label: 'Cashier' },
+    { value: 'manager', label: 'Manager' },
+    { value: 'admin', label: 'Admin' },
+  ];
 
-  const statusOptions = useMemo(
-    () => [
-      { value: '1', label: t('staff.active') },
-      { value: '0', label: t('staff.inactive') },
-    ],
-    [t],
-  );
+  const statusOptions = [
+    { value: '1', label: 'Active' },
+    { value: '0', label: 'Inactive' },
+  ];
 
-  const roleLabels: Record<string, string> = useMemo(
-    () => ({
-      cashier: t('staff.roleCashier'),
-      manager: t('staff.roleManager'),
-      admin: t('staff.roleAdmin'),
-    }),
-    [t],
-  );
+  const roleLabels: Record<string, string> = {
+    cashier: 'Cashier',
+    manager: 'Manager',
+    admin: 'Admin',
+  };
 
   const tenantOptions = useMemo(
     () => tenants.map((tn) => ({ value: tn.id, label: `${tn.name} (${tn.status})` })),
@@ -235,7 +224,7 @@ export default function StaffPanel() {
     () => [
       {
         key: 'firstName',
-        header: t('staff.name'),
+        header: 'Name',
         sortable: true,
         render: (u: PosUser & Record<string, unknown>) => (
           <strong className="text-gray-800">
@@ -245,7 +234,7 @@ export default function StaffPanel() {
       },
       {
         key: 'email',
-        header: t('staff.email'),
+        header: 'Email',
         sortable: true,
         render: (u: PosUser & Record<string, unknown>) => (
           <span className="text-gray-600">{String(u.email || '—')}</span>
@@ -253,42 +242,42 @@ export default function StaffPanel() {
       },
       {
         key: 'username',
-        header: t('staff.username'),
+        header: 'Username',
         render: (u: PosUser & Record<string, unknown>) => (
           <span className="text-gray-600">{String(u.username || u.email || '—')}</span>
         ),
       },
       {
         key: 'role',
-        header: t('staff.role'),
+        header: 'Role',
         render: (u: PosUser & Record<string, unknown>) => (
           <RoleBadge role={String(u.role || 'cashier')} label={roleLabels[String(u.role)] ?? String(u.role)} />
         ),
       },
       {
         key: 'department',
-        header: t('staff.department'),
+        header: 'Department',
         render: (u: PosUser & Record<string, unknown>) => (
           <span className="text-gray-600">{String(u.department || '—')}</span>
         ),
       },
       {
         key: 'isActive',
-        header: t('staff.status'),
+        header: 'Status',
         render: (u: PosUser & Record<string, unknown>) => (
           <StatusTag status={u.isActive ? 'active' : 'inactive'} />
         ),
       },
       {
         key: 'lastLogin',
-        header: t('staff.lastLogin'),
+        header: 'Last Login',
         sortable: true,
         render: (u: PosUser & Record<string, unknown>) => (
           <span className="text-gray-500">{u.lastLogin ? formatDate(String(u.lastLogin)) : '—'}</span>
         ),
       },
     ],
-    [t, roleLabels],
+    [roleLabels],
   );
 
   // ─── Modal handlers ─────────────────────────────────────────────────
@@ -323,19 +312,19 @@ export default function StaffPanel() {
 
   const handleSave = useCallback(async () => {
     if (!form.firstName.trim() || !form.lastName.trim()) {
-      showToast(t('errors.required'), 'warning');
+      showToast('This field is required', 'warning');
       return;
     }
     if (!form.email.trim()) {
-      showToast(t('errors.required'), 'warning');
+      showToast('This field is required', 'warning');
       return;
     }
     if (!EMAIL_RE.test(form.email.trim())) {
-      showToast(t('errors.invalidEmail'), 'warning');
+      showToast('Please enter a valid email', 'warning');
       return;
     }
     if (editUserId == null && form.password.length < 8) {
-      showToast(t('errors.passwordTooShort'), 'warning');
+      showToast('Password must be at least 8 characters', 'warning');
       return;
     }
     setSaving(true);
@@ -352,7 +341,7 @@ export default function StaffPanel() {
           department: form.department.trim() || undefined,
           employeeId: form.employeeId.trim() || undefined,
         });
-        showToast(t('staff.userUpdated'), 'success');
+        showToast('Staff user updated successfully', 'success');
       } else {
         await api.createPosUser({
           email: form.email.trim(),
@@ -365,7 +354,7 @@ export default function StaffPanel() {
           department: form.department.trim() || undefined,
           employeeId: form.employeeId.trim() || undefined,
         });
-        showToast(t('staff.userCreated'), 'success');
+        showToast('Staff user created successfully', 'success');
       }
       setShowForm(false);
       setEditUserId(null);
@@ -376,18 +365,18 @@ export default function StaffPanel() {
     } finally {
       setSaving(false);
     }
-  }, [form, editUserId, page, search, loadUsers, showToast, t]);
+  }, [form, editUserId, page, search, loadUsers, showToast]);
 
   const handleResetPassword = useCallback(async () => {
     if (resetUserId == null) return;
     if (resetPassword.length < 8) {
-      showToast(t('errors.passwordTooShort'), 'warning');
+      showToast('Password must be at least 8 characters', 'warning');
       return;
     }
     setResetting(true);
     try {
       await api.resetPosUserPassword(resetUserId, resetPassword);
-      showToast(t('staff.passwordReset'), 'success');
+      showToast('Password reset successfully', 'success');
       setShowReset(false);
       setResetUserId(null);
       setResetPassword('');
@@ -396,14 +385,14 @@ export default function StaffPanel() {
     } finally {
       setResetting(false);
     }
-  }, [resetUserId, resetPassword, showToast, t]);
+  }, [resetUserId, resetPassword, showToast]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
     try {
       await api.deletePosUser(deleteTarget.id);
-      showToast(t('staff.userDeleted'), 'success');
+      showToast('Staff user deleted successfully', 'success');
       // If the deleted row was the only one on this page, step back a page.
       const nextPage = users.length === 1 && page > 1 ? page - 1 : page;
       setDeleteTarget(null);
@@ -413,14 +402,14 @@ export default function StaffPanel() {
     } finally {
       setDeleting(false);
     }
-  }, [deleteTarget, deleting, users.length, page, search, loadUsers, showToast, t]);
+  }, [deleteTarget, deleting, users.length, page, search, loadUsers, showToast]);
 
   return (
     <Card padding="none" className="p-6" data-testid="staff-panel" aria-busy={loading || loadingTenants || undefined}>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
           <span className="text-brand-600"><IconStaff size={20} /></span>
-          {t('staff.title')}
+          Staff
         </h2>
         <Button
           variant="success"
@@ -429,7 +418,7 @@ export default function StaffPanel() {
           data-testid="add-user-btn"
           leftIcon={plusIcon}
         >
-          {t('staff.addUser')}
+          Add Staff User
         </Button>
       </div>
 
@@ -437,11 +426,11 @@ export default function StaffPanel() {
         <Card padding="md" className="mb-6" data-testid="tenant-filter">
           <div className="min-w-[220px] max-w-md">
             <Select
-              label={t('staff.selectTenant')}
+              label="Select Tenant"
               options={tenantOptions}
               value={selectedTenantId}
               onChange={(e) => setSelectedTenantId(e.target.value)}
-              placeholder={t('staff.selectTenant')}
+              placeholder="Select Tenant"
               disabled={loadingTenants}
             />
           </div>
@@ -449,7 +438,7 @@ export default function StaffPanel() {
       )}
 
       {loading ? (
-        <LoadingSpinner text={t('staff.title')} />
+        <LoadingSpinner text="Staff" />
       ) : error ? (
         <div className="text-center py-12">
           <p className="text-red-500 text-sm mb-3">{error}</p>
@@ -459,9 +448,9 @@ export default function StaffPanel() {
         </div>
       ) : users.length === 0 ? (
         <EmptyState
-          title={t('staff.empty')}
-          description={t('staff.addUser')}
-          action={{ label: t('staff.addUser'), onClick: openAdd }}
+          title="No staff users found"
+          description="Add your first staff user to start managing your team."
+          action={{ label: 'Add Staff User', onClick: openAdd }}
         />
       ) : (
         <DataTable<PosUser & Record<string, unknown>>
@@ -470,9 +459,9 @@ export default function StaffPanel() {
           rowKey="id"
           size="md"
           searchable
-          searchPlaceholder={t('staff.search')}
+          searchPlaceholder="Search staff…"
           onSearch={setSearch}
-          emptyMessage={t('staff.empty')}
+          emptyMessage="No staff users found"
           pagination={{
             page,
             total,
@@ -480,14 +469,14 @@ export default function StaffPanel() {
             onChange: (p) => loadUsers(p, search),
           }}
           actions={(u) => (
-            <div className="flex gap-1.5" aria-label={t('staff.actions')}>
+            <div className="flex gap-1.5" aria-label="Actions">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => openEdit(u as unknown as PosUser)}
                 leftIcon={editIcon}
               >
-                {t('staff.edit')}
+                Edit
               </Button>
               <Button
                 variant="secondary"
@@ -495,7 +484,7 @@ export default function StaffPanel() {
                 onClick={() => openReset(u as unknown as PosUser)}
                 leftIcon={keyIcon}
               >
-                {t('staff.resetPassword')}
+                Reset Password
               </Button>
               <Button
                 variant="danger"
@@ -503,7 +492,7 @@ export default function StaffPanel() {
                 onClick={() => setDeleteTarget(u as unknown as PosUser)}
                 leftIcon={trashIcon}
               >
-                {t('staff.delete')}
+                Delete
               </Button>
             </div>
           )}
@@ -512,46 +501,46 @@ export default function StaffPanel() {
 
       <FormModal
         open={showForm}
-        title={editUserId != null ? t('staff.editUser') : t('staff.addUser')}
+        title={editUserId != null ? 'Edit Staff User' : 'Add Staff User'}
         onClose={() => { setShowForm(false); setEditUserId(null); }}
         onSubmit={handleSave}
-        submitLabel={saving ? 'Saving...' : t('staff.save')}
+        submitLabel={saving ? 'Saving...' : 'Save'}
         submitDisabled={saving}
         loading={saving}
         size="lg"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            label={t('staff.firstName') + ' *'}
+            label="First Name *"
             type="text"
             value={form.firstName}
             onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))}
-            placeholder={t('staff.firstName')}
+            placeholder="First Name"
           />
           <Input
-            label={t('staff.lastName') + ' *'}
+            label="Last Name *"
             type="text"
             value={form.lastName}
             onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))}
-            placeholder={t('staff.lastName')}
+            placeholder="Last Name"
           />
           <Input
-            label={t('staff.email') + ' *'}
+            label="Email *"
             type="email"
             value={form.email}
             onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
             placeholder="name@camp.com"
           />
           <Input
-            label={t('staff.username')}
+            label="Username"
             type="text"
             value={form.username}
             onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-            placeholder={t('staff.username')}
+            placeholder="Username"
           />
           {editUserId == null && (
             <Input
-              label={t('staff.password') + ' *'}
+              label="Password *"
               type="password"
               value={form.password}
               onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
@@ -559,36 +548,36 @@ export default function StaffPanel() {
             />
           )}
           <Select
-            label={t('staff.role') + ' *'}
+            label="Role *"
             options={roleOptions}
             value={form.role}
             onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as PosRole }))}
-            placeholder={t('staff.role')}
+            placeholder="Role"
           />
           <Input
-            label={t('staff.phone')}
+            label="Phone"
             type="tel"
             value={form.phone}
             onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
             placeholder="+20 ..."
           />
           <Input
-            label={t('staff.department')}
+            label="Department"
             type="text"
             value={form.department}
             onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
-            placeholder={t('staff.department')}
+            placeholder="Department"
           />
           <Input
-            label={t('staff.employeeId')}
+            label="Employee ID"
             type="text"
             value={form.employeeId}
             onChange={(e) => setForm((prev) => ({ ...prev, employeeId: e.target.value }))}
-            placeholder={t('staff.employeeId')}
+            placeholder="Employee ID"
           />
           {editUserId != null && (
             <Select
-              label={t('staff.status')}
+              label="Status"
               options={statusOptions}
               value={form.isActive}
               onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.value }))}
@@ -599,16 +588,16 @@ export default function StaffPanel() {
 
       <FormModal
         open={showReset}
-        title={t('staff.resetPassword')}
+        title="Reset Password"
         onClose={() => { setShowReset(false); setResetUserId(null); setResetPassword(''); }}
         onSubmit={handleResetPassword}
-        submitLabel={resetting ? 'Saving...' : t('staff.resetPassword')}
+        submitLabel={resetting ? 'Saving...' : 'Reset Password'}
         submitDisabled={resetting}
         loading={resetting}
         size="sm"
       >
         <Input
-          label={t('staff.password') + ' *'}
+          label="Password *"
           type="password"
           value={resetPassword}
           onChange={(e) => setResetPassword(e.target.value)}
@@ -618,10 +607,10 @@ export default function StaffPanel() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title={t('staff.delete')}
-        message={t('staff.confirmDelete', { name: deleteTarget ? `${deleteTarget.firstName} ${deleteTarget.lastName}` : '' })}
-        confirmLabel={t('staff.delete')}
-        cancelLabel={t('staff.cancel')}
+        title="Delete"
+        message={`Are you sure you want to delete ${deleteTarget ? `${deleteTarget.firstName} ${deleteTarget.lastName}` : ''}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
         danger
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}

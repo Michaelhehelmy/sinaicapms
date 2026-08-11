@@ -3,7 +3,6 @@ import * as api from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { useI18n } from '@/hooks/useI18n';
 import { cn } from '@/lib/utils';
 
 export interface WizardPhoto {
@@ -37,7 +36,6 @@ function isValidImageUrl(value: string): boolean {
  * wizard can preview + submit the same state.
  */
 export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
-  const { t } = useI18n();
   const { showToast } = useToast();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,11 +51,11 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
       if (uploading) return;
       const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
       if (imageFiles.length === 0) {
-        showToast(t('admin.photosUploadFailed'), 'warning');
+        showToast('Failed to upload image', 'warning');
         return;
       }
       if (imageFiles.length < Array.from(files).length) {
-        showToast(t('admin.photosUploadFailed'), 'warning');
+        showToast('Failed to upload image', 'warning');
       }
 
       const names = imageFiles.map((f) => f.name);
@@ -70,7 +68,7 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
           const res = await api.upload(file);
           next.push({ url: res.url, type: 'upload', name: file.name });
         } catch (err) {
-          showToast(`${t('admin.photosUploadFailed')}: ${err instanceof Error ? err.message : String(err)}`, 'error');
+          showToast(`Failed to upload image: ${err instanceof Error ? err.message : String(err)}`, 'error');
         }
       }
       setUploading(false);
@@ -80,7 +78,7 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
         onChange([...photos, ...next]);
       }
     },
-    [uploading, photos, onChange, showToast, t],
+    [uploading, photos, onChange, showToast],
   );
 
   const handleDrop = useCallback(
@@ -110,17 +108,17 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
     (raw: string) => {
       const url = raw.trim();
       if (!isValidImageUrl(url)) {
-        showToast(t('admin.photosUrlInvalid'), 'warning');
+        showToast('Please enter a valid image URL', 'warning');
         return;
       }
       if (photos.some((p) => p.url === url)) {
-        showToast(t('admin.photosUrlInvalid'), 'warning');
+        showToast('This image was already added', 'warning');
         return;
       }
       onChange([...photos, { url, type: 'url' }]);
       setUrlInput('');
     },
-    [photos, onChange, showToast, t],
+    [photos, onChange, showToast],
   );
 
   const handleUrlKeyDown = useCallback(
@@ -172,7 +170,7 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
       <div
         role="button"
         tabIndex={0}
-        aria-label={dragActive ? t('admin.photosDropZoneActive') : t('admin.photosDropZoneLabel')}
+        aria-label={dragActive ? 'Drop images to add them' : 'Drop images here or click to browse'}
         aria-disabled={uploading || undefined}
         onClick={activateBrowse}
         onKeyDown={handleDropZoneKeyDown}
@@ -205,9 +203,9 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
           />
         </svg>
         <p className="text-sm font-medium text-gray-700">
-          {dragActive ? t('admin.photosDropZoneActive') : t('admin.photosDropZoneLabel')}
+          {dragActive ? 'Drop images to add them' : 'Drop images here or click to browse'}
         </p>
-        <p className="text-xs text-gray-500 max-w-sm">{t('admin.photosDropHint')}</p>
+        <p className="text-xs text-gray-500 max-w-sm">Drag &amp; drop images, or click to browse (JPG, PNG, WebP, GIF — max 8 MB each)</p>
         <Button
           type="button"
           variant="secondary"
@@ -219,7 +217,7 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
             </svg>
           }
         >
-          {t('admin.photosBrowse')}
+          Browse Files
         </Button>
         <input
           ref={fileInputRef}
@@ -242,7 +240,7 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
               <span className="truncate">{name}</span>
-              {uploadingName === name && <span className="ml-auto text-xs text-brand-600">{t('admin.photosUploading')}</span>}
+              {uploadingName === name && <span className="ml-auto text-xs text-brand-600">Uploading…</span>}
             </li>
           ))}
         </ul>
@@ -255,15 +253,15 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
             <li key={`${photo.type}-${photo.url}-${index}`} className="group relative overflow-hidden rounded-lg border border-gray-200 bg-white">
               <img
                 src={photo.url}
-                alt={photo.name ?? `${t('admin.photosDropZoneLabel')} ${index + 1}`}
+                alt={photo.name ?? `Photo ${index + 1}`}
                 className="h-24 w-full object-cover"
               />
               <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                {photo.type === 'upload' ? t('admin.photosUploadedBadge') : t('admin.photosUrlBadge')}
+                {photo.type === 'upload' ? 'Uploaded' : 'URL'}
               </span>
               <button
                 type="button"
-                aria-label={t('admin.photosRemove')}
+                aria-label="Remove image"
                 onClick={() => removePhoto(index)}
                 className="absolute right-1.5 top-1.5 rounded bg-black/60 p-1 text-white transition-colors hover:bg-black/80"
               >
@@ -279,26 +277,26 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
       {/* URL / paste fallback */}
       <div className="mt-4">
         <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="photos-url-input">
-          {t('admin.photosUrlLabel')}
+          Add Image by URL
         </label>
         <div className="flex gap-2">
           <div className="flex-1">
             <Input
               id="photos-url-input"
-              aria-label={t('admin.photosUrlLabel')}
+              aria-label="Add Image by URL"
               type="url"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               onKeyDown={handleUrlKeyDown}
               onPaste={handleUrlPaste}
-              placeholder={t('admin.photosUrlPlaceholder')}
+              placeholder="https://example.com/photo.jpg"
             />
           </div>
           <Button type="button" variant="primary" size="md" onClick={() => addUrl(urlInput)}>
-            {t('admin.photosUrlAdd')}
+            Add URL
           </Button>
         </div>
-        <p className="mt-1 text-xs text-gray-500">{t('admin.photosUrlPasteHint')}</p>
+        <p className="mt-1 text-xs text-gray-500">You can also paste an image URL with Ctrl+V</p>
       </div>
     </div>
   );

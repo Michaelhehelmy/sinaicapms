@@ -140,9 +140,9 @@ describe('AdminApp', () => {
     expect(screen.getByText('Logout')).toBeInTheDocument();
   });
 
-  it('shows camp filter for non-super admin', () => {
+  it('shows the active camp badge for non-super admin (single-camp)', () => {
     render(<AdminApp />);
-    expect(screen.getByText('Active Camp:')).toBeInTheDocument();
+    expect(screen.getByTestId('active-camp-badge')).toHaveTextContent('Camp Alpha');
   });
 
   it('handles logout', () => {
@@ -267,13 +267,16 @@ describe('AdminApp', () => {
     });
   });
 
-  it('shows camp filter badge', async () => {
+  it('shows a single active camp badge with no camp picker', async () => {
     render(<AdminApp />);
     await waitFor(() => {
-      const badges = screen.getAllByText('All Camps');
-      expect(badges.length).toBe(2);
-      expect(badges.some((el) => el.tagName === 'SPAN')).toBe(true);
+      const badge = screen.getByTestId('active-camp-badge');
+      expect(badge).toHaveTextContent('Camp Alpha');
+      expect(badge.tagName).toBe('SPAN');
     });
+    // B3: the topbar no longer offers a camp dropdown or an "All Camps" option.
+    expect(screen.queryByTestId('camp-filter')).not.toBeInTheDocument();
+    expect(screen.queryByText('All Camps')).not.toBeInTheDocument();
   });
 
   it('shows loading screen while auth is loading', () => {
@@ -354,10 +357,11 @@ describe('AdminApp', () => {
     expect(mockLogout).toHaveBeenCalled();
   });
 
-  it('updates camp filter and shows selected camp badge', async () => {
+  it('scopes the active camp from the first camp (no filter interaction)', async () => {
     render(<AdminApp />);
-    fireEvent.change(screen.getByTestId('camp-filter'), { target: { value: 'c1' } });
-    expect(await screen.findByText('Camp Alpha', { selector: 'span' })).toBeInTheDocument();
+    // Even when multiple camps come back from the API, the admin shell pins
+    // itself to camps[0] — there is no way to switch the active camp.
+    expect(await screen.findByTestId('active-camp-badge')).toHaveTextContent('Camp Alpha');
     fireEvent.click(screen.getByTestId('nav-tab-rooms'));
     await waitFor(() => {
       expect(screen.getByTestId('rooms-panel')).toBeInTheDocument();

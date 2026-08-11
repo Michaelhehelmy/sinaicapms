@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth';
-import { useI18n } from '@/hooks/useI18n';
 import { updateAdminTenant, getAdminTenants, getAdmins, updateAdminUser } from '@/lib/api';
 import TenantDrilldown from './TenantDrilldown';
 
@@ -30,10 +29,16 @@ interface EditForm {
 
 const TENANT_TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'] as const;
 
+const TENANT_TYPE_LABELS: Record<string, string> = {
+  camp: 'Camp',
+  supermarket: 'Supermarket',
+  transportation: 'Transportation',
+  other: 'Other',
+};
+
 export default function SuperTenantsPanel() {
   const { showToast } = useToast();
   const { user } = useAuth();
-  const { t } = useI18n();
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,9 +96,7 @@ export default function SuperTenantsPanel() {
 
   const typeLabel = (value?: string) => {
     const v = value || 'camp';
-    return TENANT_TYPE_VALUES.includes(v as typeof TENANT_TYPE_VALUES[number])
-      ? t(`tenantType.${v}`)
-      : v;
+    return TENANT_TYPE_LABELS[v] ?? v;
   };
 
   const startEdit = (tenant: TenantRecord) => {
@@ -179,8 +182,11 @@ export default function SuperTenantsPanel() {
               <div>
                 <h3 className="text-base font-bold text-gray-800">{tenant.name}</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  {tenant.subdomain ? `${tenant.subdomain}.sinaicamps.com` : 'No subdomain'}
-                  {tenant.customDomain ? ` · ${tenant.customDomain}` : ''}
+                  {tenant.customDomain
+                    ? tenant.customDomain
+                    : tenant.subdomain
+                      ? `${tenant.subdomain}.sinaicamps.com`
+                      : 'No subdomain'}
                   {tenant.location ? ` · ${tenant.location}` : ''}
                 </p>
                 <div className="flex gap-3 mt-2 text-xs">
@@ -281,7 +287,7 @@ export default function SuperTenantsPanel() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="edit-tenant-type" className={labelClass}>{t('tenantType.label')}</label>
+                    <label htmlFor="edit-tenant-type" className={labelClass}>Tenant Type</label>
                     <select
                       id="edit-tenant-type"
                       data-testid="edit-tenant-type"
@@ -291,7 +297,7 @@ export default function SuperTenantsPanel() {
                     >
                       {TENANT_TYPE_VALUES.map((value) => (
                         <option key={value} value={value}>
-                          {t(`tenantType.${value}`)}
+                          {TENANT_TYPE_LABELS[value]}
                         </option>
                       ))}
                     </select>

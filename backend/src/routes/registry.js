@@ -281,7 +281,7 @@ const campPutRequestSchema = z
 
 // ── Products (Room Types) ───────────────────────────────────────────────────────
 // Wire rows from handleProductsRoute's explicit mapping (reads pos_products,
-// adds campIds from the product_camps junction).
+// adds campIds from pos_products.camp_id — source of truth since 0053).
 const productSchema = z
   .object({
     id: z.string(),
@@ -320,6 +320,7 @@ const productPostRequestSchema = z
     sku: z.string().optional(),
     isActive: z.number().optional(),
     campIds: z.array(z.string()).optional(),
+    campId: z.string().optional(), // 0053: room types belong to one camp
   })
   .openapi('ProductCreateRequest');
 
@@ -634,11 +635,11 @@ export const marketplaceRoutes = [
     method: 'post',
     path: '/api/camps',
     tags: ['camps'],
-    summary: 'Create a camp (auth + tenant scoped)',
+    summary: 'Create a camp (auth + tenant scoped; 409 if the tenant already has a camp)',
     request: { body: { content: { 'application/json': { schema: campPostRequestSchema } } } },
     responses: {
       200: { description: 'Created', content: { 'application/json': { schema: idResponseSchema } } },
-      ...errorResponses(),
+      ...errorResponses({ 409: { description: 'Conflict — tenant already has a camp', content: { 'application/json': { schema: errorEnvelopeSchema } } } }),
     },
   }),
   createRoute({

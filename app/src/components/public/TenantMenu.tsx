@@ -34,12 +34,6 @@ interface Props {
   tenantName: string;
   primaryColor?: string;
   whatsappNumber?: string;
-  /**
-   * SSR-resolved language (query param + sc_lang cookie). Used as the initial
-   * state so the server-rendered island HTML matches the first client paint —
-   * prevents the English/LTR flash before the localStorage sync effect runs.
-   */
-  lang?: 'en' | 'ar';
 }
 
 const DEFAULT_CURRENCY = 'EGP';
@@ -81,43 +75,20 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function getMenuLang(): 'en' | 'ar' {
-  if (typeof window === 'undefined') return 'ar';
-  const stored = localStorage.getItem('sc_lang');
-  return stored === 'en' ? 'en' : 'ar';
-}
-
 const MENU_T = {
-  en: {
-    searchPlaceholder: 'Search for a meal...',
-    emptyCart: 'Your cart is empty',
-    cartTitle: 'Your Order',
-    close: 'Close',
-    viewOrder: 'View Order',
-    total: 'Total',
-    sendWhatsApp: 'Send Order via WhatsApp',
-    noWhatsapp: 'WhatsApp number not available',
-    clearCart: 'Clear Cart',
-    noResults: 'No results',
-    noResultsHint: 'Try a different search term',
-    newOrder: 'new order from {name}',
-    totalLabel: 'Total',
-  },
-  ar: {
-    searchPlaceholder: 'ابحث عن وجبة...',
-    emptyCart: 'سلتك فارغة',
-    cartTitle: 'طلبك',
-    close: 'إغلاق',
-    viewOrder: 'عرض الطلب',
-    total: 'الإجمالي',
-    sendWhatsApp: 'إرسال الطلب عبر واتساب',
-    noWhatsapp: 'رقم الواتساب غير متوفر حالياً',
-    clearCart: 'تفريغ السلة',
-    noResults: 'لا توجد نتائج',
-    noResultsHint: 'جرّب البحث بكلمة مختلفة',
-    newOrder: 'طلب جديد من {name}',
-    totalLabel: 'الإجمالي',
-  },
+  searchPlaceholder: 'Search for a meal...',
+  emptyCart: 'Your cart is empty',
+  cartTitle: 'Your Order',
+  close: 'Close',
+  viewOrder: 'View Order',
+  total: 'Total',
+  sendWhatsApp: 'Send Order via WhatsApp',
+  noWhatsapp: 'WhatsApp number not available',
+  clearCart: 'Clear Cart',
+  noResults: 'No results',
+  noResultsHint: 'Try a different search term',
+  newOrder: 'new order from {name}',
+  totalLabel: 'Total',
 } as const;
 
 function loadCart(): CartItem[] {
@@ -128,12 +99,11 @@ function loadCart(): CartItem[] {
   } catch { return []; }
 }
 
-export default function TenantMenu({ meals, mealCategories, tenantName, primaryColor, whatsappNumber, lang: initialLang = 'ar' }: Props) {
+export default function TenantMenu({ meals, mealCategories, tenantName, primaryColor, whatsappNumber }: Props) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartItem[]>(loadCart);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(0);
-  const [lang, setLang] = useState<'en' | 'ar'>(initialLang);
   const categoryRefs = useRef<(HTMLDivElement | null)[]>([]);
   const chipsRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -143,8 +113,6 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
   const brandHex = normalizeHex(primaryColor);
   const brandText = contrastText(hexToRgb(brandHex));
 
-  useEffect(() => { setLang(getMenuLang()); }, []);
-
   // Persist cart to localStorage on every change
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -152,7 +120,7 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
     }
   }, [cart]);
 
-  const t = MENU_T[lang];
+  const t = MENU_T;
   const currency = DEFAULT_CURRENCY;
 
   const categories = mealCategories
@@ -286,7 +254,7 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
     const msg = `${t.newOrder.replace('{name}', escHtml(tenantName))}\n\n${lines.join('\n')}${totalStr}`;
     const url = `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
-  }, [cart, cartTotal, currency, tenantName, whatsappNumber, lang, t]);
+  }, [cart, cartTotal, currency, tenantName, whatsappNumber, t]);
 
   const formatPrice = (price: number) => {
     return `${price} ${currency}`;
@@ -310,7 +278,7 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
             {tenantName}
           </h1>
           <p className="text-lg md:text-xl opacity-80" style={{ color: brandText }}>
-            {lang === 'en' ? 'Menu' : 'القائمة'}
+            Menu
           </p>
         </div>
       </div>

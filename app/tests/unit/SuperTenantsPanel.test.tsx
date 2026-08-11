@@ -113,9 +113,11 @@ describe('SuperTenantsPanel', () => {
     mockGetAdminTenants.mockResolvedValue(sampleTenants);
     render(<SuperTenantsPanel />);
     await waitFor(() => {
+      // alpha has no custom domain -> subdomain.sinaicamps.com is shown
       expect(screen.getByText(/alpha\.sinaicamps\.com/)).toBeInTheDocument();
-      expect(screen.getByText(/beta\.sinaicamps\.com/)).toBeInTheDocument();
+      // beta has a custom domain -> ONLY the custom domain is shown
       expect(screen.getByText(/beta\.com/)).toBeInTheDocument();
+      expect(screen.queryByText(/beta\.sinaicamps\.com/)).not.toBeInTheDocument();
     });
   });
 

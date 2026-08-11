@@ -124,7 +124,7 @@ describe('RoomsPanel', () => {
     await waitFor(() => { expect(screen.getByText('Add New Room')).toBeInTheDocument(); });
     fireEvent.click(screen.getByText('Save Room'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Camp, product type, and room name are required.', 'warning');
+      expect(mockShowToast).toHaveBeenCalledWith('Product type and room name are required.', 'warning');
     });
   });
 
@@ -136,7 +136,7 @@ describe('RoomsPanel', () => {
     await waitFor(() => { expect(screen.getByText('Add New Room')).toBeInTheDocument(); });
     fireEvent.click(screen.getByText('Save Room'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Camp, product type, and room name are required.', 'warning');
+      expect(mockShowToast).toHaveBeenCalledWith('Product type and room name are required.', 'warning');
       expect(mockSaveRoom).not.toHaveBeenCalled();
     });
   });
@@ -177,7 +177,8 @@ describe('RoomsPanel', () => {
     });
   });
 
-  it('validates at least one camp assigned', async () => {
+  it('auto-assigns the single camp to a new product', async () => {
+    mockSaveProduct.mockResolvedValue({} as any);
     render(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
@@ -187,7 +188,12 @@ describe('RoomsPanel', () => {
     fireEvent.change(screen.getByLabelText('Capacity *'), { target: { value: '2' } });
     fireEvent.click(screen.getByText('Save Product'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Assign the product to at least one camp.', 'warning');
+      // B3: no camp checkbox — the product is always assigned to the single camp.
+      expect(screen.queryByLabelText('Camp 1')).not.toBeInTheDocument();
+      expect(mockSaveProduct).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Type A', capacity: 2, campIds: ['c1'] }),
+        undefined,
+      );
     });
   });
 
@@ -200,7 +206,6 @@ describe('RoomsPanel', () => {
     await waitFor(() => { expect(screen.getByText('Add New Product')).toBeInTheDocument(); });
     fireEvent.change(screen.getByPlaceholderText('Room type name'), { target: { value: 'Type A' } });
     fireEvent.change(screen.getByLabelText('Capacity *'), { target: { value: '2' } });
-    fireEvent.click(screen.getByLabelText('Camp 1'));
     fireEvent.click(screen.getByText('Save Product'));
     await waitFor(() => {
       expect(mockSaveProduct).toHaveBeenCalled();
@@ -216,7 +221,6 @@ describe('RoomsPanel', () => {
     await waitFor(() => { expect(screen.getByText('Add New Product')).toBeInTheDocument(); });
     fireEvent.change(screen.getByPlaceholderText('Room type name'), { target: { value: 'Type A' } });
     fireEvent.change(screen.getByLabelText('Capacity *'), { target: { value: '2' } });
-    fireEvent.click(screen.getByLabelText('Camp 1'));
     fireEvent.click(screen.getByText('Save Product'));
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Error saving product'), 'error');
@@ -264,7 +268,6 @@ describe('RoomsPanel', () => {
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => { expect(screen.getByText('Edit Room')).toBeInTheDocument(); });
     expect(screen.getByLabelText('Room Name *')).toHaveValue('Room 101');
-    fireEvent.change(screen.getByLabelText('Camp *'), { target: { value: 'c1' } });
     fireEvent.change(screen.getByLabelText('Product Type *'), { target: { value: 'pt1' } });
     fireEvent.change(screen.getByLabelText('Room Name *'), { target: { value: 'Room 105' } });
     fireEvent.change(screen.getByLabelText('Floor'), { target: { value: '5' } });
@@ -327,20 +330,21 @@ describe('RoomsPanel', () => {
     });
   });
 
-  it('toggles camp off when editing product and warns', async () => {
+  it('keeps the product assigned to the single camp when editing', async () => {
     mockSaveProduct.mockResolvedValue({} as any);
     render(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getByText('Edit'));
     await waitFor(() => { expect(screen.getByText('Edit Product')).toBeInTheDocument(); });
-    const campCheckbox = screen.getByLabelText('Camp 1') as HTMLInputElement;
-    expect(campCheckbox.checked).toBe(true);
-    fireEvent.click(campCheckbox);
+    // B3: no camp checkboxes in the edit form — the product stays on the single camp.
+    expect(screen.queryByLabelText('Camp 1')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Update Product'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Assign the product to at least one camp.', 'warning');
-      expect(mockSaveProduct).not.toHaveBeenCalled();
+      expect(mockSaveProduct).toHaveBeenCalledWith(
+        expect.objectContaining({ campIds: ['c1'] }),
+        'pt1',
+      );
     });
   });
 

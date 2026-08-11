@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
-import { useI18n } from '@/hooks/useI18n';
 import { IconLowStock } from './icons';
 
 function StatusBadge({ status }: { status: LowStockItem['status'] }) {
@@ -32,7 +31,6 @@ function StatusBadge({ status }: { status: LowStockItem['status'] }) {
  * restocking happens in the POS inventory flow.
  */
 export default function LowStockPanel() {
-  const { t } = useI18n();
   const { data, isLoading, isError, refetch } = useLowStock();
   const items = data?.items ?? [];
 
@@ -42,7 +40,7 @@ export default function LowStockPanel() {
         <span className="flex items-center justify-center h-9 w-9 rounded-xl bg-warning-100 text-warning-700">
           <IconLowStock size={20} />
         </span>
-        <h2 className="text-xl font-bold text-gray-800">{t('pos.lowStockAlerts')}</h2>
+        <h2 className="text-xl font-bold text-gray-800">Low Stock Alerts</h2>
       </div>
       <p className="text-sm text-gray-500 mb-6">
         Inventory items at or below their minimum stock level. Restock items flagged as out of stock as soon as possible.

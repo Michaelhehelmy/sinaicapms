@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } fr
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/components/ui/Toast';
-import { useCamps } from '@/hooks/useAdminData';
+import { useCamps, type Camp } from '@/hooks/useAdminData';
 import { useSettingsQuery, useInboxUnreadQuery } from '@/hooks/useQueryHooks';
 import { buildTenantTheme } from '@/lib/theme';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
@@ -36,7 +36,6 @@ const adminQueryClient = new QueryClient({
     },
   },
 });
-import LanguageSwitcher from '@/components/ui/LanguageSwitcher';
 
 // Admin JWT storage key — kept in lockstep with auth.tsx / api.ts.
 const TOKEN_KEY = 'sinaicamps_token';
@@ -233,7 +232,12 @@ function AdminAppInner() {
 
   const [tab, setTab] = useState<Tab>(() => getHashTab());
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [campFilter, setCampFilter] = useState<string>('all');
+
+  // Single-camp admin (B3): each tenant owns exactly one camp. Every panel is
+  // scoped to that camp — the topbar camp picker and multi-camp flows are gone.
+  const activeCamp = camps && camps.length > 0 ? camps[0] : null;
+  const activeCampIds = useMemo(() => (activeCamp ? [activeCamp.id] : []), [activeCamp]);
+  const activeCamps = useMemo<Camp[]>(() => (activeCamp ? [activeCamp] : []), [activeCamp]);
 
   const isSuperAdmin = hasRole('super_admin');
   // Phase 2: super admins get ONLY the super panels; tenant admins get the full tenant nav.
@@ -266,11 +270,6 @@ function AdminAppInner() {
     logoutTimerRef.current = setTimeout(() => { logout(); }, 500);
   }, [logout, showToast]);
 
-  const filteredCampIds = useMemo(() => {
-    if (campFilter === 'all') return camps?.map((c) => c.id) ?? [];
-    return [campFilter];
-  }, [campFilter, camps]);
-
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-stone-100">
@@ -289,15 +288,15 @@ function AdminAppInner() {
   const renderPanel = () => {
     switch (tab) {
       case 'dashboard':
-        return <DashboardPanel campIds={filteredCampIds} camps={camps ?? []} onNavigateToTab={switchTab} />;
+        return <DashboardPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       case 'camps':
         return <CampsPanel onRefreshCamps={refreshCamps} />;
       case 'rooms':
-        return <RoomsPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <RoomsPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'rateplans':
-        return <RatePlansPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <RatePlansPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'reservations':
-        return <OrdersPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <OrdersPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'inbox':
         return (
           <InboxPanel
@@ -309,17 +308,17 @@ function AdminAppInner() {
           />
         );
       case 'calendar':
-        return <BookingCalendar campIds={filteredCampIds} camps={camps ?? []} />;
+        return <BookingCalendar campIds={activeCampIds} camps={activeCamps} />;
       case 'meals':
-        return <MealsPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <MealsPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'menu-planner':
-        return <MenuPlannerPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <MenuPlannerPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'menu':
-        return <MenuPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <MenuPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'planning':
-        return <PlanningPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <PlanningPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'reports':
-        return <ReportsPanel campIds={filteredCampIds} camps={camps ?? []} />;
+        return <ReportsPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'low-stock':
         return <LowStockPanel />;
       case 'staff':
@@ -339,7 +338,7 @@ function AdminAppInner() {
         if (tab.startsWith('super_')) {
           return <SuperPlaceholder tab={tab} />;
         }
-        return <DashboardPanel campIds={filteredCampIds} camps={camps ?? []} onNavigateToTab={switchTab} />;
+        return <DashboardPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
     }
   };
 
@@ -437,21 +436,8 @@ function AdminAppInner() {
 
           {!isSuperAdmin && (
             <div className="flex items-center gap-2.5">
-              <label htmlFor="camp-filter" className="text-sm text-warm-600 font-medium whitespace-nowrap">Active Camp:</label>
-              <select
-                id="camp-filter"
-                value={campFilter}
-                onChange={(e) => setCampFilter(e.target.value)}
-                data-testid="camp-filter"
-                className="py-2 px-3.5 rounded-md border-2 border-stone-200 text-sm bg-white cursor-pointer font-[inherit] min-w-0 max-w-[200px] sm:min-w-[200px] focus:outline-none focus:border-brand-600"
-              >
-                <option value="all">All Camps</option>
-                {(camps ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <span className="bg-brand-600 text-white px-2.5 py-1 rounded-full text-xs font-semibold">
-                {campFilter === 'all' ? 'All Camps' : (camps ?? []).find((c) => c.id === campFilter)?.name ?? 'Camp'}
+              <span data-testid="active-camp-badge" className="bg-brand-600 text-white px-2.5 py-1 rounded-full text-xs font-semibold">
+                {activeCamp?.name ?? 'Camp'}
               </span>
             </div>
           )}
@@ -463,7 +449,6 @@ function AdminAppInner() {
           )}
 
           <div className="ml-auto flex items-center gap-2.5">
-            <LanguageSwitcher />
             <span className="text-sm text-gray-500">{userDisplayName}</span>
           </div>
         </div>

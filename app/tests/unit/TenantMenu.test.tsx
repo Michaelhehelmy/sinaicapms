@@ -79,25 +79,25 @@ describe('TenantMenu', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    expect(screen.getAllByText('عرض الطلب').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('View Order').length).toBeGreaterThanOrEqual(1);
   });
 
   it('opens cart drawer', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    expect(screen.getByText('طلبك')).toBeInTheDocument();
+    expect(screen.getByText('Your Order')).toBeInTheDocument();
   });
 
   it('displays total in cart drawer', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    expect(screen.getByText('الإجمالي')).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
     expect(screen.getAllByText('50 EGP').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -114,10 +114,10 @@ describe('TenantMenu', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    fireEvent.click(screen.getByText('تفريغ السلة'));
-    expect(screen.getByText('سلتك فارغة')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Clear Cart'));
+    expect(screen.getByText('Your cart is empty')).toBeInTheDocument();
   });
 
   it('opens WhatsApp with order link', () => {
@@ -125,9 +125,9 @@ describe('TenantMenu', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    fireEvent.click(screen.getByText(/إرسال الطلب عبر واتساب/));
+    fireEvent.click(screen.getByText(/Send Order via WhatsApp/));
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining('wa.me/1234567890'),
       '_blank'
@@ -139,44 +139,44 @@ describe('TenantMenu', () => {
     render(<TenantMenu {...defaultProps} whatsappNumber={undefined} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    expect(screen.getByText('رقم الواتساب غير متوفر حالياً')).toBeInTheDocument();
+    expect(screen.getByText('WhatsApp number not available')).toBeInTheDocument();
   });
 
   it('searches meals by name', () => {
     render(<TenantMenu {...defaultProps} />);
-    fireEvent.change(screen.getByPlaceholderText('ابحث عن وجبة...'), { target: { value: 'Koshari' } });
+    fireEvent.change(screen.getByPlaceholderText('Search for a meal...'), { target: { value: 'Koshari' } });
     expect(screen.getByText('Koshari')).toBeInTheDocument();
     expect(screen.queryByText('Ful')).not.toBeInTheDocument();
   });
 
   it('shows no results for bad search', () => {
     render(<TenantMenu {...defaultProps} />);
-    fireEvent.change(screen.getByPlaceholderText('ابحث عن وجبة...'), { target: { value: 'xyz123' } });
-    expect(screen.getByText('لا توجد نتائج')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Search for a meal...'), { target: { value: 'xyz123' } });
+    expect(screen.getByText('No results')).toBeInTheDocument();
   });
 
   it('renders empty cart state in drawer', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    fireEvent.click(screen.getByText('تفريغ السلة'));
-    expect(screen.getByText('سلتك فارغة')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Clear Cart'));
+    expect(screen.getByText('Your cart is empty')).toBeInTheDocument();
   });
 
   it('closes drawer when clicking backdrop', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    expect(screen.getByText('طلبك')).toBeInTheDocument();
-    const closeButtons = screen.getAllByRole('button', { name: 'إغلاق' });
+    expect(screen.getByText('Your Order')).toBeInTheDocument();
+    const closeButtons = screen.getAllByRole('button', { name: 'Close' });
     fireEvent.click(closeButtons[closeButtons.length - 1]);
-    expect(screen.queryByText('طلبك')).not.toBeInTheDocument();
+    expect(screen.queryByText('Your Order')).not.toBeInTheDocument();
   });
 
   it('recovers from corrupt cart storage', () => {
@@ -227,22 +227,22 @@ describe('TenantMenu', () => {
     render(<TenantMenu {...defaultProps} />);
     const addButtons = screen.getAllByText('+');
     fireEvent.click(addButtons[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    expect(screen.getByText('طلبك')).toBeInTheDocument();
-    const drawerPanel = screen.getByText('طلبك').closest('div.fixed') as HTMLElement;
+    expect(screen.getByText('Your Order')).toBeInTheDocument();
+    const drawerPanel = screen.getByText('Your Order').closest('div.fixed') as HTMLElement;
     const backdrop = drawerPanel.previousElementSibling as HTMLElement;
     fireEvent.click(backdrop);
-    expect(screen.queryByText('طلبك')).not.toBeInTheDocument();
+    expect(screen.queryByText('Your Order')).not.toBeInTheDocument();
   });
 
   it('adjusts quantity from within the drawer', () => {
     render(<TenantMenu {...defaultProps} />);
     fireEvent.click(screen.getAllByText('+')[0]);
     fireEvent.click(screen.getAllByText('+')[0]);
-    const viewOrderButtons = screen.getAllByText('عرض الطلب');
+    const viewOrderButtons = screen.getAllByText('View Order');
     fireEvent.click(viewOrderButtons[viewOrderButtons.length - 1]);
-    expect(screen.getByText('طلبك')).toBeInTheDocument();
+    expect(screen.getByText('Your Order')).toBeInTheDocument();
     const minusButtons = screen.getAllByText('−');
     fireEvent.click(minusButtons[minusButtons.length - 1]);
     expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(1);

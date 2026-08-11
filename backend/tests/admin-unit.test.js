@@ -190,6 +190,27 @@ describe('handleAdminRoute', () => {
         expect(body.hasMore).toBe(false);
       });
 
+      it('excludes the root marketplace tenant from the super-admin list', async () => {
+        const { db } = makeDbMock();
+        const fn = chainMock([
+          (ch) => { ch.all.mockResolvedValue({ results: [{ is_active: 1 }] }); },
+          (ch) => { ch.all.mockResolvedValue({ results: [{ total: 2 }] }); },
+          (ch) => { ch.all.mockResolvedValue({ results: [{ id: 't1', name: 'Camp A' }, { id: 't2', name: 'Camp B' }] }); },
+        ]);
+        db.prepare.mockImplementation(fn);
+        const req = makeRequest('GET', 'https://x.com/api/admin/tenants', null, superAdminHeaders(superAdminToken));
+        const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
+        const body = await res.json();
+        expect(res.status).toBe(200);
+        expect(body.data.some((t) => t.id === 'marketplace')).toBe(false);
+        expect(body.total).toBe(2);
+        // Both the count and the list query must exclude the marketplace row.
+        const countSql = db.prepare.mock.calls[1][0];
+        const listSql = db.prepare.mock.calls[2][0];
+        expect(countSql).toContain("id != 'marketplace'");
+        expect(listSql).toContain("t.id != 'marketplace'");
+      });
+
       it('returns error on DB failure', async () => {
         const { db } = makeDbMock();
         db.prepare.mockImplementation((sql) => {

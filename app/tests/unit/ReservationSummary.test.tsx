@@ -131,28 +131,4 @@ describe('ReservationSummary', () => {
     expect(window.location.href).toContain('/');
     expect(window.location.href).not.toContain('/camp/t1');
   });
-
-  it('builds the Arabic message when the language is Arabic', async () => {
-    localStorage.setItem('sc_lang', 'ar');
-    localStorage.setItem('sc_reservation', JSON.stringify([mockItems[0]]));
-    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-
-    render(<ReservationSummary {...defaultProps} />);
-    fireEvent.change(screen.getByPlaceholderText('أدخل اسمك الكامل'), {
-      target: { value: 'أحمد' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('+20 1XX XXX XXXX'), {
-      target: { value: '+201234567890' },
-    });
-    fireEvent.click(screen.getByText('إرسال الحجز عبر واتساب'));
-
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledTimes(1);
-      const url = openSpy.mock.calls[0][0] as string;
-      expect(decodeURIComponent(url)).toContain('ليالي');
-      expect(decodeURIComponent(url)).toContain('أحمد');
-    });
-
-    openSpy.mockRestore();
-  });
 });

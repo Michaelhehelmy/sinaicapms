@@ -4,23 +4,21 @@
 // (MarketplaceHome.astro) and the dedicated listing page (pages/camps.astro)
 // so the listing markup and behavior live in exactly one place.
 import { escHtml, normalizeAssetUrl } from '@/lib/utils';
-import { createI18n } from '@/i18n';
 
-const locale = (Astro.locals?.locale || 'en') as 'en' | 'ar';
-const { t: tt } = createI18n(locale);
 const TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'];
+const TYPE_LABELS_EN: Record<string, string> = {
+  camp: 'Camp',
+  supermarket: 'Supermarket',
+  transportation: 'Transportation',
+  other: 'Other',
+};
 const typeLabel = (value?: unknown) => {
   const v = (value as string) || 'camp';
-  return TYPE_VALUES.includes(v) ? tt(`tenantType.${v}`) : v;
+  return TYPE_VALUES.includes(v) ? TYPE_LABELS_EN[v] : v;
 };
-// Translated labels for the client-side grid re-render (applyFilters builds
+// English labels for the client-side grid re-render (applyFilters builds
 // card HTML via innerHTML and needs the labels injected at SSR time).
-const TYPE_LABELS: Record<string, string> = {
-  camp: tt('tenantType.camp'),
-  supermarket: tt('tenantType.supermarket'),
-  transportation: tt('tenantType.transportation'),
-  other: tt('tenantType.other'),
-};
+const TYPE_LABELS: Record<string, string> = TYPE_LABELS_EN;
 
 interface Props {
   tenants: Record<string, unknown>[];
@@ -51,13 +49,13 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
         />
       </div>
       <div>
-        <label for="filterType" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">{tt('tenantType.label')}</label>
+        <label for="filterType" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Type</label>
         <select id="filterType" data-testid="type-filter" class="input">
-          <option value="">{tt('tenantType.all')}</option>
-          <option value="camp">{tt('tenantType.camp')}</option>
-          <option value="supermarket">{tt('tenantType.supermarket')}</option>
-          <option value="transportation">{tt('tenantType.transportation')}</option>
-          <option value="other">{tt('tenantType.other')}</option>
+          <option value="">All Types</option>
+          <option value="camp">Camp</option>
+          <option value="supermarket">Supermarket</option>
+          <option value="transportation">Transportation</option>
+          <option value="other">Other</option>
         </select>
       </div>
       <div>

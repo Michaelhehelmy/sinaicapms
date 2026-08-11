@@ -20,14 +20,14 @@ test.describe('Camp Menu Page (/camp/[id]/menu)', () => {
   test('menu page has search input or empty state', async ({ page }) => {
     await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
     // When meals are available, search input is shown; otherwise empty state
-    const searchInput = page.locator('input[type="text"], input[placeholder*="search"], input[placeholder*="ابحث"]');
+    const searchInput = page.locator('input[type="text"], input[placeholder*="search"], input[placeholder*="Search"]');
     const inputCount = await searchInput.count();
     if (inputCount > 0) {
       expect(inputCount).toBeGreaterThanOrEqual(1);
     } else {
       // No meals — static empty state shown
       const content = await page.locator('body').textContent() ?? '';
-      expect(content.includes('القائمة غير متوفرة') || content.includes('لم يتم إعداد')).toBeTruthy();
+      expect(content.includes('Menu not available yet') || content.includes('No menu has been set up')).toBeTruthy();
     }
   });
 
@@ -50,16 +50,16 @@ test.describe('Camp Menu Page (/camp/[id]/menu)', () => {
 
   test('menu page has WhatsApp order button or empty state', async ({ page }) => {
     await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
-    const waBtn = page.locator('button:has-text("WhatsApp"), button:has-text("واتساب")');
+    const waBtn = page.locator('button:has-text("WhatsApp")');
     const waCount = await waBtn.count();
     const waVisible = waCount > 0 && await waBtn.isVisible();
     if (!waVisible) {
       // No meals — check for empty state text in body
       const content = await page.locator('body').textContent() ?? '';
       expect(
-        content.includes('القائمة غير متوفرة') ||
+        content.includes('Menu not available yet') ||
         content.includes('No meals') ||
-        content.includes('لم يتم إعداد')
+        content.includes('No menu has been set up')
       ).toBeTruthy();
     }
   });

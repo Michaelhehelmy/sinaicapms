@@ -421,6 +421,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "campId": {
+            "type": "string"
           }
         },
         "required": [
@@ -477,6 +480,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "campId": {
+            "type": "string"
           }
         }
       },
@@ -4984,7 +4990,7 @@
         "tags": [
           "camps"
         ],
-        "summary": "Create a camp (auth + tenant scoped)",
+        "summary": "Create a camp (auth + tenant scoped; 409 if the tenant already has a camp)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5027,6 +5033,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict — tenant already has a camp",
             "content": {
               "application/json": {
                 "schema": {

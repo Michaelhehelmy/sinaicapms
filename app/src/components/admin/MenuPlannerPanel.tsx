@@ -79,12 +79,14 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
   const { showToast } = useToast();
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
-  const [campFilter, setCampFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [modalDate, setModalDate] = useState('');
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Single-camp admin (B3): meal schedules always belong to the tenant's one camp.
+  const activeCampId = campIds.length > 0 ? campIds[0] : '';
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -119,10 +121,10 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
     const weekDates = new Set(weekDays.map((d) => formatDateISO(d)));
     return schedules.filter((s) => {
       if (!weekDates.has(s.date)) return false;
-      if (campFilter !== 'all' && s.campId !== campFilter) return false;
+      if (activeCampId && s.campId !== activeCampId) return false;
       return true;
     });
-  }, [schedules, weekDays, campFilter]);
+  }, [schedules, weekDays, activeCampId]);
 
   const schedulesByDate = useMemo(() => {
     const map: Record<string, MealSchedule[]> = {};
@@ -145,23 +147,23 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
 
   const openAddModal = useCallback((date: string) => {
     setModalDate(date);
-    setForm({ ...emptyForm, campId: campFilter !== 'all' ? campFilter : '' });
+    setForm({ ...emptyForm, campId: activeCampId });
     setShowModal(true);
-  }, [campFilter]);
+  }, [activeCampId]);
 
   const handleFormChange = useCallback((field: keyof ScheduleForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (!form.campId || !form.mealId) {
-      showToast('Please select a camp and a meal', 'error');
+    if (!form.mealId) {
+      showToast('Please select a meal', 'error');
       return;
     }
     setSaving(true);
     try {
       await createMealSchedule({
-        campId: form.campId,
+        campId: form.campId || activeCampId,
         date: modalDate,
         mealId: form.mealId,
         // T8-C: MealScheduleCreateRequest.packageType is a closed union
@@ -177,7 +179,7 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
     } finally {
       setSaving(false);
     }
-  }, [form, modalDate, showToast, refreshSchedules]);
+  }, [form, modalDate, showToast, refreshSchedules, activeCampId]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -191,17 +193,6 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
   }, [showToast, refreshSchedules]);
 
   const loading = loadingMeals || loadingSchedules;
-
-  const campFilterOptions = useMemo(() => {
-    return [
-      { value: 'all', label: 'All Camps' },
-      ...camps.map((c) => ({ value: c.id, label: c.name })),
-    ];
-  }, [camps]);
-
-  const campSelectOptions = useMemo(() => {
-    return camps.map((c) => ({ value: c.id, label: c.name }));
-  }, [camps]);
 
   const mealSelectOptions = useMemo(() => {
     return (meals ?? []).map((m) => ({ value: m.id, label: m.name }));
@@ -234,18 +225,6 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
           <Button variant="ghost" size="sm" onClick={goNextWeek}>
             →
           </Button>
-        </div>
-      </div>
-
-      {/* Camp filter */}
-      <div className="mb-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">Camp:</label>
-          <Select
-            options={campFilterOptions}
-            value={campFilter}
-            onChange={(e) => setCampFilter(e.target.value)}
-          />
         </div>
       </div>
 
@@ -298,7 +277,7 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
                           {s.packageType.replace(/_/g, ' ')}
                         </Badge>
                       </div>
-                      {s.campName && campFilter === 'all' && (
+                      {s.campName && (
                         <div className="text-xs text-gray-500 mt-0.5">{s.campName}</div>
                       )}
                       {confirmDeleteId === s.id ? (
@@ -357,15 +336,6 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
         >
           <p className="text-sm text-gray-500 mb-4">for {modalDate}</p>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Select
-                label="Camp *"
-                options={campSelectOptions}
-                value={form.campId}
-                placeholder="Select camp..."
-                onChange={(e) => handleFormChange('campId', e.target.value)}
-              />
-            </div>
             <div>
               <Select
                 label="Meal *"

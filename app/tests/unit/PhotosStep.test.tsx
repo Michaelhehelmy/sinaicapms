@@ -157,7 +157,7 @@ describe('PhotosStep', () => {
       target: { value: 'not-a-url' },
     });
     fireEvent.click(screen.getByText('Add URL'));
-    expect(mockShowToast).toHaveBeenCalledWith('Please enter a valid http(s) image URL.', 'warning');
+    expect(mockShowToast).toHaveBeenCalledWith('Please enter a valid image URL', 'warning');
 
     fireEvent.change(screen.getByLabelText('Add Image by URL'), {
       target: { value: 'https://example.com/photo.jpg' },

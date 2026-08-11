@@ -69,7 +69,7 @@ test.describe('Tenant Booking Flow', () => {
   test('WhatsApp button is visible when rooms are reserved', async ({ page }) => {
     const isEmpty = await booking.isEmpty();
     if (!isEmpty) {
-      const waBtn = page.locator('button:has-text("WhatsApp"), button:has-text("واتساب")');
+      const waBtn = page.locator('button:has-text("WhatsApp")');
       const count = await waBtn.count();
       expect(count).toBeGreaterThanOrEqual(1);
     }

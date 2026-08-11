@@ -12,15 +12,7 @@ const {
   theme: themeProp,
   activePage = '',
   description,
-  lang: propLang,
-  dir: propDir,
 } = Astro.props;
-
-// Determine language from (in priority order): prop > query param > cookie > default 'en'
-const queryLang = Astro.url.searchParams.get('lang');
-const cookieLang = Astro.cookies.get('sc_lang')?.value;
-const lang = propLang || queryLang || cookieLang || 'en';
-const dir = propDir || (lang === 'ar' ? 'rtl' : 'ltr');
 
 const faviconUrl = normalizeAssetUrl(tenant?.faviconUrl) || normalizeAssetUrl(tenant?.logoUrl) || '/favicon.ico';
 const brandColor = primaryColor || '#4a7c4f';
@@ -111,7 +103,7 @@ const jsonLd = sanitizeForJsonLd({
 });
 ---
 <!DOCTYPE html>
-<html lang={lang} dir={dir}>
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -317,22 +309,6 @@ const jsonLd = sanitizeForJsonLd({
       transform: translateY(-1px);
       box-shadow: 0 6px 12px -1px rgba(0, 0, 0, 0.15);
     }
-    .lang-toggle {
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 9999px;
-      padding: 4px 12px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: color 0.2s, border-color 0.2s;
-      font-family: inherit;
-    }
-    .lang-toggle:hover {
-      border-color: var(--primary);
-      color: var(--primary);
-    }
 
     .site-footer {
       position: relative;
@@ -490,15 +466,6 @@ const jsonLd = sanitizeForJsonLd({
         transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         overflow-y: auto;
       }
-      /* RTL: drawer hangs off the end (left) side. Keep this BEFORE
-         .site-nav.open — equal specificity, so source order lets the
-         open state (translateX(0)) win in Arabic. */
-      [dir='rtl'] .site-nav {
-        right: auto;
-        left: 0;
-        transform: translateX(-100%);
-        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
-      }
       .site-nav.open {
         display: flex;
         transform: translateX(0);
@@ -510,12 +477,6 @@ const jsonLd = sanitizeForJsonLd({
         width: 100%;
       }
       .site-nav a:last-of-type { border-bottom: none; }
-      .lang-toggle {
-        margin-top: 8px;
-        width: 100%;
-        text-align: center;
-        padding: 12px;
-      }
       .cta-btn {
         margin-top: 8px;
         width: 100%;
@@ -664,7 +625,6 @@ const jsonLd = sanitizeForJsonLd({
         <a href={`/gallery${querySuffix}`} class={isPageActive('gallery')}>Gallery</a>
         <a href={`/faq${querySuffix}`} class={isPageActive('faq')}>FAQ</a>
         <a href={`/contact${querySuffix}`} class={isPageActive('contact')}>Contact</a>
-        <button id="langToggle" data-testid="lang-toggle" class="lang-toggle" aria-label="Switch language">عربي</button>
         <a href={accommodationsHref} class={`cta-btn ${accommodationsActive}`}>Book Now</a>
       </nav>
     </div>
@@ -748,40 +708,6 @@ const jsonLd = sanitizeForJsonLd({
     </div>
   </footer>
   <script is:inline>
-    /* ── Lang toggle ── */
-    (function() {
-      function setLangCookie(val) {
-        document.cookie = 'sc_lang=' + val + '; path=/; max-age=31536000; SameSite=Lax';
-      }
-
-      var urlParams = new URLSearchParams(window.location.search);
-      var paramLang = urlParams.get('lang');
-      var stored = paramLang || localStorage.getItem('sc_lang') || 'en';
-      if (paramLang && paramLang !== localStorage.getItem('sc_lang')) {
-        localStorage.setItem('sc_lang', paramLang);
-      }
-      /* Sync cookie so SSR can detect the language on subsequent requests */
-      if (localStorage.getItem('sc_lang')) {
-        setLangCookie(localStorage.getItem('sc_lang'));
-      }
-      document.documentElement.lang = stored;
-      document.documentElement.dir = stored === 'ar' ? 'rtl' : 'ltr';
-      var btn = document.getElementById('langToggle');
-      if (!btn) return;
-      btn.textContent = stored === 'en' ? 'عربي' : 'EN';
-      btn.setAttribute('aria-label', stored === 'en' ? 'Switch to Arabic' : 'Switch to English');
-      btn.addEventListener('click', function() {
-        var next = localStorage.getItem('sc_lang') === 'ar' ? 'en' : 'ar';
-        localStorage.setItem('sc_lang', next);
-        setLangCookie(next);
-        document.documentElement.lang = next;
-        document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr';
-        btn.textContent = next === 'en' ? 'عربي' : 'EN';
-        btn.setAttribute('aria-label', next === 'en' ? 'Switch to Arabic' : 'Switch to English');
-        window.location.reload();
-      });
-    })();
-
     /* ── Header shadow on scroll ──
        An IntersectionObserver on a top-of-page sentinel replaces the scroll
        listener: the header gains .scrolled once the sentinel leaves the

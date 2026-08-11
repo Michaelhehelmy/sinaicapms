@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
-import { useI18n } from '@/hooks/useI18n';
 import {
   useSaveCampMutation,
   useSaveProductMutation,
@@ -18,10 +17,10 @@ import PhotosStep, { type WizardPhoto } from './PhotosStep';
 /* ------------------------------------------------------------------ */
 
 const STEPS = [
-  { id: 'details', key: 'admin.wizardStepDetails' },
-  { id: 'amenities', key: 'admin.wizardStepAmenities' },
-  { id: 'pricing', key: 'admin.wizardStepPricing' },
-  { id: 'photos', key: 'admin.wizardStepPhotos' },
+  { id: 'details', label: 'Details' },
+  { id: 'amenities', label: 'Amenities' },
+  { id: 'pricing', label: 'Pricing' },
+  { id: 'photos', label: 'Photos' },
 ] as const;
 
 type StepId = (typeof STEPS)[number]['id'];
@@ -119,7 +118,6 @@ const emptyForm: WizardFormState = {
  * (camps/products/ratePlans), so lists refresh without extra wiring.
  */
 export default function ListingWizard({ open, onClose, onCreated }: ListingWizardProps) {
-  const { t } = useI18n();
   const { showToast } = useToast();
 
   const [step, setStep] = useState<number>(0);
@@ -173,18 +171,18 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
     (current: number): boolean => {
       if (current === 0) {
         if (!form.name.trim()) {
-          showToast(t('admin.wizardNameRequired'), 'warning');
+          showToast('Listing name is required.', 'warning');
           return false;
         }
         if (!form.accommodationType) {
-          showToast(t('admin.wizardAccommodationTypeRequired'), 'warning');
+          showToast('Accommodation type is required.', 'warning');
           return false;
         }
         return true;
       }
       if (current === 2) {
         if (parseFloat(form.basePrice) <= 0 || Number.isNaN(parseFloat(form.basePrice))) {
-          showToast(t('admin.wizardBasePriceRequired'), 'warning');
+          showToast('Base price must be greater than 0.', 'warning');
           return false;
         }
         return true;
@@ -192,7 +190,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
       // Step 1 (amenities) and step 3 (photos) have no required gates.
       return true;
     },
-    [form, showToast, t],
+    [form, showToast],
   );
 
   const goNext = useCallback(() => {
@@ -251,15 +249,15 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
         isActive: 1,
       });
 
-      showToast(t('admin.wizardSubmitSuccess'), 'success');
+      showToast('Listing created successfully.', 'success');
       onCreated();
       onClose();
     } catch {
-      showToast(t('admin.wizardSubmitError'), 'error');
+      showToast('Failed to create listing. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, form, shortDescription, saveCampMutation, saveProductMutation, saveRatePlanMutation, showToast, t, onCreated, onClose]);
+  }, [submitting, form, shortDescription, saveCampMutation, saveProductMutation, saveRatePlanMutation, showToast, onCreated, onClose]);
 
   const isLastStep = step === STEPS.length - 1;
 
@@ -267,7 +265,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
     <Modal
       isOpen={open}
       onClose={handleClose}
-      title={t('admin.newListing')}
+      title="New Listing"
       size="full"
       closeOnOverlay={!submitting}
       closeOnEsc={!submitting}
@@ -304,7 +302,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                       isActive ? 'text-gray-900' : isDone ? 'text-gray-600' : 'text-gray-400',
                     )}
                   >
-                    {t(s.key)}
+                    {s.label}
                   </span>
                   {i < STEPS.length - 1 && <div className="h-px flex-1 bg-gray-200" aria-hidden="true" />}
                 </li>
@@ -317,32 +315,32 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
             <div className="lg:col-span-3">
               {currentStepId === 'details' && (
                 <div data-testid="wizard-step-details" className="space-y-4">
-                  <h3 className="text-lg font-bold text-gray-800">{t('admin.wizardDetailsTitle')}</h3>
+                  <h3 className="text-lg font-bold text-gray-800">Listing details</h3>
                   <Input
-                    label={t('admin.wizardName')}
+                    label="Listing Name *"
                     type="text"
                     value={form.name}
                     onChange={(e) => updateField('name', e.target.value)}
-                    placeholder={t('admin.wizardNamePlaceholder')}
+                    placeholder="e.g. Sunrise Beach Camp"
                   />
                   <Select
-                    label={t('admin.wizardAccommodationType')}
+                    label="Accommodation Type *"
                     options={accommodationTypeOptions}
                     value={form.accommodationType}
                     onChange={(e) => updateField('accommodationType', e.target.value)}
-                    placeholder={t('admin.wizardAccommodationTypePlaceholder')}
+                    placeholder="Select a type"
                   />
                   <Input
-                    label={t('admin.wizardCapacity')}
+                    label="Capacity"
                     type="number"
                     value={form.capacity}
                     onChange={(e) => updateField('capacity', e.target.value)}
-                    placeholder={t('admin.wizardCapacityPlaceholder')}
+                    placeholder="0"
                     min="0"
                   />
                   <div>
                     <label htmlFor="wizard-description" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t('admin.wizardDescription')}
+                      Description
                     </label>
                     <textarea
                       id="wizard-description"
@@ -350,7 +348,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                       onChange={(e) => updateField('description', e.target.value)}
                       className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 transition-colors duration-200 focus:outline-none focus:ring-2 focus:border-brand-500 focus:ring-brand-500"
                       rows={4}
-                      placeholder={t('admin.wizardDescriptionPlaceholder')}
+                      placeholder="Describe the listing…"
                     />
                   </div>
                 </div>
@@ -358,8 +356,8 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
 
               {currentStepId === 'amenities' && (
                 <div data-testid="wizard-step-amenities" className="space-y-4">
-                  <h3 className="text-lg font-bold text-gray-800">{t('admin.wizardAmenitiesTitle')}</h3>
-                  <p className="text-sm text-gray-500">{t('admin.wizardAmenitiesHint')}</p>
+                  <h3 className="text-lg font-bold text-gray-800">Amenities</h3>
+                  <p className="text-sm text-gray-500">Select the amenities this listing offers.</p>
                   <div className="flex flex-wrap gap-2">
                     {AMENITY_OPTIONS.map((amenity) => {
                       const selected = form.amenities.includes(amenity);
@@ -368,7 +366,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                           key={amenity}
                           type="button"
                           aria-pressed={selected}
-                          aria-label={`${t('admin.wizardAmenitiesToggleLabel')}: ${amenity}`}
+                          aria-label={`Toggle amenity: ${amenity}`}
                           onClick={() => toggleAmenity(amenity)}
                           className={cn(
                             'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-200',
@@ -389,7 +387,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                   </div>
                   {form.amenities.length === 0 && (
                     <p className="text-sm text-gray-400" data-testid="wizard-amenities-empty">
-                      {t('admin.wizardAmenitiesEmpty')}
+                      No amenities selected
                     </p>
                   )}
                 </div>
@@ -397,45 +395,45 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
 
               {currentStepId === 'pricing' && (
                 <div data-testid="wizard-step-pricing" className="space-y-4">
-                  <h3 className="text-lg font-bold text-gray-800">{t('admin.wizardPricingTitle')}</h3>
+                  <h3 className="text-lg font-bold text-gray-800">Pricing &amp; rate plan</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input
-                      label={t('admin.wizardBasePrice')}
+                      label="Base Price (per night) *"
                       type="number"
                       value={form.basePrice}
                       onChange={(e) => updateField('basePrice', e.target.value)}
-                      placeholder={t('admin.wizardBasePricePlaceholder')}
+                      placeholder="0"
                       min="0"
                       step="0.01"
                     />
                     <Input
-                      label={t('admin.wizardRatePlanName')}
+                      label="Rate Plan Name"
                       type="text"
                       value={form.ratePlanName}
                       onChange={(e) => updateField('ratePlanName', e.target.value)}
-                      placeholder={t('admin.wizardRatePlanNamePlaceholder')}
+                      placeholder="Standard"
                     />
                     <Select
-                      label={t('admin.wizardSeason')}
+                      label="Season"
                       options={seasonOptions}
                       value={form.season}
                       onChange={(e) => updateField('season', e.target.value)}
                     />
                     <Input
-                      label={t('admin.wizardMinStay')}
+                      label="Minimum Stay (nights)"
                       type="number"
                       value={form.minStay}
                       onChange={(e) => updateField('minStay', e.target.value)}
                       min="1"
                     />
                     <Input
-                      label={t('admin.wizardStartDate')}
+                      label="Start Date"
                       type="date"
                       value={form.startDate}
                       onChange={(e) => updateField('startDate', e.target.value)}
                     />
                     <Input
-                      label={t('admin.wizardEndDate')}
+                      label="End Date"
                       type="date"
                       value={form.endDate}
                       onChange={(e) => updateField('endDate', e.target.value)}
@@ -446,8 +444,8 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
 
               {currentStepId === 'photos' && (
                 <div data-testid="wizard-step-photos" className="space-y-4">
-                  <h3 className="text-lg font-bold text-gray-800">{t('admin.wizardPhotosTitle')}</h3>
-                  <p className="text-sm text-gray-500">{t('admin.wizardPhotosHint')}</p>
+                  <h3 className="text-lg font-bold text-gray-800">Photos</h3>
+                  <p className="text-sm text-gray-500">Upload photos or paste image URLs. The first photo becomes the listing cover.</p>
                   <PhotosStep photos={form.photos} onChange={(photos) => updateField('photos', photos)} />
                 </div>
               )}
@@ -457,37 +455,37 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
             <div className="lg:col-span-2">
               <div className="rounded-xl border border-gray-200 bg-white p-4" data-testid="wizard-preview">
                 <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                  {t('admin.wizardPreviewTitle')}
+                  Preview
                 </h4>
                 {form.photos[0] ? (
                   <img
                     src={form.photos[0].url}
-                    alt={form.name || t('admin.wizardPreviewNoPhoto')}
+                    alt={form.name || 'No photo yet'}
                     className="mb-3 h-32 w-full rounded-lg object-cover"
                   />
                 ) : (
                   <div className="mb-3 flex h-32 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
-                    {t('admin.wizardPreviewNoPhoto')}
+                    No photo yet
                   </div>
                 )}
                 <p className="text-base font-bold text-gray-900">{form.name || '—'}</p>
                 <dl className="mt-2 space-y-1 text-sm text-gray-600">
                   <div className="flex justify-between gap-2">
-                    <dt>{t('admin.wizardPreviewType')}</dt>
+                    <dt>Type</dt>
                     <dd className="text-right text-gray-900">{typeLabel || '—'}</dd>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <dt>{t('admin.wizardPreviewCapacity')}</dt>
+                    <dt>Capacity</dt>
                     <dd className="text-right text-gray-900">{form.capacity || '—'}</dd>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <dt>{t('admin.wizardPreviewPrice')}</dt>
+                    <dt>Price per night</dt>
                     <dd className="text-right font-semibold text-brand-700">
                       {formatCurrency(parseFloat(form.basePrice) || 0)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <dt>{t('admin.wizardPreviewAmenities')}</dt>
+                    <dt>Amenities</dt>
                     <dd className="max-w-[60%] text-right text-gray-900">
                       {form.amenities.length > 0 ? form.amenities.join(', ') : '—'}
                     </dd>
@@ -501,11 +499,11 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
       <ModalFooter>
         <div className="flex w-full items-center justify-between gap-3">
           <Button variant="ghost" size="md" onClick={handleClose} disabled={submitting}>
-            {t('common.cancel')}
+            Cancel
           </Button>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="md" onClick={goBack} disabled={step === 0 || submitting}>
-              {t('admin.wizardBack')}
+              Back
             </Button>
             {isLastStep ? (
               <Button
@@ -520,11 +518,11 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                   </svg>
                 }
               >
-                {submitting ? t('admin.wizardCreating') : t('admin.wizardCreate')}
+                {submitting ? 'Creating…' : 'Create Listing'}
               </Button>
             ) : (
               <Button variant="primary" size="md" onClick={goNext} disabled={submitting}>
-                {t('admin.wizardNext')}
+                Next
               </Button>
             )}
           </div>

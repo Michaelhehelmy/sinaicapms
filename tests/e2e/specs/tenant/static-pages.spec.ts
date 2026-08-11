@@ -413,13 +413,13 @@ test.describe('Tenant Static Pages', () => {
       expect(roomsClass).toContain('active-nav-link');
     });
 
-    test('lang toggle button exists in nav', async ({ page }) => {
+    test('no language toggle button in nav (hard-coded English)', async ({ page }) => {
       const home = new TenantHomePage(page);
       await home.goto(TENANT_ID);
 
       const langToggle = page.locator('[data-testid="lang-toggle"]');
       const count = await langToggle.count();
-      expect(count).toBeGreaterThanOrEqual(1);
+      expect(count).toBe(0);
     });
   });
 });

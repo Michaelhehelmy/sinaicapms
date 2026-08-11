@@ -41,10 +41,7 @@ test.describe('Tenant Footer — Content', () => {
       lower.includes('phone') ||
       lower.includes('whatsapp') ||
       lower.includes('email') ||
-      lower.includes('contact') ||
-      lower.includes('هاتف') ||
-      lower.includes('واتساب') ||
-      lower.includes('بريد');
+      lower.includes('contact');
     expect(hasContact).toBeTruthy();
   });
 

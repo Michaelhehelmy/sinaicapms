@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { trackEvent } from '@/lib/plausible';
-import { useI18n } from '@/hooks/useI18n';
 import type { Camp } from '@/hooks/useAdminData';
 
 interface DashboardPanelProps {
@@ -19,7 +18,6 @@ interface DashboardPanelProps {
 }
 
 export default function DashboardPanel({ campIds, camps, onNavigateToTab }: DashboardPanelProps) {
-  const { t } = useI18n();
   const { data: ordersRes, isLoading: loadingOrders } = useOrdersQuery();
   const { data: rooms, isLoading: loadingRooms } = useRoomsQuery();
   const { data: products } = useProductsQuery();
@@ -249,7 +247,7 @@ export default function DashboardPanel({ campIds, camps, onNavigateToTab }: Dash
       {/* Low Stock */}
       <Card data-testid="low-stock-alerts" padding="sm">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold text-gray-700">{t('admin.lowStock')}</h3>
+          <h3 className="text-sm font-bold text-gray-700">Low Stock</h3>
           {lowStockItems.length > 0 && (
             <button
               type="button"

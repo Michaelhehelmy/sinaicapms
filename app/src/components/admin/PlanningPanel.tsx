@@ -83,21 +83,19 @@ export default function PlanningPanel({ campIds, camps }: PlanningPanelProps) {
     return map;
   }, [camps]);
 
-  const campSelectOptions = useMemo(
-    () => camps.map((c) => ({ value: c.id, label: c.name })),
-    [camps],
-  );
+  // Single-camp admin (B3): plans always belong to the tenant's one camp.
+  const activeCampId = campIds.length > 0 ? campIds[0] : '';
 
   const openAdd = useCallback(() => {
     setEditId(null);
-    setForm(emptyPlanForm);
+    setForm({ ...emptyPlanForm, campId: activeCampId });
     setShowForm(true);
-  }, []);
+  }, [activeCampId]);
 
   const openEdit = useCallback((p: Plan) => {
     setEditId(p.id);
     setForm({
-      campId: p.campId || '',
+      campId: p.campId || activeCampId,
       name: p.name || '',
       description: p.description || '',
       date: p.date || '',
@@ -107,18 +105,18 @@ export default function PlanningPanel({ campIds, camps }: PlanningPanelProps) {
       category: p.category || '',
     });
     setShowForm(true);
-  }, []);
+  }, [activeCampId]);
 
   const handleSave = useCallback(async () => {
-    if (!form.campId || !form.name.trim()) {
-      showToast('Camp and plan name are required.', 'warning');
+    if (!form.name.trim()) {
+      showToast('Plan name is required.', 'warning');
       return;
     }
     setSaving(true);
     try {
       await api.savePlan({
         id: editId ?? undefined,
-        campId: form.campId,
+        campId: form.campId || activeCampId,
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         date: form.date || undefined,
@@ -137,7 +135,7 @@ export default function PlanningPanel({ campIds, camps }: PlanningPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [form, editId, showToast, refresh]);
+  }, [form, editId, showToast, refresh, activeCampId]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -273,13 +271,6 @@ export default function PlanningPanel({ campIds, camps }: PlanningPanelProps) {
         submitDisabled={saving}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Select
-            label="Camp *"
-            options={campSelectOptions}
-            value={form.campId}
-            onChange={(e) => setForm((prev) => ({ ...prev, campId: e.target.value }))}
-            placeholder="Select Camp"
-          />
           <Input
             label="Name *"
             type="text"

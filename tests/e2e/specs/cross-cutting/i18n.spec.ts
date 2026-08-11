@@ -2,66 +2,11 @@ import { test, expect } from '@playwright/test';
 import { TEST_TENANT } from '../../fixtures/test-data';
 
 test.describe('Internationalization (i18n)', () => {
-  test.describe('Arabic Language Support', () => {
-    test('marketplace loads in Arabic when ?lang=ar', async ({ page }) => {
-      await page.goto('/?lang=ar', { waitUntil: 'domcontentloaded' });
-      const content = await page.locator('body').textContent() ?? '';
-      expect(content.length).toBeGreaterThan(0);
-    });
-
-    test('RTL attribute is set on html element for Arabic', async ({ page }) => {
-      await page.goto('/?lang=ar', { waitUntil: 'domcontentloaded' });
-      const dir = await page.locator('html').getAttribute('dir');
-      // Astro SSR may not set dir from query param; check body content as fallback
-      const bodyDir = await page.evaluate(() => window.getComputedStyle(document.body).direction);
-      expect(dir === 'rtl' || bodyDir === 'rtl').toBeTruthy();
-    });
-
-    test('lang attribute is set to "ar" on html element', async ({ page }) => {
-      await page.goto('/?lang=ar', { waitUntil: 'domcontentloaded' });
-      const lang = await page.locator('html').getAttribute('lang');
-      // Check lang attribute OR verify Arabic content is present
-      const bodyText = await page.locator('body').textContent() ?? '';
-      const hasArabicContent = /[\u0600-\u06FF]/.test(bodyText);
-      expect(lang === 'ar' || hasArabicContent).toBeTruthy();
-    });
-
-    test('camp detail page loads in Arabic', async ({ page }) => {
-      await page.goto(`/camp/${TEST_TENANT.id}?lang=ar`, { waitUntil: 'domcontentloaded' });
-      const content = await page.locator('body').textContent() ?? '';
-      expect(content.length).toBeGreaterThan(0);
-    });
-
-    test('about page loads in Arabic', async ({ page }) => {
-      await page.goto('/about?lang=ar', { waitUntil: 'domcontentloaded' });
-      const content = await page.locator('body').textContent() ?? '';
-      expect(content.length).toBeGreaterThan(0);
-    });
-
-    test('faq page loads in Arabic', async ({ page }) => {
-      await page.goto('/faq?lang=ar', { waitUntil: 'domcontentloaded' });
-      const content = await page.locator('body').textContent() ?? '';
-      expect(content.length).toBeGreaterThan(0);
-    });
-
-    test('gallery page loads in Arabic', async ({ page }) => {
-      await page.goto('/gallery?lang=ar', { waitUntil: 'domcontentloaded' });
-      const content = await page.locator('body').textContent() ?? '';
-      expect(content.length).toBeGreaterThan(0);
-    });
-
-    test('contact page loads in Arabic', async ({ page }) => {
-      await page.goto('/contact?lang=ar', { waitUntil: 'domcontentloaded' });
-      const content = await page.locator('body').textContent() ?? '';
-      expect(content.length).toBeGreaterThan(0);
-    });
-  });
-
   test.describe('English Language (Default)', () => {
     test('marketplace loads in English by default', async ({ page }) => {
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       const dir = await page.locator('html').getAttribute('dir');
-      expect(dir).not.toBe('rtl');
+      expect(dir).toBe('ltr');
     });
 
     test('lang attribute defaults to "en"', async ({ page }) => {
@@ -86,26 +31,49 @@ test.describe('Internationalization (i18n)', () => {
     });
   });
 
-  test.describe('Language Switching', () => {
-    test('switching from English to Arabic re-renders page', async ({ page }) => {
+  test.describe('Page Load (English)', () => {
+    test('marketplace loads with content', async ({ page }) => {
       await page.goto('/', { waitUntil: 'domcontentloaded' });
-      const enText = await page.locator('body').textContent() ?? '';
-
-      await page.goto('/?lang=ar', { waitUntil: 'domcontentloaded' });
-      const arText = await page.locator('body').textContent() ?? '';
-
-      // Content should change when language switches
-      expect(enText).not.toBe(arText);
+      const content = await page.locator('body').textContent() ?? '';
+      expect(content.length).toBeGreaterThan(0);
     });
 
-    test('switching from Arabic to English re-renders page', async ({ page }) => {
-      await page.goto('/?lang=ar', { waitUntil: 'domcontentloaded' });
-      const arText = await page.locator('body').textContent() ?? '';
+    test('camp detail page loads with content', async ({ page }) => {
+      await page.goto(`/camp/${TEST_TENANT.id}`, { waitUntil: 'domcontentloaded' });
+      const content = await page.locator('body').textContent() ?? '';
+      expect(content.length).toBeGreaterThan(0);
+    });
 
-      await page.goto('/?lang=en', { waitUntil: 'domcontentloaded' });
-      const enText = await page.locator('body').textContent() ?? '';
+    test('about page loads with content', async ({ page }) => {
+      await page.goto('/about', { waitUntil: 'domcontentloaded' });
+      const content = await page.locator('body').textContent() ?? '';
+      expect(content.length).toBeGreaterThan(0);
+    });
 
-      expect(arText).not.toBe(enText);
+    test('faq page loads with content', async ({ page }) => {
+      await page.goto('/faq', { waitUntil: 'domcontentloaded' });
+      const content = await page.locator('body').textContent() ?? '';
+      expect(content.length).toBeGreaterThan(0);
+    });
+
+    test('gallery page loads with content', async ({ page }) => {
+      await page.goto('/gallery', { waitUntil: 'domcontentloaded' });
+      const content = await page.locator('body').textContent() ?? '';
+      expect(content.length).toBeGreaterThan(0);
+    });
+
+    test('contact page loads with content', async ({ page }) => {
+      await page.goto('/contact', { waitUntil: 'domcontentloaded' });
+      const content = await page.locator('body').textContent() ?? '';
+      expect(content.length).toBeGreaterThan(0);
+    });
+
+    test('page content is consistent across reloads', async ({ page }) => {
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      const first = await page.locator('body').textContent() ?? '';
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      const second = await page.locator('body').textContent() ?? '';
+      expect(first).toBe(second);
     });
   });
 });

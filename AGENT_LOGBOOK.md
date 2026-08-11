@@ -23,7 +23,7 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 - **wrangler**: Pinned to `^4.112.0` (latest stable). Root, backend, and app all use same version range. `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` env vars must be set to real values before deployment.
 - **deploy.sh auth gate (2026-08-08)**: `./deploy.sh` exits 1 on `⛔ wrangler OAuth session expired` when the stored `expiration_time` (access-token expiry in `~/.config/.wrangler/config/default.toml`) is in the past — even when wrangler's `refresh_token` still authenticates (read-only `wrangler d1 migrations list --remote` succeeds with `CLOUDFLARE_API_TOKEN` unset). Also, a stale token in `sinaicamps/.env` shadows the shell env and 401s. Remediation: `unset CLOUDFLARE_API_TOKEN && cd backend && npx wrangler login`, or refresh the `.env` token — do NOT edit deploy.sh to bypass the gate.
 - **Test pattern**: Tests are `.test.js` in `tests/` dir — vitest config must include `**/*.{test,spec}.{js,jsx}` to match.
-- **Room Types**: Now fully backed by `pos_products` (type='room') + `product_camps` junction table. The legacy `room_types` and `room_type_camps` tables are dropped by migration 0021.
+- **Room Types**: Now fully backed by `pos_products` (type='room') + `product_camps` junction table. The legacy `room_types` and `room_type_camps` tables are dropped by migration 0021. **(0053, 2026-08-11)**: `pos_products.camp_id` is the authoritative camp ownership for room types (backfilled from the junction by 0053); `product_camps` is kept only for read-compat until a follow-up drops it — new backend code reads/writes `pos_products.camp_id`, never the junction for source-of-truth.
 - **Staff Table**: Now fully merged into `pos_users` with `camp_id`, `salary`, `hire_date`, `phone` columns. Legacy `staff` table dropped by migration 0023.
 - **Passphrase Hashing**: All admin/hacker passphrases are now bcrypt-hashed. The `/api/me` response strips actual passphrases and returns boolean flags (`has_admin_passphrase`, `has_hacker_passphrase`).
 - **JWT Secret**: No fallback — `env.JWT_SECRET` must be set. The `auth.js` `getJwtSecret()` throws immediately if missing.
@@ -80,6 +80,16 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 ---
 
 ## Task Logs
+
+### [2026-08-11] C2+C3 — Exclude `marketplace` tenant from directories + normalize `www.` in tenant resolution
+- **Task**: (C2) The root `marketplace` tenant row is not a real tenant — exclude it from tenant list/directory endpoints while keeping the single-tenant `GET /api/tenants/marketplace` lookup (root-site branding). (C3) A tenant reached via `www.<custom-domain>` must resolve to the same tenant as `<custom-domain>`.
+- **Changes**:
+  - `backend/src/api/admin.js` — `GET /api/admin/tenants`: count query now `SELECT COUNT(*) as total FROM tenants WHERE id != 'marketplace'`; list query gains `WHERE t.id != 'marketplace'` (before `GROUP BY t.id`).
+  - `backend/src/api/tenants.js` — Public `GET /api/tenants`: super-admin query `WHERE 1=1` → `WHERE 1=1 AND tenants.id != 'marketplace'`; public query `WHERE 1=1 AND status = 'active'` → `WHERE 1=1 AND status = 'active' AND tenants.id != 'marketplace'`. Single-tenant `GET /api/tenants/:id` (lines ~141-155) NOT filtered, but now normalizes the lookup key: `const lookupKey = path[2].replace(/^www\./, '')` before `WHERE id = ? OR subdomain = ? OR custom_domain = ?` (so `www.acaciacamp.com` matches `custom_domain = 'acaciacamp.com'`).
+  - `app/src/middleware/tenant.ts` — `resolveTenantId()`: final custom-domain branch now returns `hostname.replace(/^www\./, '')`. Marketplace checks (`sinaicamps.com` / `www.sinaicamps.com`) and the `*.sinaicamps.com` subdomain branch are untouched. Side effect: `www.foo.sinaicamps.com` (www-subdomain edge case) now falls through to `foo.sinaicamps.com` instead of the verbatim hostname.
+  - Tests: `backend/tests/tenants-unit.test.js` (+5: public exclusion, super-admin exclusion, marketplace single-lookup 200, www lookup-key normalization asserting bind args `['acaciacamp.com','acaciacamp.com','acaciacamp.com']`); `backend/tests/admin-unit.test.js` (+1: super-admin list excludes marketplace — asserts `id != 'marketplace'` in both count and list SQL); `app/tests/unit/middleware-tenant.test.ts` (+3: www custom-domain → `acaciacamp.com` lookup key, non-www untouched, www.sinaicamps.com still marketplace) and updated the `www.foo.sinaicamps.com` expectation to the new `foo.sinaicamps.com` key.
+- **Result**: `cd backend && npx vitest run` → **1075 passed / 36 files**; `cd app && npx vitest run` → **1469 passed / 74 files**; `cd app && npx tsc --noEmit` → **153 errors** (baseline, ≤153 ✓).
+- **Lessons**: The handler passes DB results through verbatim — with a mock DB the marketplace exclusion can only be asserted on the SQL string (via `db.prepare.mock.calls[i][0]`), not on response content. For super-admin tenants handlers, prepare call #1 = auth activeCheck, so the list SQL is `mock.calls[1]` (tenants.js) and the count/list SQL are `calls[1]`/`calls[2]` (admin.js).
 
 ### [2026-08-10] T2 — POS-users OpenAPI routes registered + contract regenerated
 - **Task**: Add POS-users route definitions to `backend/src/routes/registry.js` (schemas + 5 routes + registration in `openApiRoutes`), then regenerate `backend/openapi.json` and `app/src/lib/api-types.ts`.
@@ -5983,3 +5993,180 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 3. Date-rot is real: fixture dates near "today" expire silently. Keep booking fixtures ≥ 6 weeks in the future; when a batch of "capacity/overlap/create" tests fails at once, suspect date-rot first (`git stash` to confirm).
 4. TS 5.5+ infers type predicates for const arrows (`(role: string) => role === 'admin'` → `(role: string) => role is "admin"`) — overriding such a mock with `() => true` is a tsc error; use `as unknown as typeof <mock>.hasRole`.
 5. Playwright E2E project suites this size: run per-project/per-spec with `--workers=1` for diagnosis; the full default run (4 workers) is fine and took 4.9m.
+
+## 2026-08-11 — Phase 3 A1: total i18n removal (frontend hard-coded English)
+
+**Plan**: Totally remove translation (i18n) from all frontend — hard-code English.
+
+**A1 — i18n system removed from `app/src`** (task `a1-remove-i18n`, A2 test cleanup folded in):
+- DELETED: `app/src/i18n/` (`index.tsx`, `en.json`, `ar.json`), `app/src/hooks/useI18n.ts`, `app/src/components/ui/LanguageSwitcher.tsx`.
+- Rewrote `app/src/middleware/index.ts` → `sequence(securityHeadersOnRequest, tenantOnRequest)` (removed `setLocaleLocals`/`Locale`); `app/src/env.d.ts` no longer has `locale` on `App.Locals`.
+- `PublicLayout.astro` → `<html lang="en" dir="ltr">`, removed `sc_lang` cookie/query logic, `#langToggle`, `.lang-toggle`/RTL CSS. `BookPage.astro`/`MenuPage.astro`/`NotFoundPage.astro` also hard-code en/ltr.
+- Inlined English across public components + 7 admin panels (`TenantDrilldown`, `ListingWizard`, `StaffPanel`, `LowStockPanel`, `PhotosStep`, `DashboardPanel`, `SuperTenantsPanel`) — text taken from the OLD `en.json` (via `git show HEAD:app/src/i18n/en.json`).
+- `AdminApp.tsx`: removed `LanguageSwitcher` import + render site.
+
+**Test cleanup (A2 scope)**:
+- DELETED app unit tests importing removed modules: `useI18n.test.ts`, `i18n.test.ts`, `LanguageSwitcher.test.tsx`.
+- `TenantMenu.test.tsx`: all Arabic expectations → English (View Order / Your Order / Total / Clear Cart / Your cart is empty / Send Order via WhatsApp / WhatsApp number not available / Search for a meal... / No results / Close). `ReservationSummary.test.tsx`: removed the Arabic-message test. `PhotosStep.test.tsx`: "Please enter a valid http(s) image URL." → "Please enter a valid image URL". `accessibility.test.tsx`: removed `A11y: LanguageSwitcher` describe.
+- E2E: `arabic-rtl-deep.spec.ts` → "English LTR Deep Rendering" (17 tests, `dir=ltr`/`lang=en` assertions); `menu-language.spec.ts` → English-only (9 tests); `cross-cutting/i18n.spec.ts` → English-default + page-load smoke (11 tests, removed Arabic/language-switching describes); `static-pages.spec.ts` lang-toggle test now asserts `count === 0`; cleaned Arabic selector fallbacks (`button:has-text("واتساب")`, `placeholder*="ابحث"`, footer Arabic strings) from `camp-menu.spec.ts`, `camp-booking.spec.ts`, `booking-flow.spec.ts`, `footer.spec.ts`.
+
+**Verification — ALL GREEN**:
+1. `grep -rIn "useI18n|createI18n|sc_lang|I18nProvider|from '@/i18n'|LanguageSwitcher" app/src` → **ZERO matches** (only harmless `localeCompare` JS sorting calls remain).
+2. `cd app && npm run build` → **succeeds**.
+3. `cd app && npx vitest run` → **74 files / 1465 passed**.
+4. `cd app && npx tsc --noEmit` → **153 errors (below the 155-error A2 baseline)**.
+5. `npx playwright test` full suite → **552 passed / 14 skipped / 0 failed** (~5.4m).
+
+**Persistent lessons**:
+1. When deleting a shared i18n/util module, the vitest test suite hard-fails on ANY test file that imports it — but the E2E suite fails SILENTLY at runtime (assertions on removed behavior), so you must grep E2E specs separately (`sc_lang`, `lang=.ar`, `dir=.rtl`, Arabic chars) — a `vitest run` green does NOT mean the E2E suite is green.
+2. The full Playwright suite is 5.4m on this machine at 4 workers; for targeted iteration run only the changed specs (they boot backend+app via the `webServer` config automatically).
+3. Hard-coding English after removing i18n: keep exact strings from the old `en.json` (`git show HEAD:<path>` after deletion) so unit tests only need expectation swaps, not string edits.
+
+## 2026-08-11 — C1: tenant directory shows ONLY the custom domain when present
+
+**Task** (tmp agent `c1-tenant-directory-domain-display`): In the super-admin tenant directory, a tenant with a custom domain must display ONLY that custom domain (`acaciacamp.com`), never `acacia.sinaicamps.com · acaciacamp.com`. Frontend display-string change only — no backend, no marketplace-tenant filtering (separate task C2).
+
+**Changes**:
+- `app/src/components/admin/SuperTenantsPanel.tsx` — Directory card line now renders `tenant.customDomain` when truthy; else `${tenant.subdomain}.sinaicamps.com`; else `'No subdomain'`. Removed the ` · ${tenant.customDomain}` suffix so both domains are never rendered together (location separator untouched).
+- `app/src/components/admin/TenantDrilldown.tsx` — Added `customDomain?: string | null` to the `TenantDrilldownProps.tenant` type (caller `SuperTenantsPanel` already passes a full `TenantRecord` with `customDomain`, so no caller change needed). Header line now: `customDomain` wins, else `${tenant.subdomain}.sinaicamps.com`, else `tenant.id`.
+- `app/tests/unit/SuperTenantsPanel.test.tsx` — "shows subdomain and custom domain info": `alpha.sinaicamps.com` (no custom domain) still asserted; `beta.com` asserted; added `beta.sinaicamps.com` NOT present (custom domain wins).
+- `app/tests/unit/TenantDrilldown.test.tsx` — Added `sampleTenantWithCustomDomain` + test asserting header shows ONLY `acaciacamp.com` and NOT `acacia.sinaicamps.com`.
+
+**Other render sites checked (no change needed)**:
+- `CampsSection.astro` (SSR lines 104-108 + 132, client JS lines 264-268 + 284) already implements the same custom-domain-wins rule for both the card URL and display span.
+- `MarketplaceHome.astro` line 241 — onboarding success alert builds `https://<subdomain>.sinaicamps.com`; the onboarding flow has no customDomain input and new tenants have none, so it stays.
+- `app/src/components/admin/ListingWizard.tsx` — no subdomain/customDomain rendering.
+- `api.ts`/`middleware/tenant.ts`/`routeZones.ts`/`plausible.ts` matches are comments/URL resolution, not tenant render sites.
+
+**Verification**:
+1. `grep -rn "subdomain}.sinaicamps.com" app/src/components/admin/` → 2 matches, both the fallback branch inside `customDomain ? … : subdomain` ternaries — no file renders both together.
+2. `cd app && npx vitest run` → **74 files / 1466 passed** (up from 1465 baseline: +1 drilldown custom-domain test).
+3. `cd app && npx tsc --noEmit` → **153 errors**, identical to the pre-existing baseline (≤ 153 gate met).
+
+**Lessons**: The `grep "subdomain}.sinaicamps.com"` done-condition legitimately matches the fallback branch of the new ternary — verify "renders both together" by reading the surrounding JSX, not by zero-greping the pattern. `TenantRecord` in SuperTenantsPanel already carried `customDomain` (required), so threading it into TenantDrilldown was a type-only change — the existing `tenant={drillTenant}` call site needed no edits.
+
+## 2026-08-11 — B1: one-camp-per-tenant schema migration (0053_camp_ownership.sql)
+
+**Task** (tmp agent `b1-camp-schema-migration`): Add the schema half of the one-camp-per-tenant feature — unique camp per tenant + room types owned directly by a camp — as migration `backend/migrations/0053_camp_ownership.sql`, apply locally, verify, keep tests green.
+
+**Critical discovery — the task's stated schema facts were STALE**: the plan said to `ALTER TABLE room_types ADD COLUMN camp_id …` and backfill from `room_type_camps`, but those legacy tables were dropped long ago (`room_type_camps` in 0021, `room_types` in 0045). Verified against the applied local DB: room types live in `pos_products` (type='room'), the junction is `product_camps`, and `pos_products.camp_id` ALREADY exists (added 0020, preserved by the 0042 rebuild). `rooms`→`rooms_new`, `rate_plans`→`rate_plans_new`, `reservations`→`orders`, `plans`→`plans_new`. A literal `ALTER TABLE room_types` would have failed the apply → done-condition broken. Migration was written against the LIVE tables instead (matches logbook line "Room Types: … `pos_products` … legacy tables dropped by migration 0021").
+
+**Changes**:
+- `backend/migrations/0053_camp_ownership.sql` (new) — 4 statements:
+  1. Normalize duplicate camp ownership: `UPDATE camps SET tenant_id = id WHERE tenant_id != id AND EXISTS (SELECT 1 FROM tenants WHERE tenants.id = camps.id) AND (SELECT COUNT(*) FROM camps c2 WHERE c2.tenant_id = camps.tenant_id) > 1` — only DUPLICATED-tenant camps are re-pointed, and only to a same-id tenant. Local/E2E residue had camp `michaelshouse` → tenant `acaciacamp`; re-pointed to tenant `michaelshouse` so the unique index can be created. If a duplicate has no same-id tenant, the index fails loudly instead of guessing.
+  2. `CREATE UNIQUE INDEX IF NOT EXISTS idx_camps_one_per_tenant ON camps(tenant_id)` — one camp per tenant (SQLite can't ALTER a UNIQUE constraint; unique index is the equivalent).
+  3. Backfill `pos_products.camp_id` from `product_camps` (`WHERE camp_id IS NULL AND EXISTS …` — idempotent, only fills junction-mapped products; unmapped room types stay NULL = orphaned, documented).
+  4. `product_camps` is KEPT (no DROP) — deployed backend still reads the junction; follow-up migration drops it after B2 switches to `pos_products.camp_id`.
+  - Comments document: the live-table substitution (room_types→pos_products, room_type_camps→product_camps), branding stays on `tenants` (tenant == its one camp), and `pos_products.camp_id` is a soft FK (no REFERENCES — adding one needs a full table rebuild, deferred).
+
+**Verification**:
+1. Fresh DB: backed up `backend/.wrangler/state/v3/d1` → `/tmp/opencode/wrangler-state-backup`, cleared, `npx wrangler d1 migrations apply campmaster-db --local` → all 53 migrations ✅ (0053 included). `sqlite_master` shows `CREATE UNIQUE INDEX idx_camps_one_per_tenant ON camps(tenant_id)`; `PRAGMA table_info(pos_products)` shows `camp_id` TEXT; `product_camps` kept; legacy `room_types`/`room_type_camps`/`rooms`/`reservations` absent; camps empty (fresh).
+2. Existing dirty local DB: restored backup (0053 unapplied, duplicate camps present), apply → "4 commands executed successfully" ✅; camps now `acaciacamp→acaciacamp`, `michaelshouse→michaelshouse`; duplicate INSERT for a second camp under `acaciacamp` → `UNIQUE constraint failed: camps.tenant_id` (rule enforced); re-apply → "No migrations to apply!" (idempotent).
+3. `cd backend && npx vitest run` → **36 files / 1070 passed** (tests build minimal per-test tables, not the migration chain — no test-helper fix needed).
+
+**Lessons**:
+1. ALWAYS verify task schema facts against the FULL migration chain + the live local DB, not just `0001_init.sql` — this repo has renamed/dropped most of the original tables (0021/0028/0045). The logbook's "Room Types" bullet already recorded this; a fresh agent missed it.
+2. A `CREATE UNIQUE INDEX` on existing data needs a data-normalization step BEFORE it or it fails on dirty rows. Keep it surgical: only touch rows that violate the constraint, and only with a defensible mapping (same-id tenant), else fail loudly.
+3. `pos_products.camp_id` predates this feature (0020) — B2/B3/B4 should read it as the authoritative camp ownership for products and treat `product_camps` as legacy read-compat until it's dropped.
+
+## 2026-08-11 — B2: one-camp-per-tenant backend alignment (camps.js + orders ownership)
+
+**Task** (tmp agent `b2-camp-backend`): align the Hono backend with migration 0053 — exactly one camp per tenant (409 before the DB unique-index throw), room types owned via `pos_products.camp_id` (source of truth, junction kept read-compat), and tenant+camp-scoped rooms / rate plans / orders with ownership validation.
+
+**Changes** (`backend/src/api/camps.js`, `backend/src/routes/registry.js`, `backend/openapi.json`, tests):
+- **GET /api/camps** (marketplace branch, both paginated & unpaginated): added `GROUP BY c.tenant_id` so exactly one camp per tenant is listed.
+- **POST /api/camps**: `SELECT id FROM camps WHERE tenant_id = ?` guard → `409 'Tenant already has a camp'` before INSERT (the DB unique index would otherwise throw a 500). Registry + regenerated openapi.json document the 409.
+- **GET /api/products**: removed the `product_camps` junction query; `campIds: p.camp_id ? [p.camp_id] : []` reads straight from `pos_products.camp_id` (single query, source of truth since 0053).
+- **POST /api/products**: `productPostSchema` gained optional `camp_id`; when provided it's validated `WHERE tenant_id = ? AND id = ?` (404 'Camp not found' on miss); when omitted the tenant's single camp is resolved (`LIMIT 1`). INSERT writes the `camp_id` column. `camp_ids` junction write kept for read-compat.
+- **PUT /api/products**: same `camp_id` ownership validation; UPDATE sets `camp_id = COALESCE(?, camp_id)`.
+- **POST /api/rooms**: INSERT is now a `SELECT … FROM camps c WHERE c.id = ? AND c.tenant_id = ? AND EXISTS(pos_products …)` so a foreign camp/product can never be stored — `meta.changes === 0` → `404 'Camp or product not found for this tenant'`.
+- **PUT /api/rooms**: `camp_id`/`product_id` updates are constrained via `COALESCE((SELECT id FROM … WHERE tenant_id = ?), …)` so only tenant-owned entities can be assigned.
+- **POST /api/rate-plans**: INSERT guarded by `SELECT … FROM pos_products p WHERE p.id = ? AND p.tenant_id = ?` → 404 on foreign product.
+- **PUT /api/rate-plans**: `product_id` update constrained to tenant-owned products the same way.
+- **Orders** (`orders.js`): `validateOrder` already pins the room to the tenant via `JOIN camps c ON r.camp_id = c.id WHERE r.id = ? AND c.tenant_id = ?` and all order writes are `tenant_id`-scoped — confirmed sufficient, no code change (a room belongs to exactly one camp, so tenant-owned room ⇒ tenant-owned camp).
+
+**Tests**: updated 3 stale `products-unit.test.js` tests that encoded the old junction behavior (GET campIds now from `pos_products.camp_id`, single query; POST call order now camp-resolve → org-mapping → INSERT → junction). Added in `camps-unit.test.js`: second camp → 409; product POST/PUT with `camp_id` (ownership pass, auto-resolve, 404 on foreign camp); room POST 404 guard; rate-plan POST 404 guard. Regenerated `backend/openapi.json` via `npm run gen:openapi` (70 paths / 120 schemas).
+
+**Verification**: `cd backend && npx vitest run` → **36 files / 1082 passed** (was 1070 before B2; B2 added 12 new assertions/tests). No frontend changes needed — `getTenantSSRData` in `app/src/middleware/tenant.ts:133` already consumes `/camps` + `/products` which now return one camp per tenant and `campId`.
+
+**Lessons**:
+1. Ownership-guarded INSERT via `INSERT … SELECT … WHERE <ownership join>` is a cheap way to enforce tenant scoping without a separate pre-check round-trip — check `meta.changes === 0` for the 404.
+2. OpenAPI is a checked-in artifact (`backend/openapi.json`) with a vitest test (`openapi-doc.test.js`) that compares it to the generated doc — any schema/route change in `registry.js` requires `npm run gen:openapi` or the suite fails.
+3. Existing handler tests encode pre-0053 junction behavior — when the schema changes the source of truth, the tests must change with it (stale tests fail loudly, which is good).
+
+## 2026-08-11 — B4: one-camp-per-tenant public pages + marketplace render (audit + verify)
+
+**Task** (tmp agent `b4-camp-tenant-pages`): marketplace (`/camps`, `/camp/[id]`) and tenant pages (landing, `/rooms`, `/book`, `/menu`) must render from the tenant's ONE camp — no multi-camp handling, no camp-selection UI anywhere in the public UI. Backend (B2) + admin (B3) are separate parallel tasks; i18n must NOT be reintroduced.
+
+**Finding — the public UI was already one-camp-per-tenant compliant; this task was a comprehensive audit + verification, no code changes required.** Full audit of every marketplace/tenant page and public component:
+
+- **Marketplace list** (`app/src/pages/camps.astro`, `app/src/components/public/CampsSection.astro`, `MarketplaceHome.astro`): iterates marketplace **tenants** from `/tenants/public` (one card per tenant = one camp per tenant). Both the SSR grid and the client-side `applyFilters()` innerHTML pipeline render one card per tenant row; there is no `camps` array in the wire shape. `detailUrl` custom-domain-wins (unchanged, C1 rule).
+- **Camp detail** (`app/src/pages/camp/[id]/index.astro`): fetches `/tenants/{id}` + `/products` with `x-tenant-id` and renders the shared `TenantLanding` (zone="marketplace") — single tenant, single camp's room types.
+- **Tenant landing** (`TenantLanding.astro`): props are `tenant` (object), `roomTypes` (array), scalars — no `camps` prop. Rendered by tenant `/` (index.astro) AND marketplace `/camp/[id]` with zone-aware deep links (`/book` vs `/camp/{id}/book`), so both entry points show the same single-camp data.
+- **Tenant pages** `/rooms`, `/book`, `/menu`: all resolve ONE tenant via `getTenantSSRData` or `/tenants/{id}`; they iterate `roomTypes`/`meals`/`mealCategories`, never camps. `/camp/[id]/book.astro` + `/camp/[id]/menu.astro` (marketplace deep links) pass the same single tenant.
+- **`getTenantSSRData`** (`app/src/middleware/tenant.ts:133`): keeps the `camps: TenantData[]` shape (fetched from `/camps`), as the task allows ("keep the shape but consumers treat it as the single camp") — but NO consumer destructures `camps`; the single camp's data reaches the UI via `tenant` + `roomTypes` (from `/products`, which B2 made read `pos_products.camp_id`).
+- **No camp-selection UI in public code**: all `Select Camp` / camp-filter / `campIds` matches are in `app/src/components/admin/*` (B3 territory) and `app/src/hooks/useAdminData.ts` — none in `components/public/` or tenant pages.
+- **Component tests**: `CampBooking.test.tsx`, `TenantMenu.test.tsx`, `ReservationSummary.test.tsx`, `middleware-tenant.test.ts` all already use single-camp/single-tenant fixtures; no multi-camp fixture existed to update.
+
+**Verification (all green)**:
+1. `cd app && npx vitest run` → **74 files / 1469 passed** (no test changes needed).
+2. `cd app && npx tsc --noEmit` → **153 errors** — identical pre-existing baseline (hooks/stories/test files; none in B4 public pages/components).
+3. `cd app && npm run build` → green.
+4. `npx playwright test` focused marketplace + tenant + routing specs → **121 passed** (marketplace/camp-detail, marketplace/homepage, routing/zone-exclusivity, tenant/booking-flow, camp-booking, camp-book, camp-menu, homepage, rooms-price, static-pages, footer). i18n specs (`cross-cutting/i18n`, `tenant/menu-language`, `tenant/arabic-rtl-deep`) excluded — they belong to the parallel A1/A2 i18n-removal task and were already modified there.
+
+**Lessons**:
+1. "One camp per tenant" in this codebase means the marketplace lists TENANTS (one card per tenant), not a `camps` sub-array — `CampsSection` iterating `tenants` is CORRECT, not a violation. The done-condition grep must look for a `camps` array being iterated as multiple offerings *per tenant*, which simply does not exist in the public UI.
+2. B2's `/products` → `pos_products.camp_id` change plus the shared `TenantLanding` already delivered B4's behavior end-to-end: the "public tenant pages from the tenant's single camp" contract is satisfied by the existing data flow (`tenant` object + `roomTypes` from `/products`), and `camps` in `TenantSSRData` is inert legacy shape.
+3. When parallel tasks touch the same working tree (A1 i18n removal, B3 admin), run the full unit suite + the scoped E2E set rather than the whole Playwright suite — the shared tree's other specs (i18n) may be mid-migration and out of scope.
+
+## 2026-08-11 — B3: single-camp admin UI (remove all camp-picking UI)
+
+**Task** (tmp agent `b3-camp-admin-ui`): make the admin UI single-camp aware — one camp per tenant. Remove every camp-picking control (topbar filter, form `Camp *` selects, multi-camp checkboxes, "Add Camp"/"add another camp" entry points) and scope every panel to the tenant's single camp. Backend (B2) + public pages (B4) + i18n are separate tasks; no backend/i18n changes.
+
+**Admin shell** (`AdminApp.tsx`):
+- Removed `campFilter` state + topbar "Active Camp:" filter dropdown (`data-testid="camp-filter"`, "All Camps" option).
+- Added single-camp memo block: `activeCamp = camps?.[0] ?? null`, `activeCampIds = [activeCamp.id]`, `activeCamps = [activeCamp]`; all 11 panel wirings now pass `campIds={activeCampIds} camps={activeCamps}` (DashboardPanel included).
+- Topbar now shows a fixed badge `data-testid="active-camp-badge"` with `activeCamp?.name ?? 'Camp'`; removed "All Camps" text entirely.
+
+**Panels**:
+- **CampsPanel** rewritten for create-or-edit in place: no "Add Camp"/"New Listing" buttons. Empty state = `EmptyState` "No camp yet" → "Create Camp" launches `ListingWizard` (which already scopes the created product to the camp via `campIds: [campId]`); once a camp exists it renders one DataTable row with Edit/Delete → "Edit Camp" FormModal. Header retitled "Camp".
+- **RoomsPanel**: removed `campSelectOptions` memo + "Camp *" Select in the room form + "Assign to Camps *" checkbox list in the product form. `activeCampId = campIds[0] ?? ''` auto-fills room/product forms; save falls back to `roomForm.campId || activeCampId` and `typeForm.campIds || [activeCampId]` ("Assign the product to the camp." only when no camp). Validation message now "Product type and room name are required.".
+- **PlanningPanel**: removed "Camp *" Select; `openAdd` pre-fills campId, `openEdit`/`handleSave` fall back to `activeCampId`. Validation now "Plan name is required." only.
+- **MenuPlannerPanel**: removed `campFilter`/`campFilterOptions`/`campSelectOptions`, the "All Camps" filter Select, and the modal "Camp *" Select; `filteredSchedules` now scopes to `activeCampId`; `openAddModal`/`handleSubmit` auto-fill/fall back to `activeCampId`; camp-name label under schedule cards always shown (no `campFilter === 'all'` condition). Validation now "Please select a meal".
+- **TenantDrilldown** (super-admin hub): `VIEWS[0]` renamed `'camps'` → `'camp'` (tab label "Camps" → "Camp"); hub pins every panel to `camps[0]` (`campIds = [activeCamp.id]`, `activeCamps = [activeCamp]`) — even if the API returns more than one camp; loading text "Loading camp...". Added `import type { Camp }`.
+
+**Tests updated** (6 files): CampsPanel.test.tsx rewritten around create-or-edit ("Create Camp", "Edit Camp", no "Add Camp"); AdminApp.test.tsx 3 camp-filter tests → active-camp-badge tests; TenantDrilldown.test.tsx `ROOMS:2:2` → `ROOMS:1:1` (2-camp fixture proves camps[0] pinning); RoomsPanel.test.tsx validation message + product tests rewritten for auto-assign (`campIds: ['c1']`, no "Camp 1" checkbox); PlanningPanel.test.tsx "Plan name is required." + removed `select-Camp *` fires; MenuPlannerPanel.test.tsx "Please select a meal" + removed Camp * fires + camp-scoping test (foreign-camp schedule never rendered).
+
+**Verification (all green)**:
+1. `cd app && npx vitest run` → **74 files / 1465 passed**.
+2. `cd app && npx tsc --noEmit` → **153 errors** — unchanged pre-existing baseline (hooks/stories/test fixtures; zero errors in the 6 modified source files).
+3. `cd app && npm run build` → green.
+
+**Lessons**:
+1. Panel props keep the array shape (`campIds: string[]`, `camps: Camp[]`) but callers now pass single-element arrays — the panel contract is untouched, only the data flow above it changed. This keeps B3 churn small and leaves per-panel multi-camp code paths dead-but-compilable.
+2. Astro's strict tsconfig does NOT enable `noUnusedLocals`, so an unused `camps` prop after removing a picker does not fail `tsc` — keep props for parent compatibility and don't chase unused-param cleanliness.
+3. Tests encoded picker UI as the source of truth (checkbox toggling, "All Camps" count assertions). When the UI drops a picker, the *test intent* usually survives — the "validates at least one camp assigned" test became an "auto-assigns the single camp" test, and the "filters schedules by camp" test became a "foreign-camp schedule is never rendered" scoping test.
+
+## 2026-08-11 — Orchestrator: feature rollout complete (A1+A2+C1+C2+C3+B1+B2+B3+B4)
+
+**Task**: close the 3-feature + production-readiness program: (1) total i18n removal, (2) one camp per tenant, (3) tenant domain recognition fixes (custom-domain-only directory, exclude `marketplace` tenant, `www.` normalization). All 9 tmp-agent tasks are `status: done`; tmp files deleted after this entry.
+
+**Decomposition**: A1 i18n source removal → A2 i18n test cleanup → C1 tenant-directory display → C2 exclude `marketplace` tenant → C3 `www.` normalization → B1 camp-ownership migration (0053) → B2 camp-ownership backend → B3 single-camp admin UI → B4 single-camp public pages. Execution order respected dependencies (C2→C3 combined agent; B3/B4 parallel after B2). **Note**: this environment has NO `backend` subagent type — backend-heavy tasks were executed via the `general` agent.
+
+**Consolidated verification (authoritative, converged tree)**:
+- `cd app && npx vitest run` → **74 files / 1465 tests passed** ✓
+- `cd backend && npx vitest run` → **36 files / 1082 tests passed** ✓
+- `npx vitest run` (root integration) → **10 files / 169 tests passed** ✓
+- `cd app && npx tsc --noEmit` → **153 errors = exact pre-existing baseline** (all in hooks/stories/test fixtures; zero in feature files) ✓
+- `cd app && npm run build` → green (verified by B3/B4) ✓
+- Playwright E2E: full-suite run aborted by user mid-run (heavy); focused marketplace/tenant/routing set = **121 passed** (B4) ✓
+
+**Files changed (uncommitted)**: ~55 files — deleted `app/src/i18n/`, `useI18n.ts`, `LanguageSwitcher.tsx` + i18n tests; edited middleware/layouts/7 admin panels/public components; new `backend/migrations/0053_camp_ownership.sql`; backend camps/products/rooms/rate-plans handlers + tenants.js + admin.js; admin panels (AdminApp, TenantDrilldown, CampsPanel, RoomsPanel, PlanningPanel, MenuPlannerPanel, RatePlansPanel, BookingCalendar, ListingWizard, PhotosStep, MealsPanel, MenuPanel); regenerated `backend/openapi.json`; ~25 test files updated.
+
+**Lessons (orchestrator-level)**:
+1. Schema reality diverges from `AGENTS.md`/README: legacy `room_types`/`room_type_camps`/`rooms`/`rate_plans`/`reservations` were replaced by `pos_products` (+`camp_id`)/`product_camps`/`rooms_new`/`rate_plans_new`/`orders` (migrations 0020/0042/0045). The orchestration plan must verify live tables before spawning DB-touching agents — B1 caught this early and every downstream task spec was corrected.
+2. `camps.tenant_id` is now UNIQUE (0053) — second-camp inserts 500 at the DB level unless the handler guards with a clean 409 (B2).
+3. Full Playwright suite is heavy and was aborted by the user mid-run; when parallel tasks touch a shared tree, use scoped E2E sets (per-area specs) as the gate and reserve full-suite runs for pre-commit.
+4. Orchestrator cleanup contract: every tmp agent file marked done and deleted after logbook update (this entry); `PLAN-BACKLOG.md` retained.
+
+**Open items (production audit, pending user decision)**: rotate default super admin `admin@sinaicamps.com`/`sinairoot` (seed 0029) + verify `JWT_SECRET` via `npx wrangler secret list`; real tenant content was wiped by migration 0051 (camps/rooms/menu empty for acaciacamp/michaelshouse); confirm remote migrations applied; no staging env; README/AGENTS.md test counts stale (1465 app / 1082 backend / 169 root); no git remote yet (suggested `git@github.com:Michaelhehelmy/campops-marketplace.git`).

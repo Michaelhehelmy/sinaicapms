@@ -94,10 +94,10 @@ export async function handleTenants(request, env) {
           SELECT tenants.*, MIN(a.email) AS admin_email, MIN(a.first_name || ' ' || a.last_name) AS admin_name
           FROM tenants
           LEFT JOIN admins a ON a.tenant_id = tenants.id AND a.role IN ('admin', 'tenant_admin')
-          WHERE 1=1
+          WHERE 1=1 AND tenants.id != 'marketplace'
         `;
       } else {
-        query = `SELECT ${selectFieldsPublic()} FROM tenants WHERE 1=1 AND status = 'active'`;
+        query = `SELECT ${selectFieldsPublic()} FROM tenants WHERE 1=1 AND status = 'active' AND tenants.id != 'marketplace'`;
       }
       
       const bindArgs = [];
@@ -138,8 +138,9 @@ export async function handleTenants(request, env) {
       const { results } = await env.DB.prepare(query).bind(...bindArgs).all();
       return cachedJsonResponse(results);
     } else if (path.length === 3) {
-      const lookupKey = path[2];
-      // Support lookup by id, subdomain, or custom_domain (SEO-friendly URLs use subdomain)
+      // Support lookup by id, subdomain, or custom_domain (SEO-friendly URLs use subdomain).
+      // Normalize a leading `www.` so www.acaciacamp.com matches custom_domain = 'acaciacamp.com'.
+      const lookupKey = path[2].replace(/^www\./, '');
       let query;
       if (isSuperAdmin) {
         query = `

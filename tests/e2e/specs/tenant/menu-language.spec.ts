@@ -22,15 +22,13 @@ test.describe('Camp Menu — Language Rendering', () => {
     }
   });
 
-  test('menu search placeholder is localized', async ({ page }) => {
+  test('menu search placeholder is English', async ({ page }) => {
     await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
-    const searchInput = page.locator('input[type="text"], input[placeholder*="search"], input[placeholder*="ابحث"]').first();
+    const searchInput = page.locator('input[type="text"], input[placeholder*="Search"]').first();
     if (await searchInput.count() > 0) {
       const placeholder = await searchInput.getAttribute('placeholder') ?? '';
-      // Should have a non-empty placeholder in some language
-      expect(typeof placeholder).toBe('string');
-      expect(placeholder.length).toBeGreaterThanOrEqual(0);
+      expect(placeholder).toBe('Search for a meal...');
     }
   });
 
@@ -52,86 +50,22 @@ test.describe('Camp Menu — Language Rendering', () => {
     await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
     const lang = await page.locator('html').getAttribute('lang');
-    expect(lang).toBeTruthy();
-    expect(['en', 'ar']).toContain(lang);
+    expect(lang).toBe('en');
 
     const dir = await page.locator('html').getAttribute('dir');
-    if (dir) {
-      expect(['ltr', 'rtl']).toContain(dir);
-    }
-  });
-});
-
-test.describe('Camp Menu — Arabic RTL', () => {
-  test('menu page renders correctly when lang=ar', async ({ page }) => {
-    // Set language to Arabic before navigating
-    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => {
-      localStorage.setItem('sc_lang', 'ar');
-      document.documentElement.lang = 'ar';
-      document.documentElement.dir = 'rtl';
-    });
-    await page.reload();
-
-    const lang = await page.locator('html').getAttribute('lang');
-    expect(lang).toBe('ar');
-
-    const dir = await page.locator('html').getAttribute('dir');
-    expect(dir).toBe('rtl');
-  });
-
-  test('menu page text is readable in Arabic mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => {
-      localStorage.setItem('sc_lang', 'ar');
-      document.documentElement.lang = 'ar';
-      document.documentElement.dir = 'rtl';
-    });
-    await page.reload();
-
-    const content = await page.locator('body').textContent() ?? '';
-    expect(content.length).toBeGreaterThan(0);
-  });
-
-  test('menu page has no horizontal overflow in RTL mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => {
-      localStorage.setItem('sc_lang', 'ar');
-      document.documentElement.lang = 'ar';
-      document.documentElement.dir = 'rtl';
-    });
-    await page.reload();
-
-    const scrollWidth = await page.evaluate(() => document.body.scrollWidth);
-    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-    expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 20);
+    expect(dir).toBe('ltr');
   });
 });
 
 test.describe('Camp Menu — English LTR', () => {
-  test('menu page renders correctly when lang=en', async ({ page }) => {
+  test('menu page renders correctly in English', async ({ page }) => {
     await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => {
-      localStorage.setItem('sc_lang', 'en');
-      document.documentElement.lang = 'en';
-      document.documentElement.dir = 'ltr';
-    });
-    await page.reload();
 
-    // menu.astro is a standalone page that hardcodes lang="ar" dir="rtl",
-    // so after reload the html attributes may revert. Verify body content is present.
-    const content = await page.locator('body').textContent() ?? '';
-    expect(content.length).toBeGreaterThan(0);
-  });
-
-  test('menu page content is readable in English mode', async ({ page }) => {
-    await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => {
-      localStorage.setItem('sc_lang', 'en');
-      document.documentElement.lang = 'en';
-      document.documentElement.dir = 'ltr';
-    });
-    await page.reload();
+    // menu.astro is a standalone page that hardcodes lang="en" dir="ltr".
+    const lang = await page.locator('html').getAttribute('lang');
+    expect(lang).toBe('en');
+    const dir = await page.locator('html').getAttribute('dir');
+    expect(dir).toBe('ltr');
 
     const content = await page.locator('body').textContent() ?? '';
     expect(content.length).toBeGreaterThan(0);
@@ -139,12 +73,6 @@ test.describe('Camp Menu — English LTR', () => {
 
   test('menu page has no horizontal overflow in LTR mode', async ({ page }) => {
     await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => {
-      localStorage.setItem('sc_lang', 'en');
-      document.documentElement.lang = 'en';
-      document.documentElement.dir = 'ltr';
-    });
-    await page.reload();
 
     const scrollWidth = await page.evaluate(() => document.body.scrollWidth);
     const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
@@ -153,13 +81,14 @@ test.describe('Camp Menu — English LTR', () => {
 });
 
 test.describe('Camp Menu — WhatsApp Button Language', () => {
-  test('WhatsApp order button text is localized', async ({ page }) => {
+  test('WhatsApp order button text is English', async ({ page }) => {
     await page.goto(`/camp/${TENANT_ID}/menu`, { waitUntil: 'domcontentloaded' });
 
-    const waBtn = page.locator('button:has-text("WhatsApp"), button:has-text("واتساب")');
+    const waBtn = page.locator('button:has-text("Send Order via WhatsApp")');
     if (await waBtn.count() > 0) {
       const text = await waBtn.first().textContent() ?? '';
       expect(text.trim().length).toBeGreaterThan(0);
+      expect(text).toContain('Send Order via WhatsApp');
     }
   });
 
@@ -171,7 +100,7 @@ test.describe('Camp Menu — WhatsApp Button Language', () => {
     const mealCount = await mealCards.count();
 
     if (mealCount > 0) {
-      const waBtn = page.locator('button:has-text("WhatsApp"), button:has-text("واتساب")');
+      const waBtn = page.locator('button:has-text("Send Order via WhatsApp")');
       const waCount = await waBtn.count();
       expect(typeof waCount).toBe('number');
       expect(waCount).toBeGreaterThanOrEqual(0);
@@ -180,7 +109,7 @@ test.describe('Camp Menu — WhatsApp Button Language', () => {
 });
 
 test.describe('Camp Menu — No JS Errors', () => {
-  test('menu page has no critical JS errors in any language', async ({ page }) => {
+  test('menu page has no critical JS errors', async ({ page }) => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => { jsErrors.push(error.message); });
 

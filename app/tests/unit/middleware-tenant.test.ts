@@ -132,9 +132,37 @@ describe('getTenantSSRData', () => {
     const data = await getTenantSSRData(new URL('https://www.foo.sinaicamps.com/'));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://www.foo.sinaicamps.com/api/tenants/www.foo.sinaicamps.com',
+      'https://www.foo.sinaicamps.com/api/tenants/foo.sinaicamps.com',
     );
     expect(data.tenantId).toBe('x1');
+  });
+
+  it('strips a leading www. from a custom-domain host for the lookup key', async () => {
+    fetchMock.mockResolvedValue(okJson({ id: 'acacia', name: 'Acacia Camp' }));
+
+    const data = await getTenantSSRData(new URL('https://www.acaciacamp.com/'));
+
+    expect(data.API_BASE).toBe('https://sinaicamps.com/api');
+    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/tenants/acaciacamp.com');
+    expect(data.tenantId).toBe('acacia');
+  });
+
+  it('leaves a non-www custom-domain host untouched', async () => {
+    fetchMock.mockResolvedValue(okJson({ id: 'acacia', name: 'Acacia Camp' }));
+
+    const data = await getTenantSSRData(new URL('https://acaciacamp.com/'));
+
+    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/tenants/acaciacamp.com');
+    expect(data.tenantId).toBe('acacia');
+  });
+
+  it('still treats www.sinaicamps.com as the marketplace (no lookup key change)', async () => {
+    fetchMock.mockResolvedValue(okJson({ id: 'marketplace', name: 'SinaiCamps' }));
+
+    const data = await getTenantSSRData(new URL('https://www.sinaicamps.com/'));
+
+    expect(data.tenantId).toBe('marketplace');
+    expect(fetchMock).toHaveBeenCalledWith('https://www.sinaicamps.com/api/tenants/marketplace');
   });
 
   it('keeps defaults when the tenant lookup returns not-ok', async () => {

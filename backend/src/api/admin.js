@@ -92,11 +92,14 @@ export async function handleAdminRoute(request, env) {
     if (path.length === 3 && method === 'GET') {
       try {
         const { page, pageSize, offset } = parsePagination(url);
-        const { results: countResult } = await env.DB.prepare('SELECT COUNT(*) as total FROM tenants').all();
+        // The root `marketplace` tenant row is not a real tenant — exclude it
+        // from the directory (single-tenant /api/tenants/:id lookup still works).
+        const { results: countResult } = await env.DB.prepare("SELECT COUNT(*) as total FROM tenants WHERE id != 'marketplace'").all();
         const { results } = await env.DB.prepare(
           `SELECT t.*, MIN(a.email) AS admin_email, MIN(a.first_name) AS admin_first_name, MIN(a.last_name) AS admin_last_name
            FROM tenants t
            LEFT JOIN admins a ON a.tenant_id = t.id AND a.role IN ('admin', 'tenant_admin')
+           WHERE t.id != 'marketplace'
            GROUP BY t.id
            ORDER BY t.created_at DESC
            LIMIT ? OFFSET ?`

@@ -49,7 +49,7 @@ test.describe('Camp Booking Page (/camp/[id]/book)', () => {
 
   test('booking page has WhatsApp send button or empty state', async ({ page }) => {
     await page.goto(`/camp/${TENANT_ID}/book`, { waitUntil: 'domcontentloaded' });
-    const waBtn = page.locator('button:has-text("WhatsApp"), button:has-text("واتساب")');
+    const waBtn = page.locator('button:has-text("WhatsApp")');
     const waCount = await waBtn.count();
     const waVisible = waCount > 0 && await waBtn.isVisible();
     if (!waVisible) {

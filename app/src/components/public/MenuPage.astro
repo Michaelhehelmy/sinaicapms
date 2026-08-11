@@ -1,5 +1,5 @@
 ---
-// Full-bleed Arabic menu page content. Shared by:
+// Full-bleed menu page content. Shared by:
 //   - pages/menu.astro           → tenant zone (`/menu`)
 //   - pages/camp/[id]/menu.astro → marketplace zone (`/camp/{id}/menu`)
 import TenantMenu from '@/components/public/TenantMenu.tsx';
@@ -22,21 +22,15 @@ const mealCategories = Astro.props.mealCategories || [];
 const color = primaryColor || '#4a7c4f';
 
 const hasMeals = meals.length > 0;
-const pageTitle = `${tenantName} — القائمة | Sinai Camps`;
-
-// Dynamic RTL support (defaults to Arabic for menu page)
-const queryLang = Astro.url.searchParams.get('lang');
-const cookieLang = Astro.cookies.get('sc_lang')?.value;
-const lang = queryLang || cookieLang || 'ar';
-const dir = lang === 'ar' ? 'rtl' : 'ltr';
+const pageTitle = `${tenantName} — Menu | Sinai Camps`;
 ---
 
-<html lang={lang} dir={dir}>
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{pageTitle}</title>
-  <meta name="description" content={`${tenantName} — قائمة الطعام والوجبات`} />
+  <meta name="description" content={`${tenantName} — Menu and meals`} />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet" />
@@ -57,16 +51,15 @@ const dir = lang === 'ar' ? 'rtl' : 'ltr';
       tenantName={tenantName}
       primaryColor={color}
       whatsappNumber={whatsappNumber}
-      lang={lang as 'en' | 'ar'}
     />
   ) : (
     <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Cairo',sans-serif;background:#f4ead2;">
       <div style="text-align:center;padding:3rem;">
         <p style="font-size:3rem;margin-bottom:1rem;">🍽️</p>
-        <h1 style="font-size:1.5rem;font-weight:700;margin-bottom:0.5rem;">القائمة غير متوفرة حالياً</h1>
-        <p style="opacity:0.6;">لم يتم إعداد قائمة الطعام لهذا المخيم بعد</p>
+        <h1 style="font-size:1.5rem;font-weight:700;margin-bottom:0.5rem;">Menu not available yet</h1>
+        <p style="opacity:0.6;">No menu has been set up for this camp yet</p>
         <a href={campUrl} style="display:inline-block;margin-top:1.5rem;padding:0.75rem 2rem;background:${color};color:#fff;border-radius:9999px;font-weight:700;text-decoration:none;">
-          العودة لصفحة المخيم
+          Back to Camp
         </a>
       </div>
     </div>

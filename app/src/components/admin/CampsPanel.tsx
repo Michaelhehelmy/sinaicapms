@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useCampsQuery, useSaveCampMutation, useDeleteCampMutation } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
@@ -45,53 +45,39 @@ const statusOptions = [
   { value: 'completed', label: 'Completed' },
 ];
 
+/**
+ * Single-camp admin (B3): a tenant owns exactly one camp. When no camp exists
+ * yet the empty state launches the listing wizard (camp + first room type +
+ * rate plan in one flow); once a camp exists it is edited in place — there is
+ * no "add another camp" button and no wizard entry point.
+ */
 export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
   const { data: camps, isLoading: loading } = useCampsQuery();
   const { showToast } = useToast();
-  const [showForm, setShowForm] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CampForm>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const saveMutation = useSaveCampMutation(editingId ?? undefined);
   const deleteMutation = useDeleteCampMutation();
 
-  const filteredCamps = useMemo(() => {
-    const list = camps ?? [];
-    if (!searchQuery) return list;
-    const q = searchQuery.toLowerCase();
-    return list.filter(
-      (c) =>
-        c.name?.toLowerCase().includes(q) ||
-        c.location?.toLowerCase().includes(q) ||
-        c.status?.toLowerCase().includes(q),
-    );
-  }, [camps, searchQuery]);
+  const campList = camps ?? [];
 
-  const openAdd = useCallback(() => {
-    setEditingId(null);
-    setForm(emptyForm);
+  const openEdit = useCallback((camp: Camp) => {
+    setEditingId(camp.id);
+    setForm({
+      name: camp.name || '',
+      location: camp.location || '',
+      startDate: camp.startDate || '',
+      endDate: camp.endDate || '',
+      capacity: String(camp.capacity ?? ''),
+      status: camp.status || 'active',
+      notes: camp.notes || '',
+    });
     setShowForm(true);
   }, []);
-
-  const openEdit = useCallback(
-    (camp: Camp) => {
-      setEditingId(camp.id);
-      setForm({
-        name: camp.name || '',
-        location: camp.location || '',
-        startDate: camp.startDate || '',
-        endDate: camp.endDate || '',
-        capacity: String(camp.capacity ?? ''),
-        status: camp.status || 'active',
-        notes: camp.notes || '',
-      });
-      setShowForm(true);
-    },
-    [],
-  );
 
   const handleSave = useCallback(() => {
     if (!form.name.trim()) {
@@ -150,44 +136,19 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
   return (
     <Card padding="none" className="p-6" data-testid="camps-panel">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h2 className="text-xl font-bold text-gray-800">Camps</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => setShowWizard(true)}
-            data-testid="new-listing-btn"
-            leftIcon={
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            }
-          >
-            New Listing
-          </Button>
-          <Button
-            variant="success"
-            size="md"
-            onClick={openAdd}
-            data-testid="add-camp-btn"
-            leftIcon={
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            }
-          >
-            Add Camp
-          </Button>
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Camp</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Manage your camp's profile and listing details.</p>
         </div>
       </div>
 
       {loading ? (
         <TableSkeleton rows={5} columns={5} />
-      ) : filteredCamps.length === 0 ? (
+      ) : campList.length === 0 ? (
         <EmptyState
-          title="No camps yet"
-          description="Add your first camp to get started managing reservations and staff."
-          action={{ label: 'Add Camp', onClick: openAdd }}
+          title="No camp yet"
+          description="Create your camp to start managing rooms, rate plans, and reservations."
+          action={{ label: 'Create Camp', onClick: () => setShowWizard(true) }}
         />
       ) : (
         <DataTable<Camp & Record<string, unknown>>
@@ -203,10 +164,7 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
             { key: 'capacity', header: 'Capacity', sortable: true, render: (c) => String(c.capacity) },
             { key: 'status', header: 'Status', render: (c) => <StatusTag status={String(c.status)} /> },
           ]}
-          data={filteredCamps as (Camp & Record<string, unknown>)[]}
-          searchable
-          searchPlaceholder="Search camps..."
-          onSearch={setSearchQuery}
+          data={campList as (Camp & Record<string, unknown>)[]}
           emptyMessage="No camps found."
           actions={(c) => (
             <div className="flex gap-1.5">
@@ -241,7 +199,7 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
 
       <FormModal
         open={showForm}
-        title={editingId ? 'Edit Camp' : 'Add New Camp'}
+        title={editingId ? 'Edit Camp' : 'Create Camp'}
         onClose={() => { setShowForm(false); setEditingId(null); }}
         onSubmit={handleSave}
         submitLabel={saveMutation.isPending ? 'Saving...' : editingId ? 'Update Camp' : 'Save Camp'}

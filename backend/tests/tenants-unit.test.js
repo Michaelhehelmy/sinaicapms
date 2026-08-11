@@ -108,6 +108,41 @@ describe('handleTenants', () => {
       await handleTenants(makeReq('http://localhost/api/tenants?status=active'), { DB: db });
       expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('status = ?'));
     });
+
+    it('excludes the root marketplace tenant from the public directory', async () => {
+      // Simulate the DB honoring the WHERE filter (returns no marketplace row).
+      const tenants = [{ id: 't1', name: 'Camp A' }, { id: 't2', name: 'Camp B' }];
+      const db = mockDb({ _all: tenants });
+      const res = await handleTenants(makeReq('http://localhost/api/tenants'), { DB: db, JWT_SECRET: 'secret' });
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.some((t) => t.id === 'marketplace')).toBe(false);
+      // The SQL (not just the rows) must exclude the marketplace row.
+      expect(db.prepare.mock.calls[0][0]).toContain("tenants.id != 'marketplace'");
+    });
+
+    it('excludes the root marketplace tenant from the super_admin directory', async () => {
+      verifyJWT.mockResolvedValue({ role: 'super_admin', sub: 'sa1' });
+      let callIdx = 0;
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockImplementation(() => {
+            callIdx++;
+            if (callIdx === 1) return Promise.resolve({ results: [{ is_active: 1 }] }); // auth check
+            return Promise.resolve({ results: [{ id: 't1', name: 'Camp A' }] });
+          }),
+        })),
+      };
+      const res = await handleTenants(
+        makeReqWithAuth('http://localhost/api/tenants'),
+        { DB: db, JWT_SECRET: 'secret' }
+      );
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.some((t) => t.id === 'marketplace')).toBe(false);
+      expect(db.prepare.mock.calls[1][0]).toContain("tenants.id != 'marketplace'");
+    });
   });
 
   describe('GET /api/tenants/:id (detail)', () => {
@@ -123,6 +158,33 @@ describe('handleTenants', () => {
       const db = mockDb({ _all: [] });
       const res = await handleTenants(makeReq('http://localhost/api/tenants/unknown'), { DB: db });
       expect(res.status).toBe(404);
+    });
+
+    it('still returns the marketplace tenant by id (root branding lookup)', async () => {
+      const tenant = { id: 'marketplace', name: 'Sinai Camps' };
+      const db = mockDb({ _all: [tenant] });
+      const res = await handleTenants(makeReq('http://localhost/api/tenants/marketplace'), { DB: db });
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.id).toBe('marketplace');
+    });
+
+    it('normalizes a leading www. on the lookup key (custom-domain match)', async () => {
+      const tenant = { id: 'acacia', name: 'Acacia Camp', custom_domain: 'acaciacamp.com' };
+      let bindArgs = null;
+      const chain = {
+        bind: vi.fn((...args) => { bindArgs = args; return chain; }),
+        all: vi.fn().mockResolvedValue({ results: [tenant] }),
+      };
+      const db = { prepare: vi.fn(() => chain) };
+      const res = await handleTenants(
+        makeReq('http://localhost/api/tenants/www.acaciacamp.com'),
+        { DB: db }
+      );
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.id).toBe('acacia');
+      expect(bindArgs).toEqual(['acaciacamp.com', 'acaciacamp.com', 'acaciacamp.com']);
     });
 
     it('returns tenant by subdomain for super_admin', async () => {

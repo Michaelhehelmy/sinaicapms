@@ -33,12 +33,6 @@ interface Props {
    * `/camp/{tenantId}`; tenant-zone pages pass `/`.
    */
   campUrl?: string;
-  /**
-   * SSR-resolved language (query param + sc_lang cookie). Used as the initial
-   * state so the server-rendered island HTML matches the first client paint —
-   * prevents the English/LTR flash before the localStorage sync effect runs.
-   */
-  lang?: 'en' | 'ar';
 }
 
 const STORAGE_KEY = 'sc_reservation';
@@ -97,64 +91,31 @@ const ClipboardIcon = () => (
 );
 
 const T = {
-  en: {
-    title: 'Your Reservation',
-    subtitle: 'Review your booking details',
-    empty: 'No rooms in your reservation.',
-    emptyHint: 'Go back and add rooms to your reservation.',
-    backToCamp: 'Back to Camp',
-    guestInfo: 'Guest Information',
-    nameLabel: 'Full Name *',
-    namePlaceholder: 'Enter your full name',
-    phoneLabel: 'Phone Number',
-    phonePlaceholder: '+20 1XX XXX XXXX',
-    checkIn: 'CHECK-IN',
-    checkOut: 'CHECK-OUT',
-    nights: 'NIGHTS',
-    total: 'Total',
-    room: 'room',
-    guest: 'guest',
-    sendWhatsApp: 'Send Booking via WhatsApp',
-    copySummary: 'Copy Booking Summary',
-    copied: 'Copied to clipboard!',
-    remove: 'Remove',
-    whatsappNotAvailable: 'WhatsApp not available - contact the camp directly',
-    summaryTitle: 'Booking Summary',
-    newBooking: 'New Booking at {name}',
-    waTotal: 'Total',
-  },
-  ar: {
-    title: 'حجزك',
-    subtitle: 'راجع تفاصيل حجزك',
-    empty: 'لا توجد غرف في حجزك.',
-    emptyHint: 'عُد وأضف غرفاً إلى حجزك.',
-    backToCamp: 'العودة للمخيم',
-    guestInfo: 'معلومات الضيف',
-    nameLabel: 'الاسم الكامل *',
-    namePlaceholder: 'أدخل اسمك الكامل',
-    phoneLabel: 'رقم الهاتف',
-    phonePlaceholder: '+20 1XX XXX XXXX',
-    checkIn: 'الوصول',
-    checkOut: 'المغادرة',
-    nights: 'ليالي',
-    total: 'الإجمالي',
-    room: 'غرف',
-    guest: 'ضيف',
-    sendWhatsApp: 'إرسال الحجز عبر واتساب',
-    copySummary: 'نسخ ملخص الحجز',
-    copied: 'تم النسخ!',
-    remove: 'حذف',
-    whatsappNotAvailable: 'رقم الواتساب غير متوفر - تواصل مع المخيم مباشرة',
-    summaryTitle: 'ملخص الحجز',
-    newBooking: 'حجز جديد في {name}',
-    waTotal: 'الإجمالي',
-  },
+  title: 'Your Reservation',
+  subtitle: 'Review your booking details',
+  empty: 'No rooms in your reservation.',
+  emptyHint: 'Go back and add rooms to your reservation.',
+  backToCamp: 'Back to Camp',
+  guestInfo: 'Guest Information',
+  nameLabel: 'Full Name *',
+  namePlaceholder: 'Enter your full name',
+  phoneLabel: 'Phone Number',
+  phonePlaceholder: '+20 1XX XXX XXXX',
+  checkIn: 'CHECK-IN',
+  checkOut: 'CHECK-OUT',
+  nights: 'NIGHTS',
+  total: 'Total',
+  room: 'room',
+  guest: 'guest',
+  sendWhatsApp: 'Send Booking via WhatsApp',
+  copySummary: 'Copy Booking Summary',
+  copied: 'Copied to clipboard!',
+  remove: 'Remove',
+  whatsappNotAvailable: 'WhatsApp not available - contact the camp directly',
+  summaryTitle: 'Booking Summary',
+  newBooking: 'New Booking at {name}',
+  waTotal: 'Total',
 } as const;
-
-function getLang(): 'en' | 'ar' {
-  if (typeof window === 'undefined') return 'en';
-  return localStorage.getItem('sc_lang') === 'ar' ? 'ar' : 'en';
-}
 
 export default function ReservationSummaryPage(props: Props) {
   return (
@@ -164,17 +125,15 @@ export default function ReservationSummaryPage(props: Props) {
   );
 }
 
-function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappNumber, currency = 'EGP', apiBase, campUrl, lang: initialLang = 'en' }: Props) {
-  const [lang, setLang] = useState<'en' | 'ar'>(initialLang);
+function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappNumber, currency = 'EGP', apiBase, campUrl }: Props) {
   const [items, setItems] = useState<ReservationItem[]>([]);
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const { showToast } = useToast();
 
-  const t = T[lang];
+  const t = T;
 
   useEffect(() => {
-    setLang(getLang());
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       setItems(raw ? JSON.parse(raw) : []);
@@ -197,13 +156,10 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
 
   const buildMessage = useCallback(() => {
     const lines = items.map((item, i) => {
-      return `${i + 1}. ${escHtml(item.roomType.name)}\n   📅 ${item.checkIn} → ${item.checkOut}\n   ${item.guests} ${t.guest} | ${item.nights} ${lang === 'ar' ? 'ليالي' : 'nights'}\n   ${formatPrice(item.price)}`;
+      return `${i + 1}. ${escHtml(item.roomType.name)}\n   📅 ${item.checkIn} → ${item.checkOut}\n   ${item.guests} ${t.guest} | ${item.nights} nights\n   ${formatPrice(item.price)}`;
     });
-    if (lang === 'ar') {
-      return `🏕️ ${t.newBooking.replace('{name}', escHtml(tenantName))}\n\n👤 ${escHtml(guestName)}${guestPhone ? ' - ' + escHtml(guestPhone) : ''}\n\n${lines.join('\n\n')}\n\n💰 ${t.waTotal}: ${formatPrice(totalAmount)}`;
-    }
-      return `🏕️ ${t.newBooking.replace('{name}', escHtml(tenantName))}\n\n👤 ${escHtml(guestName)}${guestPhone ? ' - ' + escHtml(guestPhone) : ''}\n\n${lines.join('\n\n')}\n\n💰 ${t.waTotal}: ${formatPrice(totalAmount)}`;
-  }, [items, guestName, guestPhone, lang, t, tenantName, totalAmount]);
+    return `🏕️ ${t.newBooking.replace('{name}', escHtml(tenantName))}\n\n👤 ${escHtml(guestName)}${guestPhone ? ' - ' + escHtml(guestPhone) : ''}\n\n${lines.join('\n\n')}\n\n💰 ${t.waTotal}: ${formatPrice(totalAmount)}`;
+  }, [items, guestName, guestPhone, t, tenantName, totalAmount]);
 
   // Best-effort server-side lead capture. The reservation previously lived
   // only in localStorage + the WhatsApp handoff, so the camp owner had no
@@ -256,7 +212,7 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
         <div className="relative max-w-2xl mx-auto px-5 py-7 text-center sm:py-10">
           <p className="mb-2 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.25em] opacity-80">
             <span className="inline-block h-px w-8 bg-current opacity-50" aria-hidden="true"></span>
-            {lang === 'ar' ? 'تأكيد الحجز' : 'Camp Booking'}
+            Camp Booking
             <span className="inline-block h-px w-8 bg-current opacity-50" aria-hidden="true"></span>
           </p>
           <h1 className="text-3xl font-black mb-1">{t.title}</h1>
@@ -313,7 +269,7 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
                       <h4 className="font-bold text-base">{item.roomType.name}</h4>
                       <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs text-gray-500">
                         <span>{item.guests} {t.guest}</span>
-                        <span>{item.nights} {lang === 'ar' ? 'ليالي' : 'nights'}</span>
+                        <span>{item.nights} nights</span>
                         <span>{item.checkIn} → {item.checkOut}</span>
                       </div>
                       <p className="font-bold text-base mt-2" style={{ color: primaryColor }}>

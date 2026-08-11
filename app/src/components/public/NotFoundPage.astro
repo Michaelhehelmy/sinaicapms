@@ -4,19 +4,9 @@
 // tenant/custom host WITHOUT depending on Astro.locals.tenant data. It reuses
 // PublicLayout, which only reads Astro.props (tenant defaults to {}).
 import PublicLayout from '@/layouts/PublicLayout.astro';
-import en from '@/i18n/en.json';
-import ar from '@/i18n/ar.json';
 
-// Language detection (same priority as PublicLayout): query > cookie > 'en'.
-// Pulls copy from the shared translation files (en.json / ar.json) so no
-// module-level locale state is shared across SSR requests.
-const queryLang = Astro.url.searchParams.get('lang');
-const cookieLang = Astro.cookies.get('sc_lang')?.value;
-const lang = queryLang || cookieLang || 'en';
-const dict = lang === 'ar' ? ar : en;
-
-const pageTitle = dict.errors.notFound;
-const pageDesc = dict.errors.notFoundMessage;
+const pageTitle = 'Page not found';
+const pageDesc = "Oops! The page you're looking for doesn't exist or may have been moved.";
 const brandColor = '#4a7c4f';
 ---
 <PublicLayout
@@ -48,17 +38,17 @@ const brandColor = '#4a7c4f';
         404
       </p>
       <h1 data-testid="not-found-title" class="mb-4 text-3xl font-extrabold tracking-tight text-[var(--text)] md:text-4xl">
-        {dict.errors.notFound}
+        Page not found
       </h1>
       <p data-testid="not-found-message" class="mx-auto mb-10 max-w-xl text-lg text-[var(--text-muted)]">
-        {dict.errors.notFoundMessage}
+        Oops! The page you're looking for doesn't exist or may have been moved.
       </p>
       <div class="flex flex-wrap justify-center gap-4">
         <a href="/" data-testid="not-found-home-link" class="btn btn-primary btn-lg">
-          {dict.errors.notFoundHome}
+          Back to Home
         </a>
         <a href="/camps" data-testid="not-found-browse-link" class="btn btn-secondary btn-lg">
-          {dict.errors.notFoundBrowse}
+          Browse Camps
         </a>
       </div>
     </div>

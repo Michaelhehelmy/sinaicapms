@@ -34,12 +34,6 @@ interface Props {
    * `/camp/{tenantId}/book`; tenant-zone pages pass `/book`.
    */
   bookUrl?: string;
-  /**
-   * SSR-resolved language (query param + sc_lang cookie). Used as the initial
-   * state so the server-rendered island HTML matches the first client paint —
-   * prevents the English/LTR flash before the localStorage sync effect runs.
-   */
-  lang?: 'en' | 'ar';
 }
 
 const STORAGE_KEY = 'sc_reservation';
@@ -65,50 +59,24 @@ const TentIcon = ({ size = 20, className }: { size?: number; className?: string 
 );
 
 const T = {
-  en: {
-    perNight: '/night',
-    capacity: 'Up to {n} guests',
-    bookNow: 'Book',
-    modalTitle: 'Book {name}',
-    checkIn: 'Check-in',
-    checkOut: 'Check-out',
-    guests: 'Guests',
-    night: 'night',
-    nights: 'nights',
-    total: 'Total',
-    add: 'Add to Reservation',
-    added: 'Added!',
-    close: '✕',
-    noRooms: 'No rooms available.',
-    barMsg: '{n} room(s) in reservation',
-    viewSummary: 'View Summary',
-    clear: 'Clear',
-  },
-  ar: {
-    perNight: '/ ليلة',
-    capacity: 'حتى {n} أشخاص',
-    bookNow: 'احجز',
-    modalTitle: 'حجز {name}',
-    checkIn: 'تاريخ الوصول',
-    checkOut: 'تاريخ المغادرة',
-    guests: 'الضيوف',
-    night: 'ليلة',
-    nights: 'ليالي',
-    total: 'الإجمالي',
-    add: 'إضافة للحجز',
-    added: 'تمت الإضافة!',
-    close: '✕',
-    noRooms: 'لا توجد غرف متاحة.',
-    barMsg: '{n} غرف في الحجز',
-    viewSummary: 'عرض الملخص',
-    clear: 'حذف',
-  },
+  perNight: '/night',
+  capacity: 'Up to {n} guests',
+  bookNow: 'Book',
+  modalTitle: 'Book {name}',
+  checkIn: 'Check-in',
+  checkOut: 'Check-out',
+  guests: 'Guests',
+  night: 'night',
+  nights: 'nights',
+  total: 'Total',
+  add: 'Add to Reservation',
+  added: 'Added!',
+  close: '✕',
+  noRooms: 'No rooms available.',
+  barMsg: '{n} room(s) in reservation',
+  viewSummary: 'View Summary',
+  clear: 'Clear',
 } as const;
-
-function getLang(): 'en' | 'ar' {
-  if (typeof window === 'undefined') return 'en';
-  return localStorage.getItem('sc_lang') === 'ar' ? 'ar' : 'en';
-}
 
 function loadReservation(): ReservationItem[] {
   if (typeof window === 'undefined') return [];
@@ -122,8 +90,7 @@ function saveReservation(items: ReservationItem[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-export default function CampBooking({ tenantId, tenantName, primaryColor, roomTypes, bookUrl, lang: initialLang }: Props) {
-  const [lang, setLang] = useState<'en' | 'ar'>(initialLang ?? 'en');
+export default function CampBooking({ tenantId, tenantName, primaryColor, roomTypes, bookUrl }: Props) {
   const [items, setItems] = useState<ReservationItem[]>([]);
   const [modalRoom, setModalRoom] = useState<RoomType | null>(null);
   const [checkIn, setCheckIn] = useState('');
@@ -134,10 +101,10 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
   const modalRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  const t = T[lang];
+  const t = T;
   const today = new Date().toISOString().split('T')[0];
 
-  useEffect(() => { setLang(getLang()); setItems(loadReservation()); }, []);
+  useEffect(() => { setItems(loadReservation()); }, []);
 
   useEffect(() => { saveReservation(items); }, [items]);
 

@@ -124,21 +124,20 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
     return map;
   }, [camps]);
 
-  const campSelectOptions = useMemo(
-    () => camps.map((c) => ({ value: c.id, label: c.name })),
-    [camps],
-  );
-
   const productSelectOptions = useMemo(
     () => filteredTypes.map((p) => ({ value: p.id, label: `${p.name} (Cap: ${p.capacity})` })),
     [filteredTypes],
   );
 
+  // Single-camp admin (B3): the tenant's one camp is always the room's camp.
+  // Forms auto-fill it so there is no camp picker anywhere in the panel.
+  const activeCampId = campIds.length > 0 ? campIds[0] : '';
+
   const openAddRoom = useCallback(() => {
     setEditRoomId(null);
-    setRoomForm(emptyRoomForm);
+    setRoomForm({ ...emptyRoomForm, campId: activeCampId });
     setShowRoomForm(true);
-  }, []);
+  }, [activeCampId]);
 
   const openEditRoom = useCallback((room: Room) => {
     setEditRoomId(room.id);
@@ -156,12 +155,12 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
   }, []);
 
   const handleSaveRoom = useCallback(async () => {
-    if (!roomForm.campId || !roomForm.productId || !roomForm.name.trim()) {
-      showToast('Camp, product type, and room name are required.', 'warning');
+    if (!roomForm.productId || !roomForm.name.trim()) {
+      showToast('Product type and room name are required.', 'warning');
       return;
     }
     await saveRoomMutation.mutateAsync({
-      campId: roomForm.campId,
+      campId: roomForm.campId || activeCampId,
       productId: roomForm.productId,
       name: roomForm.name.trim(),
       floor: roomForm.floor || undefined,
@@ -173,13 +172,13 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
     setShowRoomForm(false);
     setEditRoomId(null);
     setRoomForm(emptyRoomForm);
-  }, [roomForm, editRoomId, showToast, saveRoomMutation]);
+  }, [roomForm, editRoomId, showToast, saveRoomMutation, activeCampId]);
 
   const openAddType = useCallback(() => {
     setEditTypeId(null);
-    setTypeForm(emptyProductForm);
+    setTypeForm({ ...emptyProductForm, campIds: activeCampId ? [activeCampId] : [] });
     setShowTypeForm(true);
-  }, []);
+  }, [activeCampId]);
 
   const openEditType = useCallback(
     (p: Product) => {
@@ -190,11 +189,11 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
         basePrice: String(p.basePrice ?? ''),
         description: p.description || '',
         imageUrl: p.imageUrl || '',
-        campIds: p.campIds || [],
+        campIds: p.campIds && p.campIds.length > 0 ? p.campIds : activeCampId ? [activeCampId] : [],
       });
       setShowTypeForm(true);
     },
-    [],
+    [activeCampId],
   );
 
   const handleSaveType = useCallback(async () => {
@@ -206,8 +205,11 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
       showToast('Capacity must be greater than 0.', 'warning');
       return;
     }
-    if (typeForm.campIds.length === 0) {
-      showToast('Assign the product to at least one camp.', 'warning');
+    // Rooms/types always belong to the tenant's single camp; keep the checkbox
+    // assignment for legacy rows but fall back to the active camp.
+    const resolvedCampIds = typeForm.campIds.length > 0 ? typeForm.campIds : activeCampId ? [activeCampId] : [];
+    if (resolvedCampIds.length === 0) {
+      showToast('Assign the product to the camp.', 'warning');
       return;
     }
     await saveProductMutation.mutateAsync({
@@ -216,12 +218,12 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
       basePrice: parseFloat(typeForm.basePrice) || 0,
       description: typeForm.description.trim(),
       imageUrl: typeForm.imageUrl.trim() || undefined,
-      campIds: typeForm.campIds,
+      campIds: resolvedCampIds,
     });
     setShowTypeForm(false);
     setEditTypeId(null);
     setTypeForm(emptyProductForm);
-  }, [typeForm, editTypeId, showToast, saveProductMutation]);
+  }, [typeForm, editTypeId, showToast, saveProductMutation, activeCampId]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -232,15 +234,6 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
     }
     setDeleteTarget(null);
   }, [deleteTarget, deleteRoomMutation, deleteProductMutation]);
-
-  const toggleTypeCamp = (campId: string) => {
-    setTypeForm((prev) => ({
-      ...prev,
-      campIds: prev.campIds.includes(campId)
-        ? prev.campIds.filter((id) => id !== campId)
-        : [...prev.campIds, campId],
-    }));
-  };
 
   const loading = loadingRooms || loadingTypes;
   const saving = saveRoomMutation.isPending || saveProductMutation.isPending;
@@ -266,7 +259,7 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
           </Button>
         </div>
       </div>
-      <p className="text-sm text-gray-500 mb-6">Manage rooms by camp and room type — track availability and assignments across all camps.</p>
+      <p className="text-sm text-gray-500 mb-6">Manage rooms and room types for your camp — track availability and assignments.</p>
 
       {loading ? (
         <LoadingSpinner text="Loading rooms..." />
@@ -462,13 +455,6 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Select
-            label="Camp *"
-            options={campSelectOptions}
-            value={roomForm.campId}
-            onChange={(e) => setRoomForm((prev) => ({ ...prev, campId: e.target.value }))}
-            placeholder="Select Camp"
-          />
-          <Select
             label="Product Type *"
             options={productSelectOptions}
             value={roomForm.productId}
@@ -561,22 +547,6 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 transition-colors duration-200 focus:outline-none focus:ring-2 focus:border-brand-500 focus:ring-brand-500"
               rows={2}
             />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Assign to Camps *</label>
-            <div className="flex flex-wrap gap-3">
-              {camps.map((c) => (
-                <label key={c.id} className="inline-flex items-center gap-1.5 cursor-pointer text-sm font-normal">
-                  <input
-                    type="checkbox"
-                    checked={typeForm.campIds.includes(c.id)}
-                    onChange={() => toggleTypeCamp(c.id)}
-                    className="cursor-pointer"
-                  />
-                  {c.name}
-                </label>
-              ))}
-            </div>
           </div>
         </div>
       </FormModal>

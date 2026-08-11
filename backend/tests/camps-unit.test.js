@@ -80,6 +80,18 @@ describe('handleCampsRoute', () => {
       expect(body.id).toBeDefined();
     });
 
+    it('returns 409 when the tenant already has a camp', async () => {
+      const { db, chain } = makeDbMock();
+      chain.all.mockResolvedValue({ results: [{ id: 'c1' }] });
+      const req = makeRequest('POST', 'https://x.com/api/camps', { name: 'Second Camp' });
+      const res = await handleCampsRoute(req, { DB: db }, T);
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error).toContain('already has a camp');
+      // No insert is attempted when a camp already exists.
+      expect(db.prepare.mock.calls.filter(c => c[0].includes('INSERT INTO camps'))).toHaveLength(0);
+    });
+
     it('returns 400 for invalid schema', async () => {
       const { db } = makeDbMock();
       const req = makeRequest('POST', 'https://x.com/api/camps', { name: '' });
@@ -314,7 +326,7 @@ describe('handleCampsRoute', () => {
 // ─── handleProductsRoute ────────────────────────────────
 describe('handleProductsRoute', () => {
   describe('GET /products', () => {
-    it('returns products with camp associations', async () => {
+    it('returns products with camp associations from pos_products.camp_id', async () => {
       const { db } = makeDbMock();
       let callIdx = 0;
       db.prepare.mockImplementation(() => {
@@ -325,9 +337,7 @@ describe('handleProductsRoute', () => {
           run: vi.fn(),
         };
         if (callIdx === 0) {
-          ch.all.mockResolvedValue({ results: [{ id: 'p1', name: 'Product 1' }] });
-        } else {
-          ch.all.mockResolvedValue({ results: [{ product_id: 'p1', camp_id: 'c1' }] });
+          ch.all.mockResolvedValue({ results: [{ id: 'p1', name: 'Product 1', camp_id: 'c1' }] });
         }
         callIdx++;
         return ch;
@@ -336,26 +346,13 @@ describe('handleProductsRoute', () => {
       const res = await handleProductsRoute(req, { DB: db }, T);
       const body = await res.json();
       expect(body[0].campIds).toEqual(['c1']);
+      // No junction query — camp membership comes straight from pos_products.camp_id.
+      expect(db.prepare).toHaveBeenCalledTimes(1);
     });
 
-    it('returns products with empty campIds when no associations', async () => {
-      const { db } = makeDbMock();
-      let callIdx = 0;
-      db.prepare.mockImplementation(() => {
-        const ch = {
-          bind: vi.fn().mockReturnThis(),
-          all: vi.fn(),
-          first: vi.fn(),
-          run: vi.fn(),
-        };
-        if (callIdx === 0) {
-          ch.all.mockResolvedValue({ results: [{ id: 'p1', name: 'Product 1' }] });
-        } else {
-          ch.all.mockResolvedValue({ results: [] });
-        }
-        callIdx++;
-        return ch;
-      });
+    it('returns products with empty campIds when no camp association', async () => {
+      const { db, chain } = makeDbMock();
+      chain.all.mockResolvedValue({ results: [{ id: 'p1', name: 'Product 1', camp_id: null }] });
       const req = makeRequest('GET', 'https://x.com/api/products');
       const res = await handleProductsRoute(req, { DB: db }, T);
       const body = await res.json();
@@ -407,6 +404,78 @@ describe('handleProductsRoute', () => {
       expect(body.success).toBe(true);
     });
 
+    it('creates product with camp_id after verifying camp ownership', async () => {
+      const { db } = makeDbMock();
+      let callIdx = 0;
+      db.prepare.mockImplementation(() => {
+        const ch = {
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn(),
+          first: vi.fn(),
+          run: vi.fn(),
+        };
+        if (callIdx === 0) {
+          ch.all.mockResolvedValue({ results: [{ id: 'c1' }] }); // camp ownership check
+        } else {
+          ch.all.mockResolvedValue({ results: [] });
+        }
+        callIdx++;
+        return ch;
+      });
+      const req = makeRequest('POST', 'https://x.com/api/products', {
+        name: 'Product', base_price: 100, camp_id: 'c1'
+      });
+      const res = await handleProductsRoute(req, { DB: db }, T);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      const insertSql = db.prepare.mock.calls.find(c => c[0].includes('INTO pos_products'))[0];
+      expect(insertSql).toContain('camp_id');
+      // The ownership check is tenant-scoped.
+      expect(db.prepare.mock.calls[0][0]).toContain('FROM camps WHERE tenant_id = ? AND id = ?');
+    });
+
+    it('resolves the tenant single camp when camp_id omitted on create', async () => {
+      const { db } = makeDbMock();
+      let callIdx = 0;
+      db.prepare.mockImplementation(() => {
+        const ch = {
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn(),
+          first: vi.fn(),
+          run: vi.fn(),
+        };
+        if (callIdx === 0) {
+          ch.all.mockResolvedValue({ results: [{ id: 'the-camp' }] }); // tenant's single camp
+        } else {
+          ch.all.mockResolvedValue({ results: [] });
+        }
+        callIdx++;
+        return ch;
+      });
+      const req = makeRequest('POST', 'https://x.com/api/products', {
+        name: 'Product', base_price: 100
+      });
+      const res = await handleProductsRoute(req, { DB: db }, T);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      const insertSql = db.prepare.mock.calls.find(c => c[0].includes('INTO pos_products'))[0];
+      expect(insertSql).toContain('camp_id');
+      const campResolve = db.prepare.mock.calls[0][0];
+      expect(campResolve).toContain('FROM camps WHERE tenant_id = ? LIMIT 1');
+    });
+
+    it('returns 404 when camp_id does not belong to the tenant', async () => {
+      const { db, chain } = makeDbMock();
+      chain.all.mockResolvedValue({ results: [] });
+      const req = makeRequest('POST', 'https://x.com/api/products', {
+        name: 'Product', base_price: 100, camp_id: 'foreign-camp'
+      });
+      const res = await handleProductsRoute(req, { DB: db }, T);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toContain('Camp not found');
+    });
+
     it('creates product without campIds', async () => {
       const { db } = makeDbMock();
       const req = makeRequest('POST', 'https://x.com/api/products', {
@@ -442,6 +511,18 @@ describe('handleProductsRoute', () => {
       const res = await handleProductsRoute(req, { DB: db }, T);
       const body = await res.json();
       expect(body.success).toBe(true);
+    });
+
+    it('returns 404 when camp_id does not belong to the tenant on update', async () => {
+      const { db, chain } = makeDbMock();
+      chain.all.mockResolvedValue({ results: [] });
+      const req = makeRequest('PUT', 'https://x.com/api/products/p1', {
+        name: 'Updated', camp_id: 'foreign-camp'
+      });
+      const res = await handleProductsRoute(req, { DB: db }, T);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toContain('Camp not found');
     });
 
     it('updates product with empty campIds', async () => {
@@ -615,6 +696,33 @@ describe('handleRoomsRoute', () => {
       const res = await handleRoomsRoute(req, { DB: db }, T);
       const body = await res.json();
       expect(body.success).toBe(true);
+    });
+
+    it('returns 404 when camp or product does not belong to the tenant', async () => {
+      const { db } = makeDbMock();
+      let callIdx = 0;
+      db.prepare.mockImplementation(() => {
+        const ch = {
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn(),
+          first: vi.fn(),
+          run: vi.fn(),
+        };
+        if (callIdx === 0) {
+          ch.all.mockResolvedValue({ results: [] }); // no dup
+        } else {
+          ch.run.mockResolvedValue({ success: true, meta: { changes: 0 } }); // ownership guard blocks
+        }
+        callIdx++;
+        return ch;
+      });
+      const req = makeRequest('POST', 'https://x.com/api/rooms', {
+        camp_id: 'foreign-camp', product_id: 'p1', name: 'Room A', max_guests: 2
+      });
+      const res = await handleRoomsRoute(req, { DB: db }, T);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toContain('not found');
     });
 
     it('defaults max_guests from product capacity when not specified', async () => {
@@ -895,6 +1003,18 @@ describe('handleRatePlansRoute', () => {
       const res = await handleRatePlansRoute(req, { DB: db }, T);
       const body = await res.json();
       expect(body.success).toBe(true);
+    });
+
+    it('returns 404 when product does not belong to the tenant', async () => {
+      const { db, chain } = makeDbMock();
+      chain.run.mockResolvedValue({ success: true, meta: { changes: 0 } }); // ownership guard blocks
+      const req = makeRequest('POST', 'https://x.com/api/rate-plans', {
+        product_id: 'foreign-product', name: 'Rate', price_per_night: 100
+      });
+      const res = await handleRatePlansRoute(req, { DB: db }, T);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toContain('not found');
     });
 
     it('returns 400 for invalid schema', async () => {

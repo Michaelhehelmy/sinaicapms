@@ -599,38 +599,6 @@ describe('A11y: Select keyboard navigation', () => {
 });
 
 /* ────────────────────────────────────────────────────────── */
-/*  LanguageSwitcher — accessible label                       */
-/* ────────────────────────────────────────────────────────── */
-describe('A11y: LanguageSwitcher', () => {
-  it('has aria-label for current locale switch', () => {
-    // Validate that a language toggle button has an accessible name
-    render(
-      <button
-        aria-label="Switch to Arabic"
-        className="inline-flex items-center gap-2"
-      >
-        <span>عربي</span>
-      </button>,
-    );
-    expect(screen.getByRole('button', { name: 'Switch to Arabic' })).toBeInTheDocument();
-  });
-
-  it('toggle button is keyboard focusable', () => {
-    render(
-      <button
-        aria-label="Switch to English"
-        className="inline-flex items-center gap-2"
-      >
-        <span>EN</span>
-      </button>,
-    );
-    const btn = screen.getByRole('button', { name: 'Switch to English' });
-    btn.focus();
-    expect(btn).toHaveFocus();
-  });
-});
-
-/* ────────────────────────────────────────────────────────── */
 /*  Modal — ESC closes modal                                  */
 /* ────────────────────────────────────────────────────────── */
 describe('A11y: Modal ESC key', () => {

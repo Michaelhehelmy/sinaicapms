@@ -111,9 +111,12 @@ function resolveTenantId(url: URL): string {
     if (subdomain && subdomain !== 'www') return subdomain;
   }
 
-  // Custom domain (acaciacamp.com, etc.) → return full hostname as lookup key
-  // The backend /api/tenants/:id supports custom_domain lookup
-  return hostname;
+  // Custom domain (acaciacamp.com, www.acaciacamp.com, etc.) → return the
+  // hostname as the lookup key, with a leading `www.` stripped so the
+  // backend custom_domain match works. The backend /api/tenants/:id
+  // supports custom_domain lookup.
+  const host = hostname.replace(/^www\./, '');
+  return host;
 }
 
 function getApiBase(url: URL): string {

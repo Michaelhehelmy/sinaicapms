@@ -57,9 +57,10 @@ describe('MenuPlannerPanel', () => {
     expect(screen.getByText('→')).toBeInTheDocument();
   });
 
-  it('shows camp filter', () => {
+  it('does not render a camp filter (single-camp admin)', () => {
     render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
-    expect(screen.getByText('All Camps')).toBeInTheDocument();
+    expect(screen.queryByText('All Camps')).not.toBeInTheDocument();
+    expect(screen.queryByText('Camp *')).not.toBeInTheDocument();
   });
 
   it('navigates weeks', () => {
@@ -105,7 +106,7 @@ describe('MenuPlannerPanel', () => {
     });
     fireEvent.click(screen.getByText('Schedule'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Please select a camp and a meal', 'error');
+      expect(mockShowToast).toHaveBeenCalledWith('Please select a meal', 'error');
     });
   });
 
@@ -133,7 +134,7 @@ describe('MenuPlannerPanel', () => {
     });
     fireEvent.click(screen.getByText('Schedule'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Please select a camp and a meal', 'error');
+      expect(mockShowToast).toHaveBeenCalledWith('Please select a meal', 'error');
     });
   });
 
@@ -147,7 +148,7 @@ describe('MenuPlannerPanel', () => {
     });
     fireEvent.click(screen.getByText('Schedule'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Please select a camp and a meal', 'error');
+      expect(mockShowToast).toHaveBeenCalledWith('Please select a meal', 'error');
     });
   });
 
@@ -170,7 +171,6 @@ describe('MenuPlannerPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Schedule Meal')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByLabelText('Camp *'), { target: { value: 'c1' } });
     fireEvent.change(screen.getByLabelText('Meal *'), { target: { value: 'm1' } });
     fireEvent.change(screen.getByLabelText('Package Type'), { target: { value: 'full_board' } });
     fireEvent.change(screen.getByLabelText('Max Servings'), { target: { value: '50' } });
@@ -200,7 +200,6 @@ describe('MenuPlannerPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Schedule Meal')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByLabelText('Camp *'), { target: { value: 'c1' } });
     fireEvent.change(screen.getByLabelText('Meal *'), { target: { value: 'm1' } });
     fireEvent.click(screen.getByText('Schedule'));
     await waitFor(() => {
@@ -280,7 +279,7 @@ describe('MenuPlannerPanel', () => {
     expect(screen.getByText('breakfast')).toBeInTheDocument();
   });
 
-  it('filters schedules by camp', async () => {
+  it('scopes schedules to the single camp (no camp filter)', async () => {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     mockSchedules = [
@@ -288,12 +287,11 @@ describe('MenuPlannerPanel', () => {
       { id: 's2', campId: 'c2', date: dateStr, mealId: 'm2', mealName: 'Salad Bowl', packageType: 'all', maxServings: 100, campName: 'Camp 2' },
     ];
     render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
-    expect(screen.getByText('Salad Bowl')).toBeInTheDocument();
-    const filterSelect = document.querySelector('select') as HTMLSelectElement;
-    fireEvent.change(filterSelect, { target: { value: 'c1' } });
+    // B3: schedules belonging to another camp are never shown, and there is
+    // no dropdown to switch camps.
+    expect(screen.getByText('Grilled Chicken')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByText('Salad Bowl')).not.toBeInTheDocument();
     });
-    expect(screen.getByText('Grilled Chicken')).toBeInTheDocument();
   });
 });

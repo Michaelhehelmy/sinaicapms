@@ -23,12 +23,6 @@ interface Props {
 
 const { tenant, roomTypes, primaryColor, tenantName, tenantId, zone, marketplaceUrl = null } = Astro.props;
 
-// SSR-resolved UI language (query param wins, then sc_lang cookie, then 'en').
-// PublicLayout computes its own copy for <html lang/dir>; this one is passed
-// to the CampBooking island so the server-rendered markup matches the first
-// client paint instead of flashing English/LTR in RTL locales.
-const ssrLang = ((Astro.url.searchParams.get('lang') || Astro.cookies.get('sc_lang')?.value || 'en') === 'ar' ? 'ar' : 'en') as 'en' | 'ar';
-
 // Unknown tenant on the tenant zone → branded 404 (never leak another camp).
 const tenantMissing = !tenant;
 if (tenantMissing) Astro.response.status = 404;
@@ -229,7 +223,6 @@ function sanitizeForJsonLd(obj: Record<string, unknown>): Record<string, unknown
               primaryColor={color}
               roomTypes={roomTypes as any}
               bookUrl={reservationUrl}
-              lang={ssrLang}
             />
           </section>
         </div>

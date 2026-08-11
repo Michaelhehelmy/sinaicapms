@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { setTenantScope } from '@/lib/api';
-import { useI18n } from '@/hooks/useI18n';
 import { useCampsQuery, queryKeys } from '@/hooks/useQueryHooks';
+import type { Camp } from '@/hooks/useAdminData';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import CampsPanel from './CampsPanel';
 import RoomsPanel from './RoomsPanel';
@@ -25,19 +25,26 @@ import MenuPanel from './MenuPanel';
  * tenant-scoped).
  */
 interface TenantDrilldownProps {
-  tenant: { id: string; name: string; subdomain: string | null; type?: string };
+  tenant: { id: string; name: string; subdomain: string | null; customDomain?: string | null; type?: string };
   onBack: () => void;
 }
 
-const VIEWS = ['camps', 'rooms', 'rateplans', 'orders', 'menu'] as const;
+const VIEWS = ['camp', 'rooms', 'rateplans', 'orders', 'menu'] as const;
 type DrillView = (typeof VIEWS)[number];
 
 const VIEW_LABELS: Record<DrillView, string> = {
-  camps: 'Camps',
+  camp: 'Camp',
   rooms: 'Rooms',
   rateplans: 'Rate Plans',
   orders: 'Orders',
   menu: 'Menu',
+};
+
+const TENANT_TYPE_LABELS: Record<string, string> = {
+  camp: 'Camp',
+  supermarket: 'Supermarket',
+  transportation: 'Transportation',
+  other: 'Other',
 };
 
 export default function TenantDrilldown({ tenant, onBack }: TenantDrilldownProps) {
@@ -57,20 +64,23 @@ export default function TenantDrilldown({ tenant, onBack }: TenantDrilldownProps
 }
 
 function DrilldownContent({ tenant, onBack }: TenantDrilldownProps) {
-  const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [view, setView] = useState<DrillView>('camps');
+  const [view, setView] = useState<DrillView>('camp');
   const { data: camps, isLoading: loading } = useCampsQuery();
 
   const refreshCamps = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.camps });
   }, [queryClient]);
 
-  const campIds = useMemo(() => (camps ?? []).map((c) => c.id), [camps]);
+  // Single-camp hub (B3): the tenant owns exactly one camp, so every panel is
+  // wired to camps[0] — no camp pickers, no multi-camp arrays.
+  const activeCamp = camps && camps.length > 0 ? camps[0] : null;
+  const campIds = useMemo(() => (activeCamp ? [activeCamp.id] : []), [activeCamp]);
+  const activeCamps = useMemo<Camp[]>(() => (activeCamp ? [activeCamp] : []), [activeCamp]);
 
   const typeLabel = (value?: string) => {
     const v = value || 'camp';
-    return ['camp', 'supermarket', 'transportation', 'other'].includes(v) ? t(`tenantType.${v}`) : v;
+    return TENANT_TYPE_LABELS[v] ?? v;
   };
 
   const tabClass = (active: boolean) =>
@@ -98,7 +108,7 @@ function DrilldownContent({ tenant, onBack }: TenantDrilldownProps) {
           </span>
         </div>
         <span className="text-sm text-gray-500">
-          {tenant.subdomain ? `${tenant.subdomain}.sinaicamps.com` : tenant.id}
+          {tenant.customDomain ? tenant.customDomain : tenant.subdomain ? `${tenant.subdomain}.sinaicamps.com` : tenant.id}
         </span>
       </div>
 
@@ -116,14 +126,14 @@ function DrilldownContent({ tenant, onBack }: TenantDrilldownProps) {
       </div>
 
       {loading ? (
-        <LoadingSpinner text="Loading camps..." />
+        <LoadingSpinner text="Loading camp..." />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          {view === 'camps' && <CampsPanel onRefreshCamps={refreshCamps} />}
-          {view === 'rooms' && <RoomsPanel campIds={campIds} camps={camps ?? []} />}
-          {view === 'rateplans' && <RatePlansPanel campIds={campIds} camps={camps ?? []} />}
-          {view === 'orders' && <OrdersPanel campIds={campIds} camps={camps ?? []} />}
-          {view === 'menu' && <MenuPanel campIds={campIds} camps={camps ?? []} />}
+          {view === 'camp' && <CampsPanel onRefreshCamps={refreshCamps} />}
+          {view === 'rooms' && <RoomsPanel campIds={campIds} camps={activeCamps} />}
+          {view === 'rateplans' && <RatePlansPanel campIds={campIds} camps={activeCamps} />}
+          {view === 'orders' && <OrdersPanel campIds={campIds} camps={activeCamps} />}
+          {view === 'menu' && <MenuPanel campIds={campIds} camps={activeCamps} />}
         </div>
       )}
     </div>

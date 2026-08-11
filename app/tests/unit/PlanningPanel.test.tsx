@@ -150,7 +150,7 @@ describe('PlanningPanel', () => {
     });
     fireEvent.click(screen.getByText('Save Plan'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Camp and plan name are required.', 'warning');
+      expect(mockShowToast).toHaveBeenCalledWith('Plan name is required.', 'warning');
     });
   });
 
@@ -161,7 +161,6 @@ describe('PlanningPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByTestId('select-Camp *'), { target: { value: 'c1' } });
     fireEvent.change(screen.getByPlaceholderText('Plan name'), { target: { value: 'New Plan' } });
     fireEvent.click(screen.getByText('Save Plan'));
     await waitFor(() => {
@@ -177,7 +176,6 @@ describe('PlanningPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByTestId('select-Camp *'), { target: { value: 'c1' } });
     fireEvent.change(screen.getByPlaceholderText('Plan name'), { target: { value: 'New Plan' } });
     fireEvent.click(screen.getByText('Save Plan'));
     await waitFor(() => {
@@ -322,7 +320,6 @@ describe('PlanningPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByTestId('select-Camp *'), { target: { value: 'c1' } });
     fireEvent.change(screen.getByPlaceholderText('Plan name'), { target: { value: 'New Plan' } });
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2025-08-05' } });
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '14:30' } });

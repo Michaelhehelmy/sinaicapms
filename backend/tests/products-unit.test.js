@@ -129,24 +129,23 @@ describe('handleProductsRoute GET (unified pos_products)', () => {
     expect(sql).toContain('p.deleted_at IS NULL');
   });
 
-  it('populates campIds from the product_camps junction (not product_camps_new)', async () => {
-    const campRows = [
-      { product_id: 'acacia-prod-1', camp_id: 'c1' },
-      { product_id: 'acacia-prod-1', camp_id: 'c2' },
-      { product_id: 'acacia-prod-2', camp_id: 'c3' },
+  it('populates campIds from pos_products.camp_id (source of truth since 0053)', async () => {
+    const products = [
+      { id: 'acacia-prod-1', tenant_id: 'acaciacamp', sku: 'A1', name: 'P1', base_price: 100, capacity: 2, image_url: '', images: '[]', is_active: 1, camp_id: 'c1' },
+      { id: 'acacia-prod-2', tenant_id: 'acaciacamp', sku: 'A2', name: 'P2', base_price: 200, capacity: 2, image_url: '', images: '[]', is_active: 1, camp_id: 'c2' },
+      { id: 'acacia-prod-3', tenant_id: 'acaciacamp', sku: 'A3', name: 'P3', base_price: 300, capacity: 2, image_url: '', images: '[]', is_active: 1, camp_id: null },
     ];
-    const { db } = makeSequencedDb(acaciaProducts, campRows);
+    const { db } = makeSequencedDb(products, []);
     const req = makeRequest('GET', 'https://acacia.sinaicamps.com/api/products');
     const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
     const body = await res.json();
 
-    expect(body[0].campIds).toEqual(['c1', 'c2']);
-    expect(body[1].campIds).toEqual(['c3']);
+    expect(body[0].campIds).toEqual(['c1']);
+    expect(body[1].campIds).toEqual(['c2']);
     expect(body[2].campIds).toEqual([]);
 
-    const campsSql = db.prepare.mock.calls[1][0];
-    expect(campsSql).toContain('FROM product_camps');
-    expect(campsSql).not.toContain('product_camps_new');
+    // No junction query — camp membership is read straight from pos_products.camp_id.
+    expect(db.prepare).toHaveBeenCalledTimes(1);
   });
 
   it('falls back image_url to the first element of images JSON', async () => {
@@ -194,7 +193,7 @@ describe('handleProductsRoute GET (unified pos_products)', () => {
 
 // ─── Write path: POST/PUT/DELETE must target pos_products + product_camps ─────
 describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', () => {
-  it('POST writes pos_products and product_camps (never legacy products)', async () => {
+  it('POST writes pos_products (with camp_id) and product_camps (never legacy products)', async () => {
     const { db } = makeDbMock();
     const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products', {
       name: 'Product', basePrice: 100, capacity: 2, campIds: ['c1', 'c2']
@@ -205,14 +204,16 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect(body.success).toBe(true);
 
     const sqls = db.prepare.mock.calls.map(c => c[0]);
-    // Call 0 = tenant_org_mapping lookup (resolves the tenant's POS org);
-    // call 1 = pos_products INSERT; call 2 = product_camps junction.
-    expect(sqls[0]).toContain('tenant_org_mapping');
-    expect(sqls[1]).toContain('INTO pos_products');
-    expect(sqls[1]).toContain('name');
-    expect(sqls[1]).toContain('selling_price');
-    expect(sqls[1]).toContain("'room'");
-    expect(sqls[2]).toContain('INTO product_camps');
+    // Call 0 = resolve the tenant's single camp; call 1 = tenant_org_mapping lookup;
+    // call 2 = pos_products INSERT (writes camp_id); call 3 = product_camps junction.
+    expect(sqls[0]).toContain('FROM camps WHERE tenant_id = ? LIMIT 1');
+    expect(sqls[1]).toContain('tenant_org_mapping');
+    expect(sqls[2]).toContain('INTO pos_products');
+    expect(sqls[2]).toContain('name');
+    expect(sqls[2]).toContain('selling_price');
+    expect(sqls[2]).toContain("'room'");
+    expect(sqls[2]).toContain('camp_id');
+    expect(sqls[3]).toContain('INTO product_camps');
     for (const sql of sqls) {
       expect(sql).not.toMatch(/\bINTO\s+products\b/);
       expect(sql).not.toMatch(/\bproducts\s+SET\b/);
@@ -231,12 +232,13 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect((await res.json()).success).toBe(true);
 
     const sqls = db.prepare.mock.calls.map(c => c[0]);
-    expect(sqls).toHaveLength(2);
-    expect(sqls[0]).toContain('tenant_org_mapping');
-    expect(sqls[1]).toContain('INTO pos_products');
-    expect(sqls[1]).not.toMatch(/\bINTO\s+products\b/);
-    expect(sqls[1]).not.toContain('product_camps_new');
-    expect(sqls[1]).not.toContain('product_lang');
+    expect(sqls).toHaveLength(3);
+    expect(sqls[0]).toContain('FROM camps WHERE tenant_id = ? LIMIT 1');
+    expect(sqls[1]).toContain('tenant_org_mapping');
+    expect(sqls[2]).toContain('INTO pos_products');
+    expect(sqls[2]).not.toMatch(/\bINTO\s+products\b/);
+    expect(sqls[2]).not.toContain('product_camps_new');
+    expect(sqls[2]).not.toContain('product_lang');
   });
 
   it('PUT updates pos_products and rebuilds product_camps (never legacy)', async () => {

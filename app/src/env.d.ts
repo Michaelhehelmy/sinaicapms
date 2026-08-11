@@ -1,7 +1,5 @@
 /// <reference path="../.astro/types.d.ts" />
 
-import type { Locale } from '@/i18n';
-
 declare global {
   namespace App {
     interface Locals {
@@ -29,12 +27,6 @@ declare global {
        * branded 404 when set.
        */
       routeForbidden: boolean;
-      /**
-       * Per-request locale (default 'en'), set by the middleware chain. SSR
-       * i18n consumers must read this (or pass an explicit locale) instead of
-       * relying on module-level state — there is none.
-       */
-      locale: Locale;
       /**
        * Adapter-injected Cloudflare runtime (advanced mode). Set by
        * `@astrojs/cloudflare` — `env` carries the Worker/Pages bindings,

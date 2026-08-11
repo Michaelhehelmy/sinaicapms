@@ -40,6 +40,8 @@ export const productPostSchema = z.object({
   sku: z.string().optional(),
   is_active: z.number().optional(),
   camp_ids: z.array(z.string()).optional(),
+  // One-camp-per-tenant (0053): room types point at their camp via camp_id.
+  camp_id: z.string().optional(),
 }).strip(); // S-M1 fix
 
 export const roomPostSchema = z.object({
@@ -89,7 +91,7 @@ export async function handleCampsRoute(request, env, tenantId) {
       const offset = url.searchParams.get('offset');
       if (limit) {
         const query = marketplace
-          ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' LIMIT ? OFFSET ?`
+          ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' GROUP BY c.tenant_id LIMIT ? OFFSET ?`
           : "SELECT * FROM camps WHERE tenant_id = ? LIMIT ? OFFSET ?";
         const bindings = marketplace ? [] : [tenantId];
         const { results } = await env.DB.prepare(query)
@@ -97,7 +99,7 @@ export async function handleCampsRoute(request, env, tenantId) {
         return cachedJsonResponse(results);
       }
       const query = marketplace
-        ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active'`
+        ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' GROUP BY c.tenant_id`
         : "SELECT * FROM camps WHERE tenant_id = ?";
       const bindings = marketplace ? [] : [tenantId];
       const { results } = await env.DB.prepare(query).bind(...bindings).all();
@@ -122,6 +124,14 @@ export async function handleCampsRoute(request, env, tenantId) {
       // Parameterized queries handle SQL injection; escHtml corrupts stored data
       if (start_date && end_date && new Date(start_date) >= new Date(end_date)) {
         return errorResponse('Start date must be before end date', 400);
+      }
+      // One-camp-per-tenant (migration 0053): a tenant may have at most one camp.
+      // Guard with a clean 409 before the unique index on camps.tenant_id throws.
+      const { results: existingCamps } = await env.DB.prepare(
+        "SELECT id FROM camps WHERE tenant_id = ?"
+      ).bind(tenantId).all();
+      if (existingCamps.length > 0) {
+        return errorResponse('Tenant already has a camp', 409);
       }
       const cid = id || 'camp_' + crypto.randomUUID().slice(0, 12); // L1 fix
       await env.DB.prepare(
@@ -203,33 +213,19 @@ export async function handleProductsRoute(request, env, tenantId) {
   if (method === 'GET') {
     // D5 fix: read from unified pos_products (production has 13 rows) instead of the
     // dead legacy `products` table (0 rows in production). Marketplace host → cross-tenant.
+    // 0053: camp membership comes from pos_products.camp_id (source of truth), not the
+    // product_camps junction, so no extra junction query is needed.
     const marketplace = isMarketplaceTenant(tenantId);
     const select =
       `SELECT p.id, p.tenant_id, p.category_id, p.sku, p.name, p.description, p.short_description,
               p.selling_price AS base_price, p.capacity, p.image_url, p.images, p.is_active,
-              p.created_at, p.updated_at
+              p.camp_id, p.created_at, p.updated_at
        FROM pos_products p`;
     const where = marketplace
       ? ' WHERE p.deleted_at IS NULL'
       : ' WHERE p.tenant_id = ? AND p.deleted_at IS NULL';
     const bindings = marketplace ? [] : [tenantId];
     const { results } = await env.DB.prepare(select + where).bind(...bindings).all();
-
-    // Populate campIds from the product_camps junction
-    let campsMap = {};
-    if (results.length > 0) {
-      const productIds = results.map(p => p.id);
-      if (productIds.length > 0) {
-        const placeholders = productIds.map(() => '?').join(',');
-        const { results: campRows } = await env.DB.prepare(
-          `SELECT product_id, camp_id FROM product_camps WHERE product_id IN (${placeholders})`
-        ).bind(...productIds).all();
-        campRows.forEach(row => {
-          if (!campsMap[row.product_id]) campsMap[row.product_id] = [];
-          campsMap[row.product_id].push(row.camp_id);
-        });
-      }
-    }
 
     // image_url fallback: image_url column → first element of images JSON
     const firstImage = (images) => {
@@ -256,7 +252,7 @@ export async function handleProductsRoute(request, env, tenantId) {
       is_active: p.is_active,
       created_at: p.created_at,
       updated_at: p.updated_at,
-      campIds: campsMap[p.id] || []
+      campIds: p.camp_id ? [p.camp_id] : []
     }));
     return cachedJsonResponse(finalResults);
 
@@ -266,8 +262,27 @@ export async function handleProductsRoute(request, env, tenantId) {
       if (!parsed.success) {
         return validationError(parsed);
       }
-      const { id, name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids } = parsed.data;
+      const { id, name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids, camp_id } = parsed.data;
       const pid = id || 'prod_' + crypto.randomUUID().slice(0, 12); // L1 fix
+
+      // One-camp-per-tenant (0053): room types belong to a camp. Use the provided
+      // camp_id when given (must belong to this tenant) or resolve the tenant's
+      // single camp when omitted.
+      let productCampId = null;
+      if (camp_id) {
+        const { results: campCheck } = await env.DB.prepare(
+          "SELECT id FROM camps WHERE tenant_id = ? AND id = ?"
+        ).bind(tenantId, camp_id).all();
+        if (campCheck.length === 0) {
+          return errorResponse('Camp not found', 404);
+        }
+        productCampId = camp_id;
+      } else {
+        const { results: tenantCamps } = await env.DB.prepare(
+          "SELECT id FROM camps WHERE tenant_id = ? LIMIT 1"
+        ).bind(tenantId).all();
+        productCampId = tenantCamps.length > 0 ? tenantCamps[0].id : null;
+      }
 
       // The product must belong to the tenant's POS organization so it shows
       // up in that tenant's POS grid (pos_products.organization_id). The
@@ -281,14 +296,15 @@ export async function handleProductsRoute(request, env, tenantId) {
       const organizationId = orgRows.length > 0 ? orgRows[0].organization_id : 1;
 
       await env.DB.prepare(
-        `INSERT INTO pos_products (id, tenant_id, organization_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'room', datetime('now'), datetime('now'))`
+        `INSERT INTO pos_products (id, tenant_id, organization_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, camp_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'room', ?, datetime('now'), datetime('now'))`
       ).bind(
         pid, tenantId, organizationId, category_id || null,
         sku || 'PROD-' + pid.toUpperCase(),
         name, description || null, short_description || null,
         base_price || 0, capacity || 1,
-        image_url || null, is_active !== undefined ? is_active : 1
+        image_url || null, is_active !== undefined ? is_active : 1,
+        productCampId
       ).run();
 
       if (camp_ids && Array.isArray(camp_ids) && camp_ids.length > 0) {
@@ -313,7 +329,19 @@ export async function handleProductsRoute(request, env, tenantId) {
       if (!parsed.success) {
         return validationError(parsed);
       }
-      const { name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids } = parsed.data;
+      const { name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids, camp_id } = parsed.data;
+
+      // 0053: when a camp_id is provided it must belong to this tenant.
+      let productCampId = null;
+      if (camp_id) {
+        const { results: campCheck } = await env.DB.prepare(
+          "SELECT id FROM camps WHERE tenant_id = ? AND id = ?"
+        ).bind(tenantId, camp_id).all();
+        if (campCheck.length === 0) {
+          return errorResponse('Camp not found', 404);
+        }
+        productCampId = camp_id;
+      }
 
       await env.DB.prepare(
         `UPDATE pos_products SET
@@ -324,6 +352,7 @@ export async function handleProductsRoute(request, env, tenantId) {
           capacity = COALESCE(?, capacity),
           image_url = COALESCE(?, image_url),
           is_active = COALESCE(?, is_active),
+          camp_id = COALESCE(?, camp_id),
           updated_at = datetime('now')
         WHERE tenant_id = ? AND id = ?`
       ).bind(
@@ -334,6 +363,7 @@ export async function handleProductsRoute(request, env, tenantId) {
         capacity !== undefined ? capacity : null,
         image_url !== undefined ? image_url : null,
         is_active !== undefined ? is_active : null,
+        productCampId,
         tenantId, pid
       ).run();
 
@@ -425,10 +455,18 @@ export async function handleRoomsRoute(request, env, tenantId) {
       }
 
       const rid = id || 'room_' + crypto.randomUUID().slice(0, 12); // L1 fix
-      await env.DB.prepare(
+      // 0053: the INSERT only selects a row when the camp AND the product belong
+      // to this tenant, so a foreign camp_id/product_id can never be stored.
+      const insertResult = await env.DB.prepare(
         `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-      ).bind(rid, camp_id, product_id, name, status || 'available', bed_type || null, finalMaxGuests, base_price !== undefined ? base_price : null, floor || null, notes || null, is_active !== undefined ? is_active : 1).run();
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+         FROM camps c
+         WHERE c.id = ? AND c.tenant_id = ?
+           AND EXISTS (SELECT 1 FROM pos_products p WHERE p.id = ? AND p.tenant_id = c.tenant_id)`
+      ).bind(rid, camp_id, product_id, name, status || 'available', bed_type || null, finalMaxGuests, base_price !== undefined ? base_price : null, floor || null, notes || null, is_active !== undefined ? is_active : 1, camp_id, tenantId, product_id).run();
+      if (insertResult?.meta?.changes === 0) {
+        return errorResponse('Camp or product not found for this tenant', 404);
+      }
       return jsonResponse({ id: rid, success: true });
     } catch (e) {
       return errorResponse('Failed to create room');
@@ -460,8 +498,8 @@ export async function handleRoomsRoute(request, env, tenantId) {
 
       await env.DB.prepare(
         `UPDATE rooms_new SET
-          camp_id = COALESCE(?, camp_id),
-          product_id = COALESCE(?, product_id),
+          camp_id = COALESCE((SELECT id FROM camps WHERE id = ? AND tenant_id = ?), camp_id),
+          product_id = COALESCE((SELECT id FROM pos_products WHERE id = ? AND tenant_id = ?), product_id),
           name = COALESCE(?, name),
           floor = COALESCE(?, floor),
           status = COALESCE(?, status),
@@ -473,7 +511,8 @@ export async function handleRoomsRoute(request, env, tenantId) {
           updated_at = datetime('now')
         WHERE id = ? AND camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)`
       ).bind(
-        camp_id || null, product_id || null, name || null,
+        camp_id || null, tenantId, product_id || null, tenantId,
+        name || null,
         floor !== undefined ? floor : null, status || null, bed_type !== undefined ? bed_type : null,
         max_guests !== undefined ? max_guests : null, base_price !== undefined ? base_price : null,
         notes !== undefined ? notes : null, is_active !== undefined ? is_active : null,
@@ -524,10 +563,17 @@ export async function handleRatePlansRoute(request, env, tenantId) {
       }
       const { id, product_id, name, price_per_night, start_date, end_date, season, min_stay, is_active } = parsed.data;
       const rpid = id || 'rp_' + crypto.randomUUID().slice(0, 12); // L1 fix
-      await env.DB.prepare(
+      // 0053: the INSERT only selects a row when the product belongs to this
+      // tenant, so a foreign product_id can never be stored on a rate plan.
+      const insertResult = await env.DB.prepare(
         `INSERT INTO rate_plans_new (id, tenant_id, product_id, name, price_per_night, start_date, end_date, season, min_stay, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-      ).bind(rpid, tenantId, product_id, name, price_per_night, start_date || null, end_date || null, season || 'all', min_stay || 1, is_active !== undefined ? is_active : 1).run();
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+         FROM pos_products p
+         WHERE p.id = ? AND p.tenant_id = ?`
+      ).bind(rpid, tenantId, product_id, name, price_per_night, start_date || null, end_date || null, season || 'all', min_stay || 1, is_active !== undefined ? is_active : 1, product_id, tenantId).run();
+      if (insertResult?.meta?.changes === 0) {
+        return errorResponse('Product not found for this tenant', 404);
+      }
       return jsonResponse({ id: rpid, success: true });
     } catch (e) {
       return errorResponse('Failed to create rate plan');
@@ -542,7 +588,7 @@ export async function handleRatePlansRoute(request, env, tenantId) {
       const { product_id, name, price_per_night, start_date, end_date, season, min_stay, is_active } = parsed.data;
       await env.DB.prepare(
         `UPDATE rate_plans_new SET
-          product_id = COALESCE(?, product_id),
+          product_id = COALESCE((SELECT id FROM pos_products WHERE id = ? AND tenant_id = ?), product_id),
           name = COALESCE(?, name),
           price_per_night = COALESCE(?, price_per_night),
           start_date = COALESCE(?, start_date),
@@ -553,7 +599,8 @@ export async function handleRatePlansRoute(request, env, tenantId) {
           updated_at = datetime('now')
         WHERE tenant_id = ? AND id = ?`
       ).bind(
-        product_id || null, name || null, price_per_night !== undefined ? price_per_night : null,
+        product_id || null, tenantId,
+        name || null, price_per_night !== undefined ? price_per_night : null,
         start_date !== undefined ? start_date : null, end_date !== undefined ? end_date : null,
         season !== undefined ? season : null, min_stay !== undefined ? min_stay : null,
         is_active !== undefined ? is_active : null,

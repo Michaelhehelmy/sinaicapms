@@ -20,15 +20,9 @@ const color = primaryColor || '#4a7c4f';
 const apiBase = Astro.locals.API_BASE as string | undefined;
 
 const pageTitle = `Reservation — ${tenantName} | Sinai Camps`;
-
-// Dynamic RTL support
-const queryLang = Astro.url.searchParams.get('lang');
-const cookieLang = Astro.cookies.get('sc_lang')?.value;
-const lang = queryLang || cookieLang || 'en';
-const dir = lang === 'ar' ? 'rtl' : 'ltr';
 ---
 
-<html lang={lang} dir={dir}>
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -55,7 +49,6 @@ const dir = lang === 'ar' ? 'rtl' : 'ltr';
       whatsappNumber={whatsappNumber}
       apiBase={apiBase}
       campUrl={campUrl}
-      lang={lang as 'en' | 'ar'}
     />
   </main>
 </body>
