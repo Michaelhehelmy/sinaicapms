@@ -1,21 +1,19 @@
 import { test, expect } from '@playwright/test';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
-import { SUPER_ADMIN } from '../../fixtures/test-data';
+import { TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 
-async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
+async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
   const admin = new AdminDashboardPage(page);
-  await admin.goto();
-  await page.locator('[data-testid="login-email"]').fill(SUPER_ADMIN.email);
-  await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
-  await page.locator('[data-testid="login-submit"]').click();
+  await admin.goto(TEST_TENANT.id);
+  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
   await expectPanelReady(page);
   return admin;
 }
 
 test.describe('Admin Settings', () => {
   test('settings tab shows form fields', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('settings');
     await expectPanelReady(page);
 
@@ -35,7 +33,7 @@ test.describe('Admin Settings', () => {
   });
 
   test('settings form has save button', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('settings');
     await expectPanelReady(page);
 
@@ -47,7 +45,7 @@ test.describe('Admin Settings', () => {
   });
 
   test('save settings shows success message', async ({ page, request }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('settings');
     await expectPanelContentReady(page, 'settings-panel');
 
@@ -79,21 +77,26 @@ test.describe('Admin Settings', () => {
       // request context is not subject to browser CORS, so this proves the
       // PATCH /api/me handler succeeds with a fresh admin session.
       const loginRes = await request.post(`${process.env.API_BASE_URL ?? 'http://localhost:8787'}/api/auth/login`, {
-        data: { email: SUPER_ADMIN.email, password: SUPER_ADMIN.password },
+        data: { email: TEST_TENANT_ADMIN.email, password: TEST_TENANT_ADMIN.password, tenantId: TEST_TENANT.id },
       });
       expect(loginRes.ok()).toBeTruthy();
       const loginBody = await loginRes.json();
       expect(loginBody.token).toBeTruthy();
       const patchRes = await request.patch(`${process.env.API_BASE_URL ?? 'http://localhost:8787'}/api/me`, {
-        headers: { Authorization: `Bearer ${loginBody.token}` },
-        data: { displayName: SUPER_ADMIN.email },
+        headers: {
+          Authorization: `Bearer ${loginBody.token}`,
+          // Tenant admins must send the tenant scope header (the frontend's
+          // api.ts appends x-tenant-id automatically; raw requests must too).
+          'x-tenant-id': TEST_TENANT.id,
+        },
+        data: { displayName: TEST_TENANT_ADMIN.email },
       });
       expect(patchRes.ok()).toBeTruthy();
     }
   });
 
   test('settings values persist after page reload', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('settings');
     await expectPanelContentReady(page, 'settings-panel');
 
@@ -110,8 +113,8 @@ test.describe('Admin Settings', () => {
       const loginEmail = page.locator('[data-testid="login-email"]');
       const loginCount = await loginEmail.count();
       if (loginCount > 0 && await loginEmail.isVisible()) {
-        await loginEmail.fill(SUPER_ADMIN.email);
-        await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
+        await loginEmail.fill(TEST_TENANT_ADMIN.email);
+        await page.locator('[data-testid="login-password"]').fill(TEST_TENANT_ADMIN.password);
         await page.locator('[data-testid="login-submit"]').click();
         await expectPanelReady(page);
       } else {
@@ -136,7 +139,7 @@ test.describe('Admin Settings', () => {
   });
 
   test('password change section exists', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('settings');
     await expectPanelReady(page);
 

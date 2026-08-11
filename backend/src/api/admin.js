@@ -8,6 +8,7 @@ import { z } from 'zod';
 export const tenantUpdateSchema = z.object({
   name: z.string().optional(),
   subdomain: z.string().optional(),
+  type: z.enum(['camp', 'supermarket', 'transportation', 'other']).optional(),
   custom_domain: z.string().optional(),
   logo_url: z.string().optional(),
   favicon_url: z.string().optional(),
@@ -93,9 +94,10 @@ export async function handleAdminRoute(request, env) {
         const { page, pageSize, offset } = parsePagination(url);
         const { results: countResult } = await env.DB.prepare('SELECT COUNT(*) as total FROM tenants').all();
         const { results } = await env.DB.prepare(
-          `SELECT t.*, a.email AS admin_email, a.first_name AS admin_first_name, a.last_name AS admin_last_name
+          `SELECT t.*, MIN(a.email) AS admin_email, MIN(a.first_name) AS admin_first_name, MIN(a.last_name) AS admin_last_name
            FROM tenants t
            LEFT JOIN admins a ON a.tenant_id = t.id AND a.role IN ('admin', 'tenant_admin')
+           GROUP BY t.id
            ORDER BY t.created_at DESC
            LIMIT ? OFFSET ?`
         ).bind(pageSize, offset).all();
@@ -157,7 +159,7 @@ export async function handleAdminRoute(request, env) {
           return validationError(parsed);
         }
         const {
-          name, subdomain, custom_domain, logo_url, favicon_url,
+          name, subdomain, type, custom_domain, logo_url, favicon_url,
           primary_color, footer_text, status, location, whatsapp_number,
           phone, email, description, currency,
           admin_email, admin_password, admin_first_name, admin_last_name
@@ -167,6 +169,7 @@ export async function handleAdminRoute(request, env) {
           `UPDATE tenants SET
             name = COALESCE(?, name),
             subdomain = COALESCE(?, subdomain),
+            type = COALESCE(?, type),
             custom_domain = COALESCE(?, custom_domain),
             logo_url = COALESCE(?, logo_url),
             favicon_url = COALESCE(?, favicon_url),
@@ -181,7 +184,7 @@ export async function handleAdminRoute(request, env) {
             currency = COALESCE(?, currency)
           WHERE id = ?`
         ).bind(
-          name || null, subdomain || null, custom_domain || null, logo_url || null, favicon_url || null,
+          name || null, subdomain || null, type || null, custom_domain || null, logo_url || null, favicon_url || null,
           primary_color || null, footer_text || null, status || null, location || null, whatsapp_number || null,
           phone || null, email || null, description || null, currency || null,
           tenantId

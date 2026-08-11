@@ -8,6 +8,7 @@ export const tenantPostSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, 'Name is required'),
   subdomain: z.string().min(1, 'Subdomain is required'),
+  type: z.enum(['camp', 'supermarket', 'transportation', 'other']).optional(),
   custom_domain: z.string().optional(),
   logo_url: z.string().optional(),
   favicon_url: z.string().optional(),
@@ -61,7 +62,7 @@ export const tenantMePutSchema = z.object({
 }).strip();
 
 function selectFieldsPublic() {
-  return "id, name, subdomain, custom_domain, logo_url, favicon_url, primary_color, footer_text, location, whatsapp_number, phone, email, description, hero_image_url, gallery_images, about_text, faq_items, reviews, map_embed_url, activities, capacity, currency, status, menu_config";
+  return "id, name, subdomain, type, custom_domain, logo_url, favicon_url, primary_color, footer_text, location, whatsapp_number, phone, email, description, hero_image_url, gallery_images, about_text, faq_items, reviews, map_embed_url, activities, capacity, currency, status, menu_config";
 }
 
 export async function handleTenants(request, env) {
@@ -90,7 +91,7 @@ export async function handleTenants(request, env) {
       let query;
       if (isSuperAdmin) {
         query = `
-          SELECT tenants.*, a.email AS admin_email, a.first_name || ' ' || a.last_name AS admin_name
+          SELECT tenants.*, MIN(a.email) AS admin_email, MIN(a.first_name || ' ' || a.last_name) AS admin_name
           FROM tenants
           LEFT JOIN admins a ON a.tenant_id = tenants.id AND a.role IN ('admin', 'tenant_admin')
           WHERE 1=1
@@ -128,6 +129,12 @@ export async function handleTenants(request, env) {
         bindArgs.push(status);
       }
 
+      // Group by tenant id: the admin join is 1:N (one row per admin), so
+      // without GROUP BY a tenant with multiple admins fans out into
+      // duplicate rows — duplicate keys crash list UIs (React duplicate-key
+      // warnings, "may cause children to be duplicated and/or omitted").
+      query += " GROUP BY tenants.id";
+
       const { results } = await env.DB.prepare(query).bind(...bindArgs).all();
       return cachedJsonResponse(results);
     } else if (path.length === 3) {
@@ -136,10 +143,11 @@ export async function handleTenants(request, env) {
       let query;
       if (isSuperAdmin) {
         query = `
-          SELECT tenants.*, a.email AS admin_email, a.first_name || ' ' || a.last_name AS admin_name
+          SELECT tenants.*, MIN(a.email) AS admin_email, MIN(a.first_name || ' ' || a.last_name) AS admin_name
           FROM tenants
           LEFT JOIN admins a ON a.tenant_id = tenants.id AND a.role IN ('admin', 'tenant_admin')
           WHERE tenants.id = ? OR tenants.subdomain = ? OR tenants.custom_domain = ?
+          GROUP BY tenants.id
         `;
       } else {
         query = `SELECT ${selectFieldsPublic()} FROM tenants WHERE id = ? OR subdomain = ? OR custom_domain = ?`;
@@ -159,7 +167,7 @@ export async function handleTenants(request, env) {
         return validationError(parsed);
       }
       const {
-        id, name, subdomain, custom_domain, logo_url, favicon_url, 
+        id, name, subdomain, type, custom_domain, logo_url, favicon_url, 
         primary_color, footer_text, location, whatsapp_number, phone, email, description,
         hero_image_url, gallery_images, about_text, faq_items, reviews, map_embed_url, activities, capacity, currency,
         admin_email, admin_first_name, admin_last_name, admin_password
@@ -189,12 +197,12 @@ export async function handleTenants(request, env) {
       
       await env.DB.prepare(
         `INSERT INTO tenants (
-          id, subdomain, custom_domain, name, logo_url, favicon_url, 
+          id, subdomain, custom_domain, name, type, logo_url, favicon_url, 
           primary_color, footer_text, location, whatsapp_number, phone, email, description,
           hero_image_url, gallery_images, about_text, faq_items, reviews, map_embed_url, activities, capacity, currency, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`
       ).bind(
-        tid, subdomain, custom_domain || null, name, logo_url || null, favicon_url || null, 
+        tid, subdomain, custom_domain || null, name, type || 'camp', logo_url || null, favicon_url || null, 
         primary_color || '#4a7c4f', footer_text || null, location || null, whatsapp_number || null, 
         phone || null, email || null, description || null,
         hero_image_url || null, gallery_images || null, about_text || null, faq_items || null, 
@@ -237,7 +245,7 @@ export async function handleMe(request, env, tenantId) {
       return jsonResponse({ id: null, name: null, subdomain: null, message: 'No tenant context provided' });
     }
     const { results } = await env.DB.prepare(
-        `SELECT t.id, t.name, t.subdomain, t.custom_domain, t.logo_url, t.favicon_url, t.primary_color, t.footer_text, t.location, t.whatsapp_number, t.phone, t.email, t.description, t.hero_image_url, t.gallery_images, t.about_text, t.faq_items, t.reviews, t.map_embed_url, t.activities, t.capacity, t.currency, t.status, t.menu_config,
+        `SELECT t.id, t.name, t.subdomain, t.type, t.custom_domain, t.logo_url, t.favicon_url, t.primary_color, t.footer_text, t.location, t.whatsapp_number, t.phone, t.email, t.description, t.hero_image_url, t.gallery_images, t.about_text, t.faq_items, t.reviews, t.map_embed_url, t.activities, t.capacity, t.currency, t.status, t.menu_config,
                 (SELECT COUNT(*) FROM meals WHERE tenant_id = t.id AND (is_active = 1 OR is_active IS NULL)) AS has_meals
          FROM tenants t WHERE t.id = ?`
     ).bind(tenantId).all();

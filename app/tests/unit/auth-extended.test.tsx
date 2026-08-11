@@ -7,6 +7,7 @@ vi.mock('@/lib/api', () => ({
   logout: vi.fn(),
   getAuthMe: vi.fn(),
   getTenantId: vi.fn().mockReturnValue('marketplace'),
+  setTenantScope: vi.fn(),
   REFRESH_TOKEN_KEY: 'sinaicamps_refresh_token',
 }));
 

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
-import { SUPER_ADMIN } from '../../fixtures/test-data';
+import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 
 async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
@@ -9,6 +9,14 @@ async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
   await page.locator('[data-testid="login-email"]').fill(SUPER_ADMIN.email);
   await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
   await page.locator('[data-testid="login-submit"]').click();
+  await expectPanelReady(page);
+  return admin;
+}
+
+async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
+  const admin = new AdminDashboardPage(page);
+  await admin.goto(TEST_TENANT.id);
+  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
   await expectPanelReady(page);
   return admin;
 }
@@ -81,7 +89,7 @@ test.describe('Dashboard Stats', () => {
   });
 
   test('tenant dashboard stat cards show labels', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('dashboard');
     await expectPanelReady(page);
 
@@ -103,7 +111,7 @@ test.describe('Dashboard Stats', () => {
   });
 
   test('tenant dashboard stat values are present', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('dashboard');
     await expectPanelReady(page);
 
@@ -114,7 +122,7 @@ test.describe('Dashboard Stats', () => {
   });
 
   test('tenant dashboard shows recent reservations section', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('dashboard');
     await expectPanelContentReady(page, 'dashboard-panel');
 

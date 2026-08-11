@@ -4,6 +4,23 @@
 // (MarketplaceHome.astro) and the dedicated listing page (pages/camps.astro)
 // so the listing markup and behavior live in exactly one place.
 import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+import { createI18n } from '@/i18n';
+
+const locale = (Astro.locals?.locale || 'en') as 'en' | 'ar';
+const { t: tt } = createI18n(locale);
+const TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'];
+const typeLabel = (value?: unknown) => {
+  const v = (value as string) || 'camp';
+  return TYPE_VALUES.includes(v) ? tt(`tenantType.${v}`) : v;
+};
+// Translated labels for the client-side grid re-render (applyFilters builds
+// card HTML via innerHTML and needs the labels injected at SSR time).
+const TYPE_LABELS: Record<string, string> = {
+  camp: tt('tenantType.camp'),
+  supermarket: tt('tenantType.supermarket'),
+  transportation: tt('tenantType.transportation'),
+  other: tt('tenantType.other'),
+};
 
 interface Props {
   tenants: Record<string, unknown>[];
@@ -22,7 +39,7 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
 <!-- Search & Filters -->
 <section class="relative z-30 mx-auto -mt-10 max-w-6xl px-6">
   <div class="rounded-2xl border border-warm-100 bg-white p-6 shadow-elevated">
-    <form id="filterForm" data-testid="filter-form" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5" onsubmit="applyFilters(event)">
+    <form id="filterForm" data-testid="filter-form" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6" onsubmit="applyFilters(event)">
       <div>
         <label for="filterSearch" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Search</label>
         <input
@@ -32,6 +49,16 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
           placeholder="Search by name, description..."
           class="input"
         />
+      </div>
+      <div>
+        <label for="filterType" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">{tt('tenantType.label')}</label>
+        <select id="filterType" data-testid="type-filter" class="input">
+          <option value="">{tt('tenantType.all')}</option>
+          <option value="camp">{tt('tenantType.camp')}</option>
+          <option value="supermarket">{tt('tenantType.supermarket')}</option>
+          <option value="transportation">{tt('tenantType.transportation')}</option>
+          <option value="other">{tt('tenantType.other')}</option>
+        </select>
       </div>
       <div>
         <label for="filterLocation" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Location</label>
@@ -115,6 +142,11 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
                 </svg>
                 <span data-testid="camp-location">{escHtml((t.location as string) || 'Sinai, Egypt')}</span>
               </div>
+              <div class="mb-4 flex flex-wrap items-center gap-1.5">
+                <span data-testid="camp-type-badge" class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
+                  {escHtml(typeLabel(t.type))}
+                </span>
+              </div>
               {t.activities && (
                 <div class="mb-4 flex flex-wrap gap-1.5">
                   {(t.activities as string).split(',').map((a) => (
@@ -147,12 +179,13 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
   </div>
 </section>
 
-<script define:vars={{ API_BASE: apiBase, SSR_RENDERED: ssrRendered }}>
+<script define:vars={{ API_BASE: apiBase, SSR_RENDERED: ssrRendered, TYPE_LABELS }}>
   window.__API_BASE = API_BASE;
   // define:vars only scopes SSR_RENDERED to this module script. Expose it on
   // window so the classic inline script (below) can gate its DOMContentLoaded
   // refetch without a ReferenceError.
   window.__SSR_RENDERED = SSR_RENDERED;
+  window.__TYPE_LABELS = TYPE_LABELS;
 </script>
 
 <script is:inline>
@@ -205,6 +238,7 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
     const location = document.getElementById('filterLocation').value;
     const capacity = document.getElementById('filterCapacity').value;
     const activities = document.getElementById('filterActivity').value;
+    const type = document.getElementById('filterType').value;
 
     const grid = document.getElementById('campsGrid');
     if (!grid) return;
@@ -214,7 +248,13 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
       const url = window.__API_BASE + '/tenants/public?search=' + encodeURIComponent(search) + '&location=' + encodeURIComponent(location) + '&capacity=' + encodeURIComponent(capacity) + '&activities=' + encodeURIComponent(activities);
       const res = await fetch(url);
       const data = await res.json();
-      const camps = data.filter(function(t) { return t.id !== 'marketplace'; });
+      let camps = data.filter(function(t) { return t.id !== 'marketplace'; });
+
+      // The public tenants endpoint has no server-side type filter yet (t8 is
+      // frontend-only) — apply the type filter client-side after fetching.
+      if (type) {
+        camps = camps.filter(function(t) { return (t.type || 'camp') === type; });
+      }
 
       if (camps.length === 0) {
         grid.innerHTML = '<div class="col-span-full py-12 text-center text-gray-600">No camps match your search criteria.</div>';
@@ -235,6 +275,8 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
         var actsHtml = t.activities
           ? '<div class="mb-4 flex flex-wrap gap-1.5">' + t.activities.split(',').map(function(a) { return '<span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">' + escHtml(a.trim()) + '</span>'; }).join('') + '</div>'
           : '';
+        var typeBadge = escHtml(window.__TYPE_LABELS[(t.type || 'camp')] || (t.type || 'camp'));
+        var typeHtml = '<div class="mb-4 flex flex-wrap gap-1.5"><span data-testid="camp-type-badge" class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">' + typeBadge + '</span></div>';
 
         return '<div data-testid="camp-card" class="group flex flex-col overflow-hidden rounded-2xl border border-warm-100 bg-white shadow-elevated transition hover:-translate-y-1 hover:shadow-md">'
           + '<div class="relative h-20 overflow-hidden" style="background: linear-gradient(135deg, ' + escHtml(color) + ' 0%, ' + escHtml(color) + 'cc 100%)"><div aria-hidden="true" class="pointer-events-none absolute inset-0 bg-topo" style="color:' + escHtml(color) + '"></div></div>'
@@ -244,6 +286,7 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
           + '<span class="mb-4 text-sm text-gray-600">' + escHtml(t.customDomain || ((t.subdomain || '') + '.sinaicamps.com')) + '</span>'
           + '<p data-testid="camp-description" class="mb-4 flex-1 text-sm text-gray-600">' + escHtml(t.description || 'Premium summer adventure programs, cabins lodging, and outdoor wilderness courses.') + '</p>'
           + '<div class="mb-4 flex items-center gap-1.5 text-sm text-gray-600"><svg class="h-4 w-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg><span data-testid="camp-location">' + escHtml(t.location || 'Sinai, Egypt') + '</span></div>'
+          + typeHtml
           + actsHtml
           + '<div class="mt-auto flex items-center justify-between border-t border-warm-200 pt-4">'
           + '<span class="rounded-full px-3 py-1 text-xs font-bold" style="background-color:' + escHtml(color) + '1A;color:var(--color-brand-deep)">Capacity: ' + (parseInt(t.capacity) || 50) + '</span>'

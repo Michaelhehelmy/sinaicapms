@@ -351,7 +351,7 @@ describe('handleOrdersRoute', () => {
       db.prepare.mockImplementation(fn);
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John', number_of_people: 5,
-        check_in_date: '2026-08-10', check_out_date: '2026-08-15'
+        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
       });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(400);
@@ -382,7 +382,7 @@ describe('handleOrdersRoute', () => {
       db.prepare.mockImplementation(fn);
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John',
-        check_in_date: '2026-08-10', check_out_date: '2026-08-15'
+        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
       });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(400);
@@ -404,7 +404,7 @@ describe('handleOrdersRoute', () => {
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John Doe',
         guest_email: 'john@test.com', guest_phone: '12345',
-        check_in_date: '2026-08-10', check_out_date: '2026-08-15',
+        check_in_date: '2026-09-10', check_out_date: '2026-09-15',
         total_amount: 500, amount_paid: 250, payment_method: 'cash',
         payment_status: 'partial', notes: 'Test'
       });

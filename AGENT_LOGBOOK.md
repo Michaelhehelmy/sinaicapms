@@ -5857,3 +5857,129 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 4. `?tenantId=` is camelCase end-to-end (registry zod schema, `scopeTenant`, `getPosUsers` qs builder).
 5. Keep seed-cleanup migrations FK-safe (delete children before parents; `pos_users` soft-delete respects `pos_transactions.cashier_id` FK).
 6. Always diff regenerated `openapi.json`/`api-types.ts` after a "successful" regen — silent zero-change runs have happened twice in this codebase.
+
+---
+
+## 2026-08-10 — Phase 2 plan T1–T5 (CSP allow-list → tenants.type backend wiring)
+
+**Plan**: Marketplace vs tenant domain separation (Phase 2). T1–T5 complete; T6–T11 pending (admin nav separation, supertenants type, public type wiring, tenants hub drilldown, final tests, logbook cleanup).
+
+**T1 — CSP allow-list for Plausible + Cloudflare Insights** (`app/src/middleware/securityHeaders.ts`, `app/public/_headers`):
+- `script-src`/`connect-src` allow-listed `https://plausible.io` and `https://cloudflareinsights.com` (+ `static.cloudflareinsights.com` for the beacon script); `img-src`/`connect-src` for `*.cloudflareinsights.com` and plausible ping domains. Done condition: CSP headers still emitted, analytics origins present.
+
+**T2/T3 — React runtime error on marketplace home (`app/src/index.astro` routes)**:
+- Repro spec (`_repro-console.spec.ts`, deleted after use) surfaced 2 real bugs:
+  1. `useQueryHooks.ts` admin fetch cache-key constructor collided on `undefined` args (super-admin list paths).
+  2. `BookingCalendar.tsx` called a query with `campId: undefined` → runtime exception during admin render.
+- Fixes: `useQueryHooks.ts` `usePriceOverridesQuery` gained `enabled: !!activeProductId`; `BookingCalendar.tsx` passes it. Admin-tenant list + `tenants.js` super paths use `MIN(a.email)` + `GROUP BY t.id` (D1 non-aggregate select fix).
+- **New permanent regression spec** `tests/e2e/specs/admin/console-errors.spec.ts` (2 admins on test tenant, deterministic trigger; apiRequest for API asserts — Astro host returns HTML for /api/* so page-level fetch can't parse JSON; login-overlay waits added for flake).
+- Verification: repro matrix 0/45 console errors; backend 1065 pass; app 1485 pass; admin E2E project **123 passed / 3 skipped / 0 failed**.
+
+**T4 — `tenants.type` migration** (`backend/migrations/0052_add_tenants_type.sql`):
+- `ALTER TABLE tenants ADD COLUMN type TEXT NOT NULL DEFAULT 'camp' CHECK (type IN ('camp','supermarket','transportation','other'))` (SQLite allows ADD COLUMN with non-constant default; inline CHECK works for new inserts).
+- Scratch-DB verify passed (backfill 'camp', CHECK rejects 'hotel', default OK). Applied to local D1 via 0051 park-trick (0051 deletes seed data → FK constraints on the dirty dev DB; parked to `/tmp/opencode/`, restored after). Live verify: migration id 51 present, `tenants.type` exists, histogram camp:25.
+
+**T5 — Backend accept/validate/return `tenants.type`**:
+- `backend/src/routes/registry.js` (single source of truth): `tenantTypeSchema = z.enum(['camp','supermarket','transportation','other'])`; `type` required in `tenantSchema`/`adminTenantRowSchema`, optional in `tenantPostRequestSchema`/`tenantUpdateRequestSchema` + inline tenant-object schema (with `subdomain: z.string().nullable().optional()`).
+- `backend/src/api/tenants.js`: `tenantPostSchema` + `type` enum optional; `selectFieldsPublic()` includes `type`; POST INSERT includes `type` column with `type || 'camp'` bind (parity verified: bind index 4 = type); `handleMe` GET selects `t.type`.
+- `backend/src/api/admin.js`: PUT/PATCH `UPDATE tenants SET ... type = COALESCE(?, type) ...` with `type || null` (bind index 2).
+- Regenerated `backend/openapi.json` (+51/−2) + `app/src/lib/api-types.ts` (+10, 5 `type` entries) — diffed, non-empty.
+- **Unit tests added**: `tenants-unit.test.js` +3 (explicit type bound in INSERT, default 'camp', invalid → 400); `admin-unit.test.js` +2 (PUT binds type, invalid → 400). Backend suite **1070 passed** (was 1065).
+- `app tsc --noEmit`: **158 errors — identical pre-existing baseline** (verified via stash diff of api-types.ts); zero `Tenant`-construction errors from required `type`.
+
+**Persistent lessons**:
+1. `SELECT t.*` in admin GET auto-includes new tenant columns — no query edit needed once migration is applied; zod response schemas are for OpenAPI only.
+2. In Vitest mocks, an arrow-function `bind` CANNOT `return this` (ESM strict mode) — capture the chain object via closure and return it, or use `vi.fn().mockReturnThis()`.
+3. `git stash push -- <path>` pathspecs are repo-root-relative; running `npx tsc` from the wrong cwd silently reports 0 errors (no tsconfig).
+4. E2E: Astro dev host serves HTML for unknown /api/* paths — API assertions in specs must use the apiRequest helper (JSON), not page fetch.
+
+## 2026-08-10 — Phase 2 plan T6–T7 (admin nav separation + SuperTenantsPanel type)
+
+**T6 — Super-admin nav separation in Admin SPA** (`app/src/components/admin/AdminApp.tsx` + `app/tests/unit/AdminApp.test.tsx`):
+- `navItems = isSuperAdmin ? SUPER_NAV : TENANT_NAV` (was `[...SUPER_NAV, ...TENANT_NAV]` — both sets always rendered).
+- Added `SUPER_MOBILE_NAV_IDS = ['super_dashboard','super_tenants','super_reservations']`; sidebar TENANT_NAV block wrapped in `!isSuperAdmin &&`; mobile bottom-nav filter is role-aware.
+- Tests +3: super admin = exactly 3 sidebar tabs (no tenant items, scoped via `within(screen.getByTestId('admin-sidebar'))`), tenant admin = exactly 15 tabs (no Super Admin), super admin mobile bottom nav. Existing super-admin test scoped to sidebar. App suite **76 files / 1488 passed**.
+
+**T7 — SuperTenantsPanel shows + edits tenant `type`** (`app/src/components/admin/SuperTenantsPanel.tsx`, `app/src/i18n/en.json` + `ar.json`, `app/tests/unit/SuperTenantsPanel.test.tsx`):
+- Tenant cards now render a purple `type` badge (`data-testid="tenant-type-badge"`, labels via new `tenantType` i18n namespace: Camp/Supermarket/Transportation/Other; Arabic: معسكر / سوبر ماركت / نقل / أخرى).
+- Inline edit form gained a `Type` select (`data-testid="edit-tenant-type"`) pre-selected to the tenant's current type; save includes `type` in the PATCH body only when it changed (`AdminTenantUpdateRequest.type` enum round-trips via existing `updateAdminTenant` — backend was T5).
+- Tests +3: badge labels render for camp + supermarket, type select pre-selects + persists `type: 'transportation'` in PATCH, unchanged type omitted from PATCH. Panel suite 30 passed; app suite **76 files / 1491 passed**.
+
+**Persistent lessons**:
+1. Shadowing footgun: a `.map((t) => ...)` callback param shadows the i18n `t` — calling `t('key')` inside the map invokes the row object. Rename the map param (or the i18n `t`) when adding translated strings to a component that already uses `t` as a record param.
+2. `sed` renaming of a shadowed param must also rename the function signature where the param was `(t: X)` (only `t.` property accesses get rewritten by `s/\bt\./x./g`, leaving bare `t` references → ReferenceError at runtime).
+3. Repeated per-row `data-testid`s must be asserted with `getAllByTestId` + index (or scoping), not `getByTestId`.
+4. `useI18n()` works in unit tests without an `I18nProvider` — falls back to hook-local state (`DEFAULT_LOCALE` en).
+
+## 2026-08-10 — Phase 2 plan T8 (public marketplace type badge + filter)
+
+**Plan**: Marketplace vs tenant domain separation (Phase 2). T8 complete; T9–T11 pending (tenants hub drilldown, final tests, logbook cleanup).
+
+**T8 — Public marketplace shows type badge + type filter** (`app/src/components/public/CampsSection.astro`, `app/src/i18n/en.json` + `ar.json`):
+- `CampsSection.astro` (shared by home `/` via MarketplaceHome and `/camps`) now imports `createI18n` from `@/i18n` and uses `Astro.locals.locale` for server-side translated labels (locale falls back to 'en'; `Astro.locals.locale` is always set by `app/src/middleware/index.ts`).
+- **Type badge** on every card: SSR template (`data-testid="camp-type-badge"`, purple brand pill, label via `typeLabel(t.type)` with fallback to 'camp' when missing) AND the client-side `applyFilters()` innerHTML builder (labels injected via `define:vars TYPE_LABELS` → `window.__TYPE_LABELS`).
+- **Type filter**: new `<select id="filterType" data-testid="type-filter">` added to the filter form (grid widened `lg:grid-cols-5` → `lg:grid-cols-6`). Backend `/tenants/public` has NO `type` param (T8 scope forbids backend changes), so `applyFilters()` fetches with the existing server params then filters client-side: `camps = camps.filter(t => (t.type || 'camp') === type)`.
+- i18n: new `tenantType.all` key in en ("All Types") + ar ("جميع الأنواع"); all `tenantType.*` keys (label/camp/supermarket/transportation/other) translated in both files.
+- Verification: app vitest **76 files / 1491 passed** (unchanged — Astro component not unit-covered); headless Chromium check on dev servers (backend 8787 + app 4320): /camps 24 cards each with badge, filter options [All Types, Camp, Supermarket, Transportation, Other], `type=supermarket` filter → 0 cards + "No camps match" empty state, home also shows badge + filter, **0 console errors**.
+
+**Persistent lessons**:
+1. Astro `.astro` components need server-side i18n via `createI18n(Astro.locals.locale)` (or the module-level `t(key, params, locale)`) — `Astro.locals.locale` is set by `app/src/middleware/index.ts` (en/ar from `sc_lang` cookie or ?lang=).
+2. Client-side `innerHTML` grid re-renders cannot call the server `t()` — inject the translated label map through `define:vars` and expose on `window` (same pattern as `__API_BASE`/`__SSR_RENDERED`).
+3. `/tenants/public` backend filter params are search/location/capacity/activities/status only — `type` filtering is client-side until a backend param is added.
+4. Headless browser checks against dev servers: use the repo-root `@playwright/test` with an absolute require path (scripts in /tmp can't resolve repo node_modules).
+
+## 2026-08-10 — Phase 2 plan T9 (super-admin tenant drill-down hub)
+
+**Plan**: Marketplace vs tenant domain separation (Phase 2). T9 complete; T10 (final tests) + T11 (logbook cleanup) pending.
+
+**T9 — Tenants tab becomes hub with per-tenant drill-down** (`app/src/lib/api.ts`, `app/src/lib/auth.tsx`, NEW `app/src/components/admin/TenantDrilldown.tsx`, `app/src/components/admin/SuperTenantsPanel.tsx` + tests):
+- **api.ts scope override**: module-level `_tenantScopeOverride` + exported `setTenantScope(tenantId | null)` / `getTenantScope()`. `getTenantId()` returns the override FIRST (before hostname/query/localStorage logic). Not persisted; cleared on drill-down exit and on logout.
+- **auth.tsx logout** now calls `setTenantScope(null)` so a subsequent login as tenant admin never inherits drill-down scope.
+- **NEW TenantDrilldown.tsx**: super admin drills into a tenant from the Tenants tab. Mounts with `useEffect(() => { setTenantScope(tenant.id); return () => setTenantScope(null); }, [tenant.id])`. Wraps the whole subtree in its OWN `QueryClientProvider` with a fresh `QueryClient` per mount (remounted via `key={tenant.id}` from SuperTenantsPanel) — this isolates react-query caches so cross-tenant data can never leak (query keys in useQueryHooks are NOT tenant-scoped: `['camps']` etc.). Sub-tabs: Camps / Rooms / Rate Plans / Orders / Menu rendering the EXISTING panels unchanged (CampsPanel onRefreshCamps=invalidate scoped camps; others get campIds+camps from scoped `useCampsQuery()`).
+- **SuperTenantsPanel**: per-card purple "Manage" button (`data-testid="manage-tenant-btn"`); when a tenant is selected the directory is replaced by `<TenantDrilldown key={tenant.id} .../>`; back button returns to the directory.
+- **Why no backend change**: `backend/src/index.js` line 361 (`decoded.role !== 'super_admin' && decoded.tenantId !== tenantId` → 403) already lets super_admin access ANY tenant partition, and `middleware/tenant.js` resolves `x-tenant-id` by id/subdomain/custom_domain. So the header override alone scopes every panel fetch (`/api/camps` etc. are NOT in isPublic → they go through auth + tenant resolution).
+- Tests: api.test.ts +4 (override wins on marketplace host; resets to hostname; trims/ignores empty); SuperTenantsPanel.test.tsx +2 (Manage opens drilldown, back returns to directory) with TenantDrilldown stubbed; NEW TenantDrilldown.test.tsx +4 (header+badge+default Camps; scope set on mount / null on unmount; tab switching passes scoped camps `ROOMS:2:2`; onBack) with panels + useQueryHooks stubbed. Also fixed auth-extended.test.tsx + auth-context-extended.test.tsx mocks (missing `setTenantScope` export → "No export defined on the mock" runtime error when logout clicked).
+- Verification: **app suite 77 files / 1501 passed** (was 76/1491). Headless Chromium against dev servers: super admin login → Tenants tab (25 tenants) → Manage Acacia Camp → drilldown header "Acacia Camp" + type badge "Camp" → camps panel shows ONLY "Acacia Camp Summer Session" (scoped; marketplace view shows all camps) → rooms/rateplans/orders/menu tabs all render → back to directory → **0 console errors**.
+- Targeted admin E2E subset (`tenant-management`, `tenant-admin-tabs`, `navigation`, `login`): **15 passed / 1 failed / 11 skipped**. The 1 failure is the KNOWN T10-owned deferred assertion: `navigation.spec.ts:22` expects super-admin nav >= 4 tabs, but T6 nav separation yields 3 (super_dashboard/super_tenants/super_reservations). NOT a T9 regression — already tracked in t10 spec.
+
+**Persistent lessons**:
+1. Super-admin cross-tenant access is a HEADER-ONLY contract: `x-tenant-id` + JWT role `super_admin` bypasses the partition check. No backend change needed for cross-tenant drill-down.
+2. react-query query keys are NOT tenant-scoped in this codebase — any multi-tenant UI that switches tenants must isolate the cache (fresh QueryClient per tenant) or key the queries by tenant.
+3. Vitest: adding an export to a module that auth.tsx imports breaks every test file that `vi.mock`s that module WITHOUT the new export — but only when the import binding is actually accessed (e.g. clicking logout). Search all `vi.mock('@/lib/api')` files when adding api exports.
+4. Admin E2E project run with 4 workers exceeds 10 min on this machine; run targeted specs. `reuseExistingServer: true` lets you point E2E at already-running dev servers.
+
+## 2026-08-11 — Phase 2 plan T10 (full verification matrix) + T11 (logbook cleanup)
+
+**Plan**: Marketplace vs tenant domain separation (Phase 2). T10 complete — the ENTIRE verification matrix is green; the last open item (POS order checkout 500 FK on fresh DB) is fixed and proven.
+
+**T10 completion — the POS order-checkout FK fix** (`backend/src/routes/pos/index.js`, `backend/src/api/pos-users.js`):
+- Root cause: migration `0051_remove_seed_data.sql` deletes the seed store (`DELETE FROM pos_stores WHERE id = 1`); `POST /orders` used `posUser.storeId || 1`, so on a fresh DB (seeds recreated by global-setup, ids ≠ 1) the `pos_transactions.store_id` FK → 500 at batch commit.
+- Fix A (`pos-users.js`): `POST /api/pos/users` with `store_id == null` now defaults it to the org's first store: `SELECT id FROM pos_stores WHERE organization_id = ? LIMIT 1` (falls back to null if org has no store).
+- Fix B (`routes/pos/index.js`): order handler resolves the store the same way when `posUser.storeId == null` (final fallback `: 1`). **Placement is load-bearing**: the lookup runs AFTER all validation/data-fetch prepares and JUST BEFORE the batch — `makeStepDb` in `tests/pos-unit.test.js` dispatches on `prepare()` call ORDER and tests assert exact counts (`expect(db.prepare).toHaveBeenCalledTimes(3)` at pos-unit.test.js:745).
+- `ensureTenantOrg` kept its ORIGINAL contract (`organization_id` number | null) — a brief refactor returning `{ organizationId, storeId }` broke 3 unit tests in `backend/tests/pos-users-unit.test.js` (`toBe(7)`/`toBe(77)`/`toBeNull`) and `resolveOrganization` was left with a stale `.organizationId` deref. Reverted; call sites resolve the store, not the helper.
+
+**Test fixture updates**:
+- `tests/pos-unit.test.js`: the unique-constraint race test gained ONE extra `chainDb([])` step for the store lookup (comment: "store lookup (cashier token has no storeId -> org's first store)"). Confirmed the 10-step prepare sequence with temporary `console.error('SEQ', …)` instrumentation, then removed. Suite 64/64.
+- `tests/orders-unit.test.js`: 3 pre-existing failures were DATE-ROT (today = 2026-08-11; handler rejects past check-ins): capacity / overlap / creates-order fixtures rolled `2026-08-10` → `2026-09-10` (check-out 09-15). Confirmed pre-existing via `git stash` (same 3 fail with my changes stashed).
+- `app/tests/unit/AdminApp.test.tsx`: tsc typing fixes in T6 nav tests — `hasRole = () => true` mismatched the inferred predicate `(role: string) => role is "admin"` (TS 5.5+ infers predicates on const arrows) → `(() => true) as unknown as typeof authState.hasRole`; mock user base gained `tenantId: null as string | null` (matches real `tenantId?: string | null`, keeps the `'t1'` spread valid).
+
+**Fresh-DB E2E procedure (important for future runs)**:
+- `wrangler dev --local` does NOT auto-apply migrations to a fresh `.wrangler/state/v3/d1` (0 "applying migration" lines; empty D1 dir) — must run `cd backend && npx wrangler d1 migrations apply campmaster-db --local` FIRST, then start `wrangler dev --port 8787 --local`. With no tables, global-setup can't log in as super admin → seeds 403 → mass test failures (global-setup try/catch only logs `⚠️ Global setup failed (tests may fail)`).
+- Background servers must be launched with `setsid nohup … > log 2>&1 < /dev/null & disown` in a SHORT command — a `( … & ) ; sleep N; …` combo gets reaped when the shell tool hits its timeout.
+- Verified on fresh DB: 52 migrations applied (ends at `0052_add_tenants_type.sql`), super admin `admin@sinaicamps.com`/`sinairoot` login → `{"success":true,"token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9…"}`, then `order-payment-flow.spec.ts` **13/13 passed (41.3s)** — the two previously-failing FK tests (checkout with cash payment → orders; orders page shows completed order) now green.
+
+**Verification matrix — ALL GREEN**:
+1. `cd app && npx vitest run` → **77 files / 1501 passed**.
+2. `cd backend && npx vitest run` → **36 files / 1070 passed**.
+3. Root `npx vitest run` → **10 files / 169 passed**.
+4. `npx playwright test` (default 4 workers, full suite) → **559 passed, exit 0** (~4.9m). POS project specifically: **60/60** (up from 58; the 2 FK failures fixed).
+5. `cd app && npx tsc --noEmit` → **155 errors, BELOW the 156 baseline** (removed the 5 new AdminApp.test.tsx errors from T6 nav tests; remaining 155 are the accepted pre-existing mock-typing baseline: api-extended 72, DashboardPanel 17, ErrorBoundary 10, etc.).
+
+**T11 — logbook + tmp cleanup**: this entry appended; tmp files t1–t10 marked done and removed (PLAN-BACKLOG.md kept).
+
+**Persistent lessons**:
+1. Fresh-local-DB E2E: apply migrations manually BEFORE starting `wrangler dev --local` — dev does not auto-migrate; the symptom of skipping this is global-setup 403 + mass failures, not an obvious error.
+2. `prepare()` call ORDER is part of the backend POS unit-test contract (`makeStepDb`/`chainDb` fixed step arrays + `toHaveBeenCalledTimes`). Inserting a new DB step between existing ones requires adding the matching mock step.
+3. Date-rot is real: fixture dates near "today" expire silently. Keep booking fixtures ≥ 6 weeks in the future; when a batch of "capacity/overlap/create" tests fails at once, suspect date-rot first (`git stash` to confirm).
+4. TS 5.5+ infers type predicates for const arrows (`(role: string) => role === 'admin'` → `(role: string) => role is "admin"`) — overriding such a mock with `() => true` is a tsc error; use `as unknown as typeof <mock>.hasRole`.
+5. Playwright E2E project suites this size: run per-project/per-spec with `--workers=1` for diagnosis; the full default run (4 workers) is fine and took 4.9m.

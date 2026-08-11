@@ -5,6 +5,11 @@ const UNIFIED_PORT = 4320;
 
 export default defineConfig({
   testDir: './tests/e2e/specs',
+  // Recreates the E2E seed chain (super admin → tenant admin → POS cashier)
+  // on every run. Required for a fresh D1: migration 0051 removed the old
+  // seed rows, so without this the POS/auth specs have no cashier/admin to
+  // log in as and every real-login test 401s.
+  globalSetup: './tests/e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,

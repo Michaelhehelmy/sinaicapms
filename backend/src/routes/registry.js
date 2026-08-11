@@ -1321,14 +1321,17 @@ export const menuRoutes = [
 
 // ─── Tenants + /api/me (T8-B3) ─────────────────────────────────────────────────
 // Wire contract: public GETs return the `selectFieldsPublic()` projection (incl.
-// menu_config); super-admin GETs additionally add admin_email/admin_name (modelled
-// as optional adminEmail/adminName). POST /api/tenants is SUPER-ADMIN ONLY (P0-7);
-// PUT /api/me is auth + tenant scoped.
+// menu_config + type); super-admin GETs additionally add admin_email/admin_name
+// (modelled as optional adminEmail/adminName). POST /api/tenants is SUPER-ADMIN
+// ONLY (P0-7); PUT /api/me is auth + tenant scoped.
+const tenantTypeSchema = z.enum(['camp', 'supermarket', 'transportation', 'other']);
+
 const tenantSchema = z
   .object({
     id: z.string(),
     name: z.string(),
     subdomain: z.string(),
+    type: tenantTypeSchema,
     customDomain: z.string().nullable().optional(),
     logoUrl: z.string().nullable().optional(),
     faviconUrl: z.string().nullable().optional(),
@@ -1362,6 +1365,7 @@ const tenantPostRequestSchema = z
     id: z.string().optional(),
     name: z.string().min(1, 'Name is required'),
     subdomain: z.string().min(1, 'Subdomain is required'),
+    type: tenantTypeSchema.optional(),
     customDomain: z.string().optional(),
     logoUrl: z.string().optional(),
     faviconUrl: z.string().optional(),
@@ -1428,6 +1432,7 @@ const meSchema = z
     id: z.string().nullable().optional(),
     name: z.string().nullable().optional(),
     subdomain: z.string().nullable().optional(),
+    type: tenantTypeSchema.optional(),
     message: z.string().optional(),
     customDomain: z.string().nullable().optional(),
     logoUrl: z.string().nullable().optional(),
@@ -1833,6 +1838,7 @@ const adminTenantRowSchema = z
     subdomain: z.string(),
     customDomain: z.string().nullable().optional(),
     name: z.string(),
+    type: tenantTypeSchema,
     logoUrl: z.string().nullable().optional(),
     faviconUrl: z.string().nullable().optional(),
     primaryColor: z.string().nullable().optional(),
@@ -1867,6 +1873,7 @@ const tenantUpdateRequestSchema = z
   .object({
     name: z.string().optional(),
     subdomain: z.string().optional(),
+    type: tenantTypeSchema.optional(),
     customDomain: z.string().optional(),
     logoUrl: z.string().optional(),
     faviconUrl: z.string().optional(),

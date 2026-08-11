@@ -273,6 +273,52 @@ describe('handleAdminRoute', () => {
         expect(res.status).toBe(400);
       });
 
+      it('updates tenant type via PUT', async () => {
+        const db = { prepare: vi.fn() };
+        let updateArgs = null;
+        db.prepare.mockImplementation((sql) => {
+          if (sql.includes('is_active') && sql.includes('WHERE')) {
+            return {
+              bind: vi.fn().mockReturnThis(),
+              all: vi.fn().mockResolvedValue({ results: [{ is_active: 1 }] }),
+              first: vi.fn(),
+              run: vi.fn(),
+            };
+          }
+          if (sql.includes('UPDATE tenants')) {
+            const chain = {
+              bind: vi.fn((...args) => {
+                updateArgs = args;
+                return chain;
+              }),
+              all: vi.fn().mockResolvedValue({ results: [] }),
+              first: vi.fn(),
+              run: vi.fn().mockResolvedValue({ success: true }),
+            };
+            return chain;
+          }
+          return {
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn(),
+          };
+        });
+        const req = makeRequest('PUT', 'https://x.com/api/admin/tenants/t1', { name: 'Market', type: 'supermarket' }, superAdminHeaders(superAdminToken));
+        const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
+        expect(res.status).toBe(200);
+        // UPDATE binds: name, subdomain, type, custom_domain, ...
+        expect(updateArgs[2]).toBe('supermarket');
+      });
+
+      it('rejects invalid tenant type via PUT', async () => {
+        const { db } = makeDbMock();
+        withActiveAdmin(db);
+        const req = makeRequest('PUT', 'https://x.com/api/admin/tenants/t1', { type: 'hotel' }, superAdminHeaders(superAdminToken));
+        const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
+        expect(res.status).toBe(400);
+      });
+
       it('returns error on DB failure', async () => {
         const { db } = makeDbMock();
         withActiveAdminThenThrow(db);

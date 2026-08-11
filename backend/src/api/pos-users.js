@@ -79,7 +79,7 @@ export function scopeTenant(decoded, url, tenantId) {
 /**
  * Auto-provision a POS organization + store + tenant_org_mapping for a tenant
  * that has none. Idempotent (INSERT OR IGNORE on the UNIQUE slug/code) so a
- * partial failure can be safely retried. Returns organization_id or null.
+ * partial failure can be safely retried. Returns the organization_id or null.
  */
 export async function ensureTenantOrg(env, tenantId) {
   try {
@@ -215,7 +215,17 @@ export async function handlePosUsersRoute(request, env, tenantId) {
       const phone = parsed.data.phone;
       const department = parsed.data.department;
       const employee_id = parsed.data.employee_id;
-      const store_id = parsed.data.store_id;
+      // Default to the org's first store when none was specified — an
+      // auto-provisioned org always has exactly one store (ensureTenantOrg),
+      // so a store-less user would break order creation (pos_transactions
+      // FK on store_id) for no reason.
+      let store_id = parsed.data.store_id;
+      if (store_id == null) {
+        const { results: orgStores } = await env.DB.prepare(
+          'SELECT id FROM pos_stores WHERE organization_id = ? LIMIT 1'
+        ).bind(organizationId).all();
+        store_id = orgStores.length > 0 ? orgStores[0].id : null;
+      }
 
       const { results: dup } = await env.DB.prepare(
         'SELECT id FROM pos_users WHERE email = ? OR username = ?'

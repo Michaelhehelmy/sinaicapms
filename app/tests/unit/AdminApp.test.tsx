@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import AdminApp from '@/components/admin/AdminApp';
 
 const mockShowToast = vi.fn();
@@ -12,7 +12,7 @@ vi.mock('@/components/ui/Toast', () => ({
 }));
 
 const authState = {
-  user: { name: 'Admin User', email: 'admin@test.com', role: 'admin' },
+  user: { name: 'Admin User', email: 'admin@test.com', role: 'admin', tenantId: null as string | null },
   loading: false,
   isAuthenticated: true,
   login: mockLogin,
@@ -104,7 +104,7 @@ describe('AdminApp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(authState, {
-      user: { name: 'Admin User', email: 'admin@test.com', role: 'admin' },
+  user: { name: 'Admin User', email: 'admin@test.com', role: 'admin', tenantId: null as string | null },
       loading: false,
       isAuthenticated: true,
       login: mockLogin,
@@ -376,10 +376,11 @@ describe('AdminApp', () => {
   });
 
   it('renders super admin nav and super panels', async () => {
-    authState.hasRole = () => true;
+    authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
     render(<AdminApp />);
-    expect(screen.getByText('Super Admin')).toBeInTheDocument();
-    expect(screen.getByText('Super Dashboard')).toBeInTheDocument();
+    const sidebar = within(screen.getByTestId('admin-sidebar'));
+    expect(sidebar.getByText('Super Admin')).toBeInTheDocument();
+    expect(sidebar.getByText('Super Dashboard')).toBeInTheDocument();
     expect(screen.getByText('Global Operator Mode')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('nav-tab-super_dashboard'));
     await waitFor(() => {
@@ -395,8 +396,56 @@ describe('AdminApp', () => {
     });
   });
 
+  it('super admin sees ONLY the 3 super nav items (no tenant tabs)', async () => {
+    authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
+    render(<AdminApp />);
+    const sidebar = within(screen.getByTestId('admin-sidebar'));
+    const tabIds = screen.getAllByTestId(/^nav-tab-/).map((el) => el.getAttribute('data-testid')!.replace('nav-tab-', ''));
+    expect(tabIds).toEqual(['super_dashboard', 'super_tenants', 'super_reservations']);
+    // Tenant panels must NOT leak into the super-admin sidebar nav.
+    expect(sidebar.queryByText('Dashboard')).not.toBeInTheDocument();
+    expect(sidebar.queryByText('Camps')).not.toBeInTheDocument();
+    expect(sidebar.queryByText('Rooms')).not.toBeInTheDocument();
+    expect(sidebar.queryByText('Settings')).not.toBeInTheDocument();
+  });
+
+  it('tenant admin sees all 15 tenant nav items (no super tabs)', async () => {
+    render(<AdminApp />);
+    const tabIds = screen.getAllByTestId(/^nav-tab-/).map((el) => el.getAttribute('data-testid')!.replace('nav-tab-', ''));
+    expect(tabIds).toHaveLength(15);
+    expect(tabIds).toContain('dashboard');
+    expect(tabIds).toContain('camps');
+    expect(tabIds).toContain('rooms');
+    expect(tabIds).toContain('rateplans');
+    expect(tabIds).toContain('reservations');
+    expect(tabIds).toContain('inbox');
+    expect(tabIds).toContain('calendar');
+    expect(tabIds).toContain('meals');
+    expect(tabIds).toContain('menu-planner');
+    expect(tabIds).toContain('menu');
+    expect(tabIds).toContain('planning');
+    expect(tabIds).toContain('reports');
+    expect(tabIds).toContain('low-stock');
+    expect(tabIds).toContain('staff');
+    expect(tabIds).toContain('settings');
+    expect(screen.queryByText('Super Admin')).not.toBeInTheDocument();
+  });
+
+  it('renders super mobile bottom nav with the 3 super tabs', () => {
+    authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
+    render(<AdminApp />);
+    const nav = screen.getByTestId('mobile-bottom-nav');
+    expect(nav).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-super_dashboard')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-super_tenants')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-super_reservations')).toBeInTheDocument();
+    // Tenant primary tabs must not leak into the super mobile nav.
+    expect(screen.queryByTestId('mobile-nav-dashboard')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mobile-nav-camps')).not.toBeInTheDocument();
+  });
+
   it('renders placeholder for unknown super tabs', async () => {
-    authState.hasRole = () => true;
+    authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
     window.location.hash = '#tab=super_reports';
     render(<AdminApp />);
     expect(await screen.findByText('super_reports')).toBeInTheDocument();

@@ -1958,6 +1958,15 @@
           "subdomain": {
             "type": "string"
           },
+          "type": {
+            "type": "string",
+            "enum": [
+              "camp",
+              "supermarket",
+              "transportation",
+              "other"
+            ]
+          },
           "customDomain": {
             "type": "string",
             "nullable": true
@@ -2050,7 +2059,8 @@
         "required": [
           "id",
           "name",
-          "subdomain"
+          "subdomain",
+          "type"
         ]
       },
       "TenantList": {
@@ -2095,6 +2105,15 @@
           "subdomain": {
             "type": "string",
             "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "camp",
+              "supermarket",
+              "transportation",
+              "other"
+            ]
           },
           "customDomain": {
             "type": "string"
@@ -2187,6 +2206,15 @@
           "subdomain": {
             "type": "string",
             "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "camp",
+              "supermarket",
+              "transportation",
+              "other"
+            ]
           },
           "message": {
             "type": "string"
@@ -2665,6 +2693,15 @@
           "name": {
             "type": "string"
           },
+          "type": {
+            "type": "string",
+            "enum": [
+              "camp",
+              "supermarket",
+              "transportation",
+              "other"
+            ]
+          },
           "logoUrl": {
             "type": "string",
             "nullable": true
@@ -2765,7 +2802,8 @@
         "required": [
           "id",
           "subdomain",
-          "name"
+          "name",
+          "type"
         ]
       },
       "PaginatedAdminTenants": {
@@ -2850,6 +2888,15 @@
           },
           "subdomain": {
             "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "camp",
+              "supermarket",
+              "transportation",
+              "other"
+            ]
           },
           "customDomain": {
             "type": "string"

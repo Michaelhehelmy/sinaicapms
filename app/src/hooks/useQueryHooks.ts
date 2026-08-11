@@ -709,11 +709,16 @@ export function useAvailabilityQuery(params: Record<string, string>) {
 }
 
 /** Fetch price overrides for a product (optional from/to window) */
-export function usePriceOverridesQuery(params: { productId: string; from?: string; to?: string }) {
+export function usePriceOverridesQuery(params: { productId: string; from?: string; to?: string; enabled?: boolean }) {
   const toastError = useErrorToast();
+  const { productId, from, to, enabled = true } = params;
   return useQuery<Schemas['PriceOverrideList']>({
-    queryKey: queryKeys.priceOverrides(params),
-    queryFn: () => api.getPriceOverrides(params),
+    queryKey: queryKeys.priceOverrides({ productId, from, to }),
+    queryFn: () => api.getPriceOverrides({ productId, from, to }),
+    // The backend requires productId (400 without it). Callers without a
+    // selected product (e.g. BookingCalendar before a room type is picked)
+    // must pass enabled:false instead of firing a doomed request.
+    enabled,
     throwOnError: (err) => {
       toastError('Failed to load price overrides', err);
       return false;

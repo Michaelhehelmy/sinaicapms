@@ -8033,6 +8033,8 @@ export interface components {
             id: string;
             name: string;
             subdomain: string;
+            /** @enum {string} */
+            type: "camp" | "supermarket" | "transportation" | "other";
             customDomain?: string | null;
             logoUrl?: string | null;
             faviconUrl?: string | null;
@@ -8068,6 +8070,8 @@ export interface components {
             id?: string;
             name: string;
             subdomain: string;
+            /** @enum {string} */
+            type?: "camp" | "supermarket" | "transportation" | "other";
             customDomain?: string;
             logoUrl?: string;
             faviconUrl?: string;
@@ -8096,6 +8100,8 @@ export interface components {
             id?: string | null;
             name?: string | null;
             subdomain?: string | null;
+            /** @enum {string} */
+            type?: "camp" | "supermarket" | "transportation" | "other";
             message?: string;
             customDomain?: string | null;
             logoUrl?: string | null;
@@ -8230,6 +8236,8 @@ export interface components {
             subdomain: string;
             customDomain?: string | null;
             name: string;
+            /** @enum {string} */
+            type: "camp" | "supermarket" | "transportation" | "other";
             logoUrl?: string | null;
             faviconUrl?: string | null;
             primaryColor?: string | null;
@@ -8275,6 +8283,8 @@ export interface components {
         AdminTenantUpdateRequest: {
             name?: string;
             subdomain?: string;
+            /** @enum {string} */
+            type?: "camp" | "supermarket" | "transportation" | "other";
             customDomain?: string;
             logoUrl?: string;
             faviconUrl?: string;

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { SUPER_ADMIN } from '../../fixtures/test-data';
+import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
+import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 
 async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
@@ -8,6 +9,14 @@ async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
   await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
   await page.locator('[data-testid="login-submit"]').click();
   await expectPanelReady(page);
+}
+
+async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
+  const admin = new AdminDashboardPage(page);
+  await admin.goto(TEST_TENANT.id);
+  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
+  await expectPanelReady(page);
+  return admin;
 }
 
 test.describe('Admin Reservation Status Changes', () => {
@@ -79,16 +88,16 @@ test.describe('Admin Role-Based Access', () => {
     expect(lower).toContain('dashboard');
   });
 
-  test('super admin sees all tabs', async ({ page }) => {
+  test('super admin sees exactly the 3 super nav tabs', async ({ page }) => {
     await loginAsSuperAdmin(page);
 
     const navItems = page.locator('[data-testid="sidebar-nav"] button[data-testid^="nav-tab-"]');
     const count = await navItems.count();
-    expect(count).toBeGreaterThanOrEqual(5);
+    expect(count).toBe(3);
   });
 
-  test('super admin can access settings', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+  test('tenant admin can access settings', async ({ page }) => {
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-settings"]').click();
     await expectPanelReady(page);
 
@@ -186,7 +195,7 @@ test.describe('Admin Navigation Deep-Dive', () => {
 
 test.describe('Admin Settings Deep-Dive', () => {
   test('settings tab → camp name field loads', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-settings"]').click();
     await expectPanelReady(page);
 
@@ -194,7 +203,7 @@ test.describe('Admin Settings Deep-Dive', () => {
   });
 
   test('settings tab → branding section visible', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-settings"]').click();
     // SettingsPanel gates all sections behind a "Loading settings..." fetch.
     await expectPanelContentReady(page, 'settings-panel');
@@ -205,7 +214,7 @@ test.describe('Admin Settings Deep-Dive', () => {
   });
 
   test('settings tab → password section visible', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-settings"]').click();
     await expectPanelReady(page);
 

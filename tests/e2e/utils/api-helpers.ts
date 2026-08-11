@@ -28,19 +28,42 @@ export async function createTestTenant(): Promise<string> {
     id: TEST_TENANT.id,
     subdomain: TEST_TENANT.subdomain,
     name: TEST_TENANT.name,
+    // POST /api/tenants validates `adminPassword` (min 1) — without it the
+    // route returns 400 "adminPassword Required" and the tenant is never
+    // created. The handler auto-provisions the tenant admin from these fields.
+    adminEmail: TEST_TENANT_ADMIN.email,
+    adminPassword: TEST_TENANT_ADMIN.password,
+    adminFirstName: 'E2E',
+    adminLastName: 'Admin',
   }, { Authorization: `Bearer ${token}` });
-  if (!res.ok) console.warn(`Create tenant: ${res.status}`);
+  // Idempotent: 4xx (subdomain already taken — the tenant is seeded by
+  // migration 0004, or a previous run created it) means the row already
+  // exists, which is fine. Any other failure is surfaced loudly.
+  if (!res.ok && res.status !== 409 && res.status !== 400) {
+    throw new Error(`createTestTenant failed: ${res.status} ${await res.text()}`);
+  }
   return TEST_TENANT.id;
 }
 
 export async function createTestTenantAdmin(): Promise<void> {
   const token = superAdminToken || await superAdminLogin();
-  await apiRequest('POST', '/api/admin/admins', {
+  const res = await apiRequest('POST', '/api/admin/admins', {
     email: TEST_TENANT_ADMIN.email,
     password: TEST_TENANT_ADMIN.password,
     tenantId: TEST_TENANT.id,
     role: 'admin',
   }, { Authorization: `Bearer ${token}` });
+  // Idempotent: 409 (email already exists) means the admin is already there.
+  // Any other non-2xx response THROWS so global-setup reports it loudly —
+  // a silent failure here leaves tenantAdminToken undefined and every
+  // authed follow-up (seedTestData, createTestPosUser) broken.
+  if (res.status === 409) {
+    console.log('  ℹ️  Tenant admin already exists (409) — nothing to do');
+    return;
+  }
+  if (!res.ok) {
+    throw new Error(`createTestTenantAdmin failed: ${res.status} ${await res.text()}`);
+  }
 }
 
 export async function tenantAdminLogin(): Promise<string> {
@@ -55,7 +78,7 @@ export async function tenantAdminLogin(): Promise<string> {
     tenantId: TEST_TENANT.id,
   });
   if (!res.ok) {
-    throw new Error(`tenantAdminLogin failed: ${res.status()} ${await res.text()}`);
+    throw new Error(`tenantAdminLogin failed: ${res.status} ${await res.text()}`);
   }
   const data = await res.json();
   tenantAdminToken = data.token;

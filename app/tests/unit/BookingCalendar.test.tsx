@@ -396,7 +396,11 @@ describe('BookingCalendar', () => {
     renderCalendar();
     await screen.findByText(format(new Date(), 'MMMM yyyy'));
 
-    expect(dayButton(todayKey)).toHaveAttribute('data-state', 'override');
+    // Overrides are only fetched once a product is active (enabled guard), so
+    // the day cell flips to override after the products query resolves.
+    await waitFor(() => {
+      expect(dayButton(todayKey)).toHaveAttribute('data-state', 'override');
+    });
     expect(dayButton(todayKey)).toHaveTextContent('$150.00');
   });
 

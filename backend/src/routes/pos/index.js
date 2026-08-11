@@ -173,7 +173,6 @@ pos.post('/orders', async (c) => {
     }
     const posUser = c.get('posUser');
     const tenantId = posUser.tenantId;
-    const storeId = posUser.storeId || 1;
     const organizationId = posUser.organizationId;
     const { items, paymentMethod, notes, amountCash, amountCard } = parsed.data;
     const idempotencyKeyRaw = typeof parsed.data.idempotencyKey === 'string' ? parsed.data.idempotencyKey.trim() : '';
@@ -327,6 +326,18 @@ pos.post('/orders', async (c) => {
         }
         stockDeductions.push({ id: recipe.ingredient_id, deduct: required });
       }
+    }
+
+    // ── Resolve the order's store ─────────────────────────
+    // Store id 1 was the pre-0051 seed store; on a fresh DB it does not exist
+    // and inserting a transaction against it fails the store_id FK, so when
+    // the cashier has no store assigned look up the tenant's real store.
+    let storeId = posUser.storeId;
+    if (storeId == null) {
+      const { results: orgStores } = await env.DB.prepare(
+        'SELECT id FROM pos_stores WHERE organization_id = ? LIMIT 1'
+      ).bind(organizationId).all();
+      storeId = orgStores.length > 0 ? orgStores[0].id : 1;
     }
 
     // ── Commit all mutations atomically in one batch ──────

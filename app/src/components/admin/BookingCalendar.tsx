@@ -214,6 +214,9 @@ export default function BookingCalendar({ campIds, camps }: BookingCalendarProps
     productId: activeProductId,
     from: fromKey,
     to: toKey,
+    // No product selected yet -> the backend 400s on a missing productId.
+    // Skip the request entirely until a room type is active.
+    enabled: !!activeProductId,
   });
 
   const { data: availabilityData } = useAvailabilityQuery({

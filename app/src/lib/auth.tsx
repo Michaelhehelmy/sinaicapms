@@ -7,7 +7,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
-import { getAuthMe, login as apiLogin, logout as apiLogout, getTenantId, REFRESH_TOKEN_KEY } from './api';
+import { getAuthMe, login as apiLogin, logout as apiLogout, getTenantId, REFRESH_TOKEN_KEY, setTenantScope } from './api';
 
 export const ROLE_HIERARCHY: Record<string, number> = {
   super_admin: 10,
@@ -126,6 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* best-effort */
     }
+    // T9: clear any active super-admin tenant-scope override so a subsequent
+    // login (e.g. as a tenant admin) never inherits the drill-down scope.
+    setTenantScope(null);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);

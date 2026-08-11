@@ -19,7 +19,8 @@ test.describe('Admin Navigation', () => {
 
     const tabButtons = page.locator('[data-testid="sidebar-nav"] button[data-testid^="nav-tab-"]');
     const tabCount = await tabButtons.count();
-    expect(tabCount).toBeGreaterThanOrEqual(4);
+    // T6: super-admin nav is separated — exactly the 3 super panels, no tenant tabs.
+    expect(tabCount).toBe(3);
 
     const tabNames: string[] = [];
     for (let i = 0; i < tabCount; i++) {
@@ -30,7 +31,8 @@ test.describe('Admin Navigation', () => {
     expect(tabNames).toContain('super_dashboard');
     expect(tabNames).toContain('super_tenants');
     expect(tabNames).toContain('super_reservations');
-    expect(tabNames).toContain('dashboard');
+    // Tenant 'dashboard' tab must NOT leak into the super-admin nav.
+    expect(tabNames).not.toContain('dashboard');
   });
 
   test('clicking each tab changes content area', async ({ page }) => {

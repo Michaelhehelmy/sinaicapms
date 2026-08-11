@@ -1,20 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
-import { SUPER_ADMIN } from '../../fixtures/test-data';
+import { TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady } from '../../fixtures/admin';
 
-async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
+async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
   const admin = new AdminDashboardPage(page);
-  await admin.goto();
-  await page.locator('[data-testid="login-email"]').fill(SUPER_ADMIN.email);
-  await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
-  await page.locator('[data-testid="login-submit"]').click();
+  await admin.goto(TEST_TENANT.id);
+  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
   await expectPanelReady(page);
 }
 
 test.describe('Admin Orders CRUD', () => {
   test('navigates to orders tab and table loads', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reservations"]').click();
     await expectPanelReady(page);
     const content = (await page.locator('[data-testid="content-area"]').textContent()) ?? '';
@@ -22,7 +20,7 @@ test.describe('Admin Orders CRUD', () => {
   });
 
   test('shows stats cards with counts', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reservations"]').click();
     await expectPanelReady(page);
     const content = (await page.locator('[data-testid="content-area"]').textContent()) ?? '';
@@ -32,7 +30,7 @@ test.describe('Admin Orders CRUD', () => {
   });
 
   test('filter dropdown has status options', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reservations"]').click();
     await expectPanelReady(page);
     const filter = page.locator('[data-testid="status-filter"] select, [data-testid="content-area"] select').first();
@@ -45,7 +43,7 @@ test.describe('Admin Orders CRUD', () => {
   });
 
   test('empty state shows no reservations message', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reservations"]').click();
     await expectPanelReady(page);
     const content = (await page.locator('[data-testid="content-area"]').textContent()) ?? '';

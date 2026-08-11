@@ -205,11 +205,14 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect(body.success).toBe(true);
 
     const sqls = db.prepare.mock.calls.map(c => c[0]);
-    expect(sqls[0]).toContain('INTO pos_products');
-    expect(sqls[0]).toContain('name');
-    expect(sqls[0]).toContain('selling_price');
-    expect(sqls[0]).toContain("'room'");
-    expect(sqls[1]).toContain('INTO product_camps');
+    // Call 0 = tenant_org_mapping lookup (resolves the tenant's POS org);
+    // call 1 = pos_products INSERT; call 2 = product_camps junction.
+    expect(sqls[0]).toContain('tenant_org_mapping');
+    expect(sqls[1]).toContain('INTO pos_products');
+    expect(sqls[1]).toContain('name');
+    expect(sqls[1]).toContain('selling_price');
+    expect(sqls[1]).toContain("'room'");
+    expect(sqls[2]).toContain('INTO product_camps');
     for (const sql of sqls) {
       expect(sql).not.toMatch(/\bINTO\s+products\b/);
       expect(sql).not.toMatch(/\bproducts\s+SET\b/);
@@ -228,11 +231,12 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect((await res.json()).success).toBe(true);
 
     const sqls = db.prepare.mock.calls.map(c => c[0]);
-    expect(sqls).toHaveLength(1);
-    expect(sqls[0]).toContain('INTO pos_products');
-    expect(sqls[0]).not.toMatch(/\bINTO\s+products\b/);
-    expect(sqls[0]).not.toContain('product_camps_new');
-    expect(sqls[0]).not.toContain('product_lang');
+    expect(sqls).toHaveLength(2);
+    expect(sqls[0]).toContain('tenant_org_mapping');
+    expect(sqls[1]).toContain('INTO pos_products');
+    expect(sqls[1]).not.toMatch(/\bINTO\s+products\b/);
+    expect(sqls[1]).not.toContain('product_camps_new');
+    expect(sqls[1]).not.toContain('product_lang');
   });
 
   it('PUT updates pos_products and rebuilds product_camps (never legacy)', async () => {

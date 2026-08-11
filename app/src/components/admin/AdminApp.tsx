@@ -93,6 +93,9 @@ const TENANT_NAV: NavItem[] = [
 /** Primary tabs surfaced on the mobile bottom nav (mobile-optimized subset). */
 const MOBILE_NAV_IDS = ['dashboard', 'camps', 'rooms', 'reservations', 'calendar'];
 
+/** Super-admin mobile bottom nav — the 3 super panels fit comfortably. */
+const SUPER_MOBILE_NAV_IDS = ['super_dashboard', 'super_tenants', 'super_reservations'];
+
 const SUPER_NAV: NavItem[] = [
   { id: 'super_dashboard', label: 'Super Dashboard', icon: IconDashboard },
   { id: 'super_tenants', label: 'Tenants', icon: IconRooms },
@@ -233,7 +236,8 @@ function AdminAppInner() {
   const [campFilter, setCampFilter] = useState<string>('all');
 
   const isSuperAdmin = hasRole('super_admin');
-  const navItems = isSuperAdmin ? [...SUPER_NAV, ...TENANT_NAV] : TENANT_NAV;
+  // Phase 2: super admins get ONLY the super panels; tenant admins get the full tenant nav.
+  const navItems = isSuperAdmin ? SUPER_NAV : TENANT_NAV;
 
   useEffect(() => {
     const handleHash = () => setTab(getHashTab());
@@ -387,22 +391,23 @@ function AdminAppInner() {
             </div>
           )}
 
-          {TENANT_NAV.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => switchTab(item.id)}
-              data-testid={`nav-tab-${item.id}`}
-              className={`flex items-center gap-2.5 w-full py-3 px-5 border-none bg-transparent text-sidebar-text cursor-pointer text-[0.9rem] text-left transition-all border-l-[3px] font-[inherit] tracking-[0.2px] ${
-                tab === item.id
-                  ? 'bg-white/10 text-white border-l-brand-400 font-semibold'
-                  : 'hover:bg-sidebar-hover hover:text-white border-l-transparent'
-              }`}
-            >
-              <NavIcon icon={item.icon} />
-              {item.label}
-              {item.id === 'inbox' && user?.tenantId ? <InboxUnreadBadge /> : null}
-            </button>
-          ))}
+          {!isSuperAdmin &&
+            TENANT_NAV.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => switchTab(item.id)}
+                data-testid={`nav-tab-${item.id}`}
+                className={`flex items-center gap-2.5 w-full py-3 px-5 border-none bg-transparent text-sidebar-text cursor-pointer text-[0.9rem] text-left transition-all border-l-[3px] font-[inherit] tracking-[0.2px] ${
+                  tab === item.id
+                    ? 'bg-white/10 text-white border-l-brand-400 font-semibold'
+                    : 'hover:bg-sidebar-hover hover:text-white border-l-transparent'
+                }`}
+              >
+                <NavIcon icon={item.icon} />
+                {item.label}
+                {item.id === 'inbox' && user?.tenantId ? <InboxUnreadBadge /> : null}
+              </button>
+            ))}
         </nav>
 
         <button
@@ -477,7 +482,9 @@ function AdminAppInner() {
         className="fixed bottom-0 left-0 right-0 z-[95] md:hidden bg-white border-t border-stone-200 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] flex"
       >
         {navItems
-          .filter((item) => MOBILE_NAV_IDS.includes(item.id))
+          .filter((item) =>
+            isSuperAdmin ? SUPER_MOBILE_NAV_IDS.includes(item.id) : MOBILE_NAV_IDS.includes(item.id)
+          )
           .map((item) => {
             const active = tab === item.id;
             const Icon = item.icon;

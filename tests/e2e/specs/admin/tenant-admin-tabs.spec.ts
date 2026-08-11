@@ -1,14 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
-import { SUPER_ADMIN } from '../../fixtures/test-data';
+import { TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 
-async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
+async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
   const admin = new AdminDashboardPage(page);
-  await admin.goto();
-  await page.locator('[data-testid="login-email"]').fill(SUPER_ADMIN.email);
-  await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
-  await page.locator('[data-testid="login-submit"]').click();
+  await admin.goto(TEST_TENANT.id);
+  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
   await expectPanelReady(page);
   return admin;
 }
@@ -28,7 +26,7 @@ const TAB_KEYWORDS: Record<string, string[]> = {
 test.describe('Tenant Admin Tabs', () => {
   for (const [tabName, keywords] of Object.entries(TAB_KEYWORDS)) {
     test(`${tabName} tab loads and contains tab-specific keywords`, async ({ page }) => {
-      const admin = await loginAsSuperAdmin(page);
+      const admin = await loginAsTenantAdmin(page);
 
       const tabButton = page.locator(`[data-testid="nav-tab-${tabName}"]`);
       const tabCount = await tabButton.count();
@@ -53,7 +51,7 @@ test.describe('Tenant Admin Tabs', () => {
   }
 
   test('dashboard tab shows stat cards with numeric values', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
 
     const tabButton = page.locator('[data-testid="nav-tab-dashboard"]');
     const tabCount = await tabButton.count();
@@ -76,7 +74,7 @@ test.describe('Tenant Admin Tabs', () => {
   });
 
   test('each tab renders unique content', async ({ page }) => {
-    const admin = await loginAsSuperAdmin(page);
+    const admin = await loginAsTenantAdmin(page);
     const tabNames = ['dashboard', 'camps', 'rooms', 'rateplans', 'reservations', 'settings'];
 
     const availableTabs: string[] = [];

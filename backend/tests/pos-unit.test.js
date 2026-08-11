@@ -1082,6 +1082,7 @@ describe('POS Routes', () => {
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
         chainDb([]),
         chainDb([]),
+        chainDb([]), // store lookup (cashier token has no storeId -> org's first store)
         chainDb([]),
         chainDb([]),
         chainDb([existingRow]),

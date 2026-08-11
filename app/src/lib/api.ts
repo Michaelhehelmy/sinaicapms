@@ -47,8 +47,25 @@ export interface Paginated<T> {
   hasMore: boolean;
 }
 
+// T9: super-admin tenant-scope override for the Tenants hub drill-down.
+// When set (non-empty), getTenantId() returns it FIRST so admin panels target
+// the selected tenant while sitting on the marketplace host. Module-level only —
+// never persisted — and reset on drill-down exit / logout so tenant admins and
+// POS sessions are never affected.
+let _tenantScopeOverride: string | null = null;
+
+export function setTenantScope(tenantId: string | null): void {
+  _tenantScopeOverride = tenantId && tenantId.trim() ? tenantId.trim() : null;
+}
+
+export function getTenantScope(): string | null {
+  return _tenantScopeOverride;
+}
+
 export function getTenantId(): string {
   if (typeof window === 'undefined') return '';
+
+  if (_tenantScopeOverride) return _tenantScopeOverride;
 
   const host = window.location.hostname;
 

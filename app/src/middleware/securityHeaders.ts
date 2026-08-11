@@ -28,6 +28,10 @@ import { defineMiddleware } from 'astro:middleware';
  *    PublicLayout/AdminLayout from `https://plausible.io` and posts events to
  *    `https://plausible.io/api/event` -> `https://plausible.io` is allow-listed
  *    in both `script-src` and `connect-src`.
+ *  - Cloudflare Web Analytics: the `https://static.cloudflareinsights.com/
+ *    beacon.min.js` script is injected by the Cloudflare proxy on sinaicamps.com
+ *    and posts beacon events back to the same host -> allow-listed in both
+ *    `script-src` and `connect-src`.
  *  - Google Maps is embedded via tenant `map_embed_url` ->
  *    `frame-src https://www.google.com https://*.google.com
  *    https://www.openstreetmap.org https://*.openstreetmap.org`.
@@ -39,11 +43,11 @@ const LOCAL_HOSTS = ['localhost', '127.0.0.1'];
 
 const PROD_CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://plausible.io",
+  "script-src 'self' 'unsafe-inline' https://plausible.io https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: https:",
   "font-src 'self' https://fonts.gstatic.com",
-  "connect-src 'self' https://sinaicamps.com https://*.sinaicamps.com https://plausible.io",
+  "connect-src 'self' https://sinaicamps.com https://*.sinaicamps.com https://plausible.io https://static.cloudflareinsights.com",
   "frame-src https://www.google.com https://*.google.com https://www.openstreetmap.org https://*.openstreetmap.org",
   "object-src 'none'",
   "base-uri 'self'",

@@ -269,11 +269,22 @@ export async function handleProductsRoute(request, env, tenantId) {
       const { id, name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids } = parsed.data;
       const pid = id || 'prod_' + crypto.randomUUID().slice(0, 12); // L1 fix
 
+      // The product must belong to the tenant's POS organization so it shows
+      // up in that tenant's POS grid (pos_products.organization_id). The
+      // column default is 1 (single-org legacy); resolving the tenant's real
+      // org here keeps marketplace-created products visible in the POS after
+      // 0051 removed the org-1 seed. Fall back to 1 for legacy tenants with
+      // no mapping.
+      const { results: orgRows } = await env.DB.prepare(
+        'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
+      ).bind(tenantId).all();
+      const organizationId = orgRows.length > 0 ? orgRows[0].organization_id : 1;
+
       await env.DB.prepare(
-        `INSERT INTO pos_products (id, tenant_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'room', datetime('now'), datetime('now'))`
+        `INSERT INTO pos_products (id, tenant_id, organization_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'room', datetime('now'), datetime('now'))`
       ).bind(
-        pid, tenantId, category_id || null,
+        pid, tenantId, organizationId, category_id || null,
         sku || 'PROD-' + pid.toUpperCase(),
         name, description || null, short_description || null,
         base_price || 0, capacity || 1,

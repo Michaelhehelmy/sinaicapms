@@ -1,20 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
-import { SUPER_ADMIN } from '../../fixtures/test-data';
+import { TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady } from '../../fixtures/admin';
 
-async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
+async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
   const admin = new AdminDashboardPage(page);
-  await admin.goto();
-  await page.locator('[data-testid="login-email"]').fill(SUPER_ADMIN.email);
-  await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
-  await page.locator('[data-testid="login-submit"]').click();
+  await admin.goto(TEST_TENANT.id);
+  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
   await expectPanelReady(page);
 }
 
 test.describe('Admin Reports', () => {
   test('navigates to reports tab', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reports"]').click();
     await expectPanelReady(page);
     try {
@@ -28,7 +26,7 @@ test.describe('Admin Reports', () => {
   });
 
   test('shows occupancy/revenue/bookings tabs', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reports"]').click();
     await expectPanelReady(page);
     try {
@@ -45,7 +43,7 @@ test.describe('Admin Reports', () => {
   });
 
   test('report data loads without error', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reports"]').click();
     await page.waitForLoadState('networkidle');
     try {

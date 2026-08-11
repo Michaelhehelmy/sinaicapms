@@ -27,9 +27,22 @@ vi.mock('@/components/ui/LoadingSpinner', () => ({
   LoadingSpinner: ({ text }: { text?: string }) => <div>{text}</div>,
 }));
 
+// T9: stub the drill-down so the directory wiring is tested here; the real
+// component (scope override + scoped panels) is covered in TenantDrilldown.test.tsx.
+vi.mock('@/components/admin/TenantDrilldown', () => ({
+  default: ({ tenant, onBack }: { tenant: { id: string; name: string }; onBack: () => void }) => (
+    <div data-testid="tenant-drilldown-stub">
+      <span>{tenant.name}</span>
+      <button data-testid="drilldown-back-btn" onClick={onBack}>
+        Back to tenants
+      </button>
+    </div>
+  ),
+}));
+
 const sampleTenants = [
-  { id: 't1', name: 'Camp Alpha', subdomain: 'alpha', customDomain: null, location: 'Sinai', phone: '123', email: 'a@test.com', status: 'active', currency: 'USD' },
-  { id: 't2', name: 'Camp Beta', subdomain: 'beta', customDomain: 'beta.com', location: 'Cairo', phone: '456', email: 'b@test.com', status: 'suspended', currency: 'EGP' },
+  { id: 't1', name: 'Camp Alpha', subdomain: 'alpha', customDomain: null, location: 'Sinai', phone: '123', email: 'a@test.com', status: 'active', currency: 'USD', type: 'camp' },
+  { id: 't2', name: 'Camp Beta', subdomain: 'beta', customDomain: 'beta.com', location: 'Cairo', phone: '456', email: 'b@test.com', status: 'suspended', currency: 'EGP', type: 'supermarket' },
 ];
 
 const sampleAdmins = [
@@ -346,6 +359,86 @@ describe('SuperTenantsPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('USD')).toBeInTheDocument();
       expect(screen.getByText('EGP')).toBeInTheDocument();
+    });
+  });
+
+  it('shows localized type badge on tenant cards', async () => {
+    mockGetAdminTenants.mockResolvedValue(sampleTenants);
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      const badges = screen.getAllByTestId('tenant-type-badge');
+      expect(badges).toHaveLength(2);
+      expect(badges[0]).toHaveTextContent('Camp');
+      expect(badges[1]).toHaveTextContent('Supermarket');
+    });
+  });
+
+  it('pre-selects the tenant type in the edit form and persists via PATCH', async () => {
+    mockGetAdminTenants.mockResolvedValue(sampleTenants);
+    mockUpdateAdminTenant.mockResolvedValue({});
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      expect(screen.getAllByText('Edit Admin').length).toBeGreaterThanOrEqual(1);
+    });
+    // t2 = supermarket -> edit that card
+    fireEvent.click(screen.getAllByText('Edit Admin')[1]);
+    await waitFor(() => {
+      expect(screen.getByTestId('edit-tenant-type')).toBeInTheDocument();
+      expect((screen.getByTestId('edit-tenant-type') as HTMLSelectElement).value).toBe('supermarket');
+    });
+    fireEvent.change(screen.getByTestId('edit-tenant-type'), { target: { value: 'transportation' } });
+    fireEvent.click(screen.getByText('Save Admin'));
+    await waitFor(() => {
+      expect(mockUpdateAdminTenant).toHaveBeenCalledWith('t2', expect.objectContaining({ type: 'transportation' }));
+    });
+  });
+
+  it('omits type from PATCH when unchanged', async () => {
+    mockGetAdminTenants.mockResolvedValue(sampleTenants);
+    mockUpdateAdminTenant.mockResolvedValue({});
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      expect(screen.getAllByText('Edit Admin').length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText('Edit Admin')[0]);
+    await waitFor(() => {
+      expect(screen.getByTestId('edit-tenant-type')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByPlaceholderText('admin@camp.com'), { target: { value: 'new@test.com' } });
+    fireEvent.click(screen.getByText('Save Admin'));
+    await waitFor(() => {
+      expect(mockUpdateAdminTenant).toHaveBeenCalledWith('t1', { adminEmail: 'new@test.com' });
+    });
+  });
+
+  it('opens tenant drilldown from Manage button', async () => {
+    mockGetAdminTenants.mockResolvedValue(sampleTenants);
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId('manage-tenant-btn').length).toBe(2);
+    });
+    fireEvent.click(screen.getAllByTestId('manage-tenant-btn')[0]);
+    await waitFor(() => {
+      expect(screen.getByTestId('tenant-drilldown-stub')).toBeInTheDocument();
+      expect(screen.getByText('Camp Alpha')).toBeInTheDocument();
+      expect(screen.queryByText('Tenant Directory')).not.toBeInTheDocument();
+    });
+  });
+
+  it('returns to the directory from drilldown back button', async () => {
+    mockGetAdminTenants.mockResolvedValue(sampleTenants);
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId('manage-tenant-btn').length).toBe(2);
+    });
+    fireEvent.click(screen.getAllByTestId('manage-tenant-btn')[0]);
+    await waitFor(() => {
+      expect(screen.getByTestId('tenant-drilldown-stub')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('drilldown-back-btn'));
+    await waitFor(() => {
+      expect(screen.getByText('Tenant Directory')).toBeInTheDocument();
+      expect(screen.queryByTestId('tenant-drilldown-stub')).not.toBeInTheDocument();
     });
   });
 });

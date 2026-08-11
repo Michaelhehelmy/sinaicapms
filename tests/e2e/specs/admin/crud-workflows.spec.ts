@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { SUPER_ADMIN } from '../../fixtures/test-data';
+import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
+import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 
 async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
@@ -10,9 +11,17 @@ async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
   await expectPanelReady(page);
 }
 
+async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
+  const admin = new AdminDashboardPage(page);
+  await admin.goto(TEST_TENANT.id);
+  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
+  await expectPanelReady(page);
+  return admin;
+}
+
 test.describe('Admin CRUD Workflow — Rooms', () => {
   test('rooms tab: navigate, verify table, click add', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-rooms"]').click();
     await expectPanelContentReady(page, 'rooms-panel');
 
@@ -36,7 +45,7 @@ test.describe('Admin CRUD Workflow — Rooms', () => {
 
 test.describe('Admin CRUD Workflow — Meals', () => {
   test('meals tab: navigate, verify list, click add', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-meals"]').click();
     await expectPanelReady(page);
 
@@ -57,7 +66,7 @@ test.describe('Admin CRUD Workflow — Meals', () => {
 
 test.describe('Admin CRUD Workflow — Rate Plans', () => {
   test('rateplans tab: navigate, verify content, click add', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-rateplans"]').click();
     await expectPanelReady(page);
 
@@ -78,7 +87,7 @@ test.describe('Admin CRUD Workflow — Rate Plans', () => {
 
 test.describe('Admin CRUD Workflow — Planning', () => {
   test('planning tab: navigate, verify content, click add', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-planning"]').click();
     await expectPanelReady(page);
 
@@ -99,7 +108,7 @@ test.describe('Admin CRUD Workflow — Planning', () => {
 
 test.describe('Admin CRUD Workflow — Settings', () => {
   test('settings tab: navigate, verify form, save button exists', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-settings"]').click();
     await expectPanelReady(page);
 
@@ -112,7 +121,7 @@ test.describe('Admin CRUD Workflow — Settings', () => {
   });
 
   test('settings tab: branding section visible', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-settings"]').click();
     await expectPanelReady(page);
 
@@ -145,7 +154,7 @@ test.describe('Admin CRUD Workflow — Orders/Reservations', () => {
 
 test.describe('Admin CRUD Workflow — Reports', () => {
   test('reports tab: navigate, verify content, report type selector exists', async ({ page }) => {
-    await loginAsSuperAdmin(page);
+    await loginAsTenantAdmin(page);
     await page.locator('[data-testid="nav-tab-reports"]').click();
     await expectPanelReady(page);
 

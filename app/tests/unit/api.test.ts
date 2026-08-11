@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getTenantId } from '@/lib/api';
+import { getTenantId, setTenantScope, getTenantScope } from '@/lib/api';
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -56,5 +56,42 @@ describe('getTenantId', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+});
+
+describe('setTenantScope / getTenantScope (T9 super-admin drill-down override)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setTenantScope(null);
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'sinaicamps.com', origin: 'https://sinaicamps.com', search: '' },
+    });
+  });
+
+  it('getTenantScope is null by default', () => {
+    expect(getTenantScope()).toBeNull();
+  });
+
+  it('getTenantId returns the scope override even on the marketplace host', () => {
+    setTenantScope('acaciacamp');
+    expect(getTenantScope()).toBe('acaciacamp');
+    expect(getTenantId()).toBe('acaciacamp');
+  });
+
+  it('getTenantId falls back to hostname after override reset', () => {
+    setTenantScope('acaciacamp');
+    expect(getTenantId()).toBe('acaciacamp');
+    setTenantScope(null);
+    expect(getTenantScope()).toBeNull();
+    expect(getTenantId()).toBe('marketplace');
+  });
+
+  it('trims whitespace and ignores empty strings', () => {
+    setTenantScope('  acacia  ');
+    expect(getTenantScope()).toBe('acacia');
+    setTenantScope('');
+    expect(getTenantScope()).toBeNull();
+    setTenantScope('   ');
+    expect(getTenantScope()).toBeNull();
   });
 });

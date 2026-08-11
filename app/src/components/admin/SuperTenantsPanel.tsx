@@ -2,7 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth';
+import { useI18n } from '@/hooks/useI18n';
 import { updateAdminTenant, getAdminTenants, getAdmins, updateAdminUser } from '@/lib/api';
+import TenantDrilldown from './TenantDrilldown';
 
 interface TenantRecord {
   id: string;
@@ -14,6 +16,7 @@ interface TenantRecord {
   email: string;
   status: string;
   currency: string | null;
+  type: string;
   [key: string]: unknown;
 }
 
@@ -22,11 +25,15 @@ interface EditForm {
   adminPassword: string;
   adminFirstName: string;
   adminLastName: string;
+  type: string;
 }
+
+const TENANT_TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'] as const;
 
 export default function SuperTenantsPanel() {
   const { showToast } = useToast();
   const { user } = useAuth();
+  const { t } = useI18n();
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -35,10 +42,12 @@ export default function SuperTenantsPanel() {
     adminPassword: '',
     adminFirstName: '',
     adminLastName: '',
+    type: 'camp',
   });
   const [saving, setSaving] = useState(false);
   const [admins, setAdmins] = useState<Array<{id: string; tenantId: string; email: string; role: string; firstName: string; lastName: string; isActive: number}>>([]);
   const [showAdmins, setShowAdmins] = useState(false);
+  const [drillTenant, setDrillTenant] = useState<TenantRecord | null>(null);
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -80,19 +89,27 @@ export default function SuperTenantsPanel() {
     }
   };
 
-  const startEdit = (t: TenantRecord) => {
-    setEditingId(t.id);
+  const typeLabel = (value?: string) => {
+    const v = value || 'camp';
+    return TENANT_TYPE_VALUES.includes(v as typeof TENANT_TYPE_VALUES[number])
+      ? t(`tenantType.${v}`)
+      : v;
+  };
+
+  const startEdit = (tenant: TenantRecord) => {
+    setEditingId(tenant.id);
     setForm({
       adminEmail: '',
       adminPassword: '',
       adminFirstName: '',
       adminLastName: '',
+      type: tenant.type || 'camp',
     });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setForm({ adminEmail: '', adminPassword: '', adminFirstName: '', adminLastName: '' });
+    setForm({ adminEmail: '', adminPassword: '', adminFirstName: '', adminLastName: '', type: 'camp' });
   };
 
   const saveTenant = async (tenantId: string) => {
@@ -103,6 +120,8 @@ export default function SuperTenantsPanel() {
       if (form.adminPassword.trim()) body.adminPassword = form.adminPassword.trim();
       if (form.adminFirstName.trim()) body.adminFirstName = form.adminFirstName.trim();
       if (form.adminLastName.trim()) body.adminLastName = form.adminLastName.trim();
+      const current = tenants.find((x) => x.id === tenantId);
+      if (form.type && (!current || form.type !== (current.type || 'camp'))) body.type = form.type;
 
       if (Object.keys(body).length === 0) {
         showToast('No changes to save', 'info');
@@ -144,6 +163,8 @@ export default function SuperTenantsPanel() {
         </div>
       ) : loading ? (
         <LoadingSpinner text="Loading tenants..." />
+      ) : drillTenant ? (
+        <TenantDrilldown key={drillTenant.id} tenant={drillTenant} onBack={() => setDrillTenant(null)} />
       ) : (
       <>
       <div className="flex items-center justify-between mb-6">
@@ -152,55 +173,68 @@ export default function SuperTenantsPanel() {
       </div>
 
       <div data-testid="tenants-table" className="space-y-4">
-        {tenants.map((t) => (
-          <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs">
+        {tenants.map((tenant) => (
+          <div key={tenant.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-base font-bold text-gray-800">{t.name}</h3>
+                <h3 className="text-base font-bold text-gray-800">{tenant.name}</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  {t.subdomain ? `${t.subdomain}.sinaicamps.com` : 'No subdomain'}
-                  {t.customDomain ? ` · ${t.customDomain}` : ''}
-                  {t.location ? ` · ${t.location}` : ''}
+                  {tenant.subdomain ? `${tenant.subdomain}.sinaicamps.com` : 'No subdomain'}
+                  {tenant.customDomain ? ` · ${tenant.customDomain}` : ''}
+                  {tenant.location ? ` · ${tenant.location}` : ''}
                 </p>
                 <div className="flex gap-3 mt-2 text-xs">
-                  <span className={`px-2 py-0.5 rounded-full font-semibold ${t.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {t.status}
+                  <span
+                    data-testid="tenant-type-badge"
+                    className="px-2 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700"
+                  >
+                    {typeLabel(tenant.type)}
                   </span>
-                  {t.currency && (
+                  <span className={`px-2 py-0.5 rounded-full font-semibold ${tenant.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {tenant.status}
+                  </span>
+                  {tenant.currency && (
                     <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                      {t.currency}
+                      {tenant.currency}
                     </span>
                   )}
                 </div>
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => toggleStatus(t.id, t.status)}
+                  onClick={() => setDrillTenant(tenant)}
+                  data-testid="manage-tenant-btn"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer bg-purple-600 text-white hover:bg-purple-700"
+                >
+                  Manage
+                </button>
+                <button
+                  onClick={() => toggleStatus(tenant.id, tenant.status)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer ${
-                    t.status === 'active'
+                    tenant.status === 'active'
                       ? 'bg-red-50 text-red-600 hover:bg-red-100'
                       : 'bg-green-50 text-green-600 hover:bg-green-100'
                   }`}
                 >
-                  {t.status === 'active' ? 'Suspend' : 'Activate'}
+                  {tenant.status === 'active' ? 'Suspend' : 'Activate'}
                 </button>
                 <button
-                  onClick={() => editingId === t.id ? cancelEdit() : startEdit(t)}
+                  onClick={() => editingId === tenant.id ? cancelEdit() : startEdit(tenant)}
                   data-testid="edit-tenant-btn"
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer ${
-                    editingId === t.id
+                    editingId === tenant.id
                       ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                       : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                   }`}
                 >
-                  {editingId === t.id ? 'Cancel' : 'Edit Admin'}
+                  {editingId === tenant.id ? 'Cancel' : 'Edit Admin'}
                 </button>
               </div>
             </div>
 
-            {editingId === t.id && (
+            {editingId === tenant.id && (
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <h4 className="text-sm font-bold text-gray-700 mb-3">Admin Account for "{t.name}"</h4>
+                <h4 className="text-sm font-bold text-gray-700 mb-3">Admin Account for "{tenant.name}"</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label htmlFor="edit-admin-email" className={labelClass}>Admin Email</label>
@@ -246,10 +280,26 @@ export default function SuperTenantsPanel() {
                       placeholder="Admin"
                     />
                   </div>
+                  <div>
+                    <label htmlFor="edit-tenant-type" className={labelClass}>{t('tenantType.label')}</label>
+                    <select
+                      id="edit-tenant-type"
+                      data-testid="edit-tenant-type"
+                      value={form.type}
+                      onChange={(e) => setForm({ ...form, type: e.target.value })}
+                      className={inputClass}
+                    >
+                      {TENANT_TYPE_VALUES.map((value) => (
+                        <option key={value} value={value}>
+                          {t(`tenantType.${value}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="mt-4 flex gap-2">
                   <button
-                    onClick={() => saveTenant(t.id)}
+                    onClick={() => saveTenant(tenant.id)}
                     disabled={saving}
                     className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 border-none cursor-pointer"
                   >

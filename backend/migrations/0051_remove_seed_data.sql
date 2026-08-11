@@ -28,7 +28,9 @@ DELETE FROM revenue WHERE id IN ('rev_1', 'rev_2') AND camp_id IN ('camp_1', 'ca
 DELETE FROM financial_transactions WHERE id = 'tx_1' AND account_id IN ('acc_1', 'acc_2', 'acc_3', 'acc_4', 'acc_5', 'acc_6', 'acc_cash_1783614962124', 'acc_bank_1783614962208');
 
 -- 6. pos_users (seed rows, FK to pos_organizations/pos_stores)
-DELETE FROM pos_users WHERE username IN ('admin1', 'haloom', 'cashier');
+--    Includes 0023_merge_staff staff rows (admin2/david/emma/frank) which also
+--    live in seed organization 1 — without them step 12 (org delete) FK-fails.
+DELETE FROM pos_users WHERE username IN ('admin1', 'haloom', 'cashier', 'admin2', 'david@camp.com', 'emma@camp.com', 'frank@camp.com');
 
 -- 7. pos_products (seed rows, now safe after children deleted)
 DELETE FROM pos_products WHERE id IN (

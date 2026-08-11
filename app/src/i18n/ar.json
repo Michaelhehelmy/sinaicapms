@@ -317,6 +317,14 @@
     "userDeleted": "تم حذف الموظف بنجاح",
     "passwordReset": "تم إعادة تعيين كلمة المرور بنجاح"
   },
+  "tenantType": {
+    "label": "النوع",
+    "all": "جميع الأنواع",
+    "camp": "معسكر",
+    "supermarket": "سوبر ماركت",
+    "transportation": "نقل",
+    "other": "أخرى"
+  },
   "errors": {
     "notFound": "الصفحة غير موجودة",
     "notFoundMessage": "عذرًا! الصفحة التي تبحث عنها غير موجودة أو ربما تم نقلها.",

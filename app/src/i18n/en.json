@@ -317,6 +317,14 @@
     "userDeleted": "Staff user deleted successfully",
     "passwordReset": "Password reset successfully"
   },
+  "tenantType": {
+    "label": "Type",
+    "all": "All Types",
+    "camp": "Camp",
+    "supermarket": "Supermarket",
+    "transportation": "Transportation",
+    "other": "Other"
+  },
   "errors": {
     "notFound": "Page not found",
     "notFoundMessage": "Oops! The page you're looking for doesn't exist or may have been moved.",

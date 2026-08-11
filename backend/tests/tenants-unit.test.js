@@ -292,6 +292,81 @@ describe('handleTenants', () => {
       expect(res.status).toBe(400);
     });
 
+    it('creates tenant with explicit type', async () => {
+      verifyJWT.mockResolvedValue({ role: 'super_admin', sub: 'sa1' });
+      let callIdx = 0;
+      let insertArgs = [];
+      const db = {
+        prepare: vi.fn((sql) => {
+          const chain = {
+            bind: vi.fn((...args) => {
+              if (sql.includes('INSERT INTO tenants')) insertArgs = args;
+              return chain;
+            }),
+            all: vi.fn().mockImplementation(() => {
+              callIdx++;
+              if (callIdx === 1) return Promise.resolve({ results: [{ is_active: 1 }] }); // auth check
+              return Promise.resolve({ results: [] }); // subdomain + custom_domain available
+            }),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          };
+          return chain;
+        }),
+      };
+      const res = await handleTenants(
+        makeReqWithAuth('http://localhost/api/tenants', 'POST', {
+          name: 'Supermarket', subdomain: 'market', type: 'supermarket', admin_password: 'pass1234'
+        }),
+        { DB: db, JWT_SECRET: 'secret' }
+      );
+      expect(res.status).toBe(200);
+      // INSERT columns: id, subdomain, custom_domain, name, type, ...
+      expect(insertArgs[4]).toBe('supermarket');
+    });
+
+    it('defaults tenant type to camp when omitted', async () => {
+      verifyJWT.mockResolvedValue({ role: 'super_admin', sub: 'sa1' });
+      let callIdx = 0;
+      let insertArgs = [];
+      const db = {
+        prepare: vi.fn((sql) => {
+          const chain = {
+            bind: vi.fn((...args) => {
+              if (sql.includes('INSERT INTO tenants')) insertArgs = args;
+              return chain;
+            }),
+            all: vi.fn().mockImplementation(() => {
+              callIdx++;
+              if (callIdx === 1) return Promise.resolve({ results: [{ is_active: 1 }] }); // auth check
+              return Promise.resolve({ results: [] }); // subdomain + custom_domain available
+            }),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          };
+          return chain;
+        }),
+      };
+      const res = await handleTenants(
+        makeReqWithAuth('http://localhost/api/tenants', 'POST', {
+          name: 'Camp', subdomain: 'camp2', admin_password: 'pass1234'
+        }),
+        { DB: db, JWT_SECRET: 'secret' }
+      );
+      expect(res.status).toBe(200);
+      expect(insertArgs[4]).toBe('camp');
+    });
+
+    it('rejects invalid tenant type with 400', async () => {
+      verifyJWT.mockResolvedValue({ role: 'super_admin', sub: 'sa1' });
+      const db = mockDb({ _all: [{ is_active: 1 }] });
+      const res = await handleTenants(
+        makeReqWithAuth('http://localhost/api/tenants', 'POST', {
+          name: 'Camp', subdomain: 'camp3', type: 'hotel', admin_password: 'pass1234'
+        }),
+        { DB: db, JWT_SECRET: 'secret' }
+      );
+      expect(res.status).toBe(400);
+    });
+
     it('returns error on DB failure', async () => {
       verifyJWT.mockResolvedValue({ role: 'super_admin', sub: 'sa1' });
       let callIdx = 0;
