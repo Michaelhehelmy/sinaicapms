@@ -6255,3 +6255,25 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 **Status of all tmp agents**: t9/t10/t12/t13/t15/t17 → `done`; t11 → `cancelled` (files retained under `.opencode/agents/tmp/` for the record).
 
 **Next moves (blocked on human/owner)**: staging DNS + `./deploy.sh --staging`; git remote confirm + push; store rotated admin credentials in vault; optional `npm run lighthouse` against a live preview.
+
+---
+
+## 2026-08-13 — True-documentation pass (T19)
+
+**Task**: user asked to "update the readme and all doc for true documentation" — align README + agent docs with the actual codebase.
+
+**Files changed**: `README.md`, `AGENTS.md`, `.opencode/prompts/project-context.md`, `docs/ARCHITECTURE.md`, `docs/DEVELOPER_ROADMAP.md`, `docs/PERF_BASELINE.md`, `docs/POLISH_PLAN.md`, `docs/QUICK_START.md`. Commit `3091d98` (8 files, +116/−84).
+
+**Key fixes (all verified against code before writing)**:
+- Repo URL everywhere: `campops-marketplace` → `Michaelhehelmy/campmaster` (private; created 2026-08-13).
+- Removed all i18n claims: no `app/src/i18n/`, no `useI18n`, no `en.json`/`ar.json` — English LTR is the deliberate product decision (T11 cancelled). README gets an explicit "Internationalization (status)" section instead.
+- Counts: migrations 39 → **53** (head `0053_camp_ownership.sql`); admin panels 14 → **18**; UI primitives 26; hooks = the real 5 (`useAdminData`, `useApiError`, `useQueryHooks`, `useSseInbox`, `useSseOrders`); E2E gate **552 passing / 14 env-skipped** (was "548").
+- Architecture: 4-layer diagram + tables now include **R2 `MEDIA_BUCKET`** and the **`BROADCASTER` Durable Object (SSE)**; clarified `KV_CACHE` is bound-but-never-written — read caching is `Cache-Control` header-only (`cachedJsonResponse`), so the free-plan KV quota is untouched.
+- Ports: plain `npm run dev` = **:4321** (Astro default); Playwright's webServer boots its own Astro on **:4320** (README + QUICK_START now say both).
+- Credentials: README's fake "Default Credentials" table replaced with a truthful note — prod accounts `admin@sinaicamps.com` (Super Admin) + `admin@acaciacamp.com` (tenant), credentials in the owner vault, dev-only seed defaults (sinairoot/superoot/sinaiadmin) clearly marked non-prod. No secrets printed.
+- AGENTS.md gotcha fix: stale "Admin SPA uses `window.*` globals" replaced with the true TanStack Query / zero-globals state (T13); added R2/DO/header-cache + 3-public-islands (`client:visible` rule) gotchas.
+- `docs/PERF_BASELINE.md` + `docs/POLISH_PLAN.md` got one-line "status" notes (baseline snapshot / locked plan, implemented) so readers don't mistake them for current state; `docs/DEVELOPER_ROADMAP.md` gained T19 and the real push status (repo created, `workflow` scope blocking push).
+
+**Lesson**: the repo had 3 separate sources of agent truth (README, AGENTS.md, `.opencode/prompts/project-context.md`) that had drifted from each other AND from the code (versions, panel counts, i18n, KV caching model). The sweep used `grep` for stale tokens (`campops-marketplace|useI18n|en.json|39 migrations|548 passing|14 panels|Tailwind CSS v3|Astro 4.x|React 18`) — every remaining hit was historical (logbook/plan docs) and intentionally left untouched.
+
+**Status**: all tmp-agent specs done; working tree clean after `3091d98`. Remaining human actions unchanged: staging DNS, push (workflow scope), vault, lighthouse run.
