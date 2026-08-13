@@ -8,6 +8,7 @@
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import ZoneGuard from '@/components/public/ZoneGuard.astro';
 import CampBooking from '@/components/public/CampBooking.tsx';
+import SafeImage from '@/components/ui/SafeImage.astro';
 import { escHtml, normalizeAssetUrl } from '@/lib/utils';
 
 interface Props {
@@ -128,12 +129,13 @@ function sanitizeForJsonLd(obj: Record<string, unknown>): Record<string, unknown
         data-testid="hero-banner"
         class="relative flex min-h-[60vh] items-end overflow-hidden bg-warm-100"
       >
-        <img
+        <SafeImage
           src={heroImage}
           alt=""
           class="absolute inset-0 h-full w-full object-cover"
           loading="eager"
           fetchpriority="high"
+          width={1920}
         />
         <!-- Legibility scrim anchored to the content zone (bottom) -->
         <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/35 to-black/15" aria-hidden="true"></div>
@@ -217,7 +219,7 @@ function sanitizeForJsonLd(obj: Record<string, unknown>): Record<string, unknown
           <section id="rooms" data-testid="rooms-section" class="border-t border-[var(--border)] py-16">
             <h2 class="section-heading mb-8 text-center">Accommodations</h2>
             <CampBooking
-              client:load
+              client:visible
               tenantId={tenantId}
               tenantName={tenantName}
               primaryColor={color}

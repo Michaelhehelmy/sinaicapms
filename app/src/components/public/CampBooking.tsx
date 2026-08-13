@@ -233,7 +233,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
             >
               {roomImg ? (
                 <div className="relative h-36 overflow-hidden sm:h-44">
-                  <img src={roomImg} alt={rt.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img src={roomImg} alt={rt.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   <div className="absolute inset-0 bg-linear-to-t from-black/40 to-transparent" />
                   <Badge
                     className="absolute bottom-3 right-3 !bg-white/20 !text-white backdrop-blur-xs"
@@ -337,7 +337,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
               {/* Header */}
               <div className="relative h-36 overflow-hidden">
                 {normalizeAssetUrl(modalRoom.imageUrl) ? (
-                  <img src={normalizeAssetUrl(modalRoom.imageUrl)} alt={modalRoom.name} className="w-full h-full object-cover" />
+                  <img src={normalizeAssetUrl(modalRoom.imageUrl)} alt={modalRoom.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center" style={{ background: `${primaryColor}10` }}>
                     <TentIcon size={48} />

@@ -30,32 +30,28 @@ test.describe('Admin CRUD Execution — Camps', () => {
     expect(text.length).toBeGreaterThan(0);
   });
 
-  test('create camp button exists', async ({ page }) => {
+  test('no create button for tenant with existing camp (one camp per tenant)', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('camps');
     await expectPanelContentReady(page, 'camps-panel');
-    const btn = page.locator('[data-testid="content-area"] button:has-text("Add"), [data-testid="content-area"] button:has-text("Create")');
-    await expect(btn.first()).toBeVisible();
+    const panel = page.locator('[data-testid="camps-panel"]');
+    // One camp per tenant: once a camp exists there is no "Add/Create" affordance
+    const addBtn = panel.locator('button:has-text("Add"), button:has-text("Create")');
+    await expect(addBtn).toHaveCount(0);
+    // The tenant's single camp is shown with an Edit affordance
+    await expect(panel.locator('button:has-text("Edit")').first()).toBeVisible();
   });
 
-  test('create camp modal/form opens', async ({ page }) => {
+  test('edit camp form opens', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('camps');
-    await expectPanelReady(page);
-    const addBtn = page.locator('[data-testid="content-area"] button:has-text("Add"), [data-testid="content-area"] button:has-text("Create")').first();
-    const addBtnCount = await addBtn.count();
-    if (addBtnCount > 0) {
-      await addBtn.click();
-      try {
-        await page.locator('[data-testid="content-area"] form, [class*="modal"], [class*="drawer"]').first()
-          .waitFor({ state: 'visible', timeout: 5000 });
-      } catch {
-        // Form may already be visible — continue
-      }
-      await expect(
-        page.locator('[data-testid="content-area"] form, [class*="modal"], [class*="drawer"]').first()
-      ).toBeVisible({ timeout: 5000 });
-    }
+    await expectPanelContentReady(page, 'camps-panel');
+    const editBtn = page.locator('[data-testid="camps-panel"] button:has-text("Edit")').first();
+    await editBtn.click();
+    await expect(page.locator('[data-testid="modal-overlay"]')).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.locator('[data-testid="modal-overlay"]', { hasText: 'Edit Camp' }).first()
+    ).toBeVisible({ timeout: 5000 });
   });
 });
 

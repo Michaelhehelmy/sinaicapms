@@ -4,6 +4,7 @@
 // (MarketplaceHome.astro) and the dedicated listing page (pages/camps.astro)
 // so the listing markup and behavior live in exactly one place.
 import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+import SafeImage from '@/components/ui/SafeImage.astro';
 
 const TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'];
 const TYPE_LABELS_EN: Record<string, string> = {
@@ -114,10 +115,12 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
             <div class="flex flex-1 flex-col p-6 pt-0">
               <div class="-mt-10 mb-4">
                 {normalizeAssetUrl(t.logoUrl as string) ? (
-                  <img
-                    src={escHtml(normalizeAssetUrl(t.logoUrl as string))}
-                    alt={escHtml(t.name as string)}
+                  <SafeImage
+                    src={t.logoUrl as string}
+                    alt={t.name as string}
                     class="h-14 w-14 rounded-full object-cover shadow-md ring-4 ring-white"
+                    widths={[128, 256]}
+                    sizes="56px"
                   />
                 ) : (
                   <div

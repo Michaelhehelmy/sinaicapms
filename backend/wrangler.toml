@@ -62,3 +62,56 @@ FEATURE_FORGOT_PASSWORD = "true"
 FEATURE_TWO_FACTOR_AUTH = "false"
 FEATURE_MULTI_LOCATION = "false"
 FEATURE_AI_FEATURES = "false"
+
+# ─────────────────────────────────────────────
+# Staging environment (./deploy.sh --staging)
+# Isolated resources — never shares prod D1/KV/R2.
+# Secrets (JWT_SECRET, etc.) must be set separately:
+#   echo "<value>" | npx wrangler secret put JWT_SECRET --env staging
+# ─────────────────────────────────────────────
+[env.staging.vars]
+ENVIRONMENT = "staging"
+RATE_LIMIT_KV_ENABLED = "false"
+MAX_LOGIN_ATTEMPTS = "5"
+LOCKOUT_DURATION = "1800"
+SESSION_TIMEOUT = "86400"
+RATE_LIMIT_LOGIN = "20"
+RATE_LIMIT_API = "100"
+DEFAULT_CURRENCY = "USD"
+DEFAULT_TAX_RATE = "0.08"
+LOG_LEVEL = "debug"
+FEATURE_USER_REGISTRATION = "true"
+FEATURE_FORGOT_PASSWORD = "true"
+FEATURE_TWO_FACTOR_AUTH = "false"
+FEATURE_MULTI_LOCATION = "false"
+FEATURE_AI_FEATURES = "false"
+
+[[env.staging.routes]]
+pattern = "staging.sinaicamps.com/api/*"
+zone_name = "sinaicamps.com"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "campmaster-db-staging"
+database_id = "4a9e6e45-f90d-4897-823b-6dd16dc0f347"
+migrations_dir = "migrations"
+
+[[env.staging.kv_namespaces]]
+binding = "KV_CACHE"
+id = "dd34537ebe534ad89f34f1aec5efde0d"
+
+[[env.staging.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "72c10646808a47cb997f076da34134eb"
+
+[[env.staging.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "campmaster-media-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "BROADCASTER"
+class_name = "Broadcaster"
+
+[[env.staging.migrations]]
+tag = "v1"
+new_sqlite_classes = ["Broadcaster"]

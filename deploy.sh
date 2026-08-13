@@ -268,6 +268,15 @@ if [ "$DEPLOY_ENV" = "staging" ]; then
   ENV_FLAG="--env staging"
 fi
 
+# Per-environment resource names — staging must NEVER touch prod D1/Pages.
+if [ "$DEPLOY_ENV" = "staging" ]; then
+  D1_NAME="campmaster-db-staging"
+  PAGES_PROJECT="campmaster-marketplace-staging"
+else
+  D1_NAME="campmaster-db"
+  PAGES_PROJECT="campmaster-marketplace"
+fi
+
 if [ "$SKIP_HEALTH" = true ]; then
   log "⚠️  Health checks disabled (--no-health flag)"
 fi
@@ -314,7 +323,7 @@ deploy_backend() {
   log "Exporting D1 backup..."
   mkdir -p "$SCRIPT_DIR/backups"
   BACKUP_FILE="$SCRIPT_DIR/backups/campmaster-$(date +%Y%m%d-%H%M%S).sql"
-  if retry "npx wrangler d1 export campmaster-db --remote --output '$BACKUP_FILE'" "D1 backup"; then
+  if retry "npx wrangler d1 export $D1_NAME --remote --output '$BACKUP_FILE'" "D1 backup"; then
     log "✅ D1 export saved to $BACKUP_FILE"
   else
     log "❌ D1 backup failed after 3 attempts — aborting deploy to prevent data loss"
@@ -324,7 +333,7 @@ deploy_backend() {
 
   # Migrations (pipe to auto-confirm in interactive terminals)
   log "Applying database migrations..."
-  echo y | npx wrangler d1 migrations apply campmaster-db --remote $ENV_FLAG 2>&1
+  echo y | npx wrangler d1 migrations apply $D1_NAME --remote $ENV_FLAG 2>&1
 
   # Deploy Worker (with retry)
   log "Deploying Worker API..."
@@ -355,8 +364,8 @@ deploy_frontend() {
     exit 1
   fi
 
-  log "Deploying to Cloudflare Pages..."
-  if retry "npx wrangler pages deploy dist --project-name=campmaster-marketplace --branch=main --commit-dirty=true $ENV_FLAG 2>&1" "Pages deploy"; then
+  log "Deploying to Cloudflare Pages ($PAGES_PROJECT)..."
+  if retry "npx wrangler pages deploy dist --project-name=$PAGES_PROJECT --branch=main --commit-dirty=true 2>&1" "Pages deploy"; then
     log "✅ Frontend deployed"
   else
     log "❌ Frontend deploy failed — check network and try again"

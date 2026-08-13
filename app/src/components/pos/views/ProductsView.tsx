@@ -70,7 +70,7 @@ export default function ProductsView({ cart, setCart }: { cart: CartItem[]; setC
                 >
                   <div className="w-full h-24 bg-gray-100 rounded-lg mb-3 flex items-center justify-center text-gray-500 text-2xl">
                     {p.imageUrl ? (
-                      <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover rounded-lg" />
+                      <img src={p.imageUrl} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover rounded-lg" />
                     ) : (
                       '📦'
                     )}

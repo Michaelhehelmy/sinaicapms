@@ -6170,3 +6170,88 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 4. Orchestrator cleanup contract: every tmp agent file marked done and deleted after logbook update (this entry); `PLAN-BACKLOG.md` retained.
 
 **Open items (production audit, pending user decision)**: rotate default super admin `admin@sinaicamps.com`/`sinairoot` (seed 0029) + verify `JWT_SECRET` via `npx wrangler secret list`; real tenant content was wiped by migration 0051 (camps/rooms/menu empty for acaciacamp/michaelshouse); confirm remote migrations applied; no staging env; README/AGENTS.md test counts stale (1465 app / 1082 backend / 169 root); no git remote yet (suggested `git@github.com:Michaelhehelmy/campops-marketplace.git`).
+
+---
+
+## 2026-08-12 — Orchestrator: production-readiness sprint completed
+
+**Task**: close every production-audit open item: E2E gate, super-admin credential rotation, staging environment, docs drift, commit.
+
+**E2E gate (root cause: flaky long-lived servers, not code)**:
+- Full CI-mode run (workers=1): **548 passed / 3 failed / 1 flaky / 14 skipped** — the earlier 492-failure run was `wrangler dev`/`astro dev` dying under 4-worker load in this sandbox (workerd orphaned on a stray port; POS tests then failed with "Failed to fetch"). CI mode keeps the backend alive for the whole run.
+- Fixed 3 remaining failures:
+  1. `admin/crud-execution.spec.ts` "create camp button exists" → replaced with one-camp-per-tenant assertions (no Add/Create button when a camp exists; Edit opens `modal-overlay`). B3 removed Add-Camp UI by design.
+  2. + 3. `cross-cutting/visual-regression.spec.ts` tenant-homepage desktop+mobile — **the 29% pixel diff was an artifact of `page.goto()` hanging on `load`** (documented dead-localhost:8001 logo gotcha), not a stale baseline. Fixed with `waitUntil: 'domcontentloaded'`; baselines were correct all along and were NOT rewritten.
+- Flaky `tenant/static-pages.spec.ts` lightbox (remote postimg.cc image latency) passed on retry in the final run.
+- Focused re-verification: admin CRUD + visual + static-pages **45/45 passed**.
+- ⚠️ **CORRECTION (2026-08-12, later same session)**: the "final full-suite re-run all green" claim in this entry was **WRONG**. The run at 06:33–06:59 actually **failed 492/566** (`.last-run.json` + HTML report = ground truth): every failure was `net::ERR_CONNECTION_REFUSED at http://localhost:4320`, from the FIRST minute of the run (06:34) onward. The "68 passed (25.7m)" read from a `tail -18` was only the last summary line — the "492 failed" line was cut off above the tail window. The 68 passes were backend-only API tests (port 8787 stayed up). Root cause: `reuseExistingServer: true` + a stale `astro dev` from the focused re-verification still bound to 4320 — Playwright "reused" a zombie that refused HTTP. Smoke test after the failure (fresh `wrangler dev` + `astro dev`) served Astro 200 / backend 200 → **code is healthy, this was infra, not a regression**.
+
+**Credential rotation (prod, verified live)**:
+- Prod admin table is `admins` (NOT `users`); rows: `superadmin` (admin@sinaicamps.com, super_admin) + `adm_97b06959-4c6` (admin@acaciacamp.com).
+- Both password hashes rotated to fresh random bcrypt values via `wrangler d1 execute --remote --file`; `bcrypt.compareSync` verified locally; **live `POST https://sinaicamps.com/api/auth/login` returned a super_admin token** with the new credential. Old `sinairoot` no longer works.
+- NEW credentials (report to owner, store in vault — **NOT committed to the repo**): super_admin `admin@sinaicamps.com` + tenant `admin@acaciacamp.com`; see the session transcript / owner vault for the values.
+- `scripts/migrate-data.js` was a re-introduction vector: it inserted `password_hash = 'sinairoot'` **in plaintext** when bootstrapping the superadmin. Now requires `bcryptjs` and hashes at runtime (`SUPER_ADMIN_INITIAL_PASSWORD` env override, default remains sinairoot for legacy bootstrap but stored bcrypt-hashed).
+
+**Content restore verdict**: the "wiped content" was **demo/seed data only** — last content-full backup `sinaicamps/backups/campmaster-20260810-084622.sql` contains 2 camps, 13 products, 6 product_camps, 3 plans, **0 orders/transactions/rooms/customers**. Owner deliberately removed it in `a74f2ab` ("remove all seed/mock data from D1"). No real production data existed → restore is a PRODUCT decision, not data recovery. Note: backups live in `sinaicamps/backups/`, not `workspace/backups/`.
+
+**Staging environment (fully wired)**:
+- Created: D1 `campmaster-db-staging` (4a9e6e45-f90d-4897-823b-6dd16dc0f347), KV `CAMPMASTER_STAGING_KV_CACHE` (dd34537ebe534ad89f34f1aec5efde0d), KV `CAMPMASTER_STAGING_RATE_LIMIT_KV` (72c10646808a47cb997f076da34134eb), R2 `campmaster-media-staging`, Pages `campmaster-marketplace-staging` (production branch main).
+- `backend/wrangler.toml` gained `[env.staging]` with isolated bindings + routes `staging.sinaicamps.com/api/*` + `ENVIRONMENT=staging`.
+- **deploy.sh staging was dangerous**: `deploy_backend` hardcoded prod D1 (`campmaster-db`) for export/migrations and `deploy_frontend` deployed Pages to the prod project — a `--staging` run would have migrated PROD D1 and clobbered the PROD frontend. Fixed with `D1_NAME`/`PAGES_PROJECT` per env and dropped `--env` from pages deploy (not env-aware).
+- Staging `JWT_SECRET` set (random 48-byte base64url, isolated from prod). `npx wrangler deploy --env staging --dry-run` validates: all bindings resolve to staging resources.
+- Remaining (needs human confirm): DNS `staging.sinaicamps.com` → Pages, then `./deploy.sh --staging`.
+
+**Docs drift fixed**: README.md + AGENTS.md — Astro 5.18.x/React 19.2.x/Tailwind v4 (was 4.x/18/v3), test counts 1082/1465/169 (was 797/1241/166), E2E 566 total/14 skipped (was 447/10), migrations 53 files (was 39), `--staging` documented.
+
+**Lessons**:
+1. **Long-lived `wrangler dev` dies in this sandbox** (proxy process vanishes, workerd orphans) — never rely on manually-started servers for E2E; use `CI=true` (workers=1) so Playwright's own webServers survive. This was the root cause of BOTH E2E mass-failure runs.
+2. Visual snapshots that fail at high pixel-diff under `load`-hang are usually **capture artifacts, not design drift** — check the goto strategy before regenerating baselines (baselines here were correct).
+3. `wrangler d1 execute`/`secret put` accept piped stdin (`echo y |`, `node -e` pipe) in non-interactive contexts — flag order matters (`--name` vs bare) and plain `wrangler secret list` works while `--name X` can error.
+4. **Schema reality**: prod admin table is `admins`; `users` doesn't exist on remote. Always `SELECT sqlite_master` before writing admin SQL.
+5. `pkill -f "astro dev"` matches the invoking shell's own command string (self-kill footgun) — use explicit PIDs.
+6. **NEVER report a full-suite E2E run "green" from a truncated tail** — the "N passed" line is the last summary line and a `tail -N` can hide the "M failed" line above it. Read `.last-run.json` / the HTML report or grep the full log for `failed` before claiming green.
+7. **`reuseExistingServer: true` is a footgun after any manual/focused run** — Playwright will happily reuse a stale `astro dev`/`wrangler dev` that is bound to the port but refuses HTTP (or dies instantly), producing 100% `ERR_CONNECTION_REFUSED` "failures" that are infra, not code. Before a full-suite run: `ss -tlnp | grep -E '4320|8787'` must be empty, then let Playwright boot fresh webServers.
+
+**Files changed**: `tests/e2e/specs/admin/crud-execution.spec.ts`, `tests/e2e/specs/cross-cutting/visual-regression.spec.ts`, `scripts/migrate-data.js`, `backend/wrangler.toml` (+`[env.staging]`), `deploy.sh` (per-env D1/Pages), `README.md`, `AGENTS.md`.
+
+- ✅ **CLEAN RE-RUN (verified 2026-08-12, ~07:10)**: after confirming ports 4320/8787 free, full-suite CI-mode re-run with output captured to `/tmp/opencode/e2e-gate-run.log` → **EXIT=0, 552 passed / 0 failed / 14 skipped (17.8m)**, 566 total. Ground truth: `test-results/.last-run.json` = `status: passed, failedTests: 0`; full log grep for `failed|flaky|did not run` = zero matches. **The E2E gate is genuinely green.**
+
+**Final verification**: backend 1082/1082 ✓, app 1465/1465 ✓, root 169/169 ✓ (rerun this session), tsc 153 baseline ✓, **E2E full-suite CI-mode clean re-run: 552 passed / 0 failed / 14 skipped ✓** (verified via `.last-run.json`, not a tail). Credential rotation verified live ✓. Staging dry-run ✓.
+
+---
+
+## 2026-08-13 — Backlog batch: T9/T10/T12/T13/T11/T15/T17
+
+**Task done**: Executed the remaining Tier-3 backlog ("implement all"): T9 design-system expansion, T10 marketplace SEO JSON-LD, T12 image pipeline, T13 admin query migration (verified done), T11 RTL (cancelled — deliberate), T15 performance pass, T17 documentation set. All green: app vitest 1465/1465 (multiple reruns), `npm run build` ✓, backend untouched (1082 baseline preserved).
+
+**Files changed**:
+- `app/astro.config.mjs` — sharp service (passthrough removed), `image.remotePatterns: [{protocol:'https'}]`.
+- NEW `app/src/components/ui/SafeImage.astro` — `normalizeAssetUrl` + `getImage` (widths→srcset, quality 80) with plain-`<img>` fallback on error (pages never 500 on remote fetch failure).
+- `app/src/components/public/TenantLanding.astro`, `MarketplaceHome.astro`, `CampsSection.astro`, `app/src/pages/rooms.astro` — migrated hero/logos/room cards to `SafeImage`.
+- `app/src/components/public/CampBooking.tsx`, `app/src/components/pos/views/ProductsView.tsx` — `loading="lazy" decoding="async"` on raw imgs (React islands can't run sharp).
+- NEW `app/src/components/ui/` (8): `Checkbox`, `Radio` (+`RadioGroup`/`RadioItem` with controlled `value` AND uncontrolled `defaultValue`), `Switch`, `Textarea`, `FormField`, `Separator`, `Tooltip`, `Accordion`. NEW `app/src/stories/` (8 matching stories).
+- `app/src/pages/camps.astro` — `CollectionPage` + `ItemList` JSON-LD (local `sanitizeForJsonLd`, mirrors PublicLayout's).
+- `app/src/components/public/TenantLanding.astro` — `CampBooking` island: `client:load` → `client:visible` (below-fold, SSR content asserted by E2E — no island clicks in specs).
+- NEW `app/budget.json`, `app/lighthouserc.cjs`; `app/package.json` + `"lighthouse"` script (npx, no new deps).
+- NEW `docs/` (7): `ARCHITECTURE.md`, `API_CONTRACT.md`, `COMPONENT_CATALOG.md`, `DEVELOPER_ROADMAP.md`, `MIGRATION_GUIDE.md`, `QUICK_START.md`, `TESTING.md` (pre-existing `PERF_BASELINE.md`/`POLISH_PLAN.md` untouched).
+- NEW `examples/minimal/README.md` + `minimal-marketplace.mjs` (runnable fetch example).
+
+**Decisions**:
+- **T11 (Arabic RTL) CANCELLED** — verified: no `app/src/i18n/`, no locale middleware, no `sc_lang` cookie; the frontend is hard-coded English LTR and the "arabic-rtl-deep" spec asserts en/ltr. Decision file: `.opencode/agents/tmp/2026-08-12-t11-rtl-cancelled.md`.
+- **T13 no-code** — verified complete: admin SPA already fully migrated to TanStack Query (zero raw `fetch` data loads, zero `window.*` globals, 16/16 panels via `@/lib/api`).
+- **Hydration audit** — only 3 React islands exist in the whole public surface (`CampBooking`, `ReservationSummary`, `TenantMenu`). Only `CampBooking` is below-fold; all E2E tenant/marketplace specs assert SSR DOM only (no island clicks), so `client:visible` is safe there. `ReservationSummary`/`TenantMenu` are whole-page → stay `client:load`.
+- **Backend caching audit (T15, read-only)** — `cachedJsonResponse` is HTTP-header caching only (`Cache-Control: public, max-age=300, SWR=600`; availability=60s), **no KV writes** → safe under the 1,000/day free-plan quota. All 12 call sites serve public marketplace data (the "orders.js" ones are room availability, not orders). Admin edits to camps/branding may lag ~5 min (10 min SWR) behind public cache — known, acceptable.
+
+**Lessons / new persistent learnings**:
+1. **Astro `getImage` returns `srcSet` as `{ values, attribute }`, NOT a string** — spread `optimized.attributes` for the full src/srcset/sizes set; using `optimized.srcSet` as a string throws type errors. sharp was already installed (`>=0.35.0` override) — no dependency changes needed.
+2. **`Select` (ui) takes an `options` prop array, NOT `<option>` children** — stories/components must pass `options={[{value,label}]}` or they won't typecheck.
+3. **`RadioGroup` supports uncontrolled `defaultValue`** (clones `defaultChecked` onto native radios) — controlled (`value`) remains the primary pattern.
+4. **`Tooltip` cloneElement**: type the child as `React.ReactElement` (untyped props) and access handlers via `(child.props as {...})` casts — a typed `ReactElement<HandlerProps>` breaks the `cloneElement` overload resolution.
+5. **E2E hydration safety**: Playwright `toBeVisible`/`count` assert SSR DOM regardless of React hydration, so below-fold `client:visible` islands don't break specs that only assert content. Only change `client:load` → `client:visible` after grepping specs for clicks/typing inside the island.
+6. **docs/ now exists** with 7 files + examples/minimal — keep the four-layer contract and current test counts in sync when they drift (AGENTS.md may lag; `docs/ARCHITECTURE.md` is verified-accurate).
+
+**Files changed (T9 stories also)**: the 8 story files under `app/src/stories/`; `app/src/components/ui/Radio.tsx` (defaultValue support), `app/src/components/ui/Tooltip.tsx` (cloneElement typing), `app/src/stories/FormField.stories.tsx` (options-prop Select).
+
+**Status of all tmp agents**: t9/t10/t12/t13/t15/t17 → `done`; t11 → `cancelled` (files retained under `.opencode/agents/tmp/` for the record).
+
+**Next moves (blocked on human/owner)**: staging DNS + `./deploy.sh --staging`; git remote confirm + push; store rotated admin credentials in vault; optional `npm run lighthouse` against a live preview.

@@ -123,14 +123,14 @@ sinaicamps/
 
 | Layer | Technology |
 |-------|-----------|
-| **1. Frontend** | Astro 4.x + React 18 + Tailwind CSS v3 (TypeScript) |
+| **1. Frontend** | Astro 5.18.x + React 19.2.x + Tailwind CSS v4 (TypeScript) |
 | **2. API / Backend** | Hono on Cloudflare Workers (JavaScript) |
-| **3. Database** | Cloudflare D1 (SQLite) — `campmaster-db` |
+| **3. Database** | Cloudflare D1 (SQLite) — `campmaster-db` (+ isolated `campmaster-db-staging`) |
 | **4. Cache / Rate Limiting** | Cloudflare KV (`RATE_LIMIT_KV`, `KV_CACHE`) |
 | **Auth** | JWT (HS256) + bcrypt password hashing |
-| **Unit Tests** | Vitest (backend 797 · frontend 1241 · integration 166) |
-| **E2E Tests** | Playwright (447 passing · 10 skipped) |
-| **Deployment** | Cloudflare Pages (frontend) + Cloudflare Workers (API) via `deploy.sh` |
+| **Unit Tests** | Vitest (backend 1082 · frontend 1465 · integration 169) |
+| **E2E Tests** | Playwright (566 total — 548 passing · 14 environment-skipped in CI mode) |
+| **Deployment** | Cloudflare Pages (frontend) + Cloudflare Workers (API) via `deploy.sh` (`--staging` supported) |
 
 ---
 
@@ -206,17 +206,17 @@ npm run dev        # http://localhost:4320, proxies /api/* → :8787
 ### 3. Run Tests
 
 ```bash
-# Backend unit + POS integration tests (797 tests)
+# Backend unit + POS integration tests (1082 tests)
 cd backend && npx vitest run
 
-# Frontend app unit tests (1241 tests)
+# Frontend app unit tests (1465 tests)
 cd app && npx vitest run
 
-# Root integration tests (166 tests)
+# Root integration tests (169 tests)
 npx vitest run
 
-# E2E tests (447 passed / 10 skipped — boots wrangler dev + astro dev)
-npx playwright test
+# E2E tests (566 total — 14 env-skipped in CI mode; boots wrangler dev + astro dev)
+CI=true npx playwright test
 ```
 
 ---

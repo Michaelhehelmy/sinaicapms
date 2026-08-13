@@ -1,0 +1,88 @@
+---
+/**
+ * SafeImage — image pipeline wrapper.
+ *
+ * Normalizes any asset URL through `normalizeAssetUrl` (https upgrade, localhost
+ * rejection) and, when the URL is valid, runs it through Astro's sharp image
+ * service (`getImage`) to produce responsive, optimized output with srcset.
+ *
+ * Fallback contract: if the URL is invalid OR the remote image cannot be
+ * fetched/transformed, SafeImage degrades to a plain <img> with lazy loading —
+ * it NEVER throws, so a slow/unreachable image host can never 500 a page.
+ *
+ * Client-side React islands cannot run sharp, so .tsx components keep raw
+ * <img> + loading="lazy" decoding="async" (see CampBooking.tsx / ProductsView.tsx).
+ */
+import { getImage } from 'astro:assets';
+import { normalizeAssetUrl } from '@/lib/utils';
+
+interface Props {
+  /** Raw asset URL (may be http://, https://, or invalid/localhost). */
+  src?: string | null;
+  alt?: string;
+  class?: string;
+  /** Fallback URL used by normalizeAssetUrl when src is unusable. */
+  fallback?: string;
+  loading?: 'lazy' | 'eager';
+  fetchpriority?: 'high' | 'low' | 'auto';
+  /** srcset breakpoints (px). Single width = no srcset. */
+  widths?: number[];
+  sizes?: string;
+  /** Default: keep the source format (sharp infers it) — pass e.g. 'webp' to convert. */
+  format?: 'avif' | 'webp' | 'jpeg' | 'png';
+  quality?: number;
+  width?: number;
+  height?: number;
+  [key: string]: unknown;
+}
+
+const {
+  src,
+  alt = '',
+  class: className = '',
+  fallback = '',
+  loading = 'lazy',
+  fetchpriority = 'auto',
+  widths,
+  sizes = '(max-width: 768px) 100vw, 1280px',
+  format,
+  quality = 80,
+  width,
+  height,
+  ...rest
+} = Astro.props;
+
+const normalized = normalizeAssetUrl(src as string, fallback);
+
+let optimized: Awaited<ReturnType<typeof getImage>> | null = null;
+if (normalized) {
+  try {
+    optimized = await getImage({
+      src: normalized,
+      ...(widths && widths.length > 0 ? { widths } : {}),
+      ...(sizes ? { sizes } : {}),
+      ...(format ? { format } : {}),
+      quality,
+      ...(width ? { width } : {}),
+      ...(height ? { height } : {}),
+    });
+  } catch {
+    optimized = null;
+  }
+}
+---
+
+{normalized ? (
+  <img
+    {...(optimized?.attributes ?? {})}
+    src={optimized?.src ?? normalized}
+    sizes={optimized ? sizes : undefined}
+    alt={alt}
+    class={className}
+    loading={loading}
+    decoding="async"
+    fetchpriority={fetchpriority}
+    {...rest}
+  />
+) : null}
+{/* SafeImage: optimized.attributes carries srcset when widths are requested. */}

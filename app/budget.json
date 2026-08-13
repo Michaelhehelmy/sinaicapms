@@ -1,0 +1,33 @@
+{
+  "categories": {
+    "performance": {
+      "budgets": [
+        {
+          "resourceType": "script",
+          "budget": 300,
+          "metric": "transferSize"
+        },
+        {
+          "resourceType": "stylesheet",
+          "budget": 100,
+          "metric": "transferSize"
+        },
+        {
+          "resourceType": "image",
+          "budget": 1500,
+          "metric": "transferSize"
+        },
+        {
+          "resourceType": "font",
+          "budget": 400,
+          "metric": "transferSize"
+        },
+        {
+          "resourceType": "total",
+          "budget": 2500,
+          "metric": "transferSize"
+        }
+      ]
+    }
+  }
+}

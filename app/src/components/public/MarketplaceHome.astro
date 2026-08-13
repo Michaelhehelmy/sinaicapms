@@ -4,6 +4,7 @@
 // Self-contained: fetches public tenants + marketplace branding via the SSR
 // API fetcher (binding-aware on Pages production).
 import CampsSection from '@/components/public/CampsSection.astro';
+import SafeImage from '@/components/ui/SafeImage.astro';
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { normalizeAssetUrl, escHtml } from '@/lib/utils';
 
@@ -87,10 +88,12 @@ const heroStats: { value: number; label: string }[] = (() => {
       </div>
       <div class="mb-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4">
         {normalizeAssetUrl(marketplaceBranding?.logoUrl as string) ? (
-          <img
-            src={escHtml(normalizeAssetUrl(marketplaceBranding?.logoUrl as string))}
-            alt={escHtml(marketplaceName)}
+          <SafeImage
+            src={marketplaceBranding?.logoUrl as string}
+            alt={marketplaceName}
             class="h-16 w-16 rounded-full border-2 border-white/30 object-cover shadow-md"
+            widths={[128, 256]}
+            sizes="64px"
           />
         ) : (
           <div

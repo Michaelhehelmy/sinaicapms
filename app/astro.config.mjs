@@ -1,4 +1,4 @@
-import { defineConfig, passthroughImageService } from 'astro/config';
+import { defineConfig, sharpImageService } from 'astro/config';
 import react from '@astrojs/react';
 import tailwindcss from '@tailwindcss/vite';
 import cloudflare from '@astrojs/cloudflare';
@@ -39,7 +39,12 @@ export default defineConfig({
     react(),
   ],
   image: {
-    service: passthroughImageService(),
+    // Real image pipeline (sharp). Remote https images are allowed because
+    // normalizeAssetUrl() already validates/upgrades remote asset URLs; the
+    // SafeImage component falls back to a plain <img> if a remote fetch fails
+    // so pages never 500 on an unreachable image host.
+    service: sharpImageService(),
+    remotePatterns: [{ protocol: 'https' }],
   },
   server: {
     port: 4320,

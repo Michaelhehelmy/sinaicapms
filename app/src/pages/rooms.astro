@@ -1,6 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import SafeImage from '@/components/ui/SafeImage.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
 import { escHtml, normalizeAssetUrl, formatCurrency } from '@/lib/utils';
 import { hexToRgb, luminance } from '@/lib/theme';
@@ -71,10 +72,12 @@ const bookingUrl = Astro.locals.zone === 'tenant' ? `/book${querySuffix}` : `/ca
               return (
                 <article data-testid="room-card" class="overflow-hidden rounded-xl border border-warm-100 bg-white shadow-card transition-shadow hover:shadow-elevated md:grid md:grid-cols-[2fr_3fr]">
                   {normalizeAssetUrl(rt.imageUrl as string) ? (
-                    <img
-                      src={escHtml(normalizeAssetUrl(rt.imageUrl as string))}
-                      alt={escHtml(rt.name as string)}
+                    <SafeImage
+                      src={rt.imageUrl as string}
+                      alt={rt.name as string}
                       class="h-48 w-full object-cover sm:h-64 md:h-full md:min-h-[300px]"
+                      widths={[400, 640, 960]}
+                      sizes="(max-width: 768px) 100vw, 50vw"
                     />
                   ) : (
                     <div

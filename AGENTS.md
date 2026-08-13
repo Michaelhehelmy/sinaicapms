@@ -11,8 +11,8 @@ This file is the primary system prompt instruction manual for OpenCode agents wo
 | **Project Name** | SinaiCamps |
 | **Developer** | Michael Helmy |
 | **Github** | [Michaelhehelmy/campops-marketplace](https://github.com/Michaelhehelmy/campops-marketplace) |
-| **Production URL** | [sinaicamps.com](https://sinaicamps.com) |
-| **Frontend** | Astro 4.x + React 18 + Tailwind CSS v3 |
+| **Production URL** | [sinaicamps.com](https://sinaicamps.com) (staging: `staging.sinaicamps.com` via `./deploy.sh --staging`) |
+| **Frontend** | Astro 5.18.x + React 19.2.x + Tailwind CSS v4 |
 | **Backend** | Hono on Cloudflare Workers |
 | **Language** | TypeScript (frontend), JavaScript (backend) |
 | **Database** | Cloudflare D1 (SQLite) |
@@ -66,7 +66,7 @@ sinaicamps/
 │       ├── middleware/      Auth, RBAC, rate limiting, tenant
 │       ├── services/       Business logic
 │       └── utils/          Response helpers, error handling
-│   └── migrations/         D1 schema migrations (39 files — Layer 3)
+│   └── migrations/         D1 schema migrations (53 files — Layer 3)
 │
 ├── tests/                  All test suites
 │   ├── unit/               Backend unit tests
@@ -132,20 +132,20 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 ## 6. Running Tests
 
 ```bash
-# Frontend unit tests (1241 tests / 66 files)
+# Frontend unit tests (1465 tests / 74 files)
 cd app && npx vitest run
 
-# Backend unit tests (797 tests / 26 files)
+# Backend unit tests (1082 tests / 36 files)
 cd backend && npx vitest run
 
 # POS integration tests
 cd backend && npx vitest run tests/pos/
 
-# Root integration tests (166 tests / 10 files)
+# Root integration tests (169 tests / 10 files)
 npx vitest run
 
-# E2E tests (447 passed / 10 skipped — boots both servers)
-npx playwright test
+# E2E tests (566 total — 14 env-skipped in CI mode; boots both servers)
+CI=true npx playwright test
 ```
 
 ---

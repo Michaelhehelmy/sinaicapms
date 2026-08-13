@@ -13,6 +13,7 @@
 
 const { execSync } = require('child_process');
 const crypto = require('crypto');
+const bcrypt = require('../backend/node_modules/bcryptjs');
 
 // ============================================================
 // Configuration
@@ -480,12 +481,15 @@ function migrateAdmins() {
   // Create default super_admin if not exists
   const superAdmin = d1Query("SELECT id FROM admins WHERE id = 'superadmin'");
   if (superAdmin.length === 0) {
+    // Default bootstrap password (bcrypt-hashed at runtime, NEVER stored
+    // plaintext). Rotate immediately after the first login.
+    const bootstrapPassword = process.env.SUPER_ADMIN_INITIAL_PASSWORD || 'sinairoot';
     const sql = `INSERT OR IGNORE INTO admins (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at)
       VALUES (
         'superadmin',
         NULL,
         'admin@sinaicamps.com',
-        'sinairoot',
+        '${bcrypt.hashSync(bootstrapPassword, 10)}',
         'super_admin',
         'Super',
         'Admin',
