@@ -1,5 +1,7 @@
 # Performance Baseline — Bundle Analysis
 
+> **Status**: snapshot of the 2026-08-07 build. Active enforcement now lives in `app/budget.json` + `npm run lighthouse` (T15, 2026-08-13) — the same targets (CLS < 0.1, LCP < 2.5 s, TBT < 200 ms, resource sizes) are enforced there against a live preview URL.
+
 - **Build date:** 2026-08-07
 - **App:** `sinaicamps/app` — Astro 5.18.2, Vite 6.4.3, React 19.2.8, output: `server` (Cloudflare Workers adapter)
 - **Measured from:** `app/dist/_astro/` (browser-facing client assets)

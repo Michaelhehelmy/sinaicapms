@@ -31,9 +31,11 @@ See `backend/wrangler.toml` for D1/KV/R2 bindings and `[env.staging]`. `wrangler
 # Backend API (Hono on Workers, port 8787)
 cd backend && npx wrangler dev
 
-# Frontend (Astro, port 4321) — in another terminal
+# Frontend (Astro, port 4321 — Astro default) — in another terminal
 cd app && npm run dev
 ```
+
+> Playwright's E2E webServer boots its own Astro instance on `:4320` (`playwright.config.ts`) — plain `npm run dev` stays on `:4321`.
 
 Zone behavior: `localhost:4321` is the marketplace zone by default. To exercise a tenant zone, use a tenant host (e.g. `acaciacamp.com` via hosts file / local DNS) — `app/src/lib/routeZones.ts` is the single source of truth.
 

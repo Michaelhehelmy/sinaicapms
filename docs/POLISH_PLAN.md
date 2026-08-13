@@ -2,6 +2,7 @@
 
 > **Status**: Approved 2026-08-09 by Michael Helmy. All 4 waves, sequence below, Stripe mocked-but-safe, DB schema changes allowed, PWA/offline POS included, command palette deferred.
 > **Rule of thumb**: waves must not regress the production E2E suite (`tenant 122/122`, cross-cutting `76 pass / 3 skip`).
+> **Implementation status**: all 4 waves shipped in the 2026-08-09 → 2026-08-12 sprint (T1–T7; see `AGENT_LOGBOOK.md`). This file is the locked plan, kept for reference.
 
 ## Scope decisions (user-approved)
 

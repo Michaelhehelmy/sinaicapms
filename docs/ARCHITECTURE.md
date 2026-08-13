@@ -69,7 +69,7 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 - **D1 (SQLite)** — schema lives in `backend/migrations/` (currently **53 migrations**, latest `0053_camp_ownership.sql`).
 - One numbered `.sql` file per migration, applied in order via `wrangler d1 migrations apply` (see `MIGRATION_GUIDE.md` and the `db-migration` skill).
-- KV holds **only** rate-limit state; R2 holds uploads (bucket is wired in staging + prod).
+- KV holds **only** rate-limit state (`RATE_LIMIT_KV`); `KV_CACHE` is bound but never written — public-read caching uses `Cache-Control` headers via `cachedJsonResponse` (no KV writes, free-plan safe). R2 (`MEDIA_BUCKET` = `campmaster-media`) holds uploads (wired in staging + prod). SSE is broadcast through the `BROADCASTER` Durable Object (admin inbox/orders).
 
 ## 6. Deployment
 

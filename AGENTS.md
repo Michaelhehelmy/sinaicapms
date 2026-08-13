@@ -10,7 +10,7 @@ This file is the primary system prompt instruction manual for OpenCode agents wo
 | --- | --- |
 | **Project Name** | SinaiCamps |
 | **Developer** | Michael Helmy |
-| **Github** | [Michaelhehelmy/campops-marketplace](https://github.com/Michaelhehelmy/campops-marketplace) |
+| **Github** | [Michaelhehelmy/campmaster](https://github.com/Michaelhehelmy/campmaster) (private) |
 | **Production URL** | [sinaicamps.com](https://sinaicamps.com) (staging: `staging.sinaicamps.com` via `./deploy.sh --staging`) |
 | **Frontend** | Astro 5.18.x + React 19.2.x + Tailwind CSS v4 |
 | **Backend** | Hono on Cloudflare Workers |
@@ -32,10 +32,10 @@ sinaicamps/
 ├── app/                    Unified frontend (Layer 1 — UI only)
 │   └── src/
 │       ├── components/     React components
-│       │   ├── admin/      Admin dashboard panels (14 panels)
-│       │   ├── pos/        POS terminal pages (8 pages)
+│       │   ├── admin/      Admin dashboard panels (18 panels + SPA host)
+│       │   ├── pos/        POS terminal views (8 views)
 │       │   ├── public/     Public components (ZoneGuard, TenantLanding, CampsSection…)
-│       │   ├── ui/         Shared UI (DataTable, StatCard, etc.)
+│       │   ├── ui/         Shared UI primitives (26 components: DataTable, StatCard, SafeImage…)
 │       │   ├── feedback/   Toast notifications
 │       │   ├── forms/      Form components
 │       │   ├── layout/     Layout helpers
@@ -44,17 +44,18 @@ sinaicamps/
 │       ├── pages/          Route pages
 │       │   ├── index.astro           Marketplace home (zone-aware)
 │       │   ├── camps.astro           /camps listing
-│       │   ├── camp/[id]/            Camp detail
-│       │   ├── rooms/about/...       Tenant pages
+│       │   ├── camp/[id]/            Camp detail (index, book, menu)
+│       │   ├── book|menu|rooms|about|contact|faq|gallery  Tenant/public pages
 │       │   ├── admin/[...rest]/      Admin SPA host
 │       │   └── pos/[...rest]/        POS SPA host
 │       ├── lib/            Shared modules
-│       │   ├── api.ts      Unified API client (100+ endpoints) — the frontend↔backend contract
+│       │   ├── api.ts      Unified API client (100+ functions) — the frontend↔backend contract
+│       │   ├── api-types.ts  Generated types (from backend/openapi.json)
 │       │   ├── routeZones.ts  Zone model (marketplace|tenant) — single source of truth
 │       │   ├── auth.tsx    React auth context + role hierarchy
+│       │   ├── sse.ts      SSE client (Durable Object broadcast)
 │       │   └── utils.ts    escHtml, formatCurrency, cn, etc.
-│       ├── hooks/          React hooks (useI18n, useAdminData)
-│       ├── i18n/           Translations (en.json, ar.json)
+│       ├── hooks/          React hooks (useAdminData, useApiError, useQueryHooks, useSseInbox, useSseOrders)
 │       ├── middleware/     Tenant resolution middleware (+ zone/routeForbidden locals)
 │       └── styles/         Global Tailwind CSS
 │
@@ -91,12 +92,16 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 - **Rate limiter** uses KV storage with `cf-connecting-ip` only (not spoofable `x-forwarded-for`), and **fails closed** (`429 Rate limit check failed`) when KV errors.
 - **Free-plan KV quota**: Cloudflare free plan = **1,000 KV writes/day**. A KV write per API request exhausts it → full API outage until reset. `RATE_LIMIT_KV_ENABLED="false"` (current, in `backend/wrangler.toml` `[vars]`) forces the in-memory fallback; set to `"true"` only on a plan with enough KV quota.
 - **Response headers** must NOT set CORS — `hono/cors` in `index.js` is the single source of truth.
-- **Admin SPA** uses global JS (no modules) — `window.*` globals for cross-file access.
+- **Admin SPA** runs fully on TanStack Query — zero raw `fetch` data loads, zero `window.*` cross-file globals (migrated in T13). Admin "global" scripts are non-module for cross-file access where required, but data never bypasses `@/lib/api`.
 - **Hono wildcards** require `/*` syntax, not `/path*` (treats `*` as literal).
 - **Zone model** (`app/src/lib/routeZones.ts`): every route resolves to `marketplace` or `tenant`; `/camps /camp/*` are marketplace-only; `/book /menu /rooms` AND `/pos /pos/*` are tenant-only (POS is an operations app — sinaicamps.com/pos renders a branded 404, tenant hosts like acaciacamp.com/pos serve the SPA); system prefixes (`/admin /api /auth /register /login /robots.txt /sitemap.xml /404 /_astro /favicon`) never forbidden; forbidden routes render a branded 404 (ZoneGuard) — exact-path matching (siblings like `/bookings` are NOT forbidden).
 - **Astro zone guards** must be template ternaries (`{ forbidden ? <ZoneGuard /> : (...) }`), never a frontmatter `return` of JSX; skip the tenant fetch when a route is forbidden and do NOT `return Astro.redirect('/404')` on `!tenant` before the guard renders.
 - **E2E tenant pages** hang on `load` in astro dev (logo/favicon point at dead `localhost:8001`) — zone/E2E specs use `page.goto(url, { waitUntil: 'domcontentloaded' })`.
 - **`wrangler tail`** requires `--config backend/wrangler.toml` (plain `wrangler tail campmaster-backend` errors "Pages project").
+- **No i18n** — the frontend is hard-coded English LTR (Arabic RTL cancelled as a product decision; there is no `app/src/i18n/`).
+- **Read caching is header-only**: `cachedJsonResponse` (backend/src/utils/response.js) sets `Cache-Control: public, max-age=300, stale-while-revalidate=600` (availability uses 60s). `KV_CACHE` is bound but NEVER written — do not add KV writes for caching (free-plan 1,000 writes/day quota).
+- **Media lives in R2** (`MEDIA_BUCKET` = `campmaster-media`) and **SSE** broadcasts through the `BROADCASTER` Durable Object (admin inbox/orders) — bindings in `backend/wrangler.toml`.
+- **Only 3 public islands** exist (CampBooking `client:visible`, ReservationSummary + TenantMenu `client:load`) — add islands sparingly and prefer `client:visible` for below-fold content (T15).
 
 ---
 
@@ -144,7 +149,7 @@ cd backend && npx vitest run tests/pos/
 # Root integration tests (169 tests / 10 files)
 npx vitest run
 
-# E2E tests (566 total — 14 env-skipped in CI mode; boots both servers)
+# E2E tests (566 total — 552 gate passing · 14 env-skipped in CI mode; boots both servers)
 CI=true npx playwright test
 ```
 

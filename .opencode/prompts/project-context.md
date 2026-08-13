@@ -6,12 +6,14 @@ This document details the architecture, data models, and structures for **SinaiC
 
 ## 1. Stack and Environment
 
-- **Frontend Framework**: Astro 4.x + React 18
+- **Frontend Framework**: Astro 5.18.x + React 19.2.x
 - **Backend**: Hono on Cloudflare Workers
 - **Language**: TypeScript (frontend), JavaScript (backend)
 - **Database**: Cloudflare D1 (SQLite on the edge)
-- **Cache**: Cloudflare KV
-- **Styling**: Tailwind CSS v3
+- **Cache**: Cloudflare KV (`RATE_LIMIT_KV`, `KV_CACHE`)
+- **Media**: Cloudflare R2 (`MEDIA_BUCKET`)
+- **Realtime**: Durable Object `BROADCASTER` (SSE for admin inbox/orders)
+- **Styling**: Tailwind CSS v4
 - **Unit Testing**: Vitest
 - **E2E Testing**: Playwright
 - **Package Manager**: npm
@@ -61,7 +63,7 @@ sinaicamps/
 │       │   ├── admin/      Admin dashboard panels
 │       │   ├── pos/        POS terminal pages
 │       │   ├── public/     Public components (ZoneGuard, TenantLanding, CampsSection…)
-│       │   ├── ui/         Shared UI (DataTable, StatCard, etc.)
+│       │   ├── ui/         26 shared UI primitives (DataTable, StatCard, SafeImage, …)
 │       │   └── ...
 │       ├── layouts/        Astro layouts (Public, Admin, POS)
 │       ├── pages/          Route pages
@@ -70,9 +72,8 @@ sinaicamps/
 │       │   ├── camp/[id]/            Camp detail
 │       │   ├── admin/[...rest]/      Admin SPA host
 │       │   └── pos/[...rest]/        POS SPA host
-│       ├── lib/            Shared modules (api.ts, routeZones.ts, auth.tsx, utils.ts)
-│       ├── hooks/          React hooks (useI18n, useAdminData)
-│       ├── i18n/           Translations (en.json, ar.json)
+│       ├── lib/            Shared modules (api.ts, api-types.ts, routeZones.ts, auth.tsx, sse.ts, utils.ts)
+│       ├── hooks/          React hooks (useAdminData, useApiError, useQueryHooks, useSseInbox, useSseOrders)
 │       ├── middleware/     Tenant resolution middleware (+ zone/routeForbidden locals)
 │       └── styles/         Global Tailwind CSS
 │
@@ -84,7 +85,7 @@ sinaicamps/
 │       ├── middleware/      Auth, RBAC, rate limiting, tenant
 │       ├── services/       Business logic
 │       └── utils/          Response helpers, error handling
-│   └── migrations/         D1 schema migrations (Layer 3)
+│   └── migrations/         D1 schema migrations (Layer 3 — 53 files, head 0053_camp_ownership.sql)
 │
 ├── tests/                  All test suites
 │   ├── unit/               Backend unit tests

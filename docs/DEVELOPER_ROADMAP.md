@@ -1,6 +1,6 @@
 # SinaiCamps — Developer Roadmap (Backlog State)
 
-Status of the production-readiness backlog, as of the **T9/T10/T12/T13/T15/T17** batch. The `AGENT_LOGBOOK.md` in the repo root holds the session-by-session log with dates and file lists.
+Status of the production-readiness backlog, as of the **T9–T18** batch plus the docs refresh (2026-08-13). The `AGENT_LOGBOOK.md` in the repo root holds the session-by-session log with dates and file lists.
 
 ## Done
 
@@ -16,13 +16,14 @@ Status of the production-readiness backlog, as of the **T9/T10/T12/T13/T15/T17**
 | T15 | Performance pass | `budget.json` + `lighthouserc.cjs` + `npm run lighthouse`; CampBooking island now `client:visible`; backend caching audit (no KV caching — safe under free plan) |
 | T16 | A11y suite | E2E + unit coverage for a11y patterns |
 | T18 | Documentation set | This docs/ set |
+| T19 | Docs refresh | README + AGENTS + `.opencode/prompts/project-context.md` + `docs/*` updated to match the codebase (repo now `campmaster`, no i18n, 53 migrations, 18 admin panels, 552 E2E gate, R2/DO bindings) |
 
 ## Remaining / follow-ups
 
 | Area | Status | Next step |
 | --- | --- | --- |
 | Staging DNS | Blocked on human | Create `staging.sinaicamps.com` → Pages DNS record, then `./deploy.sh --staging` |
-| Git remote + push | Blocked on owner | Confirm `git@github.com:Michaelhehelmy/campops-marketplace.git` |
+| Git remote + push | **Repo created** — `github.com/Michaelhehelmy/campmaster` (private), `origin` set; commit `5d11305` local. Push blocked on OAuth `workflow` scope — approve the `gh auth refresh -h github.com -s workflow` device flow, or drop `.github/workflows/*` from pushed history |
 | Credential vault | Owner action | Store rotated admin credentials (2 accounts) |
 | Lighthouse execution | Tooling ready | Run `cd app && npm run lighthouse` against a live preview once a URL is up |
 
