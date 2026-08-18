@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/lib/auth';
-import { updateAdminTenant, getAdminTenants, getAdmins, updateAdminUser } from '@/lib/api';
+import { updateAdminTenant, getAdminTenants, getAdmins, updateAdminUser, createAdminUser, deleteAdminUser } from '@/lib/api';
 import TenantDrilldown from './TenantDrilldown';
 
 interface TenantRecord {
@@ -53,6 +54,12 @@ export default function SuperTenantsPanel() {
   const [admins, setAdmins] = useState<Array<{id: string; tenantId: string; email: string; role: string; firstName: string; lastName: string; isActive: number}>>([]);
   const [showAdmins, setShowAdmins] = useState(false);
   const [drillTenant, setDrillTenant] = useState<TenantRecord | null>(null);
+  // Admin CRUD state
+  const [showCreateAdmin, setShowCreateAdmin] = useState(false);
+  const [createForm, setCreateForm] = useState({ email: '', password: '', firstName: '', lastName: '', role: 'admin', tenantId: '' });
+  const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', role: 'admin' });
+  const [deletingAdmin, setDeletingAdmin] = useState<{ id: string; name: string } | null>(null);
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -85,9 +92,59 @@ export default function SuperTenantsPanel() {
 
   const toggleAdminActive = async (adminId: string, currentActive: number) => {
     try {
-      // T8-C: AdminUpdateRequest.isActive is boolean — backend zod rejects numbers
+      // T8-C: AdminUpdateRequest isActive is boolean — backend zod rejects numbers
       await updateAdminUser(adminId, { isActive: !currentActive });
       showToast(`Admin ${currentActive ? 'deactivated' : 'activated'}`, 'success');
+      loadAdmins();
+    } catch (err) {
+      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  };
+
+  const handleCreateAdmin = async () => {
+    if (!createForm.email.trim() || !createForm.password.trim()) {
+      showToast('Email and password are required', 'error');
+      return;
+    }
+    try {
+      await createAdminUser({
+        email: createForm.email.trim(),
+        password: createForm.password,
+        firstName: createForm.firstName.trim() || undefined,
+        lastName: createForm.lastName.trim() || undefined,
+        role: createForm.role,
+        tenantId: createForm.tenantId || undefined,
+      });
+      showToast('Admin user created', 'success');
+      setShowCreateAdmin(false);
+      setCreateForm({ email: '', password: '', firstName: '', lastName: '', role: 'admin', tenantId: '' });
+      loadAdmins();
+    } catch (err) {
+      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  };
+
+  const handleEditAdmin = async (adminId: string) => {
+    try {
+      await updateAdminUser(adminId, {
+        firstName: editForm.firstName.trim() || undefined,
+        lastName: editForm.lastName.trim() || undefined,
+        role: editForm.role,
+      });
+      showToast('Admin user updated', 'success');
+      setEditingAdminId(null);
+      loadAdmins();
+    } catch (err) {
+      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  };
+
+  const handleDeleteAdmin = async () => {
+    if (!deletingAdmin) return;
+    try {
+      await deleteAdminUser(deletingAdmin.id);
+      showToast('Admin user deleted', 'success');
+      setDeletingAdmin(null);
       loadAdmins();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
@@ -329,38 +386,212 @@ export default function SuperTenantsPanel() {
 
       {/* Admin Users Management */}
       <div className="mt-8">
-        <button
-          onClick={() => setShowAdmins(!showAdmins)}
-          className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 border-none cursor-pointer"
-        >
-          {showAdmins ? 'Hide' : 'Show'} Admin Users ({admins.length})
-        </button>
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => setShowAdmins(!showAdmins)}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 border-none cursor-pointer"
+          >
+            {showAdmins ? 'Hide' : 'Show'} Admin Users ({admins.length})
+          </button>
+          {showAdmins && (
+            <button
+              onClick={() => setShowCreateAdmin(!showCreateAdmin)}
+              data-testid="create-admin-btn"
+              className={`px-4 py-2 rounded-lg text-sm font-semibold border-none cursor-pointer ${
+                showCreateAdmin
+                  ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              {showCreateAdmin ? 'Cancel' : '+ Create Admin'}
+            </button>
+          )}
+        </div>
+
+        {showCreateAdmin && (
+          <div data-testid="create-admin-form" className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs mb-4">
+            <h4 className="text-sm font-bold text-gray-700 mb-3">New Admin User</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className={labelClass}>Email *</label>
+                <input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                  className={inputClass}
+                  placeholder="admin@example.com"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Password *</label>
+                <input
+                  type="password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                  className={inputClass}
+                  placeholder="Min 8 characters"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>First Name</label>
+                <input
+                  type="text"
+                  value={createForm.firstName}
+                  onChange={(e) => setCreateForm({ ...createForm, firstName: e.target.value })}
+                  className={inputClass}
+                  placeholder="First name"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Last Name</label>
+                <input
+                  type="text"
+                  value={createForm.lastName}
+                  onChange={(e) => setCreateForm({ ...createForm, lastName: e.target.value })}
+                  className={inputClass}
+                  placeholder="Last name"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Role</label>
+                <select
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value="admin">Admin</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Tenant</label>
+                <select
+                  value={createForm.tenantId}
+                  onChange={(e) => setCreateForm({ ...createForm, tenantId: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value="">No tenant (global)</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={handleCreateAdmin}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 border-none cursor-pointer"
+              >
+                Create Admin
+              </button>
+              <button
+                onClick={() => setShowCreateAdmin(false)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border-none cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {showAdmins && (
-          <div className="mt-4 space-y-3">
+          <div className="space-y-3">
             {admins.map((a) => (
-              <div key={a.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs flex items-center justify-between">
-                <div>
-                   <p className="text-sm font-bold text-gray-800">{a.firstName} {a.lastName}</p>
-                   <p className="text-xs text-gray-500">{a.email} · {a.role} · Tenant: {a.tenantId || 'global'}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${a.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                     {a.isActive ? 'Active' : 'Inactive'}
-                   </span>
-                  {a.role !== 'super_admin' && (
-                    <button
-                       onClick={() => toggleAdminActive(a.id, a.isActive)}
-                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer ${
-                         a.isActive
-                           ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                           : 'bg-green-50 text-green-600 hover:bg-green-100'
-                       }`}
-                     >
-                       {a.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                  )}
-                </div>
+              <div key={a.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                {editingAdminId === a.id ? (
+                  /* Inline edit mode */
+                  <div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className={labelClass}>First Name</label>
+                        <input
+                          type="text"
+                          value={editForm.firstName}
+                          onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Last Name</label>
+                        <input
+                          type="text"
+                          value={editForm.lastName}
+                          onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Role</label>
+                        <select
+                          value={editForm.role}
+                          onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                          className={inputClass}
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="super_admin">Super Admin</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={() => handleEditAdmin(a.id)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700 border-none cursor-pointer"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingAdminId(null)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border-none cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Display mode */
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">{a.firstName} {a.lastName}</p>
+                      <p className="text-xs text-gray-500">{a.email} · {a.role} · Tenant: {a.tenantId || 'global'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${a.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        {a.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                      {a.role !== 'super_admin' && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditingAdminId(a.id);
+                              setEditForm({ firstName: a.firstName || '', lastName: a.lastName || '', role: a.role });
+                            }}
+                            data-testid={`edit-admin-${a.id}`}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer bg-blue-50 text-blue-600 hover:bg-blue-100"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => toggleAdminActive(a.id, a.isActive)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer ${
+                              a.isActive
+                                ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                : 'bg-green-50 text-green-600 hover:bg-green-100'
+                            }`}
+                          >
+                            {a.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => setDeletingAdmin({ id: a.id, name: `${a.firstName} ${a.lastName}` })}
+                            data-testid={`delete-admin-${a.id}`}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold border-none cursor-pointer bg-red-50 text-red-600 hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
             {admins.length === 0 && (
@@ -369,6 +600,17 @@ export default function SuperTenantsPanel() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deletingAdmin}
+        title="Delete Admin User"
+        message={`Are you sure you want to delete "${deletingAdmin?.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDeleteAdmin}
+        onCancel={() => setDeletingAdmin(null)}
+        danger
+      />
       </>
       )}
     </div>

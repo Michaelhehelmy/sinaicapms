@@ -78,6 +78,14 @@ export default defineConfig({
       },
     },
     {
+      name: 'public',
+      testDir: './tests/e2e/specs/public',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://localhost:${UNIFIED_PORT}`,
+      },
+    },
+    {
       name: 'routing',
       testDir: './tests/e2e/specs/routing',
       use: {

@@ -232,4 +232,147 @@ describe('DataTable', () => {
     expect(screen.getByText('None')).toBeInTheDocument();
     expect(screen.getByText('Add some rows')).toBeInTheDocument();
   });
+
+  it('applies sticky header class when stickyHeader is true', () => {
+    render(<DataTable columns={columns} data={data} stickyHeader />);
+    const thead = document.querySelector('thead');
+    expect(thead).toHaveClass('sticky', 'top-0', 'z-10');
+  });
+
+  it('applies inline width style when column has width property', () => {
+    const colsWithWidth = [
+      { key: 'name', header: 'Name', width: '200px' },
+      { key: 'age', header: 'Age' },
+    ];
+    const { container } = render(<DataTable columns={colsWithWidth} data={data} />);
+    const ths = container.querySelectorAll('thead th');
+    expect(ths[0]).toHaveStyle({ width: '200px' });
+    expect(ths[1]).not.toHaveAttribute('style');
+  });
+
+  it('disables Next button when on last page', () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        pagination={{ page: 3, total: 25, pageSize: 10, onChange }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Go to next page' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Go to next page' })).toHaveClass('cursor-not-allowed');
+  });
+
+  it('supports controlled selectedRows prop', () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        rowKey="name"
+        selectable
+        selectedRows={['Alice', 'Bob']}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    expect(screen.getByRole('checkbox', { name: 'Select row Alice' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select row Bob' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select row Charlie' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select all rows' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select row Charlie' }));
+    expect(onSelectionChange).toHaveBeenCalled();
+  });
+
+  it('shows select-all checked when all rows are in controlled selectedRows', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        rowKey="name"
+        selectable
+        selectedRows={['Alice', 'Bob', 'Charlie']}
+        onSelectionChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('checkbox', { name: 'Select all rows' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select row Alice' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select row Bob' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select row Charlie' })).toBeChecked();
+  });
+
+  it('select-all fires onSelectionChange in controlled mode', () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        rowKey="name"
+        selectable
+        selectedRows={[]}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all rows' }));
+    expect(onSelectionChange).toHaveBeenCalledWith(['Alice', 'Bob', 'Charlie']);
+  });
+
+  it('calls noop debouncedSearch when searchable without onSearch', () => {
+    render(
+      <DataTable columns={columns} data={data} searchable searchPlaceholder="Search" />,
+    );
+    const input = screen.getByTestId('table-search');
+    fireEvent.change(input, { target: { value: 'test' } });
+    expect(input).toHaveValue('test');
+  });
+
+  it('toggles sort direction back to asc on third click', () => {
+    const nameCol = [{ key: 'name', header: 'Name', sortable: true }];
+    render(<DataTable columns={nameCol} data={data} />);
+    fireEvent.click(screen.getByText('Name'));
+    fireEvent.click(screen.getByText('Name'));
+    fireEvent.click(screen.getByText('Name'));
+    const cells = screen.getAllByRole('row').map((r) => r.textContent);
+    expect(cells[1]).toContain('Alice');
+    expect(cells[2]).toContain('Bob');
+    expect(cells[3]).toContain('Charlie');
+  });
+
+  it('covers bVal null sort in desc direction with minimal data', () => {
+    const sortableCols = [
+      { key: 'name', header: 'Name' },
+      { key: 'age', header: 'Age', sortable: true },
+    ];
+    render(
+      <DataTable
+        columns={sortableCols}
+        data={[
+          { name: 'A', age: 10 },
+          { name: 'B', age: null },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByText('Age'));
+    fireEvent.click(screen.getByText('Age'));
+    const cells = screen.getAllByRole('row').map((r) => r.textContent);
+    expect(cells[1]).toContain('A');
+    expect(cells[2]).toContain('B');
+  });
+
+  it('covers selectable rows with undefined rowKey fallback', () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        data={[
+          { name: 'Alice', age: 30 },
+          { age: 25 },
+        ]}
+        rowKey="name"
+        selectable
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select row Alice' }));
+    expect(onSelectionChange).toHaveBeenCalledWith(['Alice']);
+  });
 });

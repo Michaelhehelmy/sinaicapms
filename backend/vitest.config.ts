@@ -17,6 +17,9 @@ export default defineConfig({
         // Entry/glue: Hono app bootstrap that only wires middleware + routes to the
         // handler modules below (each handler is covered by its own unit tests).
         'src/index.js',
+        // Re-export barrel that delegates every symbol to sharedAuth.js — drags
+        // down function coverage without adding any testable logic.
+        'src/middleware/auth.js',
       ],
       thresholds: {
         branches: 85,

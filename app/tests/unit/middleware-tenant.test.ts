@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { getTenantSSRData, onRequest } from '@/middleware/tenant';
+import { getTenantSSRData, onRequest, resolveApiFetcher } from '@/middleware/tenant';
 
 const fetchMock = vi.fn();
 
@@ -461,5 +461,56 @@ describe('zone model locals (marketplace vs tenant exclusivity)', () => {
 
     expect(context.locals.zone).toBe('marketplace');
     expect(context.locals.routeForbidden).toBe(true);
+  });
+});
+
+describe('resolveApiFetcher', () => {
+  it('uses the API_BACKEND service binding when available', async () => {
+    const bindingFetch = vi.fn().mockResolvedValue(new Response('ok'));
+    const runtimeEnv = { API_BACKEND: { fetch: bindingFetch } };
+
+    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api');
+    await fetcher('/tenants/123');
+
+    expect(bindingFetch).toHaveBeenCalledTimes(1);
+    const [request, init] = bindingFetch.mock.calls[0];
+    expect(request).toBeInstanceOf(URL);
+    expect(request.pathname).toBe('/api/tenants/123');
+    expect(request.origin).toBe('https://campmaster-backend');
+  });
+
+  it('passes init options through the binding', async () => {
+    const bindingFetch = vi.fn().mockResolvedValue(new Response('ok'));
+    const runtimeEnv = { API_BACKEND: { fetch: bindingFetch } };
+
+    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api');
+    await fetcher('/camps', { method: 'POST', headers: { 'x-tenant-id': 't1' } });
+
+    const [, init] = bindingFetch.mock.calls[0];
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({ 'x-tenant-id': 't1' });
+  });
+
+  it('falls back to cross-origin fetch when binding is absent', async () => {
+    const fetcher = resolveApiFetcher(undefined, 'http://localhost:8787/api');
+    await fetcher('/camps');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/camps');
+  });
+
+  it('falls back to cross-origin fetch when binding lacks a fetch function', async () => {
+    const fetcher = resolveApiFetcher({ API_BACKEND: {} }, 'http://localhost:8787/api');
+    await fetcher('/camps');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/camps');
+  });
+
+  it('passes init to the fallback fetch when provided', async () => {
+    const fetcher = resolveApiFetcher(undefined, 'http://localhost:8787/api');
+    await fetcher('/camps', { method: 'POST', body: '{}' });
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/camps', { method: 'POST', body: '{}' });
   });
 });

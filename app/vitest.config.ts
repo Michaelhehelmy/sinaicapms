@@ -27,6 +27,10 @@ export default defineConfig({
         // render of every exported story is still regression-tested in
         // tests/unit/stories.test.tsx.
         'src/stories/**',
+        // Type-only definition files — no runtime logic to cover
+        '**/api-types.ts',
+        '**/env.d.ts',
+        '**/pos/types.ts',
       ],
       thresholds: {
         branches: 80,

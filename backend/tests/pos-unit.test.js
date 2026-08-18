@@ -142,6 +142,29 @@ describe('POS Routes', () => {
       expect(res.status).toBe(401);
     });
 
+    it('returns taxRate from pos_organizations when org row exists', async () => {
+      verifyPassword.mockResolvedValue(true);
+      generateToken.mockResolvedValue('pos-jwt-token');
+      let callIdx = 0;
+      const db = makeDb(() => {
+        callIdx++;
+        if (callIdx <= 1) return chainDb([{ id: 'u1', organization_id: 't1', store_id: 1, username: 'cashier1', email: 'c@test.com', first_name: 'John', last_name: 'Doe', password_hash: '$2b$12$hash', role: 'cashier', is_active: 1 }]);
+        if (callIdx === 2) return chainDb([{ tenant_id: 't9' }]);
+        if (callIdx === 3) return chainDb([{ tax_rate: '0.15' }]);
+        return chainDb([]);
+      });
+      const req = new Request('http://localhost/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'cashier1', password: 'pass' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.user.taxRate).toBe(0.15);
+    });
+
     it('returns 200 with token on valid login', async () => {
       verifyPassword.mockResolvedValue(true);
       generateToken.mockResolvedValue('pos-jwt-token');
@@ -998,6 +1021,116 @@ describe('POS Routes', () => {
       });
       const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
       expect(res.status).toBe(500);
+    });
+
+    it('compensates and returns 400 when a stock deduction races to zero (batch meta.changes === 0)', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, storeId: 1, role: 'cashier' });
+      const db = makeStepDb([
+        chainDb([{ is_active: 1 }]),
+        chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([{ tax_rate: '0.15' }]),
+        chainDb([
+          { ingredient_id: 'i1', quantity: 1 },
+          { ingredient_id: 'i2', quantity: 1 },
+        ]),
+        chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
+        chainDb([{ id: 'i2', name: 'Sugar', stock_quantity: '50' }]),
+      ]);
+      // First batch call: order creation — second deduction (i2) affected 0 rows
+      db.batch.mockResolvedValueOnce([
+        { meta: { changes: 1 } },  // i1 deduction succeeded
+        { meta: { changes: 0 } },  // i2 deduction raced to zero
+        { meta: { changes: 1 } },  // INSERT pos_transactions
+        { meta: { changes: 1 } },  // INSERT pos_transaction_items
+      ]);
+      // Second batch call: compensation (add back i1 stock, delete items, delete order)
+      db.batch.mockResolvedValueOnce([]);
+
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'p1', quantity: 2 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(400);
+      expect(body.error).toContain('Insufficient stock');
+      // Batch called twice: once for the order, once for compensation
+      expect(db.batch).toHaveBeenCalledTimes(2);
+      // Compensation batch contains: stock add-back for i1, delete items, delete order
+      const compStatements = db.batch.mock.calls[1][0];
+      expect(compStatements.length).toBe(3);
+      // Verify the compensation prepare calls include stock add-back and order cleanup
+      const allSqls = db.prepare.mock.calls.map(([sql]) => String(sql));
+      expect(allSqls.some((sql) => sql.includes('stock_quantity = stock_quantity + ?'))).toBe(true);
+      expect(allSqls.some((sql) => sql.includes('DELETE FROM pos_transaction_items'))).toBe(true);
+      expect(allSqls.some((sql) => sql.includes('DELETE FROM pos_transactions'))).toBe(true);
+    });
+
+    it('still returns 400 when compensation batch rejects (.catch swallows error)', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, storeId: 1, role: 'cashier' });
+      const db = makeStepDb([
+        chainDb([{ is_active: 1 }]),
+        chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([{ tax_rate: '0.15' }]),
+        chainDb([
+          { ingredient_id: 'i1', quantity: 1 },
+        ]),
+        chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
+      ]);
+      db.batch.mockResolvedValueOnce([
+        { meta: { changes: 0 } },  // deduction raced to zero
+        { meta: { changes: 1 } },  // INSERT pos_transactions
+        { meta: { changes: 1 } },  // INSERT pos_transaction_items
+      ]);
+      db.batch.mockRejectedValueOnce(new Error('compensation batch failed'));
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 500 when batch throws a non-idempotency error (re-throws)', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, storeId: 1, role: 'cashier' });
+      const db = makeStepDb([
+        chainDb([{ is_active: 1 }]),
+        chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([{ tax_rate: '0.15' }]),
+        chainDb([]),
+      ]);
+      db.batch.mockRejectedValue(new Error('D1 internal error'));
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      expect(res.status).toBe(500);
+    });
+
+    it('proceeds to success when batch results are valid but no deductions were made (empty deductionIndexes)', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, storeId: 1, role: 'cashier' });
+      // Product has no recipe ingredients → stockDeductions is empty → deductionIndexes is empty
+      const db = makeStepDb([
+        chainDb([{ is_active: 1 }]),
+        chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([{ tax_rate: '0.15' }]),
+        chainDb([]),
+      ]);
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      // Only the order-creation batch — no compensation batch
+      expect(db.batch).toHaveBeenCalledTimes(1);
     });
 
     it('returns the same order for a repeated idempotency key WITHOUT re-running the batch', async () => {

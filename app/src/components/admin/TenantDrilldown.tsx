@@ -9,6 +9,7 @@ import RoomsPanel from './RoomsPanel';
 import RatePlansPanel from './RatePlansPanel';
 import OrdersPanel from './OrdersPanel';
 import MenuPanel from './MenuPanel';
+import StaffPanel from './StaffPanel';
 
 /**
  * T9 — super-admin tenant drill-down.
@@ -29,7 +30,7 @@ interface TenantDrilldownProps {
   onBack: () => void;
 }
 
-const VIEWS = ['camp', 'rooms', 'rateplans', 'orders', 'menu'] as const;
+const VIEWS = ['camp', 'rooms', 'rateplans', 'orders', 'menu', 'staff'] as const;
 type DrillView = (typeof VIEWS)[number];
 
 const VIEW_LABELS: Record<DrillView, string> = {
@@ -38,6 +39,7 @@ const VIEW_LABELS: Record<DrillView, string> = {
   rateplans: 'Rate Plans',
   orders: 'Orders',
   menu: 'Menu',
+  staff: 'Staff',
 };
 
 const TENANT_TYPE_LABELS: Record<string, string> = {
@@ -134,6 +136,7 @@ function DrilldownContent({ tenant, onBack }: TenantDrilldownProps) {
           {view === 'rateplans' && <RatePlansPanel campIds={campIds} camps={activeCamps} />}
           {view === 'orders' && <OrdersPanel campIds={campIds} camps={activeCamps} />}
           {view === 'menu' && <MenuPanel campIds={campIds} camps={activeCamps} />}
+          {view === 'staff' && <StaffPanel scopedTenantId={tenant.id} />}
         </div>
       )}
     </div>

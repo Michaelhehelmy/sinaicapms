@@ -105,11 +105,14 @@ const trashIcon = (
  * `getPosUsers({ tenantId })`); tenant admins are hard-scoped server-side and
  * call `getPosUsers()` without a tenantId.
  *
+ * When `scopedTenantId` is provided (e.g. from TenantDrilldown), the tenant
+ * selector is hidden and the panel operates directly on that tenant.
+ *
  * All user-provided values are rendered through React JSX, which escapes text
  * by default — the project-safe pattern for components (escHtml() is only for
  * raw HTML string contexts such as Astro templates).
  */
-export default function StaffPanel() {
+export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string }) {
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -163,8 +166,13 @@ export default function StaffPanel() {
   }, [showToast]);
 
   useEffect(() => {
-    if (isSuperAdmin) loadTenants();
-  }, [isSuperAdmin, loadTenants]);
+    if (isSuperAdmin && !scopedTenantId) loadTenants();
+  }, [isSuperAdmin, scopedTenantId, loadTenants]);
+
+  // When scopedTenantId is provided, use it directly as the selected tenant
+  useEffect(() => {
+    if (scopedTenantId) setSelectedTenantId(scopedTenantId);
+  }, [scopedTenantId]);
 
   const loadUsers = useCallback(
     async (targetPage: number, query: string) => {
@@ -176,7 +184,7 @@ export default function StaffPanel() {
           pageSize: PAGE_SIZE,
         };
         if (query) params.search = query;
-        if (isSuperAdmin) params.tenantId = selectedTenantId;
+        if (isSuperAdmin) params.tenantId = scopedTenantId || selectedTenantId;
 
         const res = await api.getPosUsers(params);
         setUsers(res.data ?? []);
@@ -190,7 +198,7 @@ export default function StaffPanel() {
         setLoading(false);
       }
     },
-    [isSuperAdmin, selectedTenantId, showToast],
+    [isSuperAdmin, scopedTenantId, selectedTenantId, showToast],
   );
 
   useEffect(() => {
@@ -422,7 +430,7 @@ export default function StaffPanel() {
         </Button>
       </div>
 
-      {isSuperAdmin && (
+      {isSuperAdmin && !scopedTenantId && (
         <Card padding="md" className="mb-6" data-testid="tenant-filter">
           <div className="min-w-[220px] max-w-md">
             <Select

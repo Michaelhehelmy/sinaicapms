@@ -213,6 +213,144 @@ describe('Broadcaster DO routing', () => {
     const res = await b.fetch(new Request('http://broadcaster/nope', { method: 'GET' }));
     expect(res.status).toBe(404);
   });
+
+  it('cancel handler removes the connection and clears the interval', async () => {
+    const { b } = makeBroadcaster();
+    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+    const reader = res.body.getReader();
+    await reader.read();
+
+    expect(b.channels.get('t1').size).toBe(1);
+    await reader.cancel();
+
+    expect(b.channels.has('t1')).toBe(false);
+  });
+
+  it('removeConnection is idempotent when called twice on the same conn', async () => {
+    const { b } = makeBroadcaster();
+    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+    const reader = res.body.getReader();
+    await reader.read();
+
+    const conn = b.channels.get('t1').values().next().value;
+    b.removeConnection('t1', conn);
+    expect(b.channels.has('t1')).toBe(false);
+
+    expect(() => b.removeConnection('t1', conn)).not.toThrow();
+  });
+
+  it('removeConnection is a no-op when conn is null', async () => {
+    const { b } = makeBroadcaster();
+    expect(() => b.removeConnection('t1', null)).not.toThrow();
+  });
+
+  it('deletes the tenant from channels when the last cancelled conn is removed during broadcast', async () => {
+    const { b } = makeBroadcaster();
+    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+    const reader = res.body.getReader();
+    await reader.read();
+
+    const conn = b.channels.get('t1').values().next().value;
+    conn.cancelled = true;
+
+    const bcRes = await b.fetch(new Request('http://broadcaster/broadcast', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId: 't1', event: { type: 'test' } }),
+    }));
+    expect((await bcRes.json()).delivered).toBe(0);
+    expect(b.channels.has('t1')).toBe(false);
+    await reader.cancel();
+  });
+
+  it('broadcast removes a connection whose controller.enqueue throws', async () => {
+    const { b } = makeBroadcaster();
+    const throwingController = {
+      enqueue: vi.fn(() => { throw new Error('stream closed'); }),
+    };
+    const conn = {
+      controller: throwingController,
+      interval: null,
+      cancelled: false,
+      tenantId: 't1',
+    };
+    b.getOrCreateSet('t1').add(conn);
+
+    const res = await b.fetch(new Request('http://broadcaster/broadcast', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId: 't1', event: { type: 'test' } }),
+    }));
+    const body = await res.json();
+    expect(body.delivered).toBe(0);
+    expect(conn.cancelled).toBe(true);
+    expect(b.channels.has('t1')).toBe(false);
+  });
+
+  it('heartbeat skips when conn is already cancelled', async () => {
+    vi.useFakeTimers();
+    try {
+      const { b } = makeBroadcaster();
+      const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+      const reader = res.body.getReader();
+      await reader.read();
+
+      const conn = b.channels.get('t1').values().next().value;
+      conn.cancelled = true;
+      const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
+      vi.advanceTimersByTime(25000);
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      await reader.cancel();
+      clearIntervalSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('evicts oldest connections when the per-tenant cap is reached', async () => {
+    const { b } = makeBroadcaster();
+    const fakeConns = [];
+    for (let i = 0; i < 100; i++) {
+      const conn = { controller: { enqueue: vi.fn() }, interval: null, cancelled: false, tenantId: 't1' };
+      b.getOrCreateSet('t1').add(conn);
+      fakeConns.push(conn);
+    }
+    expect(b.channels.get('t1').size).toBe(100);
+
+    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+    const reader = res.body.getReader();
+    await reader.read();
+
+    expect(b.channels.get('t1').size).toBe(100);
+    expect(fakeConns[0].cancelled).toBe(true);
+    await reader.cancel();
+  });
+
+  it('heartbeat catch branch removes the connection when enqueue throws', async () => {
+    vi.useFakeTimers();
+    try {
+      const { b } = makeBroadcaster();
+      const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+      const reader = res.body.getReader();
+      await reader.read();
+
+      const conn = b.channels.get('t1').values().next().value;
+      const originalEnqueue = conn.controller.enqueue;
+      let callCount = 0;
+      conn.controller.enqueue = vi.fn((data) => {
+        callCount++;
+        if (callCount === 2) throw new Error('enqueue failed');
+        return originalEnqueue.call(conn.controller, data);
+      });
+
+      vi.advanceTimersByTime(25000);
+      await vi.runAllTimersAsync();
+
+      expect(b.channels.has('t1')).toBe(false);
+      await reader.cancel();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('broadcastNewBooking (orders.js hook)', () => {

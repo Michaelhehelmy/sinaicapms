@@ -27,6 +27,7 @@ import {
   posGetActiveShift, posOpenShift, posCloseShift,
   posGetCustomers, posGetInventory, posGetStaff, posGetReports,
   getLowStock,
+  getPosUsers, createPosUser, updatePosUser, deletePosUser, resetPosUserPassword,
 } from '@/lib/api';
 
 global.fetch = vi.fn();
@@ -1135,5 +1136,80 @@ describe('inbox endpoints', () => {
       expect.stringContaining('/inbox/lead/lead%2F42'),
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+});
+
+describe('POS Users (Staff) endpoints', () => {
+  beforeEach(() => { mockFetch({ data: [], total: 0 }); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('getPosUsers GET /pos-users without params', async () => {
+    await getPosUsers();
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain('/pos-users');
+    expect(url).not.toContain('?');
+  });
+
+  it('getPosUsers builds query string from all params', async () => {
+    await getPosUsers({ page: 2, pageSize: 25, role: 'cashier', search: 'john', tenantId: 't1' });
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain('/pos-users?');
+    expect(url).toContain('page=2');
+    expect(url).toContain('pageSize=25');
+    expect(url).toContain('role=cashier');
+    expect(url).toContain('search=john');
+    expect(url).toContain('tenantId=t1');
+  });
+
+  it('getPosUsers omits empty/undefined params', async () => {
+    await getPosUsers({ page: '', pageSize: undefined, role: '', search: '', tenantId: '' });
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain('/pos-users');
+    expect(url).not.toContain('?');
+  });
+
+  it('createPosUser POST /pos-users', async () => {
+    await createPosUser({ email: 'staff@test.com', password: 'pass', firstName: 'Jane', lastName: 'Doe' });
+    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    expect(opts.method).toBe('POST');
+    expect(url).toContain('/pos-users');
+    const body = JSON.parse(opts.body as string);
+    expect(body).toEqual({ email: 'staff@test.com', password: 'pass', firstName: 'Jane', lastName: 'Doe' });
+  });
+
+  it('createPosUser sends optional fields', async () => {
+    await createPosUser({
+      email: 'mgr@test.com', password: 'pass', firstName: 'Bob', lastName: 'Smith',
+      username: 'bobsmith', phone: '555-0100', role: 'manager', department: 'Kitchen', employeeId: 'E001', storeId: 3,
+    });
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1].body as string);
+    expect(body.username).toBe('bobsmith');
+    expect(body.role).toBe('manager');
+    expect(body.storeId).toBe(3);
+  });
+
+  it('updatePosUser PATCH /pos-users/:id', async () => {
+    await updatePosUser(5, { firstName: 'Updated', role: 'admin', isActive: false });
+    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    expect(opts.method).toBe('PATCH');
+    expect(url).toContain('/pos-users/5');
+    const body = JSON.parse(opts.body as string);
+    expect(body).toEqual({ firstName: 'Updated', role: 'admin', isActive: false });
+  });
+
+  it('deletePosUser DELETE /pos-users/:id', async () => {
+    await deletePosUser(10);
+    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    expect(opts.method).toBe('DELETE');
+    expect(url).toContain('/pos-users/10');
+  });
+
+  it('resetPosUserPassword POST /pos-users/:id/reset-password', async () => {
+    await resetPosUserPassword(7, 'newPass123');
+    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    expect(opts.method).toBe('POST');
+    expect(url).toContain('/pos-users/7/reset-password');
+    const body = JSON.parse(opts.body as string);
+    expect(body).toEqual({ password: 'newPass123' });
   });
 });

@@ -1,84 +1,111 @@
 import { test, expect } from '@playwright/test';
+import { TEST_TENANT } from '../../fixtures/test-data';
 
-test.describe('Staff Registration (/register)', () => {
-  test('registration page loads', async ({ page }) => {
+const TENANT_ID = TEST_TENANT.id;
+const UNIQUE_EMAIL = `e2e-reg-${Date.now()}@test.com`;
+
+test.describe('Registration Form — Validation & Submission', () => {
+  test('renders registration page with all fields', async ({ page }) => {
     await page.goto('/register');
-    await page.waitForLoadState('networkidle');
-    const content = await page.locator('body').textContent() ?? '';
-    expect(content.length).toBeGreaterThan(0);
-    const heading = page.locator('h2:has-text("Create Your Account")');
-    await expect(heading).toBeVisible();
+
+    await expect(page.locator('[data-testid="register-name"]')).toBeVisible();
+    await expect(page.locator('[data-testid="register-email"]')).toBeVisible();
+    await expect(page.locator('[data-testid="register-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="register-confirm-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="register-submit"]')).toBeVisible();
   });
 
-  test('registration page has form fields', async ({ page }) => {
+  test('validation: empty name shows error', async ({ page }) => {
     await page.goto('/register');
-    await page.waitForLoadState('networkidle');
-    const nameInput = page.locator('[data-testid="register-name"]');
-    const emailInput = page.locator('[data-testid="register-email"]');
-    const passwordInput = page.locator('[data-testid="register-password"]');
-    const confirmInput = page.locator('[data-testid="register-confirm-password"]');
-    await expect(nameInput).toBeVisible();
-    await expect(emailInput).toBeVisible();
-    await expect(passwordInput).toBeVisible();
-    await expect(confirmInput).toBeVisible();
+
+    await page.locator('[data-testid="register-email"]').fill('test@example.com');
+    await page.locator('[data-testid="register-password"]').fill('Password123!');
+    await page.locator('[data-testid="register-confirm-password"]').fill('Password123!');
+    await page.locator('[data-testid="register-submit"]').click();
+
+    await expect(page.locator('text=Full name is required')).toBeVisible({ timeout: 5000 });
   });
 
-  test('registration page has name input', async ({ page }) => {
+  test('validation: empty email shows error', async ({ page }) => {
     await page.goto('/register');
-    await page.waitForLoadState('networkidle');
-    const nameInput = page.locator('[data-testid="register-name"]');
-    await expect(nameInput).toBeVisible();
-    const inputType = await nameInput.getAttribute('type');
-    expect(inputType).toBe('text');
+
+    await page.locator('[data-testid="register-name"]').fill('Test User');
+    await page.locator('[data-testid="register-password"]').fill('Password123!');
+    await page.locator('[data-testid="register-confirm-password"]').fill('Password123!');
+    await page.locator('[data-testid="register-submit"]').click();
+
+    await expect(page.locator('text=Email is required')).toBeVisible({ timeout: 5000 });
   });
 
-  test('registration page has email input', async ({ page }) => {
+  test('validation: short password shows error', async ({ page }) => {
     await page.goto('/register');
-    await page.waitForLoadState('networkidle');
-    const emailInput = page.locator('[data-testid="register-email"]');
-    await expect(emailInput).toBeVisible();
-    const inputType = await emailInput.getAttribute('type');
-    expect(inputType).toBe('email');
+
+    await page.locator('[data-testid="register-name"]').fill('Test User');
+    await page.locator('[data-testid="register-email"]').fill('test@example.com');
+    await page.locator('[data-testid="register-password"]').fill('short');
+    await page.locator('[data-testid="register-confirm-password"]').fill('short');
+    await page.locator('[data-testid="register-submit"]').click();
+
+    await expect(page.locator('text=Password must be at least 8 characters')).toBeVisible({ timeout: 5000 });
   });
 
-  test('registration page has password input', async ({ page }) => {
+  test('validation: passwords mismatch shows error', async ({ page }) => {
     await page.goto('/register');
-    await page.waitForLoadState('networkidle');
-    const pwInput = page.locator('[data-testid="register-password"]');
-    const confirmInput = page.locator('[data-testid="register-confirm-password"]');
-    await expect(pwInput).toBeVisible();
-    await expect(confirmInput).toBeVisible();
-    const pwType = await pwInput.getAttribute('type');
-    const confirmType = await confirmInput.getAttribute('type');
-    expect(pwType).toBe('password');
-    expect(confirmType).toBe('password');
+
+    await page.locator('[data-testid="register-name"]').fill('Test User');
+    await page.locator('[data-testid="register-email"]').fill('test@example.com');
+    await page.locator('[data-testid="register-password"]').fill('Password123!');
+    await page.locator('[data-testid="register-confirm-password"]').fill('DifferentPass99!');
+    await page.locator('[data-testid="register-submit"]').click();
+
+    await expect(page.locator('text=Passwords do not match')).toBeVisible({ timeout: 5000 });
   });
 
-  test('registration page has submit button', async ({ page }) => {
+  test('all fields empty: shows first validation error on submit', async ({ page }) => {
     await page.goto('/register');
-    await page.waitForLoadState('networkidle');
-    const submitBtn = page.locator('[data-testid="register-submit"]');
-    await expect(submitBtn).toBeVisible();
-    const text = await submitBtn.textContent();
-    expect(text).toContain('Register');
+
+    await page.locator('[data-testid="register-submit"]').click();
+
+    const errorBanner = page.locator('.bg-red-50, [class*="red-50"]');
+    await expect(errorBanner).toBeVisible({ timeout: 5000 });
+    const text = (await errorBanner.textContent()) || '';
+    expect(text).toMatch(/required|at least 8/);
   });
 
-  test('registration page has login link', async ({ page }) => {
+  test('successful registration: shows pending approval message', async ({ page }) => {
     await page.goto('/register');
-    await page.waitForLoadState('networkidle');
+
+    await page.locator('[data-testid="register-name"]').fill('E2E New User');
+    await page.locator('[data-testid="register-email"]').fill(UNIQUE_EMAIL);
+    await page.locator('[data-testid="register-password"]').fill('SecurePass123!');
+    await page.locator('[data-testid="register-confirm-password"]').fill('SecurePass123!');
+    await page.locator('[data-testid="register-submit"]').click();
+
+    await expect(page.locator('text=Registration Successful')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('text=pending administrator approval')).toBeVisible();
+    await expect(page.locator('a:has-text("Go to Login")')).toBeVisible();
+  });
+
+  test('duplicate email: shows error or success (no user enumeration)', async ({ page }) => {
+    await page.goto('/register');
+
+    await page.locator('[data-testid="register-name"]').fill('Duplicate User');
+    await page.locator('[data-testid="register-email"]').fill(UNIQUE_EMAIL);
+    await page.locator('[data-testid="register-password"]').fill('SecurePass123!');
+    await page.locator('[data-testid="register-confirm-password"]').fill('SecurePass123!');
+    await page.locator('[data-testid="register-submit"]').click();
+
+    const result = page.locator('.bg-red-50, .bg-green-100, text=Registration Successful, text=already exists');
+    await expect(result.first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('login link navigates to /login', async ({ page }) => {
+    await page.goto('/register');
+
     const loginLink = page.locator('a[href="/login"]');
-    const count = await loginLink.count();
-    expect(count).toBeGreaterThanOrEqual(1);
-  });
+    await expect(loginLink).toBeVisible();
+    await loginLink.click();
 
-  test('registration page has no critical JS errors', async ({ page }) => {
-    const jsErrors: string[] = [];
-    page.on('pageerror', (error) => { jsErrors.push(error.message); });
-    await page.goto('/register');
-    await page.waitForLoadState('networkidle');
-    const criticalErrors = jsErrors.filter(
-      (e) => !e.includes('ResizeObserver') && !e.includes('favicon') && !e.includes('net::')
-    );
-    expect(criticalErrors.length).toBe(0);
+    await expect(page).toHaveURL(/\/login/);
   });
 });

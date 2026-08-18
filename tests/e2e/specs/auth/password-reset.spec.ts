@@ -1,110 +1,105 @@
 import { test, expect } from '@playwright/test';
-import { TENANT_URL, TEST_TENANT } from '../../fixtures/test-data';
 
-const TENANT_ID = TEST_TENANT.id;
+test.describe('Forgot Password — Request Flow', () => {
+  test('renders forgot password page with email field', async ({ page }) => {
+    await page.goto('/auth/forgot-password');
 
-test.describe('Password Reset', () => {
-  test('forgot password link exists on POS login page (search for links with "forgot", "reset" text)', async ({
-    page,
-  }) => {
-    await page.goto(TENANT_URL('/pos/login', TENANT_ID));
-    await expect(page.locator('[data-testid="pos-login"]')).toBeVisible();
-
-    const link = page.locator(
-      'a:has-text("forgot"), a:has-text("Forgot"), a:has-text("reset"), a:has-text("Reset"), button:has-text("forgot"), button:has-text("Forgot"), [data-testid="forgot-password"], [href*="reset"], [href*="forgot"]'
-    );
-    const count = await link.count();
-
-    if (count === 0) {
-      // POS login page does not have a forgot password link — skip gracefully
-      test.skip(true, 'No forgot password link found on POS login page');
-      return;
-    }
-
-    const firstLink = link.first();
-    await expect(firstLink).toBeVisible();
-
-    const text = (await firstLink.textContent()) || '';
-    const tag = await firstLink.evaluate(el => el.tagName.toLowerCase());
-
-    const hasRelevantText =
-      text.toLowerCase().includes('forgot') ||
-      text.toLowerCase().includes('reset');
-    expect(hasRelevantText).toBeTruthy();
-
-    const isAnchor = tag === 'a' || tag === 'button';
-    expect(isAnchor).toBeTruthy();
+    await expect(page.locator('[data-testid="forgot-email"]')).toBeVisible();
+    await expect(page.locator('[data-testid="forgot-submit"]')).toBeVisible();
+    await expect(page.locator('text=Forgot Your Password')).toBeVisible();
   });
 
-  test('if link exists: clicking it shows email input', async ({ page }) => {
-    await page.goto(TENANT_URL('/pos/login', TENANT_ID));
-    await expect(page.locator('[data-testid="pos-login"]')).toBeVisible();
+  test('validation: empty email shows error', async ({ page }) => {
+    await page.goto('/auth/forgot-password');
 
-    const link = page.locator(
-      'a:has-text("forgot"), a:has-text("Forgot"), a:has-text("reset"), a:has-text("Reset"), button:has-text("forgot"), button:has-text("Forgot"), [data-testid="forgot-password"], [href*="reset"], [href*="forgot"]'
-    );
-    const count = await link.count();
+    await page.locator('[data-testid="forgot-submit"]').click();
 
-    if (count === 0) {
-      test.skip(true, 'No forgot password link found');
-      return;
-    }
-
-    await link.first().click();
-
-    const emailInput = page.locator('input[type="email"]');
-    await expect(emailInput).toBeVisible({ timeout: 5_000 });
-
-    const inputType = await emailInput.getAttribute('type');
-    expect(inputType).toBe('email');
+    await expect(page.locator('text=Please enter your email address')).toBeVisible({ timeout: 5000 });
   });
 
-  test('email input accepts text and value is retained', async ({ page }) => {
-    await page.goto(TENANT_URL('/pos/login', TENANT_ID));
-    await expect(page.locator('[data-testid="pos-login"]')).toBeVisible();
+  test('successful request: shows check-your-email message', async ({ page }) => {
+    await page.goto('/auth/forgot-password');
 
-    const link = page.locator(
-      'a:has-text("forgot"), a:has-text("Forgot"), a:has-text("reset"), a:has-text("Reset"), button:has-text("forgot"), button:has-text("Forgot"), [data-testid="forgot-password"], [href*="reset"], [href*="forgot"]'
-    );
-    const count = await link.count();
+    await page.locator('[data-testid="forgot-email"]').fill('anyone@example.com');
+    await page.locator('[data-testid="forgot-submit"]').click();
 
-    if (count === 0) {
-      test.skip(true, 'No forgot password link found');
-      return;
-    }
-
-    await link.first().click();
-
-    const emailInput = page.locator('input[type="email"]');
-    await expect(emailInput).toBeVisible({ timeout: 5_000 });
-
-    const testEmail = 'test@example.com';
-    await emailInput.fill(testEmail);
-
-    const retainedValue = await emailInput.inputValue();
-    expect(retainedValue).toBe(testEmail);
-    expect(retainedValue).toContain('@');
-    expect(retainedValue).toContain('.');
+    await expect(page.locator('text=Check Your Email')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('text=anyone@example.com')).toBeVisible();
+    await expect(page.locator('a:has-text("Back to Login")')).toBeVisible();
   });
 
-  test('if no link: login page still loads correctly', async ({ page }) => {
-    await page.goto(TENANT_URL('/pos/login', TENANT_ID));
-    await page.waitForLoadState('networkidle');
+  test('non-existent email: still shows success (no user enumeration)', async ({ page }) => {
+    await page.goto('/auth/forgot-password');
 
-    const link = page.locator(
-      'a:has-text("forgot"), a:has-text("Forgot"), a:has-text("reset"), a:has-text("Reset"), button:has-text("forgot"), button:has-text("Forgot"), [data-testid="forgot-password"], [href*="reset"], [href*="forgot"]'
-    );
-    const count = await link.count();
+    await page.locator('[data-testid="forgot-email"]').fill('nonexistent-never-registered-999@test.com');
+    await page.locator('[data-testid="forgot-submit"]').click();
 
-    if (count > 0) {
-      const isVis = await link.first().isVisible();
-      expect(isVis).toBeTruthy();
-    } else {
-      const loginOverlay = page.locator('[data-testid="pos-login"]');
-      const loginVisible = await loginOverlay.isVisible();
-      expect(loginVisible).toBeTruthy();
+    await expect(page.locator('text=Check Your Email')).toBeVisible({ timeout: 10_000 });
+    const errorBanner = page.locator('.bg-red-50');
+    const errorCount = await errorBanner.count();
+    expect(errorCount).toBe(0);
+  });
 
-      test.skip(true, 'No forgot password option present — page loads correctly');
-    }
+  test('back-to-login link navigates to /login', async ({ page }) => {
+    await page.goto('/auth/forgot-password');
+
+    const backLink = page.locator('a[href="/login"]');
+    await expect(backLink).toBeVisible();
+    await backLink.click();
+
+    await expect(page).toHaveURL(/\/login/);
+  });
+});
+
+test.describe('Reset Password — Token & Form', () => {
+  test('no token: shows error about missing token', async ({ page }) => {
+    await page.goto('/auth/reset-password');
+
+    await expect(page.locator('text=No reset token found')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=password reset link')).toBeVisible();
+  });
+
+  test('with fake token: form renders, submit shows server error', async ({ page }) => {
+    await page.goto('/auth/reset-password?token=fake-expired-token-abc123');
+
+    await expect(page.locator('[data-testid="reset-password"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="reset-confirm-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="reset-submit"]')).toBeVisible();
+
+    await page.locator('[data-testid="reset-password"]').fill('NewPass123!');
+    await page.locator('[data-testid="reset-confirm-password"]').fill('NewPass123!');
+    await page.locator('[data-testid="reset-submit"]').click();
+
+    await expect(page.locator('text=expired or invalid')).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('password too short: shows validation error', async ({ page }) => {
+    await page.goto('/auth/reset-password?token=fake-token');
+
+    await page.locator('[data-testid="reset-password"]').fill('short');
+    await page.locator('[data-testid="reset-confirm-password"]').fill('short');
+    await page.locator('[data-testid="reset-submit"]').click();
+
+    await expect(page.locator('text=Password must be at least 8 characters')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('passwords mismatch: shows validation error', async ({ page }) => {
+    await page.goto('/auth/reset-password?token=fake-token');
+
+    await page.locator('[data-testid="reset-password"]').fill('NewPassword123!');
+    await page.locator('[data-testid="reset-confirm-password"]').fill('DifferentPass99!');
+    await page.locator('[data-testid="reset-submit"]').click();
+
+    await expect(page.locator('text=Passwords do not match')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('back-to-login link navigates to /login', async ({ page }) => {
+    await page.goto('/auth/reset-password?token=fake-token');
+
+    const backLink = page.locator('a[href="/login"]');
+    await expect(backLink).toBeVisible();
+    await backLink.click();
+
+    await expect(page).toHaveURL(/\/login/);
   });
 });
