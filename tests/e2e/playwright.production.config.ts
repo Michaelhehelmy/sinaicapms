@@ -15,8 +15,10 @@ import { defineConfig, devices } from '@playwright/test';
  *   - admin/   — CRUD operations, needs SUPER_ADMIN/tenant admin auth
  *   - auth/    — login flows with test credentials that may not exist on prod
  *   - pos/     — needs POS cashier auth (TEST_POS_USER seed may fail)
- *   - public/booking-submission  — needs admin login to verify bookings
+ *   - public/booking-submission  — no room types on production acaciacamp (empty Accommodations section)
  *   - public/gallery-navigation   — uses ?tenant= query param (ignored on prod root host)
+ *   - public/menu-filtering       — /camp/{id}/menu redirects to /404 (same-zone Worker fetch)
+ *   - public/admin-reservation-log — needs super_admin login (seed data may not exist)
  *   - cross-cutting/ (most)       — need POS auth or ?tenant= query param
  *
  * Usage:
@@ -72,8 +74,11 @@ export default defineConfig({
       // Exclude specs that need admin auth or use ?tenant= query param
       // (ignored on production root host — logbook line 67)
       // Exclude menu-filtering: /camp/{id}/menu redirects to /404 on sinaicamps.com
-      // (same-zone Worker fetch issue — logbook line 66)
-      testIgnore: /booking-submission|gallery-navigation|menu-filtering/,
+      // (same-zone Worker fetch issue - logbook line 66)
+      // Exclude gallery-navigation: uses ?tenant= query param (ignored on prod root host)
+      // Exclude admin-reservation-log: needs super_admin login (seed data may not exist)
+      // Exclude booking-submission: no room types on production acaciacamp (empty Accommodations)
+      testIgnore: /booking-submission|gallery-navigation|menu-filtering|admin-reservation-log/,
       use: { ...devices['Desktop Chrome'] },
     },
     // routing/ excluded: zone-exclusivity tests use ?tenant= query param

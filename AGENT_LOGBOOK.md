@@ -6384,3 +6384,15 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 - **RBAC**: Create/Edit/Delete admin users = super_admin only. Super admin accounts are protected from edit/delete by backend guard. POS user management = admin (tenant-scoped) or super_admin.
 - **Tests**: 1,857 frontend unit tests passing, no regressions.
 - **Files changed**: `SuperTenantsPanel.tsx`, `StaffPanel.tsx`, `TenantDrilldown.tsx`
+
+### [2026-08-18] Booking-Submission E2E + Admin CRUD E2E Tests
+- **Task**: Fix booking-submission tests that were failing locally, add E2E tests for SuperTenantsPanel admin CRUD.
+- **Booking-submission local root cause**: `CampBooking` component uses `client:visible` Astro directive — only hydrates when scrolled into viewport. Playwright clicks the "Book" button before React hydration completes, so nothing happens.
+- **Fix**: `openRoomBooking()` in `booking-modal.page.ts` now scrolls rooms section into view, then uses `page.waitForFunction` to detect React `__reactFiber$` on the button DOM element before clicking. Test passes on first attempt (2.9s).
+- **Admin reservation-log tests extracted**: Moved from `booking-submission.spec.ts` to `admin-reservation-log.spec.ts` (needs super_admin auth, different from public booking flow).
+- **Toast/ConfirmDialog selectors**: App uses `role="alert"` for toasts (NOT `role="status"`), and `role="dialog"` for ConfirmDialog (NOT `role="alertdialog"`). This was the root cause of E2E tests failing to find created/deleted toasts.
+- **Super-admin-crud.spec.ts**: 13 E2E tests for admin CRUD in SuperTenantsPanel. 9 pass, 4 skipped (no pre-existing non-super_admin admins to edit/delete without create). Tests cover: show/hide admin list, create admin form, form validation, form submission, edit inline form, deactivate button, delete confirmation dialog.
+- **`openAdminList()` helper**: Must use button state detection (wait for "Hide Admin Users" button) rather than text locators — strict mode resolves both `.space-y-3` container and `:text("No admin users found")` inside it to multiple elements.
+- **Production config**: `admin-reservation-log` added to testIgnore alongside existing exclusions.
+- **Production E2E**: Still 242 passed / 0 failed — no regressions from our changes.
+- **Files changed**: `booking-modal.page.ts`, `booking-submission.spec.ts`, `playwright.production.config.ts`, `admin-reservation-log.spec.ts` (new), `super-admin-crud.spec.ts` (new)

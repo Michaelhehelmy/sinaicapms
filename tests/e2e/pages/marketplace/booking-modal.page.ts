@@ -36,9 +36,29 @@ export class BookingModalPage {
   }
 
   async openRoomBooking(roomIndex = 0) {
+    // CampBooking uses client:visible — the React island only hydrates after the
+    // rooms section scrolls into the viewport. Scroll first to trigger hydration.
+    const roomsSection = this.page.locator('#rooms, [data-testid="rooms-section"]');
+    await roomsSection.scrollIntoViewIfNeeded();
+
+    // Wait for the CampBooking island to hydrate. The Book button is SSR'd but
+    // its React onClick handler is dead until hydration completes. Detect
+    // hydration by checking for React's internal fiber property on the button.
+    await this.page.waitForFunction(
+      (idx) => {
+        const btns = document.querySelectorAll('[data-testid="rooms-section"] button');
+        const btn = btns[idx];
+        if (!btn) return false;
+        // After React hydration, DOM elements have a __reactFiber$ or __reactInternalInstance$ key
+        return Object.keys(btn).some(key => key.startsWith('__reactFiber$') || key.startsWith('__reactInternalInstance$'));
+      },
+      roomIndex,
+      { timeout: 15_000 },
+    );
+
     const bookBtn = this.page.locator('[data-testid="rooms-section"] button:has-text("Book")').nth(roomIndex);
     await bookBtn.click();
-    await this.modal.waitFor({ state: 'visible', timeout: 5_000 });
+    await this.modal.waitFor({ state: 'visible', timeout: 10_000 });
   }
 
   async setCheckin(date: string) {
