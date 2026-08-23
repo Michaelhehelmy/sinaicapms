@@ -3,7 +3,7 @@
 // client-side applyFilters pipeline. Shared by the marketplace home
 // (MarketplaceHome.astro) and the dedicated listing page (pages/camps.astro)
 // so the listing markup and behavior live in exactly one place.
-import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+import { escHtml, normalizeAssetUrl, getLocationDisplay } from '@/lib/utils';
 import SafeImage from '@/components/ui/SafeImage.astro';
 
 const TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'];
@@ -141,7 +141,7 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
                   <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
-                <span data-testid="camp-location">{escHtml((t.location as string) || 'Sinai, Egypt')}</span>
+                <span data-testid="camp-location">{escHtml(getLocationDisplay(t.location as string))}</span>
               </div>
               <div class="mb-4 flex flex-wrap items-center gap-1.5">
                 <span data-testid="camp-type-badge" class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">

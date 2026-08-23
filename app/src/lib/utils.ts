@@ -145,4 +145,64 @@ export function readableTextOn(hex: string): string {
   return luminance(hexToRgb(hex)) > READABLE_TEXT_THRESHOLD ? INK : '#ffffff';
 }
 
+/**
+ * Google Maps URL utilities for the location field.
+ * Supports:
+ * - https://www.google.com/maps?q=LAT,LNG
+ * - https://www.google.com/maps/place/...
+ * - https://maps.google.com/?q=LAT,LNG
+ * - https://goo.gl/maps/... (short links)
+ * - Plain addresses (returned as-is for display)
+ */
+
+/** Check if a string looks like a Google Maps URL */
+export function isGoogleMapsUrl(url: string): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return lower.includes('google.com/maps') || lower.includes('maps.google.') || lower.includes('goo.gl/maps');
+}
+
+/** Extract coordinates (lat,lng) from a Google Maps URL */
+export function extractMapCoords(url: string): { lat: string; lng: string } | null {
+  if (!url) return null;
+  // Pattern: ?q=LAT,LNG or ?ll=LAT,LNG or @LAT,LNG
+  const qMatch = url.match(/[?&](?:q|ll)=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+  if (qMatch) return { lat: qMatch[1], lng: qMatch[2] };
+  const atMatch = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+  if (atMatch) return { lat: atMatch[1], lng: atMatch[2] };
+  return null;
+}
+
+/** Convert a Google Maps URL to an embeddable iframe src */
+export function mapsUrlToIframe(url: string): string | null {
+  const coords = extractMapCoords(url);
+  if (coords) {
+    return `https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3000!2d${coords.lng}!3d${coords.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1`;
+  }
+  // For place URLs, use the search embed format
+  if (url.includes('/place/')) {
+    const placeMatch = url.match(/\/place\/([^/]+)/);
+    if (placeMatch) {
+      return `https://www.google.com/maps/embed/v1/place?key=&q=${encodeURIComponent(decodeURIComponent(placeMatch[1]))}`;
+    }
+  }
+  return null;
+}
+
+/** Get a display-friendly location text from a location value */
+export function getLocationDisplay(location: string | null | undefined): string {
+  if (!location) return 'Sinai, Egypt';
+  // If it's a Google Maps URL, try to extract a readable name
+  if (isGoogleMapsUrl(location)) {
+    const placeMatch = location.match(/\/place\/([^/]+)/);
+    if (placeMatch) {
+      return decodeURIComponent(placeMatch[1]).replace(/\+/, ' ');
+    }
+    // Fall back to coordinates
+    const coords = extractMapCoords(location);
+    if (coords) return `${coords.lat}, ${coords.lng}`;
+  }
+  return location;
+}
+
 

@@ -50,9 +50,9 @@ describe('CampsPanel (single-camp admin)', () => {
 
   it('renders with empty state and create action when no camp exists', () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
-    expect(screen.getByText('Camp')).toBeInTheDocument();
-    expect(screen.getByText('No camp yet')).toBeInTheDocument();
-    expect(screen.getByText('Create Camp')).toBeInTheDocument();
+    expect(screen.getByText('Projects')).toBeInTheDocument();
+    expect(screen.getByText('No projects yet')).toBeInTheDocument();
+    expect(screen.getByText('Create Project')).toBeInTheDocument();
   });
 
   it('does not render add-camp buttons (single camp only)', () => {
@@ -64,7 +64,7 @@ describe('CampsPanel (single-camp admin)', () => {
   it('opens the listing wizard from the empty state', async () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     expect(screen.queryByTestId('wizard-steps')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Create Camp'));
+    fireEvent.click(screen.getByText('Create Project'));
     await waitFor(() => {
       expect(screen.getByTestId('wizard-steps')).toBeInTheDocument();
     });
@@ -72,7 +72,7 @@ describe('CampsPanel (single-camp admin)', () => {
 
   it('closes the listing wizard via its Cancel button', async () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
-    fireEvent.click(screen.getByText('Create Camp'));
+    fireEvent.click(screen.getByText('Create Project'));
     await waitFor(() => {
       expect(screen.getByTestId('wizard-steps')).toBeInTheDocument();
     });
@@ -87,7 +87,7 @@ describe('CampsPanel (single-camp admin)', () => {
     mockProductMutateAsync.mockResolvedValue({ id: 'product-1', success: true });
     mockRatePlanMutateAsync.mockResolvedValue({ id: 'plan-1', success: true });
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
-    fireEvent.click(screen.getByText('Create Camp'));
+    fireEvent.click(screen.getByText('Create Project'));
     await waitFor(() => expect(screen.getByTestId('wizard-steps')).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText('Listing Name *'), { target: { value: 'Sunrise Beach Camp' } });
     fireEvent.change(screen.getByLabelText('Accommodation Type *'), { target: { value: 'cabin' } });
@@ -119,12 +119,12 @@ describe('CampsPanel (single-camp admin)', () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => {
-      expect(screen.getByText('Edit Camp')).toBeInTheDocument();
+      expect(screen.getByText('Edit Project')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByPlaceholderText('Camp name'), { target: { value: '' } });
-    fireEvent.click(screen.getByText('Update Camp'));
+    fireEvent.change(screen.getByPlaceholderText('Project name'), { target: { value: '' } });
+    fireEvent.click(screen.getByText('Update Project'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Camp name is required.', 'warning');
+      expect(mockShowToast).toHaveBeenCalledWith('Project name is required.', 'warning');
     });
   });
 
@@ -133,12 +133,13 @@ describe('CampsPanel (single-camp admin)', () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => {
-      expect(screen.getByText('Edit Camp')).toBeInTheDocument();
+      expect(screen.getByText('Edit Project')).toBeInTheDocument();
     });
-    fireEvent.change(screen.getByPlaceholderText('Camp location'), { target: { value: '' } });
-    fireEvent.click(screen.getByText('Update Camp'));
+    fireEvent.change(screen.getByPlaceholderText('Project name'), { target: { value: 'Valid Name' } });
+    fireEvent.change(screen.getByPlaceholderText('Paste Google Maps link or type address'), { target: { value: '' } });
+    fireEvent.click(screen.getByText('Update Project'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Camp location is required.', 'warning');
+      expect(mockShowToast).toHaveBeenCalledWith('Project location is required.', 'warning');
     });
   });
 
@@ -146,10 +147,10 @@ describe('CampsPanel (single-camp admin)', () => {
     mockCamps = [singleCamp];
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     fireEvent.click(screen.getAllByText('Edit')[0]);
-    await waitFor(() => { expect(screen.getByText('Edit Camp')).toBeInTheDocument(); });
+    await waitFor(() => { expect(screen.getByText('Edit Project')).toBeInTheDocument(); });
     fireEvent.change(screen.getByLabelText('Start Date'), { target: { value: '2025-12-31' } });
     fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2025-01-01' } });
-    fireEvent.click(screen.getByText('Update Camp'));
+    fireEvent.click(screen.getByText('Update Project'));
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('Start date must be before end date.', 'warning');
     });
@@ -163,10 +164,10 @@ describe('CampsPanel (single-camp admin)', () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => {
-      expect(screen.getByText('Edit Camp')).toBeInTheDocument();
+      expect(screen.getByText('Edit Project')).toBeInTheDocument();
     });
     fireEvent.change(screen.getByDisplayValue('Test Camp'), { target: { value: 'Renamed Camp' } });
-    fireEvent.click(screen.getByText('Update Camp'));
+    fireEvent.click(screen.getByText('Update Project'));
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'Renamed Camp' }),
@@ -183,15 +184,15 @@ describe('CampsPanel (single-camp admin)', () => {
     });
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     fireEvent.click(screen.getAllByText('Edit')[0]);
-    await waitFor(() => { expect(screen.getByText('Edit Camp')).toBeInTheDocument(); });
-    fireEvent.change(screen.getByPlaceholderText('Camp name'), { target: { value: 'Test Camp' } });
-    fireEvent.change(screen.getByPlaceholderText('Camp location'), { target: { value: 'Sinai' } });
+    await waitFor(() => { expect(screen.getByText('Edit Project')).toBeInTheDocument(); });
+    fireEvent.change(screen.getByPlaceholderText('Project name'), { target: { value: 'Test Camp' } });
+    fireEvent.change(screen.getByPlaceholderText('Paste Google Maps link or type address'), { target: { value: 'Sinai' } });
     fireEvent.change(screen.getByLabelText('Start Date'), { target: { value: '2025-01-01' } });
     fireEvent.change(screen.getByLabelText('End Date'), { target: { value: '2025-12-31' } });
     fireEvent.change(screen.getByLabelText('Capacity'), { target: { value: '60' } });
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'planning' } });
     fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Extra notes' } });
-    fireEvent.click(screen.getByText('Update Camp'));
+    fireEvent.click(screen.getByText('Update Project'));
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -216,12 +217,12 @@ describe('CampsPanel (single-camp admin)', () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
-      expect(screen.getByText('Delete Camp')).toBeInTheDocument();
+      expect(screen.getByText('Delete Project')).toBeInTheDocument();
     });
     fireEvent.click(screen.getAllByText('Delete')[1]);
     await waitFor(() => {
       expect(mockRefreshCamps).toHaveBeenCalled();
-      expect(screen.queryByText('Delete Camp')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete Project')).not.toBeInTheDocument();
     });
   });
 
@@ -230,11 +231,11 @@ describe('CampsPanel (single-camp admin)', () => {
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
-      expect(screen.getByText('Delete Camp')).toBeInTheDocument();
+      expect(screen.getByText('Delete Project')).toBeInTheDocument();
     });
     fireEvent.click(screen.getByText('Cancel'));
     await waitFor(() => {
-      expect(screen.queryByText('Delete Camp')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete Project')).not.toBeInTheDocument();
     });
   });
 });

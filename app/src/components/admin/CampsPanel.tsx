@@ -81,11 +81,11 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
 
   const handleSave = useCallback(() => {
     if (!form.name.trim()) {
-      showToast('Camp name is required.', 'warning');
+      showToast('Project name is required.', 'warning');
       return;
     }
     if (!form.location.trim()) {
-      showToast('Camp location is required.', 'warning');
+      showToast('Project location is required.', 'warning');
       return;
     }
     if (form.startDate && form.endDate) {
@@ -137,8 +137,8 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
     <Card padding="none" className="p-6" data-testid="camps-panel">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Camp</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Manage your camp's profile and listing details.</p>
+          <h2 className="text-xl font-bold text-gray-800">Projects</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Manage your projects — camps, supermarkets, and other business locations.</p>
         </div>
       </div>
 
@@ -146,9 +146,9 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
         <TableSkeleton rows={5} columns={5} />
       ) : campList.length === 0 ? (
         <EmptyState
-          title="No camp yet"
-          description="Create your camp to start managing rooms, rate plans, and reservations."
-          action={{ label: 'Create Camp', onClick: () => setShowWizard(true) }}
+          title="No projects yet"
+          description="Create your first project to start managing rooms, rate plans, and reservations."
+          action={{ label: 'Create Project', onClick: () => setShowWizard(true) }}
         />
       ) : (
         <DataTable<Camp & Record<string, unknown>>
@@ -199,10 +199,10 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
 
       <FormModal
         open={showForm}
-        title={editingId ? 'Edit Camp' : 'Create Camp'}
+        title={editingId ? 'Edit Project' : 'Create Project'}
         onClose={() => { setShowForm(false); setEditingId(null); }}
         onSubmit={handleSave}
-        submitLabel={saveMutation.isPending ? 'Saving...' : editingId ? 'Update Camp' : 'Save Camp'}
+        submitLabel={saveMutation.isPending ? 'Saving...' : editingId ? 'Update Project' : 'Save Project'}
         submitDisabled={saveMutation.isPending}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -211,15 +211,22 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
             type="text"
             value={form.name}
             onChange={(e) => updateField('name', e.target.value)}
-            placeholder="Camp name"
+            placeholder="Project name"
           />
-          <Input
-            label="Location *"
-            type="text"
-            value={form.location}
-            onChange={(e) => updateField('location', e.target.value)}
-            placeholder="Camp location"
-          />
+          <div className="md:col-span-2">
+            <label htmlFor="camp-location" className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+            <input
+              id="camp-location"
+              type="text"
+              value={form.location}
+              onChange={(e) => updateField('location', e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 transition-colors duration-200 focus:outline-none focus:ring-2 focus:border-brand-500 focus:ring-brand-500"
+              placeholder="Paste Google Maps link or type address"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Tip: Paste a Google Maps link (e.g., https://maps.google.com/?q=...) and it will auto-embed the map. Or type a simple address.
+            </p>
+          </div>
           <Input
             label="Start Date"
             type="date"
@@ -262,8 +269,8 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete Camp"
-        message="Delete this camp? This will also remove ALL associated rooms, reservations, staff, expenses, inventory, and plans!"
+        title="Delete Project"
+        message="Delete this project? This will also remove ALL associated rooms, reservations, staff, expenses, inventory, and plans!"
         confirmLabel={deleteMutation.isPending ? 'Deleting...' : 'Delete'}
         danger
         onConfirm={handleDelete}

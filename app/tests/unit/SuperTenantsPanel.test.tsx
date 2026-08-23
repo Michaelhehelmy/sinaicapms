@@ -216,7 +216,7 @@ describe('SuperTenantsPanel', () => {
     });
     fireEvent.change(screen.getByPlaceholderText('admin@camp.com'), { target: { value: 'new@test.com' } });
     fireEvent.change(screen.getByPlaceholderText('Leave blank to keep current'), { target: { value: 'secret123' } });
-    fireEvent.change(screen.getByPlaceholderText('Camp'), { target: { value: 'NewFirst' } });
+    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'NewFirst' } });
     fireEvent.change(screen.getByPlaceholderText('Admin'), { target: { value: 'NewLast' } });
     fireEvent.click(screen.getByText('Save Admin'));
     await waitFor(() => {

@@ -111,7 +111,12 @@ const campsRoutes = new Hono();
 
 campsRoutes.get('/', async (c) => {
   const env = c.env;
-  const tenantId = getScope(c).tenantId;
+  const scope = getScope(c);
+  // P0-1: If a user is authenticated, always use their tenant_id regardless
+  // of the scope hint. This prevents admins from seeing other tenants' camps
+  // when the public scope fails to resolve the tenant hint.
+  const user = c.get('user');
+  const tenantId = user?.tenantId || scope.tenantId;
   const marketplace = isMarketplaceTenant(tenantId);
   const limit = c.req.query('limit');
   const offset = c.req.query('offset');
@@ -134,7 +139,9 @@ campsRoutes.get('/', async (c) => {
 
 campsRoutes.get('/:id', async (c) => {
   const env = c.env;
-  const tenantId = getScope(c).tenantId;
+  const scope = getScope(c);
+  const user = c.get('user');
+  const tenantId = user?.tenantId || scope.tenantId;
   const campId = c.req.param('id');
   const marketplace = isMarketplaceTenant(tenantId);
   const query = marketplace

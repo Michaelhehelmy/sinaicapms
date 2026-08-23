@@ -134,7 +134,7 @@ describe('AdminApp', () => {
     render(<AdminApp />);
     expect(screen.getAllByText(/SinaiCamps/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Dashboard').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Camps').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Projects').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Rooms').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Settings').length).toBeGreaterThanOrEqual(1);
   });

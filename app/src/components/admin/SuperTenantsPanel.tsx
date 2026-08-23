@@ -3,7 +3,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/lib/auth';
-import { updateAdminTenant, getAdminTenants, getAdmins, updateAdminUser, createAdminUser, deleteAdminUser } from '@/lib/api';
+import { updateAdminTenant, getAdminTenants, getAdmins, updateAdminUser, createAdminUser, deleteAdminUser, createTenant } from '@/lib/api';
 import TenantDrilldown from './TenantDrilldown';
 
 interface TenantRecord {
@@ -60,6 +60,18 @@ export default function SuperTenantsPanel() {
   const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ firstName: '', lastName: '', role: 'admin' });
   const [deletingAdmin, setDeletingAdmin] = useState<{ id: string; name: string } | null>(null);
+  // Create tenant state
+  const [showCreateTenant, setShowCreateTenant] = useState(false);
+  const [createTenantForm, setCreateTenantForm] = useState({
+    name: '',
+    subdomain: '',
+    type: 'camp' as string,
+    adminEmail: '',
+    adminPassword: '',
+    adminFirstName: '',
+    adminLastName: '',
+    location: '',
+  });
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -151,6 +163,31 @@ export default function SuperTenantsPanel() {
     }
   };
 
+  const handleCreateTenant = async () => {
+    if (!createTenantForm.name.trim() || !createTenantForm.subdomain.trim() || !createTenantForm.adminPassword.trim()) {
+      showToast('Name, subdomain, and admin password are required', 'error');
+      return;
+    }
+    try {
+      await createTenant({
+        name: createTenantForm.name.trim(),
+        subdomain: createTenantForm.subdomain.trim().toLowerCase(),
+        type: createTenantForm.type,
+        adminEmail: createTenantForm.adminEmail.trim() || undefined,
+        adminPassword: createTenantForm.adminPassword,
+        adminFirstName: createTenantForm.adminFirstName.trim() || undefined,
+        adminLastName: createTenantForm.adminLastName.trim() || undefined,
+        location: createTenantForm.location.trim() || undefined,
+      });
+      showToast('Tenant created successfully', 'success');
+      setShowCreateTenant(false);
+      setCreateTenantForm({ name: '', subdomain: '', type: 'camp', adminEmail: '', adminPassword: '', adminFirstName: '', adminLastName: '', location: '' });
+      loadTenants();
+    } catch (err) {
+      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  };
+
   const typeLabel = (value?: string) => {
     const v = value || 'camp';
     return TENANT_TYPE_LABELS[v] ?? v;
@@ -229,8 +266,126 @@ export default function SuperTenantsPanel() {
       <>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-gray-800">Tenant Directory</h2>
-        <span className="text-sm text-gray-500">{tenants.length} tenant{tenants.length !== 1 ? 's' : ''}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">{tenants.length} tenant{tenants.length !== 1 ? 's' : ''}</span>
+          <button
+            onClick={() => setShowCreateTenant(!showCreateTenant)}
+            data-testid="create-tenant-btn"
+            className={`px-4 py-2 rounded-lg text-sm font-semibold border-none cursor-pointer ${
+              showCreateTenant
+                ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            {showCreateTenant ? 'Cancel' : '+ Create Tenant'}
+          </button>
+        </div>
       </div>
+
+      {showCreateTenant && (
+        <div data-testid="create-tenant-form" className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs mb-6">
+          <h4 className="text-sm font-bold text-gray-700 mb-3">New Tenant</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className={labelClass}>Tenant Name *</label>
+              <input
+                type="text"
+                value={createTenantForm.name}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, name: e.target.value })}
+                className={inputClass}
+                placeholder="e.g., Acacia Camp"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Subdomain *</label>
+              <input
+                type="text"
+                value={createTenantForm.subdomain}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                className={inputClass}
+                placeholder="e.g., acaciacamp"
+              />
+              <p className="text-xs text-gray-400 mt-1">Will be: {createTenantForm.subdomain || '...'}.sinaicamps.com</p>
+            </div>
+            <div>
+              <label className={labelClass}>Type</label>
+              <select
+                value={createTenantForm.type}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, type: e.target.value })}
+                className={inputClass}
+              >
+                {TENANT_TYPE_VALUES.map((value) => (
+                  <option key={value} value={value}>{TENANT_TYPE_LABELS[value]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Admin Email</label>
+              <input
+                type="email"
+                value={createTenantForm.adminEmail}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, adminEmail: e.target.value })}
+                className={inputClass}
+                placeholder="admin@example.com"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Admin Password *</label>
+              <input
+                type="password"
+                value={createTenantForm.adminPassword}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, adminPassword: e.target.value })}
+                className={inputClass}
+                placeholder="Min 8 characters"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Admin First Name</label>
+              <input
+                type="text"
+                value={createTenantForm.adminFirstName}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, adminFirstName: e.target.value })}
+                className={inputClass}
+                placeholder="First name"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Admin Last Name</label>
+              <input
+                type="text"
+                value={createTenantForm.adminLastName}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, adminLastName: e.target.value })}
+                className={inputClass}
+                placeholder="Last name"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className={labelClass}>Location</label>
+              <input
+                type="text"
+                value={createTenantForm.location}
+                onChange={(e) => setCreateTenantForm({ ...createTenantForm, location: e.target.value })}
+                className={inputClass}
+                placeholder="Google Maps link or address"
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={handleCreateTenant}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 border-none cursor-pointer"
+            >
+              Create Tenant
+            </button>
+            <button
+              onClick={() => setShowCreateTenant(false)}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border-none cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div data-testid="tenants-table" className="space-y-4">
         {tenants.map((tenant) => (
@@ -329,7 +484,7 @@ export default function SuperTenantsPanel() {
                       value={form.adminFirstName}
                       onChange={(e) => setForm({ ...form, adminFirstName: e.target.value })}
                       className={inputClass}
-                      placeholder="Camp"
+                      placeholder="First name"
                     />
                   </div>
                   <div>

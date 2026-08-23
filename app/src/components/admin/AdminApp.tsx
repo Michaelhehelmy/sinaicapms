@@ -76,7 +76,7 @@ interface NavItem {
 
 const TENANT_NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: IconDashboard },
-  { id: 'camps', label: 'Camps', icon: IconCamps },
+  { id: 'camps', label: 'Projects', icon: IconCamps },
   { id: 'rooms', label: 'Rooms', icon: IconRooms },
   { id: 'rateplans', label: 'Rate Plans', icon: IconRatePlans },
   { id: 'reservations', label: 'Orders', icon: IconOrders },

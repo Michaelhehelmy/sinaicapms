@@ -34,7 +34,7 @@ const VIEWS = ['camp', 'rooms', 'rateplans', 'orders', 'menu', 'staff'] as const
 type DrillView = (typeof VIEWS)[number];
 
 const VIEW_LABELS: Record<DrillView, string> = {
-  camp: 'Camp',
+  camp: 'Projects',
   rooms: 'Rooms',
   rateplans: 'Rate Plans',
   orders: 'Orders',
