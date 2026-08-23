@@ -95,16 +95,11 @@ jobs:
           if [ "${{ github.ref_name }}" = "staging" ]; then
             ENV_FLAG="--env staging"
           fi
-          # Strip [[routes]] sections from wrangler.toml to avoid zone-permission
-          # errors in CI. Routes are already registered in the Cloudflare dashboard.
+          # Strip top-level [[routes]] sections from wrangler.toml to avoid
+          # zone-permission errors in CI. Routes are already registered in the
+          # Cloudflare dashboard from previous deploys.
           cp wrangler.toml wrangler.toml.bak
-          python3 -c "
-          import re, sys
-          content = open('wrangler.toml').read()
-          # Remove top-level [[routes]] blocks (not env-scoped ones)
-          content = re.sub(r'(?m)^(\[\[routes\]\]\n.*?)(?=\n\[#|\n\[|\Z)', '', content)
-          open('wrangler.toml', 'w').write(content)
-          "
+          sed -i '/^\[\[routes\]\]$/,/^$/d' wrangler.toml
           npx wrangler deploy --minify $ENV_FLAG
           mv wrangler.toml.bak wrangler.toml
 
