@@ -52,7 +52,7 @@ const BOOKING_ARM = `
          o.order_state_id, o.reference,
          o.created_at
   FROM orders o
-  LEFT JOIN camps c ON c.id = o.camp_id
+  LEFT JOIN projects c ON c.id = o.camp_id
   LEFT JOIN rooms_new r ON r.id = o.room_id
   LEFT JOIN customers cust ON cust.id = o.customer_id
   LEFT JOIN inbox_reads ir

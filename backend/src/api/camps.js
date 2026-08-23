@@ -1,6 +1,8 @@
 import { jsonResponse, cachedJsonResponse, errorResponse, toSnake } from '../utils/response';
 import { validationError } from '../utils/errors';
 import { getScope } from '../middleware/resolveScope.js';
+import { slugify } from '../utils/slug';
+import { loadProjectMeta } from './meta';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
@@ -28,25 +30,49 @@ async function ensureProductInProductsTable(DB, tenantId, productId) {
 }
 
 // ─── Zod Schemas ───────────────────────────────────────────────
+// Unified-architecture fields (migrations 0060/0063): slug, project_type,
+// latitude/longitude, description, gallery_images. `notes` is still accepted
+// for backward compatibility but is persisted into project_meta (0062 moved
+// free-text custom fields out of the row).
+// Canonical project_type vocabulary — MUST stay aligned with the frontend
+// registry `app/src/lib/project-types/index.ts` (PROJECT_TYPES) and migration
+// 0059's tenants.business_type wording (camp/supermarket/transportation/…).
+// The earlier draft set ('store'/'route'/'event') was never persisted anywhere:
+// no row could carry those values before any writer existed, so renaming the
+// enum is data-safe.
+export const PROJECT_TYPES = ['camp', 'supermarket', 'transportation', 'restaurant', 'custom'];
+
 export const campPostSchema = z.object({
   id: z.string().optional(),
   name: z.string({ required_error: 'Name is required' }).min(1, 'Name is required'),
   location: z.string().optional(),
+  slug: z.string().optional(), // auto-derived from name when omitted
+  project_type: z.enum(PROJECT_TYPES).optional(),
+  latitude: z.number().min(-90, 'Latitude must be between -90 and 90').max(90, 'Latitude must be between -90 and 90').optional(),
+  longitude: z.number().min(-180, 'Longitude must be between -180 and 180').max(180, 'Longitude must be between -180 and 180').optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   capacity: z.number().min(0).optional(),
   status: z.enum(['active', 'inactive', 'completed']).optional(),
-  notes: z.string().optional(),
+  notes: z.string().optional(), // legacy field → stored as project_meta 'notes'
+  description: z.string().nullable().optional(),
+  gallery_images: z.union([z.array(z.string()), z.string()]).nullable().optional(),
 }).strip(); // S-M1 fix: strip unknown fields
 
 export const campPutSchema = z.object({
   name: z.string().min(1).optional(),
   location: z.string().optional(),
+  slug: z.string().optional(), // explicit-only: PUT never silently regenerates slugs
+  project_type: z.enum(PROJECT_TYPES).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   capacity: z.number().min(0).optional(),
   status: z.enum(['active', 'inactive', 'completed']).optional(),
   notes: z.string().optional(),
+  description: z.string().nullable().optional(),
+  gallery_images: z.union([z.array(z.string()), z.string()]).nullable().optional(),
 }).strip(); // S-M1 fix
 
 export const productPostSchema = z.object({
@@ -99,10 +125,52 @@ export const ratePlanPostSchema = z.object({
 // → cross-tenant queries with owning-tenant info instead of tenant-scoped ones.
 const isMarketplaceTenant = (tenantId) => !tenantId || tenantId === 'marketplace' || tenantId === '';
 
-// Camps table has a `status` TEXT column ('active' | 'inactive' | 'completed'),
-// NOT `is_active`/`active` — see migrations/0001_init.sql. Active filter = status = 'active'.
+// Projects table (0063 rename of `camps`) has a `status` TEXT column
+// ('active' | 'inactive' | 'completed'), NOT `is_active`/`active`.
+// Active filter = status = 'active'. Soft-deleted rows are excluded everywhere.
 const CROSS_TENANT_SELECT =
-  "SELECT c.*, t.name AS tenant_name, t.subdomain AS tenant_subdomain FROM camps c LEFT JOIN tenants t ON t.id = c.tenant_id";
+  "SELECT c.*, t.name AS tenant_name, t.subdomain AS tenant_subdomain FROM projects c LEFT JOIN tenants t ON t.id = c.tenant_id";
+
+/**
+ * gallery_images is stored as a JSON string (TEXT column) but exposed as an
+ * array. Write-side: normalize array|string → JSON string. Read-side
+ * (parseGalleryImages): JSON-string → array; rows without the field are
+ * returned untouched so list responses keep their exact shape.
+ */
+const galleryJson = (v) =>
+  v === undefined || v === null ? null : JSON.stringify(Array.isArray(v) ? v : [v]);
+
+function parseGalleryImages(row) {
+  if (!row || typeof row !== 'object' || typeof row.gallery_images !== 'string') return row;
+  try {
+    const arr = JSON.parse(row.gallery_images);
+    return { ...row, gallery_images: Array.isArray(arr) ? arr : [row.gallery_images] };
+  } catch {
+    // Not valid JSON — treat the raw text as a single entry.
+    return { ...row, gallery_images: [row.gallery_images] };
+  }
+}
+
+/**
+ * Legacy free-text notes live in project_meta since 0062 — upsert the
+ * 'notes' key so pre-rename clients keep working after create/update.
+ */
+async function upsertNotesMeta(DB, projectId, notes) {
+  if (notes === undefined || notes === null) return;
+  const value = String(notes);
+  const { results } = await DB.prepare(
+    "SELECT id FROM project_meta WHERE project_id = ? AND meta_key = 'notes'"
+  ).bind(projectId).all();
+  if (results.length > 0) {
+    await DB.prepare(
+      "UPDATE project_meta SET meta_value = ? WHERE project_id = ? AND meta_key = 'notes'"
+    ).bind(value, projectId).run();
+  } else {
+    await DB.prepare(
+      "INSERT INTO project_meta (project_id, meta_key, meta_value, sort_order) VALUES (?, 'notes', ?, 0)"
+    ).bind(projectId, value).run();
+  }
+}
 
 // ─── Camps sub-router (Phase 4 T1) ─────────────────────────────
 // Mixed visibility: GET public (marketplace host → cross-tenant active
@@ -122,19 +190,19 @@ campsRoutes.get('/', async (c) => {
   const offset = c.req.query('offset');
   if (limit) {
     const query = marketplace
-      ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' GROUP BY c.tenant_id LIMIT ? OFFSET ?`
-      : "SELECT * FROM camps WHERE tenant_id = ? LIMIT ? OFFSET ?";
+      ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' AND c.deleted_at IS NULL GROUP BY c.tenant_id LIMIT ? OFFSET ?`
+      : "SELECT * FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT ? OFFSET ?";
     const bindings = marketplace ? [] : [tenantId];
     const { results } = await env.DB.prepare(query)
       .bind(...bindings, parseInt(limit), parseInt(offset || '0')).all();
-    return cachedJsonResponse(results);
+    return cachedJsonResponse(results.map(parseGalleryImages));
   }
   const query = marketplace
-    ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' GROUP BY c.tenant_id`
-    : "SELECT * FROM camps WHERE tenant_id = ?";
+    ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' AND c.deleted_at IS NULL GROUP BY c.tenant_id`
+    : "SELECT * FROM projects WHERE tenant_id = ? AND deleted_at IS NULL";
   const bindings = marketplace ? [] : [tenantId];
   const { results } = await env.DB.prepare(query).bind(...bindings).all();
-  return cachedJsonResponse(results);
+  return cachedJsonResponse(results.map(parseGalleryImages));
 });
 
 campsRoutes.get('/:id', async (c) => {
@@ -145,12 +213,18 @@ campsRoutes.get('/:id', async (c) => {
   const campId = c.req.param('id');
   const marketplace = isMarketplaceTenant(tenantId);
   const query = marketplace
-    ? `${CROSS_TENANT_SELECT} WHERE c.id = ?`
-    : "SELECT * FROM camps WHERE tenant_id = ? AND id = ?";
+    ? `${CROSS_TENANT_SELECT} WHERE c.id = ? AND c.deleted_at IS NULL`
+    : "SELECT * FROM projects WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL";
   const bindings = marketplace ? [campId] : [tenantId, campId];
   const { results } = await env.DB.prepare(query).bind(...bindings).all();
   if (results.length === 0) return errorResponse('Camp not found', 404);
-  return cachedJsonResponse(results[0]);
+  // Unified architecture: custom fields ride along as a folded `meta` object
+  // (best-effort — a meta lookup failure must not fail the project fetch).
+  let meta = {};
+  try {
+    meta = await loadProjectMeta(env.DB, campId);
+  } catch (_) { /* meta stays {} */ }
+  return cachedJsonResponse({ ...parseGalleryImages(results[0]), meta });
 });
 
 campsRoutes.post('/', async (c) => {
@@ -160,24 +234,54 @@ campsRoutes.post('/', async (c) => {
     if (!parsed.success) {
       return validationError(parsed);
     }
-    const { id, name, location, start_date, end_date, capacity, status, notes } = parsed.data;
+    const { id, name, location, slug, project_type, latitude, longitude, start_date, end_date, capacity, status, notes, description, gallery_images } = parsed.data;
     // Do NOT escHtml() here — escape at render time, not storage time
     // Parameterized queries handle SQL injection; escHtml corrupts stored data
     if (start_date && end_date && new Date(start_date) >= new Date(end_date)) {
       return errorResponse('Start date must be before end date', 400);
     }
     // One-camp-per-tenant (migration 0053): a tenant may have at most one camp.
-    // Guard with a clean 409 before the unique index on camps.tenant_id throws.
-    const { results: existingCamps } = await c.env.DB.prepare(
-      "SELECT id FROM camps WHERE tenant_id = ?"
+    // Guard with a clean 409 before the unique index on projects.tenant_id throws.
+    // Kept FIRST in the flow — tests depend on this ordering.
+    const { results: existingProjects } = await c.env.DB.prepare(
+      "SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL"
     ).bind(tenantId).all();
-    if (existingCamps.length > 0) {
+    if (existingProjects.length > 0) {
       return errorResponse('Tenant already has a camp', 409);
     }
-    const cid = id || 'camp_' + crypto.randomUUID().slice(0, 12); // L1 fix
+    // Slug: explicit override wins, otherwise derived from the name.
+    const finalSlug = slugify(slug || name);
+    if (!finalSlug) {
+      return errorResponse('Name must contain alphanumeric characters', 400);
+    }
+    // UNIQUE(tenant_id, slug) precheck → clean 409 instead of a constraint error.
+    const { results: slugClash } = await c.env.DB.prepare(
+      "SELECT id FROM projects WHERE tenant_id = ? AND slug = ?"
+    ).bind(tenantId, finalSlug).all();
+    if (slugClash.length > 0) {
+      return errorResponse('Slug already exists', 409);
+    }
+    const cid = id || 'camp_' + crypto.randomUUID().slice(0, 12); // L1 fix ('camp_' prefix kept for URL/back-compat)
     await c.env.DB.prepare(
-      "INSERT INTO camps (id, tenant_id, name, location, start_date, end_date, capacity, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    ).bind(cid, tenantId, name, location || null, start_date || null, end_date || null, capacity ?? 0, status || 'active', notes || null).run();
+      `INSERT INTO projects (id, tenant_id, name, slug, project_type, location, latitude, longitude, start_date, end_date, capacity, status, description, gallery_images, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    ).bind(
+      cid, tenantId, name, finalSlug,
+      project_type || 'camp',
+      location || null,
+      latitude !== undefined && latitude !== null ? latitude : null,
+      longitude !== undefined && longitude !== null ? longitude : null,
+      start_date || null, end_date || null,
+      capacity ?? 0, status || 'active',
+      description || null,
+      galleryJson(gallery_images)
+    ).run();
+    // 0062: legacy free-text notes are stored as project_meta 'notes'.
+    if (notes !== undefined && notes !== null && notes !== '') {
+      try {
+        await upsertNotesMeta(c.env.DB, cid, notes);
+      } catch (_) { /* notes are best-effort */ }
+    }
     return jsonResponse({ id: cid, success: true });
   } catch (e) {
     return errorResponse('Failed to create camp');
@@ -192,30 +296,61 @@ campsRoutes.put('/:id', async (c) => {
     if (!parsed.success) {
       return validationError(parsed);
     }
-    const { name, location, start_date, end_date, capacity, status, notes } = parsed.data;
+    const { name, location, slug, project_type, latitude, longitude, start_date, end_date, capacity, status, notes, description, gallery_images } = parsed.data;
     if (start_date && end_date && new Date(start_date) >= new Date(end_date)) {
       return errorResponse('Start date must be before end date', 400);
     }
+    // Slug changes are explicit-only; validate + uniqueness-check excluding self.
+    let finalSlug = null;
+    if (slug !== undefined) {
+      finalSlug = slugify(slug || name || '');
+      if (!finalSlug) {
+        return errorResponse('Slug must contain alphanumeric characters', 400);
+      }
+      const { results: slugClash } = await c.env.DB.prepare(
+        "SELECT id FROM projects WHERE tenant_id = ? AND slug = ? AND id != ?"
+      ).bind(tenantId, finalSlug, campId).all();
+      if (slugClash.length > 0) {
+        return errorResponse('Slug already exists', 409);
+      }
+    }
     await c.env.DB.prepare(
-      `UPDATE camps SET
+      `UPDATE projects SET
         name = COALESCE(?, name),
+        slug = COALESCE(?, slug),
+        project_type = COALESCE(?, project_type),
         location = COALESCE(?, location),
+        latitude = COALESCE(?, latitude),
+        longitude = COALESCE(?, longitude),
         start_date = COALESCE(?, start_date),
         end_date = COALESCE(?, end_date),
         capacity = COALESCE(?, capacity),
         status = COALESCE(?, status),
-        notes = COALESCE(?, notes)
-      WHERE tenant_id = ? AND id = ?`
+        description = COALESCE(?, description),
+        gallery_images = COALESCE(?, gallery_images),
+        updated_at = datetime('now')
+      WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL`
     ).bind(
       name !== undefined ? name : null,
+      finalSlug,
+      project_type !== undefined ? project_type : null,
       location !== undefined ? location : null,
+      latitude !== undefined ? latitude : null,
+      longitude !== undefined ? longitude : null,
       start_date !== undefined ? start_date : null,
       end_date !== undefined ? end_date : null,
       capacity !== undefined ? capacity : null,
       status !== undefined ? status : null,
-      notes !== undefined ? notes : null,
+      description !== undefined ? description : null,
+      gallery_images !== undefined ? galleryJson(gallery_images) : null,
       tenantId, campId
     ).run();
+    // 0062: keep legacy notes in sync via project_meta.
+    if (notes !== undefined) {
+      try {
+        await upsertNotesMeta(c.env.DB, campId, notes);
+      } catch (_) { /* notes are best-effort */ }
+    }
     return jsonResponse({ success: true });
   } catch (e) {
     return errorResponse('Failed to update camp');
@@ -226,24 +361,17 @@ campsRoutes.delete('/:id', async (c) => {
   try {
     const tenantId = getScope(c).tenantId;
     const campId = c.req.param('id');
-    // Verify ownership
-    const { results: check } = await c.env.DB.prepare("SELECT id FROM camps WHERE tenant_id = ? AND id = ?").bind(tenantId, campId).all();
+    // Soft delete (unified architecture): tombstone the row instead of cascading
+    // hard deletes. The ownership pre-check stays the single source of the 404.
+    const { results: check } = await c.env.DB.prepare(
+      "SELECT id FROM projects WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
+    ).bind(tenantId, campId).all();
     if (check.length === 0) return errorResponse('Camp not found', 404);
 
-    // Cascade: delete orders linked to rooms in this camp
+    // trg_camps_updated_at died with the 0063 rename — stamp updated_at here.
     await c.env.DB.prepare(
-      "DELETE FROM orders WHERE tenant_id = ? AND room_id IN (SELECT id FROM rooms_new WHERE camp_id = ?)"
+      "UPDATE projects SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
     ).bind(tenantId, campId).run();
-    // Cascade: delete rate plans linked to products in this camp
-    await c.env.DB.prepare(
-      "DELETE FROM rate_plans_new WHERE tenant_id = ? AND product_id IN (SELECT product_id FROM rooms_new WHERE camp_id = ?)"
-    ).bind(tenantId, campId).run();
-    // Cascade: delete rooms
-    await c.env.DB.prepare("DELETE FROM rooms_new WHERE camp_id = ?").bind(campId).run();
-    // Cascade: delete product_camps associations
-    await c.env.DB.prepare("DELETE FROM product_camps WHERE camp_id = ?").bind(campId).run();
-    // Finally: delete the camp
-    await c.env.DB.prepare("DELETE FROM camps WHERE tenant_id = ? AND id = ?").bind(tenantId, campId).run();
     return jsonResponse({ success: true });
   } catch (e) {
     return errorResponse('Failed to delete camp');
@@ -323,17 +451,17 @@ productsRoutes.post('/', async (c) => {
     let productCampId = null;
     if (camp_id) {
       const { results: campCheck } = await c.env.DB.prepare(
-        "SELECT id FROM camps WHERE tenant_id = ? AND id = ?"
+        "SELECT id FROM projects WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
       ).bind(tenantId, camp_id).all();
       if (campCheck.length === 0) {
         return errorResponse('Camp not found', 404);
       }
       productCampId = camp_id;
     } else {
-      const { results: tenantCamps } = await c.env.DB.prepare(
-        "SELECT id FROM camps WHERE tenant_id = ? LIMIT 1"
+      const { results: tenantProjects } = await c.env.DB.prepare(
+        "SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 1"
       ).bind(tenantId).all();
-      productCampId = tenantCamps.length > 0 ? tenantCamps[0].id : null;
+      productCampId = tenantProjects.length > 0 ? tenantProjects[0].id : null;
     }
 
     // The product must belong to the tenant's POS organization so it shows
@@ -389,7 +517,7 @@ productsRoutes.put('/:id', async (c) => {
     let productCampId = null;
     if (camp_id) {
       const { results: campCheck } = await c.env.DB.prepare(
-        "SELECT id FROM camps WHERE tenant_id = ? AND id = ?"
+        "SELECT id FROM projects WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL"
       ).bind(tenantId, camp_id).all();
       if (campCheck.length === 0) {
         return errorResponse('Camp not found', 404);
@@ -446,7 +574,7 @@ productsRoutes.delete('/:id', async (c) => {
     const pid = c.req.param('id');
 
     const { results: usedRooms } = await c.env.DB.prepare(
-      "SELECT r.id FROM rooms_new r JOIN camps c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND r.product_id = ?"
+      "SELECT r.id FROM rooms_new r JOIN projects p2 ON r.camp_id = p2.id WHERE p2.tenant_id = ? AND p2.deleted_at IS NULL AND r.product_id = ?"
     ).bind(tenantId, pid).all();
     const { results: usedRates } = await c.env.DB.prepare(
       "SELECT id FROM rate_plans_new WHERE tenant_id = ? AND product_id = ?"
@@ -477,7 +605,7 @@ roomsRoutes.get('/', async (c) => {
   const floor = c.req.query('floor');
   const campId = c.req.query('campId');
 
-  let query = "SELECT r.* FROM rooms_new r JOIN camps c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ?";
+  let query = "SELECT r.* FROM rooms_new r JOIN projects c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND c2.deleted_at IS NULL";
   let bindings = [tenantId];
 
   if (campId) {
@@ -509,7 +637,7 @@ roomsRoutes.post('/', async (c) => {
     }
 
     const { results: duplicate } = await c.env.DB.prepare(
-      "SELECT r.id FROM rooms_new r JOIN camps c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND r.camp_id = ? AND LOWER(r.name) = LOWER(?)"
+      "SELECT r.id FROM rooms_new r JOIN projects c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND c2.deleted_at IS NULL AND r.camp_id = ? AND LOWER(r.name) = LOWER(?)"
     ).bind(tenantId, camp_id, name).all();
     if (duplicate.length > 0) {
       return errorResponse(`A room with name "${name}" already exists in this camp`, 400);
@@ -523,8 +651,8 @@ roomsRoutes.post('/', async (c) => {
     const insertResult = await c.env.DB.prepare(
       `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, created_at, updated_at)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
-       FROM camps c3
-       WHERE c3.id = ? AND c3.tenant_id = ?
+       FROM projects c3
+       WHERE c3.id = ? AND c3.tenant_id = ? AND c3.deleted_at IS NULL
          AND EXISTS (SELECT 1 FROM pos_products p WHERE p.id = ? AND p.tenant_id = c3.tenant_id)`
     ).bind(rid, camp_id, product_id, name, status || 'available', bed_type || null, finalMaxGuests, base_price !== undefined ? base_price : null, floor || null, notes || null, is_active !== undefined ? is_active : 1, camp_id, tenantId, product_id).run();
     if (insertResult?.meta?.changes === 0) {
@@ -547,7 +675,7 @@ roomsRoutes.put('/:id', async (c) => {
     const { camp_id, product_id, name, floor, status, bed_type, max_guests, base_price, notes, is_active } = parsed.data;
 
     const { results: roomCheck } = await c.env.DB.prepare(
-      "SELECT r.id FROM rooms_new r JOIN camps c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND r.id = ?"
+      "SELECT r.id FROM rooms_new r JOIN projects c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND r.id = ?"
     ).bind(tenantId, roomId).all();
     if (roomCheck.length === 0) {
       return errorResponse('Room not found', 404);
@@ -555,7 +683,7 @@ roomsRoutes.put('/:id', async (c) => {
 
     if (name && camp_id) {
       const { results: duplicate } = await c.env.DB.prepare(
-        "SELECT r.id FROM rooms_new r JOIN camps c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND r.camp_id = ? AND LOWER(r.name) = LOWER(?) AND r.id != ?"
+        "SELECT r.id FROM rooms_new r JOIN projects c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND c2.deleted_at IS NULL AND r.camp_id = ? AND LOWER(r.name) = LOWER(?) AND r.id != ?"
       ).bind(tenantId, camp_id, name, roomId).all();
       if (duplicate.length > 0) {
         return errorResponse('A room with this name already exists in this camp', 400);
@@ -564,7 +692,7 @@ roomsRoutes.put('/:id', async (c) => {
 
     await c.env.DB.prepare(
       `UPDATE rooms_new SET
-        camp_id = COALESCE((SELECT id FROM camps WHERE id = ? AND tenant_id = ?), camp_id),
+        camp_id = COALESCE((SELECT id FROM projects WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL), camp_id),
         product_id = COALESCE((SELECT id FROM pos_products WHERE id = ? AND tenant_id = ?), product_id),
         name = COALESCE(?, name),
         floor = COALESCE(?, floor),
@@ -575,7 +703,7 @@ roomsRoutes.put('/:id', async (c) => {
         notes = COALESCE(?, notes),
         is_active = COALESCE(?, is_active),
         updated_at = datetime('now')
-      WHERE id = ? AND camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)`
+      WHERE id = ? AND camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)`
     ).bind(
       camp_id || null, tenantId, product_id || null, tenantId,
       name || null,
@@ -595,7 +723,7 @@ roomsRoutes.delete('/:id', async (c) => {
     const tenantId = getScope(c).tenantId;
     const roomId = c.req.param('id');
     const { results: roomCheck } = await c.env.DB.prepare(
-      "SELECT r.id FROM rooms_new r JOIN camps c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND r.id = ?"
+      "SELECT r.id FROM rooms_new r JOIN projects c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND r.id = ?"
     ).bind(tenantId, roomId).all();
     if (roomCheck.length === 0) {
       return errorResponse('Room not found', 404);
@@ -606,7 +734,7 @@ roomsRoutes.delete('/:id', async (c) => {
       return errorResponse('Cannot delete room with existing orders', 400);
     }
     await c.env.DB.prepare(
-      "DELETE FROM rooms_new WHERE id = ? AND camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)"
+      "DELETE FROM rooms_new WHERE id = ? AND camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)"
     ).bind(roomId, tenantId).run();
     return jsonResponse({ success: true });
   } catch (e) {

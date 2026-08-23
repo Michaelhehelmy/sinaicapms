@@ -188,7 +188,7 @@ async function validateOrder(env, tenantId, editId, data) {
 
   // S-H3 fix: Add tenant scoping to room capacity check
   const { results: roomInfo } = await env.DB.prepare(
-    "SELECT r.max_guests, p.selling_price AS base_price FROM rooms_new r JOIN pos_products p ON r.product_id = p.id JOIN camps c ON r.camp_id = c.id WHERE r.id = ? AND c.tenant_id = ?"
+    "SELECT r.max_guests, p.selling_price AS base_price FROM rooms_new r JOIN pos_products p ON r.product_id = p.id JOIN projects c ON r.camp_id = c.id WHERE r.id = ? AND c.tenant_id = ?"
   ).bind(room_id, tenantId).all();
   if (roomInfo.length > 0) {
     const maxCapacity = roomInfo[0].max_guests;
@@ -216,7 +216,7 @@ async function validateOrder(env, tenantId, editId, data) {
 async function calculatePriceOnServer(env, tenantId, roomId, checkInDate, checkOutDate) {
   // S-H1 fix: Add tenant_id scoping to room and product lookups
   const { results: roomResult } = await env.DB.prepare(
-    "SELECT r.product_id FROM rooms_new r JOIN camps c ON r.camp_id = c.id WHERE r.id = ? AND c.tenant_id = ?"
+    "SELECT r.product_id FROM rooms_new r JOIN projects c ON r.camp_id = c.id WHERE r.id = ? AND c.tenant_id = ?"
   ).bind(roomId, tenantId).all();
   if (roomResult.length === 0) return 0;
   const productId = roomResult[0].product_id;
@@ -618,7 +618,7 @@ availabilityRoutes.get('/', async (c) => {
     let query = `
       SELECT rn.id, rn.name AS room_name, rn.product_id
       FROM rooms_new rn
-      WHERE rn.camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)
+      WHERE rn.camp_id IN (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL)
       AND NOT EXISTS (
         SELECT 1 FROM orders o
         WHERE o.room_id = rn.id

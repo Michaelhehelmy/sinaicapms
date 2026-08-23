@@ -31,14 +31,14 @@ reportsRoutes.get('/occupancy', async (c) => {
   const tenantId = getScope(c).tenantId;
   try {
     const { results: totalRes } = await env.DB.prepare(
-      "SELECT COUNT(*) as count FROM rooms_new WHERE camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)"
+      "SELECT COUNT(*) as count FROM rooms_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL)"
     ).bind(tenantId).all();
 
     const { results: occupiedRes } = await env.DB.prepare(
       `SELECT COUNT(DISTINCT o.room_id) as count
        FROM orders o
        JOIN rooms_new r ON r.id = o.room_id
-       WHERE r.camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)
+       WHERE r.camp_id IN (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL)
        AND o.order_state_id IN ('checked_in', 'confirmed')
        AND o.check_in_date <= date('now')
        AND o.check_out_date > date('now')`
@@ -131,7 +131,7 @@ reportsRoutes.get('/bookings', async (c) => {
     const { results: byCamp } = await env.DB.prepare(
       `SELECT c.name as camp_name, COUNT(*) as count, SUM(o.total_amount) as revenue
        FROM orders o
-       JOIN camps c ON c.id = o.camp_id
+       JOIN projects c ON c.id = o.camp_id
        WHERE o.tenant_id = ? AND o.created_at >= ? AND date(o.created_at) <= ?
        GROUP BY c.id`
     ).bind(tenantId, cutoffStr, endDate).all();

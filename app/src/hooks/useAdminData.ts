@@ -11,6 +11,8 @@ export interface Camp {
   capacity: number;
   status: string;
   notes: string;
+  /** Unified-architecture discriminator (projects.project_type, wire camelCase). */
+  projectType?: string;
 }
 
 export interface Product {

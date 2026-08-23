@@ -77,7 +77,7 @@ export async function handleAdminRoute(request, env) {
         const { results } = await env.DB.prepare(`
           SELECT
             (SELECT COUNT(*) FROM tenants) as total_tenants,
-            (SELECT COUNT(*) FROM camps) as total_camps,
+            (SELECT COUNT(*) FROM projects WHERE deleted_at IS NULL) as total_camps,
             (SELECT COUNT(*) FROM rooms_new) as total_rooms,
             (SELECT COUNT(*) FROM orders) as total_orders,
             (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE order_state_id != 'cancelled') as total_revenue,
@@ -136,13 +136,13 @@ export async function handleAdminRoute(request, env) {
             for (const tid of ids) {
               await env.DB.prepare("DELETE FROM orders WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)").bind(tid).run();
+              await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tid).run();
               await env.DB.prepare("DELETE FROM price_overrides WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid).run();
               await env.DB.prepare("DELETE FROM product_camps WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid).run();
               await env.DB.prepare("DELETE FROM pos_products WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM rate_plans_new WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM plans_new WHERE camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)").bind(tid).run();
-              await env.DB.prepare("DELETE FROM camps WHERE tenant_id = ?").bind(tid).run();
+              await env.DB.prepare("DELETE FROM plans_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tid).run();
+              await env.DB.prepare("DELETE FROM projects WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tid).run();
@@ -233,13 +233,13 @@ export async function handleAdminRoute(request, env) {
         // Cascade delete: orders → rooms → products → camps → admins → tenant
         await env.DB.prepare("DELETE FROM orders WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)").bind(tenantId).run();
+        await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM price_overrides WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM product_camps WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM pos_products WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM rate_plans_new WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM plans_new WHERE camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM camps WHERE tenant_id = ?").bind(tenantId).run();
+        await env.DB.prepare("DELETE FROM plans_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tenantId).run();
+        await env.DB.prepare("DELETE FROM projects WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tenantId).run();

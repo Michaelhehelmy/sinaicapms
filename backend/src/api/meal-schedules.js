@@ -26,7 +26,7 @@ export async function handleMealSchedulesRoute(request, env, tenantId) {
              ms.date, ms.meal_id, ml.name AS meal_name,
              ms.package_type, ms.max_servings, ms.created_at
       FROM meal_schedules ms
-      LEFT JOIN camps c ON c.id = ms.camp_id
+      LEFT JOIN projects c ON c.id = ms.camp_id
       LEFT JOIN meals m ON m.id = ms.meal_id
       LEFT JOIN meal_lang ml ON ml.meal_id = m.id AND ml.lang = 'en'
       WHERE ms.tenant_id = ?
@@ -70,7 +70,7 @@ export async function handleMealSchedulesRoute(request, env, tenantId) {
 
       // Verify camp belongs to this tenant
       const camp = await env.DB.prepare(
-        'SELECT id FROM camps WHERE id = ? AND tenant_id = ?'
+        'SELECT id FROM projects WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL'
       ).bind(camp_id, tenantId).first();
       if (!camp) return errorResponse('Camp not found', 404);
 

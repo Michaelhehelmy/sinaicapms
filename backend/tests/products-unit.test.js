@@ -253,7 +253,7 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     const sqls = db.prepare.mock.calls.map(c => c[0]);
     // Call 0 = resolve the tenant's single camp; call 1 = tenant_org_mapping lookup;
     // call 2 = pos_products INSERT (writes camp_id); call 3 = product_camps junction.
-    expect(sqls[0]).toContain('FROM camps WHERE tenant_id = ? LIMIT 1');
+    expect(sqls[0]).toContain('FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 1');
     expect(sqls[1]).toContain('tenant_org_mapping');
     expect(sqls[2]).toContain('INTO pos_products');
     expect(sqls[2]).toContain('name');
@@ -280,7 +280,7 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
 
     const sqls = db.prepare.mock.calls.map(c => c[0]);
     expect(sqls).toHaveLength(3);
-    expect(sqls[0]).toContain('FROM camps WHERE tenant_id = ? LIMIT 1');
+    expect(sqls[0]).toContain('FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 1');
     expect(sqls[1]).toContain('tenant_org_mapping');
     expect(sqls[2]).toContain('INTO pos_products');
     expect(sqls[2]).not.toMatch(/\bINTO\s+products\b/);

@@ -205,13 +205,17 @@ describe('handleCampsRoute', () => {
   });
 
   describe('DELETE /camps/:id', () => {
-    it('deletes camp with cascade', async () => {
+    it('soft-deletes camp (tombstones the row, no hard cascade)', async () => {
       const { db, chain } = makeDbMock();
       chain.all.mockResolvedValue({ results: [{ id: 'c1' }] });
       const req = makeRequest('DELETE', 'https://x.com/api/camps/c1');
       const res = await handleCampsRoute(req, { DB: db }, T);
       const body = await res.json();
       expect(body.success).toBe(true);
+      // Soft delete contract: an UPDATE stamps deleted_at; no DELETE FROM projects.
+      const sqls = db.prepare.mock.calls.map(c => c[0]);
+      expect(sqls.some(s => s.includes("SET deleted_at = datetime('now')"))).toBe(true);
+      expect(sqls.some(s => s.includes('DELETE FROM projects'))).toBe(false);
     });
 
     it('returns 404 when camp not found', async () => {
@@ -473,7 +477,7 @@ describe('handleProductsRoute', () => {
       const insertSql = db.prepare.mock.calls.find(c => c[0].includes('INTO pos_products'))[0];
       expect(insertSql).toContain('camp_id');
       // The ownership check is tenant-scoped.
-      expect(db.prepare.mock.calls[0][0]).toContain('FROM camps WHERE tenant_id = ? AND id = ?');
+      expect(db.prepare.mock.calls[0][0]).toContain('FROM projects WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL');
     });
 
     it('resolves the tenant single camp when camp_id omitted on create', async () => {
@@ -503,7 +507,7 @@ describe('handleProductsRoute', () => {
       const insertSql = db.prepare.mock.calls.find(c => c[0].includes('INTO pos_products'))[0];
       expect(insertSql).toContain('camp_id');
       const campResolve = db.prepare.mock.calls[0][0];
-      expect(campResolve).toContain('FROM camps WHERE tenant_id = ? LIMIT 1');
+      expect(campResolve).toContain('FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 1');
     });
 
     it('returns 404 when camp_id does not belong to the tenant', async () => {

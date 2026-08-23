@@ -25,6 +25,9 @@ import mealsRoutes from './api/meals';
 import { resolveScope } from './middleware/resolveScope.js';
 import leadsRoutes, { createLead } from './api/leads';
 import inboxRoutes from './api/inbox';
+import { tenantMetaRoutes, projectMetaRoutes } from './api/meta';
+import tagsRoutes, { projectTagsRoutes } from './api/tags';
+import auditRoutes from './api/audit';
 import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
 import { withSunset } from './utils/deprecation.js';
@@ -119,6 +122,23 @@ app.post('/api/auth/pos-login', (c) => handlePosLoginRequest(c.req.raw, c.env));
 app.all('/api/auth/*', async (c) => {
   return handleAuthRoute(c.req.raw, c.env);
 });
+
+// ── Tenant meta (unified architecture) ────────────────────
+// MUST stay registered BEFORE app.get('/api/tenants/*', handleTenantsRoute)
+// below: Hono runs matching handlers in registration order, so the tenant
+// wildcard would otherwise swallow every /api/tenants/:tenantId/meta request
+// before the sub-router is reached. GET is public-read; mutations are
+// admin-scoped (meta.js self-enforces per-key visibility via getScope(c)).
+// A single '/meta/*' use-line covers both the exact path and subpaths
+// (/reorder, /:id, /:key) with exactly one middleware run — registering a
+// second bare '/meta' use-line would double-run resolveScope on exact-path
+// requests (verified against hono routing on this version).
+const metaPublicScope = resolveScope({ public: true });
+const metaAdminScope = resolveScope();
+const metaScope = async (c, next) =>
+  c.req.method === 'GET' ? metaPublicScope(c, next) : metaAdminScope(c, next);
+app.use('/api/tenants/:tenantId/meta/*', metaScope);
+app.route('/api/tenants/:tenantId/meta', tenantMetaRoutes);
 
 // ── Tenant routes (S-C1 fix: only explicit GET + POST, no app.all shadow) ──
 const handleTenantsRoute = async (c) => handleTenants(c.req.raw, c.env);
@@ -430,6 +450,30 @@ const mediaPublicScope = resolveScope({ public: true });
 app.use('/api/media', mediaPublicScope);
 app.use('/api/media/*', mediaPublicScope);
 app.route('/api/media', mediaRoutes);
+
+// ── Project meta, tags, audit log (unified architecture) ──
+// Project meta reuses metaScope: GET public-read, mutations admin-scoped,
+// per-key visibility self-enforced in api/meta.js. Project tag links ride
+// the catalog visibility model (public read, admin attach/detach); global
+// /api/tags is the same model for the tenant-wide tag dictionary. Audit log
+// has no public surface — super_admin/admin listing only. Single star
+// use-lines throughout (one middleware run; see note at the meta mount).
+app.use('/api/projects/:projectId/meta/*', metaScope);
+app.route('/api/projects/:projectId/meta', projectMetaRoutes);
+
+const tagsPublicScope = resolveScope({ public: true });
+const tagsAdminScope = resolveScope();
+const tagsScope = async (c, next) =>
+  c.req.method === 'GET' ? tagsPublicScope(c, next) : tagsAdminScope(c, next);
+app.use('/api/tags/*', tagsScope);
+app.route('/api/tags', tagsRoutes);
+
+app.use('/api/projects/:projectId/tags/*', catalogScope);
+app.route('/api/projects/:projectId/tags', projectTagsRoutes);
+
+const auditAdminScope = resolveScope();
+app.use('/api/audit/*', auditAdminScope);
+app.route('/api/audit', auditRoutes);
 
 // ── API terminal fallback ─────────────────────────────────
 // Phase 4 complete: every Paradigm-B dispatcher module above this line has

@@ -838,3 +838,111 @@ export function upload(file: File) {
     return (await response.json()) as Schemas['UploadResponse'];
   });
 }
+
+// ─── Project Meta (EAV custom fields) ────────────────────────────────
+// Backed by /api/projects/:projectId/meta (backend/src/api/meta.js).
+// Rows are { id, projectId, metaKey, metaValue, sortOrder } on the camelCase
+// wire; writes are normalized server-side so camelCase bodies are accepted.
+
+/** List all meta rows for a project, ordered by sortOrder then id. */
+export async function getProjectMeta(projectId: string): Promise<any[]> {
+  const data = await apiFetch<unknown[]>(`/projects/${encodeURIComponent(projectId)}/meta`);
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Create one meta row for a project. Returns `{ success: true, id }` where
+ * `id` is the new project_meta row id.
+ */
+export async function setProjectMeta(projectId: string, key: string, value: string): Promise<any> {
+  return apiFetch(`/projects/${encodeURIComponent(projectId)}/meta`, {
+    method: 'POST',
+    body: JSON.stringify({ metaKey: key, metaValue: value }),
+  });
+}
+
+/** Update one meta row's value in place (keeps its row id and sort_order). */
+export async function updateProjectMeta(projectId: string, metaId: number, value: string): Promise<any> {
+  return apiFetch(`/projects/${encodeURIComponent(projectId)}/meta/${metaId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ metaValue: value }),
+  });
+}
+
+/** Delete one meta row by its integer row id. */
+export async function deleteProjectMeta(projectId: string, metaId: number): Promise<void> {
+  await apiFetch(`/projects/${encodeURIComponent(projectId)}/meta/${metaId}`, {
+    method: 'DELETE',
+  });
+}
+
+/** Bulk-update sort_order for a set of meta rows (one implicit transaction). */
+export async function reorderProjectMeta(
+  projectId: string,
+  items: { id: number; sort_order: number }[],
+): Promise<void> {
+  await apiFetch(`/projects/${encodeURIComponent(projectId)}/meta/reorder`, {
+    method: 'PATCH',
+    body: JSON.stringify({ items }),
+  });
+}
+
+// ─── Tags (taxonomy) ──────────────────────────────────────────────────
+// Backed by /api/tags + /api/projects/:projectId/tags (backend/src/api/tags.js).
+
+/**
+ * List all tags for a tenant. Tenant scoping normally comes from the
+ * x-tenant-id header apiFetch already sends; an explicit tenantId is passed
+ * through as a query param for forward-compat with scoped listing.
+ */
+export async function getTags(tenantId?: string): Promise<any[]> {
+  const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+  const data = await apiFetch<unknown[]>(`/tags${qs}`);
+  return Array.isArray(data) ? data : [];
+}
+
+/** Create a tenant tag from a display name (slug is auto-generated server-side). Returns `{ id, success }`. */
+export async function createTag(name: string): Promise<any> {
+  return apiFetch('/tags', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** List the tags attached to a project. */
+export async function getProjectTags(projectId: string): Promise<any[]> {
+  const data = await apiFetch<unknown[]>(`/projects/${encodeURIComponent(projectId)}/tags`);
+  return Array.isArray(data) ? data : [];
+}
+
+/** Attach existing tags to a project (idempotent — duplicates are ignored). */
+export async function addProjectTags(projectId: string, tagIds: string[]): Promise<void> {
+  await apiFetch(`/projects/${encodeURIComponent(projectId)}/tags`, {
+    method: 'POST',
+    body: JSON.stringify({ tagIds }),
+  });
+}
+
+/** Detach one tag from a project (the tag itself is kept for reuse). */
+export async function removeProjectTag(projectId: string, tagId: string): Promise<void> {
+  await apiFetch(
+    `/projects/${encodeURIComponent(projectId)}/tags/${encodeURIComponent(tagId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────
+// Backed by GET /api/audit (backend/src/api/audit.js); returns the T6
+// pagination envelope { data, total, page, pageSize, hasMore }. Legacy-style
+// limit/offset params are accepted by the backend as aliases.
+
+export async function getAuditLog(
+  params?: { entity_type?: string; limit?: number; offset?: number },
+): Promise<any> {
+  const search = new URLSearchParams();
+  if (params?.entity_type) search.set('entity_type', params.entity_type);
+  if (params?.limit !== undefined) search.set('limit', String(params.limit));
+  if (params?.offset !== undefined) search.set('offset', String(params.offset));
+  const qs = search.toString();
+  return apiFetch(`/audit${qs ? `?${qs}` : ''}`);
+}

@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { useCampsQuery, useSaveCampMutation, useDeleteCampMutation } from '@/hooks/useQueryHooks';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useCampsQuery, useSaveCampMutation, useDeleteCampMutation, useProjectMetaQuery, useSaveProjectMetaMutation } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -12,6 +12,15 @@ import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import ListingWizard from './ListingWizard';
+import DynamicForm from './DynamicForm';
+import {
+  PROJECT_TYPES,
+  PROJECT_TYPE_ORDER,
+  getProjectType,
+  buildMetaOps,
+  isMetaOpsEmpty,
+} from '@/lib/project-types';
+import type { MetaRow } from '@/lib/project-types';
 import type { Camp } from '@/hooks/useAdminData';
 
 interface CampsPanelProps {
@@ -45,6 +54,15 @@ const statusOptions = [
   { value: 'completed', label: 'Completed' },
 ];
 
+/** Core-form-owned keys — never rendered/diffed by the embedded meta section. */
+const CORE_OWNED_META_KEYS = ['notes'];
+
+/** Type-picker options derived from the registry (deterministic order). */
+const projectTypeOptions = [
+  ...PROJECT_TYPE_ORDER.map((t) => ({ value: t, label: `${PROJECT_TYPES[t].icon} ${PROJECT_TYPES[t].label}` })),
+  { value: 'custom', label: '📦 Custom' },
+];
+
 /**
  * Single-camp admin (B3): a tenant owns exactly one camp. When no camp exists
  * yet the empty state launches the listing wizard (camp + first room type +
@@ -59,11 +77,53 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CampForm>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  // Unified-schema editing: which vertical this project is + its custom-field values.
+  const [projectType, setProjectType] = useState<string>('camp');
+  const [metaValues, setMetaValues] = useState<Record<string, any>>({});
+  /** Id the current metaValues were seeded from — guards against re-clobbering user edits when the query refetches. */
+  const metaSeededForId = useRef<string | null>(null);
+
+  const typeSchema = getProjectType(projectType);
+  const metaQuery = useProjectMetaQuery(showForm && editingId ? editingId : null);
+  const metaMutation = useSaveProjectMetaMutation(editingId);
 
   const saveMutation = useSaveCampMutation(editingId ?? undefined);
   const deleteMutation = useDeleteCampMutation();
 
   const campList = camps ?? [];
+
+  /**
+   * Generic wire→state decode for seeding. Schema-aware decoding happens
+   * inside the widgets/buildMetaOps; this just restores native array shapes
+   * for multi-value fields regardless of which schema is currently selected,
+   * so switching type mid-edit can never mistake an unrendered key for empty.
+   */
+  const seedDecode = (raw: unknown): unknown => {
+    if (typeof raw !== 'string') return raw ?? '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String);
+    } catch { /* plain string */ }
+    return raw;
+  };
+
+  // Seed editable meta values once per opened project from the loaded rows.
+  // Every row is seeded (not just the active schema's) — see seedDecode.
+  useEffect(() => {
+    if (!editingId || !metaQuery.isSuccess) return;
+    const rows = metaQuery.data ?? [];
+    const stamp = `${editingId}:${rows.length}`;
+    if (metaSeededForId.current === stamp) return;
+    metaSeededForId.current = stamp;
+    const seed: Record<string, any> = {};
+    for (const row of rows) {
+      if (row && typeof row.metaKey === 'string') {
+        seed[row.metaKey] = seedDecode(row.metaValue);
+      }
+    }
+    setMetaValues((prev) => ({ ...seed, ...prev }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metaQuery.isSuccess, metaQuery.data, editingId]);
 
   const openEdit = useCallback((camp: Camp) => {
     setEditingId(camp.id);
@@ -76,8 +136,41 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
       status: camp.status || 'active',
       notes: camp.notes || '',
     });
+    setProjectType(camp.projectType && PROJECT_TYPES[camp.projectType] ? camp.projectType : 'camp');
+    setMetaValues({});
+    metaSeededForId.current = null;
     setShowForm(true);
   }, []);
+
+  /**
+   * Diff the current schema's meta values against loaded rows and persist the
+   * ops. Keys owned by the core form (`notes`) and fields of OTHER schemas are
+   * excluded, so changing a project's type never touches foreign data. When
+   * nothing changed this is a no-op that still closes + refreshes.
+   */
+  const persistMetaAndClose = useCallback(() => {
+    const finish = () => {
+      setShowForm(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      setMetaValues({});
+      setProjectType('camp');
+      metaSeededForId.current = null;
+      onRefreshCamps();
+    };
+
+    if (!editingId) {
+      finish();
+      return;
+    }
+    const rows = (metaQuery.data ?? []) as MetaRow[];
+    const ops = buildMetaOps(rows, metaValues, typeSchema.metaFields, CORE_OWNED_META_KEYS);
+    if (isMetaOpsEmpty(ops) || !metaQuery.isSuccess) {
+      finish();
+      return;
+    }
+    metaMutation.mutate(ops, { onSuccess: finish });
+  }, [editingId, metaQuery.data, metaQuery.isSuccess, metaValues, typeSchema, metaMutation, onRefreshCamps]);
 
   const handleSave = useCallback(() => {
     if (!form.name.trim()) {
@@ -104,17 +197,16 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
         capacity: parseInt(form.capacity) || 0,
         status: form.status as 'active' | 'inactive' | 'completed',
         notes: form.notes.trim(),
-      },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        projectType,
+      } as any,
       {
         onSuccess: () => {
-          setShowForm(false);
-          setEditingId(null);
-          setForm(emptyForm);
-          onRefreshCamps();
+          persistMetaAndClose();
         },
       },
     );
-  }, [form, editingId, showToast, saveMutation, onRefreshCamps]);
+  }, [form, projectType, editingId, showToast, saveMutation, persistMetaAndClose]);
 
   const handleDelete = useCallback(() => {
     // Defensive guard: the confirm dialog is only rendered when deleteTarget is set,
@@ -200,12 +292,24 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
       <FormModal
         open={showForm}
         title={editingId ? 'Edit Project' : 'Create Project'}
-        onClose={() => { setShowForm(false); setEditingId(null); }}
+        onClose={() => {
+          setShowForm(false);
+          setEditingId(null);
+          setMetaValues({});
+          setProjectType('camp');
+          metaSeededForId.current = null;
+        }}
         onSubmit={handleSave}
-        submitLabel={saveMutation.isPending ? 'Saving...' : editingId ? 'Update Project' : 'Save Project'}
-        submitDisabled={saveMutation.isPending}
+        submitLabel={saveMutation.isPending || metaMutation.isPending ? 'Saving...' : editingId ? 'Update Project' : 'Save Project'}
+        submitDisabled={saveMutation.isPending || metaMutation.isPending || (showForm && !!editingId && !metaQuery.isSuccess)}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Project Type"
+            options={projectTypeOptions}
+            value={projectType}
+            onChange={(e) => setProjectType(e.target.value)}
+          />
           <Input
             label="Name *"
             type="text"
@@ -264,6 +368,21 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
               placeholder="Additional notes..."
             />
           </div>
+        </div>
+
+        {/* Unified-schema custom fields for the selected vertical. Core-owned
+            keys (notes) and other schemas' keys are never rendered or diffed
+            here — see buildMetaOps in lib/project-types. */}
+        <div className="mt-6 pt-4 border-t border-gray-100">
+          <DynamicForm
+            schema={typeSchema}
+            values={{}}
+            metaValues={metaValues}
+            onChange={() => { /* core fields owned by the grid above */ }}
+            onMetaChange={(key, value) => setMetaValues((prev) => ({ ...prev, [key]: value }))}
+            fields="meta"
+            excludeMetaKeys={CORE_OWNED_META_KEYS}
+          />
         </div>
       </FormModal>
 

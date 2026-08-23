@@ -28,6 +28,7 @@ import * as api from '@/lib/api';
 import type { Paginated } from '@/lib/api';
 // T8-C: spec-derived wire types — the typed api client is the contract source.
 import type { components } from '@/lib/api-types';
+import type { MetaRow, MetaWriteOps } from '@/lib/project-types';
 
 type Schemas = components['schemas'];
 import type {
@@ -67,9 +68,10 @@ export const queryKeys = {
   tenants: ['admin', 'tenants'] as const,
   admins: ['admin', 'admins'] as const,
   availability: (params: Record<string, string>) => ['admin', 'availability', params] as const,
-  priceOverrides: (params: Record<string, string>) => ['admin', 'price-overrides', params] as const,
+  priceOverrides: (params: { productId: string; from?: string; to?: string }) => ['admin', 'price-overrides', params] as const,
   inbox: (params?: Record<string, string>) => ['admin', 'inbox', params] as const,
   inboxUnread: ['admin', 'inbox', 'unread'] as const,
+  projectMeta: (id: string) => ['admin', 'projects', id, 'meta'] as const,
 } as const;
 
 // ─── Error Toast Helper ───────────────────────────────────────────────
@@ -366,6 +368,52 @@ export function useDeleteCampMutation() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.camps });
       showToast('Camp deleted', 'success');
+    },
+  });
+}
+
+// ─── Project Meta hooks ───────────────────────────────────────────────
+
+/** Fetch a project's meta rows (EAV custom fields), keyed list endpoint. */
+export function useProjectMetaQuery(projectId: string | null | undefined) {
+  const toastError = useErrorToast();
+  return useQuery<MetaRow[]>({
+    queryKey: queryKeys.projectMeta(String(projectId)),
+    queryFn: () => api.getProjectMeta(String(projectId)) as Promise<MetaRow[]>,
+    enabled: !!projectId,
+    staleTime: 30_000,
+    throwOnError: (err) => {
+      toastError('Failed to load project fields', err);
+      return false;
+    },
+  });
+}
+
+/**
+ * Execute a precomputed meta write-op diff (see `buildMetaOps`) against
+ * /projects/:id/meta. Creates run before updates/deletes so a failed batch
+ * never leaves an existing row half-mutated; all calls fire in parallel.
+ * Invalidates the meta query on settle.
+ */
+export function useSaveProjectMetaMutation(projectId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: async (ops: MetaWriteOps) => {
+      if (!projectId) throw new Error('No project selected');
+      const calls: Promise<unknown>[] = [
+        ...ops.creates.map((c) => api.setProjectMeta(projectId, c.key, c.value)),
+        ...ops.updates.map((u) => api.updateProjectMeta(projectId, u.id, u.value)),
+        ...ops.deletes.map((id) => api.deleteProjectMeta(projectId, id)),
+      ];
+      await Promise.all(calls);
+    },
+    onError: (err) => toastError('Failed to save project fields', err),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectMeta(String(projectId)) });
+      showToast('Custom fields saved', 'success');
     },
   });
 }

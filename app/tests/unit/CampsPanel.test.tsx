@@ -9,8 +9,12 @@ const mockMutateDelete = vi.fn();
 const mockCampMutateAsync = vi.fn();
 const mockProductMutateAsync = vi.fn();
 const mockRatePlanMutateAsync = vi.fn();
+const mockMetaMutate = vi.fn();
 let mockCamps: unknown[] = [];
 let mockCampsLoading = false;
+// project-meta query state driven per-test
+let mockMetaRows: unknown[] = [];
+let mockMetaSuccess = true;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -22,6 +26,12 @@ vi.mock('@/hooks/useQueryHooks', () => ({
   useDeleteCampMutation: () => ({ mutate: mockMutateDelete, isPending: false }),
   useSaveProductMutation: () => ({ mutateAsync: mockProductMutateAsync, isPending: false }),
   useSaveRatePlanMutation: () => ({ mutateAsync: mockRatePlanMutateAsync, isPending: false }),
+  useProjectMetaQuery: () => ({
+    data: mockMetaRows,
+    isSuccess: mockMetaSuccess,
+    isPending: false,
+  }),
+  useSaveProjectMetaMutation: () => ({ mutate: mockMetaMutate, isPending: false }),
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -46,6 +56,8 @@ describe('CampsPanel (single-camp admin)', () => {
     vi.clearAllMocks();
     mockCamps = [];
     mockCampsLoading = false;
+    mockMetaRows = [];
+    mockMetaSuccess = true;
   });
 
   it('renders with empty state and create action when no camp exists', () => {
@@ -237,5 +249,131 @@ describe('CampsPanel (single-camp admin)', () => {
     await waitFor(() => {
       expect(screen.queryByText('Delete Project')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('CampsPanel unified-schema editing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCamps = [singleCamp];
+    mockMetaRows = [];
+    mockMetaSuccess = true;
+    // Meta mutation resolves like TanStack would (drives onSuccess → close).
+    mockMetaMutate.mockImplementation((_ops: unknown, options: any) => options?.onSuccess?.());
+  });
+
+  const openEditModal = async () => {
+    fireEvent.click(screen.getAllByText('Edit')[0]);
+    await waitFor(() => expect(screen.getByText('Edit Project')).toBeInTheDocument());
+  };
+
+  it('renders the Project Type select and the schema custom-fields section', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    expect(screen.getByLabelText('Project Type')).toHaveValue('camp');
+    expect(screen.getByRole('heading', { name: /custom fields/i })).toBeInTheDocument();
+    for (const key of ['activities', 'accommodation_type', 'check_in_time']) {
+      expect(screen.getByTestId(`form-meta-${key}`)).toBeInTheDocument();
+    }
+  });
+
+  it('never renders core-owned keys (notes) in the meta section', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    // The textarea Notes field belongs to the core form…
+    expect(screen.getByLabelText('Notes')).toBeInTheDocument();
+    // …and must NOT be duplicated as a meta field.
+    expect(screen.queryByTestId('form-meta-notes')).not.toBeInTheDocument();
+  });
+
+  it('switches the rendered schema when the project type changes', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    fireEvent.change(screen.getByLabelText('Project Type'), { target: { value: 'supermarket' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('form-meta-opening_hours')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('form-meta-accommodation_type')).not.toBeInTheDocument();
+  });
+
+  it('sends the selected projectType in the save payload', async () => {
+    mockMutate.mockImplementation((_data: any, options: any) => options.onSuccess());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    fireEvent.change(screen.getByLabelText('Project Type'), { target: { value: 'transportation' } });
+    fireEvent.click(screen.getByText('Update Project'));
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ projectType: 'transportation' }),
+        expect.anything(),
+      );
+    });
+  });
+
+  it('persists changed meta values after a successful core save', async () => {
+    mockMetaRows = [{ id: 7, projectId: 'c1', metaKey: 'accommodation_type', metaValue: 'tent' }];
+    mockMutate.mockImplementation((_data: any, options: any) => options.onSuccess());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    // Seeded from GET /projects/:id/meta
+    const accSelect = await waitFor(() => screen.getByTestId('form-meta-accommodation_type'));
+    expect(accSelect).toHaveValue('tent');
+
+    fireEvent.change(accSelect, { target: { value: 'cabin' } });
+    fireEvent.click(screen.getByText('Update Project'));
+
+    await waitFor(() => {
+      expect(mockMetaMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          creates: [],
+          updates: [{ id: 7, value: 'cabin' }],
+          deletes: [],
+        }),
+        expect.anything(),
+      );
+      expect(mockRefreshCamps).toHaveBeenCalled();
+    });
+  });
+
+  it('skips the meta mutation entirely when nothing changed', async () => {
+    mockMetaRows = [
+      { id: 7, projectId: 'c1', metaKey: 'accommodation_type', metaValue: 'tent' },
+      { id: 8, projectId: 'c1', metaKey: 'activities', metaValue: '["Hiking"]' },
+    ];
+    mockMutate.mockImplementation((_data: any, options: any) => options.onSuccess());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    await waitFor(() => expect(screen.getByTestId('form-meta-accommodation_type')).toHaveValue('tent'));
+
+    fireEvent.click(screen.getByText('Update Project'));
+    await waitFor(() => expect(mockRefreshCamps).toHaveBeenCalled());
+    expect(mockMetaMutate).not.toHaveBeenCalled();
+  });
+
+  it('deletes stored rows whose field was cleared in the form', async () => {
+    mockMetaRows = [{ id: 9, projectId: 'c1', metaKey: 'activities', metaValue: '["Hiking"]' }];
+    mockMutate.mockImplementation((_data: any, options: any) => options.onSuccess());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    const activities = await waitFor(() => screen.getByTestId('form-meta-activities'));
+    expect(activities).toHaveValue('Hiking');
+
+    fireEvent.change(activities, { target: { value: '' } });
+    fireEvent.click(screen.getByText('Update Project'));
+    await waitFor(() => {
+      expect(mockMetaMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ deletes: [9], creates: [], updates: [] }),
+        expect.anything(),
+      );
+    });
+  });
+
+  it('disables submit until the meta query resolves while editing', async () => {
+    mockMetaSuccess = false;
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    const updateBtn = screen.getByText('Update Project').closest('button');
+    expect(updateBtn).toBeDisabled();
   });
 });

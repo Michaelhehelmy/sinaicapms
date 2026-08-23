@@ -41,7 +41,7 @@ const plansRoutes = new Hono();
 plansRoutes.get('/', async (c) => {
   const tenantId = getScope(c).tenantId;
   const { results } = await c.env.DB.prepare(
-    "SELECT p.* FROM plans_new p JOIN camps c ON c.id = p.camp_id WHERE c.tenant_id = ?"
+    "SELECT p.* FROM plans_new p JOIN projects c ON c.id = p.camp_id WHERE c.tenant_id = ? AND c.deleted_at IS NULL"
   ).bind(tenantId).all();
   return jsonResponse(results);
 });
@@ -50,7 +50,7 @@ plansRoutes.get('/', async (c) => {
 plansRoutes.get('/:id', async (c) => {
   const tenantId = getScope(c).tenantId;
   const { results } = await c.env.DB.prepare(
-    "SELECT p.* FROM plans_new p JOIN camps c ON c.id = p.camp_id WHERE c.tenant_id = ? AND p.id = ?"
+    "SELECT p.* FROM plans_new p JOIN projects c ON c.id = p.camp_id WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND p.id = ?"
   ).bind(tenantId, c.req.param('id')).all();
   if (results.length === 0) return errorResponse('Plan not found', 404);
   return jsonResponse(results[0]);
@@ -67,7 +67,7 @@ plansRoutes.post('/', async (c) => {
     const { id, name, description, camp_id, date, time, capacity, status, category } = parsed.data;
 
     const { results: campCheck } = await c.env.DB.prepare(
-      "SELECT id FROM camps WHERE id = ? AND tenant_id = ?"
+      "SELECT id FROM projects WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL"
     ).bind(camp_id, tenantId).all();
     if (campCheck.length === 0) return errorResponse('Camp not found for this tenant', 404);
 
@@ -101,7 +101,7 @@ plansRoutes.put('/:id', async (c) => {
         capacity = COALESCE(?, capacity),
         status = COALESCE(?, status),
         category = COALESCE(?, category)
-       WHERE id = ? AND camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)`
+       WHERE id = ? AND camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)`
     ).bind(name || null, description || null, camp_id || null, date || null, time || null, capacity ?? null, status || null, category || null, pid, tenantId).run();
     return jsonResponse({ success: true });
   } catch (e) {
@@ -114,7 +114,7 @@ plansRoutes.delete('/:id', async (c) => {
   try {
     const tenantId = getScope(c).tenantId;
     await c.env.DB.prepare(
-      "DELETE FROM plans_new WHERE id = ? AND camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)"
+      "DELETE FROM plans_new WHERE id = ? AND camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)"
     ).bind(c.req.param('id'), tenantId).run();
     return jsonResponse({ success: true });
   } catch (e) {
