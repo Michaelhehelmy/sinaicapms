@@ -45,13 +45,16 @@ export async function softDeleteProject(DB, projectId) {
  */
 export async function softDeleteTenant(DB, tenantId) {
   if (!tenantId) return false;
+  // Projects first, then tenant — logical cascade order.
+  // Both run in one D1 batch (implicit transaction), but ordering
+  // correctly prevents any window where a deleted tenant has live projects.
   const results = await DB.batch([
-    DB.prepare(`UPDATE tenants SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL`)
-      .bind(tenantId),
     DB.prepare(
       `UPDATE projects SET deleted_at = datetime('now'), updated_at = datetime('now')
        WHERE tenant_id = ? AND deleted_at IS NULL`
     ).bind(tenantId),
+    DB.prepare(`UPDATE tenants SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL`)
+      .bind(tenantId),
   ]);
   // Tenant row is the authoritative signal; zero changes there means already
   // deleted (or unknown id).
@@ -81,6 +84,7 @@ export async function restoreProject(DB, projectId) {
  */
 export async function restoreTenant(DB, tenantId) {
   if (!tenantId) return false;
+  // Tenant first, then projects — reverse of delete cascade.
   const results = await DB.batch([
     DB.prepare(`UPDATE tenants SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`)
       .bind(tenantId),
