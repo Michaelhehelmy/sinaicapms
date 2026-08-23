@@ -1,78 +1,108 @@
-name: CI — Unit & Component Tests
+name: CI — Tests
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, staging]
   pull_request:
-    branches: [main, master, develop]
-  workflow_dispatch:
+    branches: [main, staging]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  backend-unit-tests:
-    name: Backend Unit Tests
+  # ─────────────────────────────────────────────
+  # Backend Unit Tests
+  # ─────────────────────────────────────────────
+  backend-tests:
+    name: Backend Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
       - name: Install dependencies
-        run: cd backend && npm ci
-      - name: Run backend unit tests
-        run: cd backend && npx vitest run
-        env:
-          ENVIRONMENT: test
+        run: npm ci --no-audit --no-fund
 
-  root-unit-tests:
-    name: Root Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Install root dependencies
-        run: npm ci
-      - name: Run root integration tests
+      - name: Run vitest
         run: npx vitest run
-        env:
-          ENVIRONMENT: test
 
-  build-check:
-    name: Build Verification
+  # ─────────────────────────────────────────────
+  # Frontend Unit Tests
+  # ─────────────────────────────────────────────
+  frontend-tests:
+    name: Frontend Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: app/package-lock.json
-      - name: Install app dependencies
-        run: cd app && npm ci
-      - name: Build frontend
-        run: cd app && npm run build
 
-  frontend-unit-tests:
-    name: Frontend Unit Tests
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run vitest
+        run: npx vitest run
+
+  # ─────────────────────────────────────────────
+  # Root Integration Tests
+  # ─────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
-      - name: Install app dependencies
-        run: cd app && npm ci
-      - name: Run frontend unit tests
-        run: cd app && npx vitest run
-        env:
-          ENVIRONMENT: test
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install backend dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: backend
+
+      - name: Run integration tests
+        run: npx vitest run
+
+  # ─────────────────────────────────────────────
+  # Backend Lint / OpenAPI check
+  # ─────────────────────────────────────────────
+  backend-lint:
+    name: Backend Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Check OpenAPI spec generation
+        run: npx vite-node scripts/generate-openapi.js

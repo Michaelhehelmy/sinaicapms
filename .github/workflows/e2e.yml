@@ -2,10 +2,14 @@ name: E2E Tests
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, staging]
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, staging]
   workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
@@ -17,14 +21,18 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            app/package-lock.json
 
       - name: Install dependencies
         run: |
-          npm ci
-          cd backend && npm ci
-          cd ../app && npm ci
+          npm ci --no-audit --no-fund
+          cd backend && npm ci --no-audit --no-fund && cd ..
+          cd app && npm ci --no-audit --no-fund && cd ..
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
