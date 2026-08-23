@@ -6,13 +6,22 @@ const VALID_IDENTIFIER = process.env.POS_IDENTIFIER || TEST_POS_USER.identifier;
 const VALID_PASSWORD = process.env.POS_PASSWORD || TEST_POS_USER.password;
 
 async function loginAsPOSUser(page: import('@playwright/test').Page) {
-  await page.goto(TENANT_URL('/pos/login', TENANT_ID));
-  await page.locator('[data-testid="pos-login"]').waitFor({ state: 'visible', timeout: 10000 });
-  await page.locator('[data-testid="pos-identifier"]').fill(VALID_IDENTIFIER);
-  await page.locator('[data-testid="pos-password"]').fill(VALID_PASSWORD);
-  await page.locator('[data-testid="pos-signin-btn"]').click();
-  await page.locator('[data-testid="pos-dashboard"], [data-testid="shift-overlay"]')
-    .waitFor({ state: 'visible', timeout: 10000 });
+  // Retry login up to 3 times — the backend can return "Failed to fetch" under
+  // concurrent load from Playwright workers.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.goto(TENANT_URL('/pos/login', TENANT_ID), { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-testid="pos-login"]').waitFor({ state: 'visible', timeout: 10000 });
+    await page.locator('[data-testid="pos-identifier"]').fill(VALID_IDENTIFIER);
+    await page.locator('[data-testid="pos-password"]').fill(VALID_PASSWORD);
+    await page.locator('[data-testid="pos-signin-btn"]').click();
+    try {
+      await page.locator('[data-testid="pos-dashboard"], [data-testid="shift-overlay"]')
+        .waitFor({ state: 'visible', timeout: 10_000 });
+      return; // login succeeded
+    } catch {
+      if (attempt === 2) throw new Error(`POS login failed after ${attempt + 1} attempts`);
+    }
+  }
 }
 
 async function openShiftIfOverlayVisible(page: import('@playwright/test').Page, cash = '100') {
@@ -62,13 +71,18 @@ test.describe.serial('POS Shift Lifecycle — Full Flow', () => {
     await loginAsPOSUser(page);
     await openShiftIfOverlayVisible(page);
 
-    // Navigate to shift view
+    // Navigate to shift view — nav triggers full page reload, so wait for URL change
     await page.locator('[data-testid="pos-nav-shift"]').click();
-    await page.locator('[data-testid="shift-dashboard"]').waitFor({ state: 'visible', timeout: 10000 });
+    await page.waitForURL('**/pos/shift**', { timeout: 10000 });
+    await page.locator('[data-testid="shift-dashboard"]').waitFor({ state: 'visible', timeout: 15000 });
 
-    // Status badge should show "open"
-    const statusBadge = page.locator('[data-testid="shift-dashboard"] >> text=open');
-    await expect(statusBadge).toBeVisible();
+    // Wait for the active shift data to load (the dashboard shows "No Active Shift" initially
+    // until the usePOSActiveShift hook fetches data from the backend)
+    await page.locator('text=Current Shift').waitFor({ state: 'visible', timeout: 15000 });
+
+    // Status badge should show "open" (exact match to avoid matching "Opened", "Opening Cash")
+    const statusBadge = page.locator('[data-testid="shift-dashboard"] [role="status"]');
+    await expect(statusBadge).toHaveText('open');
 
     // Opening cash should show a dollar amount
     const shiftInfo = page.locator('[data-testid="shift-dashboard"]');
@@ -166,7 +180,7 @@ test.describe.serial('POS Shift Lifecycle — Full Flow', () => {
 });
 
 // ─── Guard rails ────────────────────────────────────────────────
-test.describe('POS Shift Lifecycle — Guards', () => {
+test.describe.serial('POS Shift Lifecycle — Guards', () => {
   test('cannot process sale without open shift', async ({ page }) => {
     // Close any active shift first via API
     await loginAsPOSUser(page);
@@ -208,9 +222,27 @@ test.describe('POS Shift Lifecycle — Guards', () => {
 });
 
 // ─── Shift history ──────────────────────────────────────────────
-test.describe('POS Shift Lifecycle — History', () => {
+test.describe.serial('POS Shift Lifecycle — History', () => {
   test('shift history displays previous shifts', async ({ page }) => {
     await loginAsPOSUser(page);
+
+    // Ensure a clean state: close any existing shift, then open a fresh one via API
+    await closeActiveShiftIfAny(page);
+
+    // Open a fresh shift via API to guarantee one exists
+    const token = await page.evaluate(() => localStorage.getItem('pos_token'));
+    const openRes = await page.request.post(`${API_BASE}/api/pos/shifts/open`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { openingCash: 100 },
+    });
+    expect(openRes.ok()).toBeTruthy();
+
+    // Reload so the POS app picks up the new shift
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('[data-testid="pos-dashboard"], [data-testid="shift-overlay"]')
+      .first().waitFor({ state: 'visible', timeout: 10000 });
+
+    // If overlay appeared (shouldn't after opening via API), open it
     await openShiftIfOverlayVisible(page);
 
     // Navigate to shift view

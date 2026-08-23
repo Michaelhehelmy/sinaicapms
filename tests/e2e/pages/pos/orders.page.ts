@@ -4,7 +4,7 @@ export class OrdersPage {
   constructor(private page: Page) {}
 
   async goto() {
-    await this.page.goto('/pos/#orders');
+    await this.page.goto('/pos/orders', { waitUntil: 'domcontentloaded' });
   }
 
   async getOrderCount(): Promise<number> {

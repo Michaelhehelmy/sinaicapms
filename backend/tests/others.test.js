@@ -1,18 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handlePlansRoute } from '../src/api/others.js';
-
-function makeReq(url, method = 'GET', body = null) {
-  return {
-    url,
-    method,
-    headers: { get: () => null },
-    json: () => Promise.resolve(body),
-  };
-}
+import plansRoutes from '../src/api/others.js';
+import { mountRouter } from './helpers/routerHarness.js';
 
 const tenantId = 'tenant_1';
 
-describe('handlePlansRoute', () => {
+function makeEnv(db) {
+  return { DB: db };
+}
+
+describe('plansRoutes', () => {
+  let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
+
+  beforeEach(() => {
+    app = mountRouter(plansRoutes, { tenantId, basePath: '/api/plans' });
+  });
+
   describe('GET /api/plans', () => {
     it('returns all plans for tenant', async () => {
       const plans = [{ id: 'pln_1', name: 'Plan 1' }];
@@ -23,7 +32,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(makeReq('http://localhost/api/plans'), { DB: db }, tenantId);
+      env = makeEnv(db);
+      const res = await request('GET', 'http://localhost/api/plans');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data).toEqual(plans);
@@ -40,7 +50,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(makeReq('http://localhost/api/plans/pln_1'), { DB: db }, tenantId);
+      env = makeEnv(db);
+      const res = await request('GET', 'http://localhost/api/plans/pln_1');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data).toEqual(plan);
@@ -54,7 +65,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(makeReq('http://localhost/api/plans/pln_999'), { DB: db }, tenantId);
+      env = makeEnv(db);
+      const res = await request('GET', 'http://localhost/api/plans/pln_999');
       const data = await res.json();
       expect(res.status).toBe(404);
       expect(data.error).toContain('Plan not found');
@@ -63,12 +75,10 @@ describe('handlePlansRoute', () => {
 
   describe('POST /api/plans', () => {
     it('creates a plan successfully', async () => {
-      let callIdx = 0;
       const db = {
         prepare: vi.fn(() => ({
           bind: vi.fn(() => ({
             all: vi.fn().mockImplementation(() => {
-              callIdx++;
               // camp check
               return Promise.resolve({ results: [{ id: 'camp_1' }] });
             }),
@@ -76,10 +86,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans', 'POST', { name: 'New Plan', camp_id: 'camp_1' }),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('POST', 'http://localhost/api/plans', { name: 'New Plan', camp_id: 'camp_1' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -94,10 +102,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans', 'POST', { description: 'no name' }),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('POST', 'http://localhost/api/plans', { description: 'no name' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toBeTruthy();
@@ -111,10 +117,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans', 'POST', { name: 'Plan', camp_id: 'camp_999' }),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('POST', 'http://localhost/api/plans', { name: 'Plan', camp_id: 'camp_999' });
       const data = await res.json();
       expect(res.status).toBe(404);
       expect(data.error).toContain('Camp not found');
@@ -131,10 +135,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans', 'POST', { name: 'Plan', camp_id: 'camp_1' }),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('POST', 'http://localhost/api/plans', { name: 'Plan', camp_id: 'camp_1' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to create plan');
@@ -150,10 +152,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans/pln_1', 'PUT', { name: 'Updated Plan' }),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('PUT', 'http://localhost/api/plans/pln_1', { name: 'Updated Plan' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -167,10 +167,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans/pln_1', 'PUT', { name: '' }),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('PUT', 'http://localhost/api/plans/pln_1', { name: '' });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
@@ -183,10 +181,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans/pln_1', 'PUT', { name: 'Updated' }),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('PUT', 'http://localhost/api/plans/pln_1', { name: 'Updated' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to update plan');
@@ -202,10 +198,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans/pln_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('DELETE', 'http://localhost/api/plans/pln_1');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -219,10 +213,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans/pln_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('DELETE', 'http://localhost/api/plans/pln_1');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to delete plan');
@@ -238,10 +230,8 @@ describe('handlePlansRoute', () => {
           })),
         })),
       };
-      const res = await handlePlansRoute(
-        makeReq('http://localhost/api/plans', 'PATCH'),
-        { DB: db }, tenantId
-      );
+      env = makeEnv(db);
+      const res = await request('PATCH', 'http://localhost/api/plans');
       const data = await res.json();
       expect(res.status).toBe(405);
     });

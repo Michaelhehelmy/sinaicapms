@@ -1,17 +1,11 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
-import { escHtml, normalizeAssetUrl } from '@/lib/utils';
-import { hexToRgb, luminance } from '@/lib/theme';
+import { escHtml, normalizeAssetUrl, readableTextOn } from '@/lib/utils';
 
 function escapeUrl(url: string | undefined | null): string {
   if (!url) return '';
   return url.replace(/['")\)]/g, '');
-}
-
-/** Readable CTA text on a user-supplied primaryColor background (luminance rule). */
-function ctaInk(color: string): string {
-  return luminance(hexToRgb(color)) < 0.55 ? '#ffffff' : '#1a241d';
 }
 
 const { tenant, primaryColor, tenantName } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
@@ -63,7 +57,7 @@ galleryList = galleryList
         <a
           href={accommodationsUrl}
           class="inline-block rounded-full px-6 py-3 text-center font-bold shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
-          style={`background: linear-gradient(135deg, ${primaryColor}, ${primaryColor}d9); color: ${ctaInk(primaryColor)}; box-shadow: 0 10px 24px -8px ${primaryColor}59;`}
+          style={`background: linear-gradient(135deg, ${primaryColor}, ${primaryColor}d9); color: ${readableTextOn(primaryColor)}; box-shadow: 0 10px 24px -8px ${primaryColor}59;`}
         >
           View Accommodations
         </a>

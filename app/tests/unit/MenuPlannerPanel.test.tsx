@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuPlannerPanel from '@/components/admin/MenuPlannerPanel';
 
 const mockShowToast = vi.fn();
-const mockRefreshSchedules = vi.fn();
 const mockCreateMealSchedule = vi.fn();
 const mockDeleteMealSchedule = vi.fn();
 let mockMeals: unknown[] = [];
@@ -15,10 +15,14 @@ vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
 
-vi.mock('@/hooks/useAdminData', () => ({
-  useMeals: () => ({ data: mockMeals, loading: mockMealsLoading }),
-  useMealSchedules: () => ({ data: mockSchedules, loading: mockSchedulesLoading, refresh: mockRefreshSchedules }),
-  useCamps: () => ({ data: [] }),
+// Phase 6: MenuPlannerPanel consumes TanStack Query data hooks + invalidates
+// ['admin', ...] concerns on change instead of legacy useAdminData.refresh().
+vi.mock('@/hooks/useQueryHooks', () => ({
+  queryKeys: {
+    mealSchedules: () => ['admin', 'mealSchedules'],
+  },
+  useMealsQuery: () => ({ data: mockMeals, isLoading: mockMealsLoading }),
+  useMealSchedulesQuery: () => ({ data: mockSchedules, isLoading: mockSchedulesLoading }),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -41,6 +45,19 @@ vi.mock('@/components/ui/FormModal', () => ({
 
 const camps = [{ id: 'c1', name: 'Camp 1', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' }];
 
+// The panel reads useQueryClient() to invalidate concerns — provide a fresh
+// client per render and expose an invalidation spy for refresh assertions.
+let invalidateSpy: ReturnType<typeof vi.fn>;
+function renderPanel() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+  return render(
+    <QueryClientProvider client={client}>
+      <MenuPlannerPanel campIds={['c1']} camps={camps} />
+    </QueryClientProvider>,
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockMeals = [];
@@ -51,45 +68,45 @@ beforeEach(() => {
 
 describe('MenuPlannerPanel', () => {
   it('renders with week navigation', () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Menu Planner')).toBeInTheDocument();
     expect(screen.getByText('←')).toBeInTheDocument();
     expect(screen.getByText('→')).toBeInTheDocument();
   });
 
   it('does not render a camp filter (single-camp admin)', () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.queryByText('All Camps')).not.toBeInTheDocument();
     expect(screen.queryByText('Camp *')).not.toBeInTheDocument();
   });
 
   it('navigates weeks', () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('→'));
     fireEvent.click(screen.getByText('←'));
     fireEvent.click(screen.getByText(/Week of/));
   });
 
   it('shows "No meals scheduled" for empty days', () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const noMeals = screen.getAllByText('No meals scheduled');
     expect(noMeals.length).toBeGreaterThan(0);
   });
 
   it('shows Add Meal buttons for each day', () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     expect(addButtons.length).toBe(7);
   });
 
   it('shows loading state', () => {
     mockMealsLoading = true;
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Loading menu planner...')).toBeInTheDocument();
   });
 
   it('opens add meal modal', async () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     fireEvent.click(addButtons[0]);
     await waitFor(() => {
@@ -98,7 +115,7 @@ describe('MenuPlannerPanel', () => {
   });
 
   it('validates form on submit', async () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     fireEvent.click(addButtons[0]);
     await waitFor(() => {
@@ -111,7 +128,7 @@ describe('MenuPlannerPanel', () => {
   });
 
   it('closes modal on cancel', async () => {
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     fireEvent.click(addButtons[0]);
     await waitFor(() => {
@@ -126,7 +143,7 @@ describe('MenuPlannerPanel', () => {
   it('submits form successfully', async () => {
     mockCreateMealSchedule.mockResolvedValueOnce({});
     mockMeals = [{ id: 'm1', name: 'Grilled Chicken' }];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     fireEvent.click(addButtons[0]);
     await waitFor(() => {
@@ -140,7 +157,7 @@ describe('MenuPlannerPanel', () => {
 
   it('shows schedule error', async () => {
     mockCreateMealSchedule.mockRejectedValueOnce(new Error('Schedule failed'));
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     fireEvent.click(addButtons[0]);
     await waitFor(() => {
@@ -158,14 +175,14 @@ describe('MenuPlannerPanel', () => {
     mockSchedules = [
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
     ];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Grilled Chicken')).toBeInTheDocument();
   });
 
   it('submits a new schedule with all fields', async () => {
     mockCreateMealSchedule.mockResolvedValueOnce({});
     mockMeals = [{ id: 'm1', name: 'Grilled Chicken' }];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     fireEvent.click(addButtons[0]);
     await waitFor(() => {
@@ -188,13 +205,13 @@ describe('MenuPlannerPanel', () => {
       expect(mockShowToast).toHaveBeenCalledWith('Meal scheduled successfully', 'success');
       expect(screen.queryByText('Schedule Meal')).not.toBeInTheDocument();
     });
-    expect(mockRefreshSchedules).toHaveBeenCalled();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'mealSchedules'] });
   });
 
   it('shows error when scheduling fails', async () => {
     mockCreateMealSchedule.mockRejectedValueOnce(new Error('Schedule failed'));
     mockMeals = [{ id: 'm1', name: 'Grilled Chicken' }];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     const addButtons = screen.getAllByText('+ Add Meal');
     fireEvent.click(addButtons[0]);
     await waitFor(() => {
@@ -214,7 +231,7 @@ describe('MenuPlannerPanel', () => {
     mockSchedules = [
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
     ];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByTitle('Remove meal'));
     await waitFor(() => {
       expect(screen.getByText('Confirm')).toBeInTheDocument();
@@ -224,7 +241,7 @@ describe('MenuPlannerPanel', () => {
       expect(mockDeleteMealSchedule).toHaveBeenCalledWith('s1');
       expect(mockShowToast).toHaveBeenCalledWith('Meal removed', 'success');
     });
-    expect(mockRefreshSchedules).toHaveBeenCalled();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'mealSchedules'] });
   });
 
   it('cancels meal deletion', async () => {
@@ -233,7 +250,7 @@ describe('MenuPlannerPanel', () => {
     mockSchedules = [
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
     ];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByTitle('Remove meal'));
     await waitFor(() => {
       expect(screen.getByText('Confirm')).toBeInTheDocument();
@@ -252,7 +269,7 @@ describe('MenuPlannerPanel', () => {
     mockSchedules = [
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
     ];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByTitle('Remove meal'));
     await waitFor(() => {
       expect(screen.getByText('Confirm')).toBeInTheDocument();
@@ -272,7 +289,7 @@ describe('MenuPlannerPanel', () => {
       { id: 's3', campId: 'c1', date: dateStr, mealId: 'm3', mealName: 'Veggie Wrap', packageType: 'half_board', maxServings: 100, campName: 'Camp 1' },
       { id: 's4', campId: 'c1', date: dateStr, mealId: 'm4', mealName: 'Omelette', packageType: 'breakfast', maxServings: 100, campName: 'Camp 1' },
     ];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Grilled Chicken')).toBeInTheDocument();
     expect(screen.getByText('full board')).toBeInTheDocument();
     expect(screen.getByText('half board')).toBeInTheDocument();
@@ -286,7 +303,7 @@ describe('MenuPlannerPanel', () => {
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
       { id: 's2', campId: 'c2', date: dateStr, mealId: 'm2', mealName: 'Salad Bowl', packageType: 'all', maxServings: 100, campName: 'Camp 2' },
     ];
-    render(<MenuPlannerPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     // B3: schedules belonging to another camp are never shown, and there is
     // no dropdown to switch camps.
     expect(screen.getByText('Grilled Chicken')).toBeInTheDocument();

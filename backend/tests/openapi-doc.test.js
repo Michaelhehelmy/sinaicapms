@@ -28,13 +28,18 @@ describe('OpenAPI document (registry)', () => {
     expect(typeof doc.paths).toBe('object');
   });
 
-  it('includes all 8 auth paths', () => {
+  it('includes all 9 auth paths (8 legacy + Phase 9 /api/auth/pos-login)', () => {
     const doc = buildOpenApiDocument();
     for (const p of AUTH_PATHS) {
       expect(doc.paths[p], `missing path ${p}`).toBeDefined();
     }
+    expect(doc.paths['/api/auth/pos-login'], 'missing Phase 9 pos-login path').toBeDefined();
     const authPaths = Object.keys(doc.paths).filter((p) => p.startsWith('/api/auth'));
-    expect(authPaths).toHaveLength(8);
+    expect(authPaths).toHaveLength(9);
+    // Phase 9 deprecation flags: consolidated legacy paths are marked.
+    expect(doc.paths['/api/pos/auth/login'].post.deprecated).toBe(true);
+    expect(doc.paths['/api/contact'].post.deprecated).toBe(true);
+    expect(doc.paths['/api/auth/pos-login'].post.deprecated).toBeFalsy();
   });
 
   it('login route has request body schema + success/error responses', () => {

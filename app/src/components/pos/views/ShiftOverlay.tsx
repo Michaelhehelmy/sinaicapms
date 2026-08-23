@@ -1,34 +1,49 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import * as apiClient from '@/lib/api';
+import { Modal } from '@/components/ui/Modal';
+import { IconShift } from '@/components/ui/icons';
+import { useOpenShiftMutation } from '@/hooks/usePosQueries';
 import type { Shift } from '../types';
 
 // ─── Shift Overlay (blocks POS until shift is open) ────────
+// Phase 8: rebuilt on the shared ui/Modal (portal, focus trap, ESC handling)
+// instead of a bespoke fixed-position overlay. Every dismissal path is
+// disabled — a cashier MUST open a shift before taking orders.
 export default function ShiftOverlay({ onShiftOpened }: { onShiftOpened: (shift: Shift) => void }) {
   const [cash, setCash] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Input is not a forwardRef component — reach its <input> through the wrapper.
+  const cashWrapRef = useRef<HTMLDivElement>(null);
+  const openShift = useOpenShiftMutation();
 
   async function handleOpen() {
     const amount = parseFloat(cash);
     if (isNaN(amount) || amount < 0) { setError('Enter a valid opening cash amount'); return; }
-    setLoading(true);
     setError('');
     try {
-      const res = await apiClient.posOpenShift({ openingCash: amount });
-      onShiftOpened(res.shift);
-    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+      const res = await openShift.mutateAsync({ openingCash: amount });
+      onShiftOpened((res as { shift: Shift }).shift);
+    } catch (err: any) { setError(err.message); }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" data-testid="shift-overlay">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-8 text-center">
-        <div className="text-4xl mb-4">🕐</div>
+    <Modal
+      isOpen
+      onClose={() => {}}
+      size="sm"
+      testId="shift-overlay"
+      closeOnOverlay={false}
+      closeOnEsc={false}
+      showCloseButton={false}
+      initialFocus={() => cashWrapRef.current?.querySelector('input')}
+    >
+      <div className="py-2 text-center">
+        <div className="mb-4 flex justify-center text-gray-400"><IconShift size={40} strokeWidth={1.5} /></div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Open Cash Drawer</h2>
         <p className="text-sm text-gray-500 mb-6">Enter your starting cash balance to begin taking orders.</p>
         {error && <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
-        <div className="mb-4">
+        <div className="mb-4" ref={cashWrapRef}>
           <Input
             label="Opening Cash ($)"
             type="number"
@@ -45,7 +60,7 @@ export default function ShiftOverlay({ onShiftOpened }: { onShiftOpened: (shift:
           variant="primary"
           size="lg"
           fullWidth
-          loading={loading}
+          loading={openShift.isPending}
           onClick={handleOpen}
           data-testid="open-shift-btn"
           className="min-h-[48px]"
@@ -53,6 +68,6 @@ export default function ShiftOverlay({ onShiftOpened }: { onShiftOpened: (shift:
           Open Shift
         </Button>
       </div>
-    </div>
+    </Modal>
   );
 }

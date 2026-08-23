@@ -29,12 +29,3 @@ export async function getTenant(request, env) {
 
   return null;
 }
-
-export const tenantMiddleware = async (c, next) => {
-  const tenantId = await getTenant(c.req.raw, c.env);
-  if (!tenantId && !c.req.path.startsWith('/api/tenants') && !c.req.path.startsWith('/api/auth') && !c.req.path.startsWith('/admin')) {
-    return c.json({ error: 'Tenant not found or invalid subdomain/headers' }, 404);
-  }
-  if (tenantId) c.set('tenantId', tenantId);
-  await next();
-};

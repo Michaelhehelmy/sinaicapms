@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getTenant, tenantMiddleware } from '../src/middleware/tenant.js';
+import { getTenant } from '../src/middleware/tenant.js';
 
 function mockDb(results = []) {
   return {
@@ -95,88 +95,5 @@ describe('getTenant', () => {
     const req = makeRequest('http://other.sinaicamps.com/api/camps', { 'x-tenant-id': 'from_header' });
     const result = await getTenant(req, { DB: db });
     expect(result).toBe('from_header');
-  });
-});
-
-describe('tenantMiddleware', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('sets tenantId and calls next when tenant found', async () => {
-    const db = mockDb([{ id: 'tenant_1' }]);
-    const c = {
-      req: {
-        raw: makeRequest('http://localhost/api/camps?tenant_id=tenant_1'),
-        path: '/api/camps',
-      },
-      env: { DB: db },
-      set: vi.fn(),
-    };
-    const next = vi.fn();
-    await tenantMiddleware(c, next);
-    expect(c.set).toHaveBeenCalledWith('tenantId', 'tenant_1');
-    expect(next).toHaveBeenCalled();
-  });
-
-  it('returns 404 when tenant not found for non-public paths', async () => {
-    const db = mockDb([]);
-    const c = {
-      req: {
-        raw: makeRequest('http://localhost/api/camps'),
-        path: '/api/camps',
-      },
-      env: { DB: db },
-      json: vi.fn().mockImplementation((body, status) => ({ status, body })),
-    };
-    const next = vi.fn();
-    await tenantMiddleware(c, next);
-    expect(c.json).toHaveBeenCalled();
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('allows /api/tenants paths without tenant', async () => {
-    const db = mockDb([]);
-    const c = {
-      req: {
-        raw: makeRequest('http://localhost/api/tenants'),
-        path: '/api/tenants',
-      },
-      env: { DB: db },
-      set: vi.fn(),
-    };
-    const next = vi.fn();
-    await tenantMiddleware(c, next);
-    expect(next).toHaveBeenCalled();
-  });
-
-  it('allows /api/auth paths without tenant', async () => {
-    const db = mockDb([]);
-    const c = {
-      req: {
-        raw: makeRequest('http://localhost/api/auth/login'),
-        path: '/api/auth/login',
-      },
-      env: { DB: db },
-      set: vi.fn(),
-    };
-    const next = vi.fn();
-    await tenantMiddleware(c, next);
-    expect(next).toHaveBeenCalled();
-  });
-
-  it('allows /admin paths without tenant', async () => {
-    const db = mockDb([]);
-    const c = {
-      req: {
-        raw: makeRequest('http://localhost/admin'),
-        path: '/admin',
-      },
-      env: { DB: db },
-      set: vi.fn(),
-    };
-    const next = vi.fn();
-    await tenantMiddleware(c, next);
-    expect(next).toHaveBeenCalled();
   });
 });

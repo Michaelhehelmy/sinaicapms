@@ -3,19 +3,34 @@ import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { SUPER_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 
+/**
+ * Log in as super admin and land directly on the Reports panel.
+ *
+ * Phase 7: the admin dashboard uses pushState path routing (`/admin/<tab>`),
+ * with a legacy `#tab=` fallback. We navigate to `/admin/reports` BEFORE
+ * authentication so that when the login overlay is dismissed and the
+ * dashboard renders, tabFromLocation() already resolves 'reports' and the
+ * ReportsPanel mounts immediately.
+ *
+ * This avoids clicking a sidebar tab — super admins only see the super-nav
+ * (super_dashboard / super_tenants / super_reservations) and the tenant-nav
+ * `reports` button is NOT rendered for them (AdminApp.tsx).
+ */
 async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
   const admin = new AdminDashboardPage(page);
-  await admin.goto(TEST_TENANT.id);
+  await admin.gotoTab(TEST_TENANT.id, 'reports');
   await admin.login(SUPER_ADMIN.email, SUPER_ADMIN.password);
   await expectPanelReady(page);
   return admin;
 }
 
+/**
+ * Wait for the reports panel content to finish loading.
+ * The panel is already mounted via the path set in loginAsSuperAdmin,
+ * so we only need to wait for async data fetch to complete.
+ */
 async function navigateToReports(page: import('@playwright/test').Page) {
-  const admin = new AdminDashboardPage(page);
-  await admin.clickTab('reports');
   await expectPanelContentReady(page, 'reports-panel');
-  return admin;
 }
 
 test.describe('POS Reports — Panel Loading', () => {

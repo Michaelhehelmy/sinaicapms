@@ -67,7 +67,7 @@ function pickPortalTenant(tenants: Record<string, any>[]): Record<string, any> {
 
 /** Read camp-detail hrefs from the marketplace home cards (client-rendered). */
 async function getHomeCampLinks(page: Page): Promise<string[]> {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   const cards = page.locator('[data-testid="camp-card"]');
   try {
     await cards.first().waitFor({ state: 'visible', timeout: 15_000 });
@@ -87,7 +87,7 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
   test('1. marketplace home loads: hero, search, camp grid (cards or graceful empty state)', async ({ page }) => {
     const errors = collectConsoleErrors(page);
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('[data-testid="hero-banner"]')).toBeVisible();
     await expect(page.locator('[data-testid="hero-title"]')).toBeVisible();
@@ -104,7 +104,7 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
   });
 
   test('2. marketplace search input filters camps (client-side)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const search = page.locator('[data-testid="search-input"]');
     await expect(search).toBeVisible();
@@ -160,7 +160,7 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
     test.skip(campLinks.length === 0, 'No camps on production (/api/camps empty and no home cards)');
 
     const errors = collectConsoleErrors(page);
-    await page.goto(campLinks[0]);
+    await page.goto(campLinks[0], { waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('[data-testid="hero-banner"]')).toBeVisible();
     await expect(page.locator('[data-testid="camp-detail-rooms"]')).toBeVisible();
@@ -180,7 +180,7 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
     // NOTE: the root host ignores the param by design (resolveTenantId
     // hardcodes 'marketplace' for sinaicamps.com), so this only asserts a
     // clean load — the real portal is verified on the tenant origin below.
-    await page.goto(`/?tenant=${encodeURIComponent(id)}`);
+    await page.goto(`/?tenant=${encodeURIComponent(id)}`, { waitUntil: 'domcontentloaded' });
     expect(page.url()).toContain(BASE_HOST);
     await expect(page.locator('[data-testid="hero-banner"]')).toBeVisible();
 
@@ -188,7 +188,7 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
     // `/camp/{id}` is marketplace-only; the tenant landing is the zone root.
     const customDomain = tenant.custom_domain || tenant.customDomain;
     if (customDomain) {
-      await page.goto(`https://${customDomain}/`);
+      await page.goto(`https://${customDomain}/`, { waitUntil: 'domcontentloaded' });
       await expect(page.locator('[data-testid="hero-banner"]')).toBeVisible();
       await expect(page.locator('[data-testid="hero-title"]')).toContainText(String(tenant.name));
     } else {
@@ -215,7 +215,7 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
       ? `https://${customDomain}/book`
       : `/camp/${encodeURIComponent(id)}/book?tenant=${encodeURIComponent(id)}`;
 
-    await page.goto(target);
+    await page.goto(target, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('[data-testid="reservation-page"]')).toBeVisible();
   });
 
@@ -233,14 +233,14 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
       ? `https://${customDomain}/menu`
       : `/camp/${encodeURIComponent(id)}/menu?tenant=${encodeURIComponent(id)}`;
 
-    await page.goto(target);
+    await page.goto(target, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('[data-testid="menu-page"]')).toBeVisible();
   });
 
   test('7. admin login page renders (NO auth attempted)', async ({ page }) => {
     const errors = collectConsoleErrors(page);
 
-    await page.goto('/admin');
+    await page.goto('/admin', { waitUntil: 'domcontentloaded' });
 
     // Admin is a client-rendered React SPA; wait for hydration, then verify
     // the login form is present. NO credentials are submitted.
@@ -264,7 +264,7 @@ test.describe('Production Critical Flows (https://sinaicamps.com)', () => {
     // (e.g. acaciacamp.com/pos/login) — navigate there. NO credentials submitted.
     test.skip(!customDomain, `Tenant '${tenant.id}' has no custom_domain; POS origin not reachable`);
 
-    await page.goto(`https://${customDomain}/pos/login`);
+    await page.goto(`https://${customDomain}/pos/login`, { waitUntil: 'domcontentloaded' });
 
     // POS is a client-rendered React SPA; wait for hydration, then verify the
     // login card is present. NO credentials are submitted.

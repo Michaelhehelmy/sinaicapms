@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import * as api from '@/lib/api';
-import { useMeals, useMealCategories, useCamps, type Meal, type MealCategory, type Camp } from '@/hooks/useAdminData';
+import type { Meal, MealCategory, Camp } from '@/hooks/useAdminData';
+import { useMealsQuery, useMealCategoriesQuery, queryKeys } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -43,8 +45,20 @@ const mealStatusOptions = [
 ];
 
 export default function MealsPanel({ campIds, camps }: MealsPanelProps) {
-  const { data: meals, loading: loadingMeals, refresh: refreshMeals } = useMeals();
-  const { data: mealCategories, loading: loadingCats, refresh: refreshCats } = useMealCategories();
+  const queryClient = useQueryClient();
+  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery();
+  const meals = mealsData ?? [];
+  const { data: catsData, isLoading: loadingCats } = useMealCategoriesQuery();
+  const mealCategories = catsData ?? [];
+  // Phase 6: refresh = invalidate the ['admin', ...] concern in the TanStack cache.
+  const refreshMeals = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.meals }),
+    [queryClient],
+  );
+  const refreshCats = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.mealCategories }),
+    [queryClient],
+  );
   const { showToast } = useToast();
 
   const [showMealForm, setShowMealForm] = useState(false);
@@ -99,14 +113,13 @@ export default function MealsPanel({ campIds, camps }: MealsPanelProps) {
     setSaving(true);
     try {
       await api.saveMeal({
-        id: editMealId ?? undefined,
         name: mealForm.name.trim(),
         mealCategoryId: mealForm.mealCategoryId,
         price: parseFloat(mealForm.price) || 0,
         description: mealForm.description.trim() || undefined,
         imageUrl: mealForm.imageUrl.trim() || undefined,
         isActive: mealForm.isActive,
-      });
+      }, editMealId ?? undefined);
       showToast(editMealId ? 'Meal updated.' : 'Meal created.', 'success');
       setShowMealForm(false);
       setEditMealId(null);

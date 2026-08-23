@@ -1,7 +1,8 @@
 /**
  * Unified Inbox API — merged leads + bookings feed (Phase 4).
  *
- * Tenant-scoped (admin auth enforced by the index.js catch-all dispatcher):
+ * Tenant-scoped Hono sub-router, mounted by index.js behind the admin
+ * resolveScope() middleware (NOT public):
  *   GET    /api/inbox?kind=all|lead|booking&status=&page=&pageSize=
  *   PATCH  /api/inbox/read        { kind: 'lead'|'booking', id }
  *   DELETE /api/inbox/:kind/:id   lead only; booking -> 400
@@ -11,10 +12,12 @@
  * bookings reference the inbox_reads side table via ref_type='booking'.
  */
 
+import { Hono } from 'hono';
 import { jsonResponse, errorResponse, toSnake } from '../utils/response';
 import { validationError } from '../utils/errors';
 import { parsePagination, paginationEnvelope } from '../utils/pagination';
 import { z } from 'zod';
+import { getScope } from '../middleware/resolveScope.js';
 
 export const inboxReadSchema = z.object({
   kind: z.enum(['lead', 'booking'], { required_error: 'Invalid kind' }),
@@ -78,108 +81,120 @@ function buildArm(kind, tenantId, status) {
   return { sql, params };
 }
 
-export async function handleInboxRoute(request, env, tenantId) {
-  const url = new URL(request.url);
-  const method = request.method;
-  const path = url.pathname.split('/').filter(Boolean);
-  const subRoute = path[2]; // /api/inbox/:sub
+/**
+ * Inbox sub-router (Phase 4 T1).
+ *
+ * Mounted by index.js as:
+ *   app.use('/api/inbox', inboxAdminScope);   // admin auth + tenant context
+ *   app.use('/api/inbox/*', inboxAdminScope);
+ *   app.route('/api/inbox', inboxRoutes);
+ */
+const inboxRoutes = new Hono();
 
-  // ───── GET /api/inbox ─────
-  if (!subRoute && method === 'GET') {
-    try {
-      const { page, pageSize, offset } = parsePagination(url);
-      const kind = url.searchParams.get('kind') || 'all';
-      const status = url.searchParams.get('status');
+// ───── GET /api/inbox ─────
+inboxRoutes.get('/', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    const url = new URL(c.req.url);
+    const { page, pageSize, offset } = parsePagination(url);
+    const kind = url.searchParams.get('kind') || 'all';
+    const status = url.searchParams.get('status');
 
-      const arms = [];
-      if (kind === 'all') {
-        arms.push(buildArm('lead', tenantId, status));
-        arms.push(buildArm('booking', tenantId, status));
-      } else if (kind === 'lead' || kind === 'booking') {
-        arms.push(buildArm(kind, tenantId, status));
-      } else {
-        return errorResponse('Invalid kind filter', 400);
-      }
-
-      const unionSql = arms.map((a) => a.sql).join(' UNION ALL ');
-      const params = arms.flatMap((a) => a.params);
-
-      const query = `SELECT * FROM (${unionSql}) AS u ORDER BY u.created_at DESC LIMIT ? OFFSET ?`;
-      const countQuery = `SELECT COUNT(*) AS total FROM (${unionSql}) AS u`;
-
-      const { results } = await env.DB.prepare(query).bind(...params, pageSize, offset).all();
-      const { results: countResult } = await env.DB.prepare(countQuery).bind(...params).all();
-
-      // Unread totals are tenant-wide (not scoped to the page/filter).
-      const { results: unreadLeads } = await env.DB.prepare(
-        'SELECT COUNT(*) AS total FROM leads WHERE tenant_id = ? AND is_read = 0'
-      ).bind(tenantId).all();
-      const { results: unreadBookings } = await env.DB.prepare(
-        `SELECT COUNT(*) AS total FROM orders o
-         LEFT JOIN inbox_reads ir
-                ON ir.tenant_id = o.tenant_id AND ir.ref_type = 'booking' AND ir.ref_id = o.id
-         WHERE o.tenant_id = ? AND ir.ref_id IS NULL`
-      ).bind(tenantId).all();
-
-      const envelope = paginationEnvelope(results, countResult?.[0]?.total || 0, page, pageSize);
-      envelope.unread = (unreadLeads?.[0]?.total || 0) + (unreadBookings?.[0]?.total || 0);
-      return jsonResponse(envelope);
-    } catch (e) {
-      return errorResponse('Failed to fetch inbox');
+    const arms = [];
+    if (kind === 'all') {
+      arms.push(buildArm('lead', tenantId, status));
+      arms.push(buildArm('booking', tenantId, status));
+    } else if (kind === 'lead' || kind === 'booking') {
+      arms.push(buildArm(kind, tenantId, status));
+    } else {
+      return errorResponse('Invalid kind filter', 400);
     }
+
+    const unionSql = arms.map((a) => a.sql).join(' UNION ALL ');
+    const params = arms.flatMap((a) => a.params);
+
+    const query = `SELECT * FROM (${unionSql}) AS u ORDER BY u.created_at DESC LIMIT ? OFFSET ?`;
+    const countQuery = `SELECT COUNT(*) AS total FROM (${unionSql}) AS u`;
+
+    const { results } = await c.env.DB.prepare(query).bind(...params, pageSize, offset).all();
+    const { results: countResult } = await c.env.DB.prepare(countQuery).bind(...params).all();
+
+    // Unread totals are tenant-wide (not scoped to the page/filter).
+    const { results: unreadLeads } = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS total FROM leads WHERE tenant_id = ? AND is_read = 0'
+    ).bind(tenantId).all();
+    const { results: unreadBookings } = await c.env.DB.prepare(
+      `SELECT COUNT(*) AS total FROM orders o
+       LEFT JOIN inbox_reads ir
+              ON ir.tenant_id = o.tenant_id AND ir.ref_type = 'booking' AND ir.ref_id = o.id
+       WHERE o.tenant_id = ? AND ir.ref_id IS NULL`
+    ).bind(tenantId).all();
+
+    const envelope = paginationEnvelope(results, countResult?.[0]?.total || 0, page, pageSize);
+    envelope.unread = (unreadLeads?.[0]?.total || 0) + (unreadBookings?.[0]?.total || 0);
+    return jsonResponse(envelope);
+  } catch (e) {
+    return errorResponse('Failed to fetch inbox');
   }
+});
 
-  // ───── PATCH /api/inbox/read ─────
-  if (subRoute === 'read' && method === 'PATCH') {
-    try {
-      const parsed = inboxReadSchema.safeParse(toSnake(await request.json()));
-      if (!parsed.success) {
-        return validationError(parsed);
-      }
-      const { kind, id } = parsed.data;
-
-      if (kind === 'lead') {
-        const result = await env.DB.prepare(
-          "UPDATE leads SET is_read = 1, read_at = datetime('now') WHERE id = ? AND tenant_id = ?"
-        ).bind(id, tenantId).run();
-        if (result.changes === 0) {
-          return errorResponse('Lead not found', 404);
-        }
-        return jsonResponse({ success: true });
-      }
-
-      // booking — side-table ack, idempotent (INSERT OR IGNORE).
-      await env.DB.prepare(
-        "INSERT OR IGNORE INTO inbox_reads (tenant_id, ref_type, ref_id, read_at) VALUES (?, 'booking', ?, datetime('now'))"
-      ).bind(tenantId, id).run();
-      return jsonResponse({ success: true });
-    } catch (e) {
-      return errorResponse('Failed to update inbox');
+// ───── PATCH /api/inbox/read ─────
+inboxRoutes.patch('/read', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    const parsed = inboxReadSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
     }
-  }
+    const { kind, id } = parsed.data;
 
-  // ───── DELETE /api/inbox/:kind/:id ─────
-  if (subRoute && method === 'DELETE') {
-    const kind = subRoute;
-    const id = path[3];
-    if (kind !== 'lead') {
-      return errorResponse('Booking deletion not allowed via inbox', 400);
-    }
-    if (!id) {
-      return errorResponse('ID is required', 400);
-    }
-    try {
-      const result = await env.DB.prepare(
-        'DELETE FROM leads WHERE id = ? AND tenant_id = ?'
+    if (kind === 'lead') {
+      const result = await c.env.DB.prepare(
+        "UPDATE leads SET is_read = 1, read_at = datetime('now') WHERE id = ? AND tenant_id = ?"
       ).bind(id, tenantId).run();
       if (result.changes === 0) {
         return errorResponse('Lead not found', 404);
       }
       return jsonResponse({ success: true });
-    } catch (e) {
-      return errorResponse('Failed to delete lead');
     }
-  }
 
-  return errorResponse('Inbox endpoint not found', 404);
-}
+    // booking — side-table ack, idempotent (INSERT OR IGNORE).
+    await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO inbox_reads (tenant_id, ref_type, ref_id, read_at) VALUES (?, 'booking', ?, datetime('now'))"
+    ).bind(tenantId, id).run();
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return errorResponse('Failed to update inbox');
+  }
+});
+
+// ───── DELETE /api/inbox/:kind/:id ─────
+inboxRoutes.delete('/:kind/:id', async (c) => {
+  const kind = c.req.param('kind');
+  if (kind !== 'lead') {
+    return errorResponse('Booking deletion not allowed via inbox', 400);
+  }
+  try {
+    const tenantId = getScope(c).tenantId;
+    const result = await c.env.DB.prepare(
+      'DELETE FROM leads WHERE id = ? AND tenant_id = ?'
+    ).bind(c.req.param('id'), tenantId).run();
+    if (result.changes === 0) {
+      return errorResponse('Lead not found', 404);
+    }
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return errorResponse('Failed to delete lead');
+  }
+});
+
+// DELETE without the id segment keeps the legacy messages.
+inboxRoutes.delete('/:kind', (c) =>
+  c.req.param('kind') !== 'lead'
+    ? errorResponse('Booking deletion not allowed via inbox', 400)
+    : errorResponse('ID is required', 400)
+);
+
+inboxRoutes.all('*', () => errorResponse('Inbox endpoint not found', 404));
+
+export default inboxRoutes;

@@ -114,7 +114,7 @@ test.describe('Admin Navigation', () => {
     await expect(page.locator('text=/SinaiCamps|Management Panel/i').first()).toBeVisible({ timeout: 5000 });
   });
 
-  test('tab switching does not cause page reload', async ({ page }) => {
+  test('tab switching uses pushState (no page reload) and updates the URL', async ({ page }) => {
     const admin = await loginAsSuperAdmin(page);
 
     const tabButtons = page.locator('[data-testid="sidebar-nav"] button[data-testid^="nav-tab-"]');
@@ -129,17 +129,35 @@ test.describe('Admin Navigation', () => {
     if (firstTab && secondTab) {
       await admin.clickTab(firstTab);
       await expectPanelReady(page);
-
-      const navigationCount = await page.evaluate(() => {
-        return (window as any).__navCount || 0;
-      });
+      // Phase 7 baseline: one document navigation (the initial goto).
+      const navigationCountBefore = await page.evaluate(
+        () => performance.getEntriesByType('navigation').length,
+      );
+      await expect(page).toHaveURL(new RegExp(`/admin/${firstTab}(\\?|$)`));
 
       await admin.clickTab(secondTab);
       await expectPanelReady(page);
 
-      const isContentVisible = await page.locator('[data-testid="content-area"]').isVisible();
-      expect(isContentVisible).toBeTruthy();
+      // pushState must NOT create a new document — the navigation-entry count
+      // stays at 1 (a full reload would append a second entry).
+      const navigationCountAfter = await page.evaluate(
+        () => performance.getEntriesByType('navigation').length,
+      );
+      expect(navigationCountAfter).toBe(navigationCountBefore);
+      await expect(page).toHaveURL(new RegExp(`/admin/${secondTab}(\\?|$)`));
+      await expect(page.locator('[data-testid="content-area"]')).toBeVisible();
     }
+  });
+
+  test('legacy #tab= deep links still resolve during the Phase 7 migration window', async ({ page }) => {
+    // Pre-kernel bookmarks used `/admin#tab=<tab>`; AdminApp's parseHashTab
+    // fallback keeps them working until hash routing is fully retired.
+    await page.goto('/admin?tenant=marketplace#tab=super_tenants', { waitUntil: 'domcontentloaded' });
+    await page.locator('[data-testid="login-email"]').fill(SUPER_ADMIN.email);
+    await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
+    await page.locator('[data-testid="login-submit"]').click();
+    await expectPanelReady(page);
+    await expect(page.locator('[data-testid="super-tenants-panel"]')).toBeVisible({ timeout: 10_000 });
   });
 
   test('sidebar footer has logout button', async ({ page }) => {

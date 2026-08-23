@@ -1,10 +1,9 @@
 /**
- * Unit tests for tenant.js middleware — Tenant resolution and isolation.
- * Tests: getTenant (lookup logic) and tenantMiddleware (Hono middleware behavior).
+ * Unit tests for tenant.js — Tenant resolution (getTenant lookup logic).
  * Uses mocked DB and Request objects.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getTenant, tenantMiddleware } from '../../backend/src/middleware/tenant.js';
+import { getTenant } from '../../backend/src/middleware/tenant.js';
 
 // ─── Mock Helpers ────────────────────────────────────────────
 function createMockDb(results = []) {
@@ -27,18 +26,6 @@ function createRequest(hostname, headers = {}, searchParams = '') {
       ...headers,
     },
   });
-}
-
-function createMockContext(hostname, headers = {}, searchParams = '') {
-  const req = createRequest(hostname, headers, searchParams);
-  const setMock = vi.fn();
-  return {
-    req: { raw: req, path: '/api/camps' },
-    set: setMock,
-    env: createMockDb().DB ? { DB: createMockDb().DB } : {},
-    json: vi.fn().mockReturnValue(new Response(null, { status: 200 })),
-    _setMock: setMock,
-  };
 }
 
 // ─── getTenant ───────────────────────────────────────────────
@@ -136,98 +123,5 @@ describe('getTenant', () => {
     expect(query).toContain('subdomain = ?');
     expect(query).toContain('custom_domain = ?');
     expect(query).not.toContain('LIKE');
-  });
-});
-
-// ─── tenantMiddleware ────────────────────────────────────────
-describe('tenantMiddleware', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('sets tenantId in context when tenant is resolved', async () => {
-    const { DB } = createMockDb([{ id: 'tenant_1' }]);
-    const ctx = createMockContext('tenant_1.sinaicamps.com');
-    ctx.env = { DB };
-
-    const nextMock = vi.fn().mockResolvedValue(undefined);
-
-    await tenantMiddleware(ctx, nextMock);
-
-    expect(ctx._setMock).toHaveBeenCalledWith('tenantId', 'tenant_1');
-    expect(nextMock).toHaveBeenCalled();
-  });
-
-  it('calls next when tenant is found (even if empty set)', async () => {
-    const { DB } = createMockDb([{ id: 'tenant_1' }]);
-    const ctx = createMockContext('tenant_1.sinaicamps.com');
-    ctx.env = { DB };
-
-    const nextMock = vi.fn().mockResolvedValue(undefined);
-
-    await tenantMiddleware(ctx, nextMock);
-
-    expect(ctx._setMock).toHaveBeenCalledWith('tenantId', 'tenant_1');
-    expect(nextMock).toHaveBeenCalled();
-  });
-
-  it('allows /api/tenants without tenant resolution', async () => {
-    const { DB } = createMockDb([]);
-    const ctx = createMockContext('localhost');
-    ctx.req.path = '/api/tenants';
-    ctx.env = { DB };
-
-    const nextMock = vi.fn().mockResolvedValue(undefined);
-
-    await tenantMiddleware(ctx, nextMock);
-
-    // Should NOT return 404, should call next
-    expect(ctx.json).not.toHaveBeenCalled();
-    expect(nextMock).toHaveBeenCalled();
-  });
-
-  it('allows /api/auth without tenant resolution', async () => {
-    const { DB } = createMockDb([]);
-    const ctx = createMockContext('localhost');
-    ctx.req.path = '/api/auth/login';
-    ctx.env = { DB };
-
-    const nextMock = vi.fn().mockResolvedValue(undefined);
-
-    await tenantMiddleware(ctx, nextMock);
-
-    expect(ctx.json).not.toHaveBeenCalled();
-    expect(nextMock).toHaveBeenCalled();
-  });
-
-  it('allows /admin without tenant resolution', async () => {
-    const { DB } = createMockDb([]);
-    const ctx = createMockContext('localhost');
-    ctx.req.path = '/admin/dashboard';
-    ctx.env = { DB };
-
-    const nextMock = vi.fn().mockResolvedValue(undefined);
-
-    await tenantMiddleware(ctx, nextMock);
-
-    expect(ctx.json).not.toHaveBeenCalled();
-    expect(nextMock).toHaveBeenCalled();
-  });
-
-  it('returns 404 for non-public routes when tenant not found', async () => {
-    const { DB } = createMockDb([]);
-    const ctx = createMockContext('unknown.sinaicamps.com');
-    ctx.req.path = '/api/camps';
-    ctx.env = { DB };
-
-    const nextMock = vi.fn();
-
-    await tenantMiddleware(ctx, nextMock);
-
-    expect(ctx.json).toHaveBeenCalledWith(
-      { error: 'Tenant not found or invalid subdomain/headers' },
-      404
-    );
-    expect(nextMock).not.toHaveBeenCalled();
   });
 });

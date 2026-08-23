@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import POSApp from '@/components/pos/POSApp';
+import POSApp, { posQueryClient } from '@/components/pos/POSApp';
 
 const mockShowToast = vi.fn();
 
@@ -24,7 +24,16 @@ vi.mock('@/lib/utils', () => ({
   cn: (...classes: (string | undefined | false | null)[]) => classes.filter(Boolean).join(' '),
 }));
 
+// Phase 7: navigation goes through the pushState kernel — mock push/replace so
+// assertions inspect the requested path instead of jsdom history side effects.
+vi.mock('@/lib/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/navigation')>()),
+  push: vi.fn(),
+  replace: vi.fn(),
+}));
+
 import * as api from '@/lib/api';
+import { push, replace } from '@/lib/navigation';
 const mockPosLogin = vi.mocked(api.posLogin);
 const mockPosGetDashboard = vi.mocked(api.posGetDashboard);
 const mockPosGetProducts = vi.mocked(api.posGetProducts);
@@ -58,6 +67,9 @@ function setPOSPath(path: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  // Phase 6: POS data lives in a module-level TanStack cache — wipe it between
+  // tests so per-test mock responses are never served from the previous test.
+  posQueryClient.clear();
   // Set default path to dashboard
   setPOSPath('/pos/dashboard');
   mockPosLogin.mockResolvedValue({ success: true, token: 'test-token', user: testUser } as any);
@@ -171,7 +183,11 @@ describe('POSApp', () => {
         expect(screen.getByText('POS Terminal')).toBeInTheDocument();
       });
       fireEvent.click(screen.getByTestId('pos-nav-products'));
-      expect(window.location.href).toBe('/pos/products');
+      // Phase 7: pushState navigation (no full reload)
+      expect(vi.mocked(push)).toHaveBeenCalledWith('/pos/products');
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Search products...')).toBeInTheDocument();
+      });
     });
 
     it('shows sign out button', async () => {
@@ -751,12 +767,12 @@ describe('POSApp', () => {
       fireEvent.change(screen.getByLabelText('Actual Closing Cash ($)'), { target: { value: '250' } });
       clickCloseShiftButton();
       await waitFor(() => { expect(screen.getByText('Shift Closed')).toBeInTheDocument(); });
-      // Back to POS triggers navigation (full page reload in production)
+      // Back to POS triggers navigation (pushState in production — no reload)
       const backBtn = screen.getByText('Back to POS');
       expect(backBtn).toBeInTheDocument();
       fireEvent.click(backBtn);
       await waitFor(() => {
-        expect(window.location.href).toBe('/pos/dashboard');
+        expect(vi.mocked(push)).toHaveBeenCalledWith('/pos/dashboard');
       });
     });
   });

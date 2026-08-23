@@ -73,7 +73,7 @@ test.describe('Registration Form — Validation & Submission', () => {
   });
 
   test('successful registration: shows pending approval message', async ({ page }) => {
-    await page.goto('/register');
+    await page.goto('/register?tenant=' + TENANT_ID);
 
     await page.locator('[data-testid="register-name"]').fill('E2E New User');
     await page.locator('[data-testid="register-email"]').fill(UNIQUE_EMAIL);
@@ -87,7 +87,7 @@ test.describe('Registration Form — Validation & Submission', () => {
   });
 
   test('duplicate email: shows error or success (no user enumeration)', async ({ page }) => {
-    await page.goto('/register');
+    await page.goto('/register?tenant=' + TENANT_ID);
 
     await page.locator('[data-testid="register-name"]').fill('Duplicate User');
     await page.locator('[data-testid="register-email"]').fill(UNIQUE_EMAIL);
@@ -95,17 +95,18 @@ test.describe('Registration Form — Validation & Submission', () => {
     await page.locator('[data-testid="register-confirm-password"]').fill('SecurePass123!');
     await page.locator('[data-testid="register-submit"]').click();
 
-    const result = page.locator('.bg-red-50, .bg-green-100, text=Registration Successful, text=already exists');
+    const result = page.locator('.bg-red-50, .bg-green-100').or(page.getByText('Registration Successful')).or(page.getByText('already exists'));
     await expect(result.first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('login link navigates to /login', async ({ page }) => {
-    await page.goto('/register');
+  test('login link navigates to login page', async ({ page }) => {
+    await page.goto('/register?tenant=' + TENANT_ID);
 
     const loginLink = page.locator('a[href="/login"]');
     await expect(loginLink).toBeVisible();
     await loginLink.click();
 
-    await expect(page).toHaveURL(/\/login/);
+    // /login redirects to /admin — both are the login page
+    await expect(page).toHaveURL(/\/(admin|login)/);
   });
 });

@@ -596,8 +596,8 @@ describe('BookingCalendar SSE live refresh', () => {
     latestConnection().onEvent(bookingEvent('c1'));
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['availability'] });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['price-overrides'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'availability'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'price-overrides'] });
     });
     await waitFor(() => expect(api.getAvailability).toHaveBeenCalled());
     await waitFor(() => expect(api.getPriceOverrides).toHaveBeenCalled());
@@ -612,8 +612,8 @@ describe('BookingCalendar SSE live refresh', () => {
     latestConnection().onEvent(bookingEvent('c9'));
 
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['availability'] });
-    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['price-overrides'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['admin', 'availability'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['admin', 'price-overrides'] });
   });
 
   it('ignores non-new-booking events', async () => {

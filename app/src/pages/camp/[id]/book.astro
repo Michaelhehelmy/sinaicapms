@@ -23,10 +23,6 @@ if (!forbidden) {
   }
 }
 
-if (!forbidden && !tenant) {
-  return Astro.redirect('/404');
-}
-
 const t = (tenant ?? {}) as Record<string, unknown>;
 const color = (t.primaryColor as string) || '#4a7c4f';
 const tenantName = t.name as string;
@@ -34,7 +30,7 @@ const tenantId = t.id as string;
 const whatsappNumber = (t.whatsappNumber as string) || (t.phone as string) || '';
 ---
 {
-  forbidden ? (
+  forbidden || !tenant ? (
     <ZoneGuard />
   ) : (
     <BookPage

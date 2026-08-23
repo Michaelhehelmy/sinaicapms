@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { jsonResponse, errorResponse, toSnake } from '../utils/response';
 import { validationError } from '../utils/errors';
 import { parsePagination, paginationEnvelope } from '../utils/pagination';
-import { verifyJWT } from './auth';
+import { requireAuth } from '../middleware/requireAuth.js';
 import { z } from 'zod';
 
 export const tenantUpdateSchema = z.object({
@@ -47,25 +47,27 @@ export const adminUpdateSchema = z.object({
   last_name: z.string().optional(),
 }).strip();
 
+// Phase 1: the one auth gate. Byte-compat with the former inline gate:
+// a missing header is still 401 "Missing or invalid Authorization header",
+// while an invalid token, a POS session, or a non-super_admin role all
+// collapse into the legacy combined-condition response
+// 403 "Unauthorized: Super Admin access required".
+const superAdminGate = requireAuth({
+  realm: 'admin',
+  roles: ['super_admin'],
+  requireTenant: false,
+  invalidToken: { status: 403, message: 'Unauthorized: Super Admin access required' },
+  realmMismatch: { message: 'Unauthorized: Super Admin access required' },
+  insufficientRole: { message: 'Unauthorized: Super Admin access required' },
+});
+
 export async function handleAdminRoute(request, env) {
   const url = new URL(request.url);
   const method = request.method;
   const path = url.pathname.split('/').filter(Boolean);
 
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, env.JWT_SECRET);
-  if (!decoded || decoded.posType === 'pos' || decoded.role !== 'super_admin') {
-    return errorResponse('Unauthorized: Super Admin access required', 403);
-  }
-  // P0-6: Verify super admin is still active (inline JWT calls don't use authMiddleware)
-  const { results: activeCheck } = await env.DB.prepare('SELECT is_active FROM admins WHERE id = ?').bind(decoded.userId || decoded.sub).all();
-  if (!activeCheck.length || activeCheck[0].is_active === 0) {
-    return errorResponse('Account deactivated', 401);
-  }
+  const auth = await superAdminGate(request, env);
+  if (auth instanceof Response) return auth;
 
   const subRoute = path[2];
 
@@ -133,7 +135,9 @@ export async function handleAdminRoute(request, env) {
           } else if (action === 'delete') {
             for (const tid of ids) {
               await env.DB.prepare("DELETE FROM orders WHERE tenant_id = ?").bind(tid).run();
+              await env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)").bind(tid).run();
+              await env.DB.prepare("DELETE FROM price_overrides WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid).run();
               await env.DB.prepare("DELETE FROM product_camps WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid).run();
               await env.DB.prepare("DELETE FROM pos_products WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM rate_plans_new WHERE tenant_id = ?").bind(tid).run();
@@ -142,6 +146,8 @@ export async function handleAdminRoute(request, env) {
               await env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tid).run();
               await env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tid).run();
+              await env.DB.prepare("DELETE FROM meal_schedules WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid).run();
+              await env.DB.prepare("DELETE FROM meal_lang WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid).run();
               await env.DB.prepare("DELETE FROM meals WHERE tenant_id = ?").bind(tid).run();
             }
             const placeholders = ids.map(() => '?').join(',');
@@ -226,7 +232,9 @@ export async function handleAdminRoute(request, env) {
       try {
         // Cascade delete: orders → rooms → products → camps → admins → tenant
         await env.DB.prepare("DELETE FROM orders WHERE tenant_id = ?").bind(tenantId).run();
+        await env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM camps WHERE tenant_id = ?)").bind(tenantId).run();
+        await env.DB.prepare("DELETE FROM price_overrides WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM product_camps WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM pos_products WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM rate_plans_new WHERE tenant_id = ?").bind(tenantId).run();
@@ -235,6 +243,8 @@ export async function handleAdminRoute(request, env) {
         await env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tenantId).run();
+        await env.DB.prepare("DELETE FROM meal_schedules WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tenantId).run();
+        await env.DB.prepare("DELETE FROM meal_lang WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM meals WHERE tenant_id = ?").bind(tenantId).run();
         await env.DB.prepare("DELETE FROM tenants WHERE id = ?").bind(tenantId).run();
         return jsonResponse({ success: true });

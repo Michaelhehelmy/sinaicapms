@@ -10,13 +10,32 @@ import { FullConfig } from '@playwright/test';
  * If a test needs specific data that doesn't exist on prod, it should
  * be excluded from the production config, not force-seeded here.
  */
+
+/** Fetch with retry — Cloudflare DNS round-robins between IPs, some may be unreachable. */
+async function fetchWithRetry(url: string, retries = 5, delayMs = 1000): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        console.log(`  ⏳ Attempt ${attempt}/${retries} failed, retrying in ${delayMs}ms...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function globalSetup(config: FullConfig) {
   const baseURL = config.projects[0]?.use?.baseURL || 'https://sinaicamps.com';
   console.log(`\n🌍 Production E2E Setup (${baseURL})`);
 
-  // 1. Verify API is reachable
+  // 1. Verify API is reachable (with retries for flaky Cloudflare IPs)
   try {
-    const res = await fetch(`${baseURL}/api/tenants`);
+    const res = await fetchWithRetry(`${baseURL}/api/tenants`);
     if (!res.ok) {
       console.warn(`⚠️  GET /api/tenants returned ${res.status} — API may be down`);
     } else {
@@ -24,13 +43,13 @@ async function globalSetup(config: FullConfig) {
       console.log(`  ✅ API reachable (${Array.isArray(tenants) ? tenants.length : '?'} tenants)`);
     }
   } catch (err) {
-    console.error('❌ Cannot reach API — aborting setup');
+    console.error('❌ Cannot reach API after retries — aborting setup');
     throw err;
   }
 
   // 2. Verify the test tenant exists (acaciacamp — used by tenant/public specs)
   try {
-    const res = await fetch(`${baseURL}/api/tenants/acaciacamp`);
+    const res = await fetchWithRetry(`${baseURL}/api/tenants/acaciacamp`, 2);
     if (res.ok) {
       console.log('  ✅ Test tenant (acaciacamp) exists');
     } else {

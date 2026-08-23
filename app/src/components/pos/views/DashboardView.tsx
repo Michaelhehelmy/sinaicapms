@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import * as apiClient from '@/lib/api';
+import { usePosDashboard } from '@/hooks/usePosQueries';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -9,20 +8,12 @@ import type { Dashboard } from '../types';
 
 // ─── Dashboard View ────────────────────────────────────────
 export default function DashboardView() {
-  const [data, setData] = useState<Dashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data, isLoading, error } = usePosDashboard();
 
-  useEffect(() => {
-    apiClient.posGetDashboard()
-      .then((data) => setData(data as Dashboard))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <POSDashboardSkeleton />;
-  if (error) return <div className="p-8 text-red-500">{error}</div>;
+  if (isLoading) return <POSDashboardSkeleton />;
+  if (error) return <div className="p-8 text-red-500">{error.message}</div>;
   if (!data) return null;
+  const dashboard = data as unknown as Dashboard;
 
   return (
     <div className="p-6 space-y-6" data-testid="pos-dashboard">
@@ -30,19 +21,19 @@ export default function DashboardView() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard
           title="Today's Revenue"
-          value={`$${Number(data.todayRevenue).toFixed(2)}`}
+          value={`$${Number(dashboard.todayRevenue).toFixed(2)}`}
           color="green"
           data-testid="stat-revenue"
         />
         <StatCard
           title="Today's Orders"
-          value={String(data.todayOrders)}
+          value={String(dashboard.todayOrders)}
           color="blue"
           data-testid="stat-orders"
         />
         <StatCard
           title="Active Products"
-          value={String(data.activeProducts)}
+          value={String(dashboard.activeProducts)}
           color="yellow"
           data-testid="stat-low-stock"
         />
@@ -63,7 +54,7 @@ export default function DashboardView() {
             </tr>
           </thead>
           <tbody>
-            {data.recentOrders.length === 0 && (
+            {dashboard.recentOrders.length === 0 && (
               <tr>
                 <td colSpan={5}>
                   <EmptyState
@@ -73,7 +64,7 @@ export default function DashboardView() {
                 </td>
               </tr>
             )}
-            {data.recentOrders.map((o) => (
+            {dashboard.recentOrders.map((o) => (
               <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="px-5 py-3 font-medium text-gray-900">{o.orderNumber}</td>
                 <td className="px-5 py-3">${Number(o.totalAmount).toFixed(2)}</td>

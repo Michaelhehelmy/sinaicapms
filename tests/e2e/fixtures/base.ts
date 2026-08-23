@@ -19,7 +19,7 @@ export const test = base.extend<AuthFixtures>({
   },
 
   superAdminPage: async ({ page }, use) => {
-    await page.goto('/login');
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.fill('#loginEmail, input[name="identifier"], input[placeholder*="admin"]', SUPER_ADMIN.email);
     await page.fill('#loginPassword, input[type="password"]', SUPER_ADMIN.password);
     await page.click('button:has-text("Sign In"), button[type="submit"]');
@@ -28,7 +28,7 @@ export const test = base.extend<AuthFixtures>({
   },
 
   tenantAdminPage: async ({ page }, use) => {
-    await page.goto('/login');
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.fill('#loginEmail, input[name="identifier"], input[placeholder*="admin"]', TEST_TENANT_ADMIN.email);
     await page.fill('#loginPassword, input[type="password"]', TEST_TENANT_ADMIN.password);
     await page.click('button:has-text("Sign In"), button[type="submit"]');
@@ -37,7 +37,7 @@ export const test = base.extend<AuthFixtures>({
   },
 
   posUserPage: async ({ page }, use) => {
-    await page.goto('/login');
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.fill('input[name="identifier"], input[placeholder*="admin"]', TEST_POS_USER.identifier);
     await page.fill('input[type="password"]', TEST_POS_USER.password);
     await page.click('button:has-text("Sign In"), button[type="submit"]');

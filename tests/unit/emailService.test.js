@@ -1,4 +1,4 @@
-import { sendEmail, sendPasswordResetEmail, sendBookingConfirmationEmail } from '../../backend/src/services/emailService.js'
+import { sendEmail, sendPasswordResetEmail } from '../../backend/src/services/emailService.js'
 
 describe('emailService', () => {
   const originalFetch = global.fetch
@@ -107,90 +107,6 @@ describe('emailService', () => {
 
       const body = JSON.parse(global.fetch.mock.calls[0][1].body)
       expect(body.subject).toBe('Reset Your SinaiCamps Password')
-    })
-  })
-
-  describe('sendBookingConfirmationEmail', () => {
-    const booking = {
-      guestName: 'John Doe',
-      campName: 'Desert Camp',
-      roomName: 'Luxury Tent',
-      checkIn: '2026-08-01',
-      checkOut: '2026-08-05',
-      totalAmount: 450.50,
-      reservationId: 'RES-001',
-    }
-
-    it('includes guest name and reservation ID in email', async () => {
-      global.fetch.mockResolvedValue({ ok: true })
-
-      await sendBookingConfirmationEmail('john@test.com', booking, mockEnvWithKey)
-
-      const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-      expect(body.html).toContain('John Doe')
-      expect(body.html).toContain('RES-001')
-    })
-
-    it('includes camp name and room name', async () => {
-      global.fetch.mockResolvedValue({ ok: true })
-
-      await sendBookingConfirmationEmail('john@test.com', booking, mockEnvWithKey)
-
-      const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-      expect(body.html).toContain('Desert Camp')
-      expect(body.html).toContain('Luxury Tent')
-    })
-
-    it('includes check-in and check-out dates', async () => {
-      global.fetch.mockResolvedValue({ ok: true })
-
-      await sendBookingConfirmationEmail('john@test.com', booking, mockEnvWithKey)
-
-      const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-      expect(body.html).toContain('2026-08-01')
-      expect(body.html).toContain('2026-08-05')
-    })
-
-    it('includes formatted total amount with dollar sign', async () => {
-      global.fetch.mockResolvedValue({ ok: true })
-
-      await sendBookingConfirmationEmail('john@test.com', booking, mockEnvWithKey)
-
-      const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-      expect(body.html).toContain('$450.50')
-    })
-
-    it('uses correct email subject', async () => {
-      global.fetch.mockResolvedValue({ ok: true })
-
-      await sendBookingConfirmationEmail('john@test.com', booking, mockEnvWithKey)
-
-      const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-      expect(body.subject).toBe('Your SinaiCamps Booking Confirmation')
-    })
-
-    it('sends to correct recipient', async () => {
-      global.fetch.mockResolvedValue({ ok: true })
-
-      await sendBookingConfirmationEmail('john@test.com', booking, mockEnvWithKey)
-
-      const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-      expect(body.to).toBe('john@test.com')
-    })
-
-    it('handles missing optional booking fields with defaults', async () => {
-      global.fetch.mockResolvedValue({ ok: true })
-
-      await sendBookingConfirmationEmail('jane@test.com', {
-        guestName: 'Jane',
-        checkIn: '2026-09-01',
-        checkOut: '2026-09-03',
-        reservationId: 'RES-002',
-      }, mockEnvWithKey)
-
-      const body = JSON.parse(global.fetch.mock.calls[0][1].body)
-      expect(body.html).toContain('N/A')
-      expect(body.html).toContain('$0.00')
     })
   })
 })

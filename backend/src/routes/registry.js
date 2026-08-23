@@ -923,7 +923,8 @@ export const marketplaceRoutes = [
     method: 'get',
     path: '/api/orders/calculate-price',
     tags: ['orders'],
-    summary: 'Server-side price calculation for a room + date range (public GET)',
+    // Phase 3: missing params are a 400 client error (was a silent total_price 0).
+    summary: 'Server-side price calculation for a room + date range; 400 when roomId/checkIn/checkOut are missing (public GET)',
     request: { query: z.object({ roomId: z.string(), checkIn: z.string(), checkOut: z.string() }) },
     responses: {
       200: { description: 'Calculated total', content: { 'application/json': { schema: priceEnvelopeSchema } } },
@@ -1696,7 +1697,9 @@ export const leadRoutes = [
     method: 'post',
     path: '/api/contact',
     tags: ['leads'],
-    summary: 'Contact form submission (public, rate-limited; same handler as POST /api/leads)',
+    deprecated: true,
+    summary:
+      'DEPRECATED — use POST /api/leads (source defaults to "contact"). Contact form alias kept during the Phase 9 transition window (Deprecation + Sunset headers).',
     request: { body: { content: { 'application/json': { schema: leadPostRequestSchema } } } },
     responses: {
       200: { description: 'Message submitted', content: { 'application/json': { schema: leadCreateResponseSchema } } },
@@ -2230,17 +2233,6 @@ export const paymentRoutes = [
   }),
   createRoute({
     method: 'post',
-    path: '/api/payments/create-checkout',
-    tags: ['payments'],
-    summary: 'Create a checkout payment intent (auth + tenant; same handler as create-intent)',
-    request: { body: { content: { 'application/json': { schema: paymentIntentSchema } } } },
-    responses: {
-      200: { description: 'Payment intent created', content: { 'application/json': { schema: paymentIntentResponseSchema } } },
-      ...errorResponses(),
-    },
-  }),
-  createRoute({
-    method: 'post',
     path: '/api/payments/confirm',
     tags: ['payments'],
     summary: 'Confirm a (mock) payment and mark the order paid (auth + tenant)',
@@ -2284,8 +2276,20 @@ const posLoginUserSchema = z
   .openapi('PosLoginUser');
 
 const posLoginResponseSchema = z
-  .object({ success: z.boolean(), token: z.string(), user: posLoginUserSchema })
+  .object({
+    success: z.boolean(),
+    token: z.string(),
+    // Phase 5: refresh token for the POS session kernel (silent renewal).
+    refreshToken: z.string().optional(),
+    user: posLoginUserSchema,
+  })
   .openapi('PosLoginResponse');
+
+const posRefreshRequestSchema = z
+  .object({ refreshToken: z.string().optional() })
+  .openapi('PosAuthRefreshRequest');
+
+const posRefreshResponseSchema = posLoginResponseSchema.openapi('PosAuthRefreshResponse');
 
 const posProductSchema = z
   .object({
@@ -2362,7 +2366,10 @@ const posOrderRowSchema = z
   })
   .openapi('PosOrder');
 
-const posOrderListSchema = z.array(posOrderRowSchema).openapi('PosOrderList');
+// Phase 3: GET /api/pos/orders returns the standard paginated envelope
+// (default page size 100). The legacy bare array is still available via
+// `?raw=1` while consumers migrate — not part of the canonical contract.
+const paginatedPosOrdersSchema = paginatedEnvelope(posOrderRowSchema, 'PaginatedPosOrders');
 
 const posOrderDetailItemSchema = z
   .object({
@@ -2476,12 +2483,43 @@ const posShiftCloseResponseSchema = z
 export const posRoutes = [
   createRoute({
     method: 'post',
-    path: '/api/pos/auth/login',
+    path: '/api/auth/pos-login',
     tags: ['pos'],
-    summary: 'POS cashier login (identifier = email or username)',
+    summary: 'POS cashier login (Phase 9 canonical path; identifier = email or username)',
     request: { body: { content: { 'application/json': { schema: posLoginRequestSchema } } } },
     responses: {
       200: { description: 'Login successful', content: { 'application/json': { schema: posLoginResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/pos/auth/login',
+    tags: ['pos'],
+    deprecated: true,
+    summary:
+      'DEPRECATED — use POST /api/auth/pos-login. Legacy POS cashier login kept during the Phase 9 transition window (Deprecation + Sunset headers).',
+    request: { body: { content: { 'application/json': { schema: posLoginRequestSchema } } } },
+    responses: {
+      200: { description: 'Login successful', content: { 'application/json': { schema: posLoginResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/pos/auth/refresh',
+    tags: ['pos'],
+    summary:
+      'Refresh a POS session. Send the refresh token as Authorization: Bearer <refreshToken> OR in the body ({ refreshToken }). Header wins when both are present.',
+    request: {
+      body: {
+        required: false,
+        content: { 'application/json': { schema: posRefreshRequestSchema } },
+        description: 'Optional — omit when sending the token via the Authorization header',
+      },
+    },
+    responses: {
+      200: { description: 'Session refreshed (new access + refresh tokens)', content: { 'application/json': { schema: posRefreshResponseSchema } } },
       ...errorResponses(),
     },
   }),
@@ -2510,9 +2548,16 @@ export const posRoutes = [
     method: 'get',
     path: '/api/pos/orders',
     tags: ['pos'],
-    summary: 'List POS orders (latest 100, pos_token auth)',
+    summary: 'List POS orders as a paginated envelope, newest first (default pageSize 100; pos_token auth). Legacy: `raw=1` returns the bare page array during migration',
+    request: {
+      query: z.object({
+        page: z.string().optional(),
+        pageSize: z.string().optional(),
+        raw: z.string().optional(),
+      }),
+    },
     responses: {
-      200: { description: 'Orders', content: { 'application/json': { schema: posOrderListSchema } } },
+      200: { description: 'Paginated orders', content: { 'application/json': { schema: paginatedPosOrdersSchema } } },
       ...errorResponses(),
     },
   }),
@@ -2636,6 +2681,8 @@ const inventoryItemSchema = z
 
 const inventoryLowStockListSchema = z
   .object({
+    // Phase 3: `data` mirrors `items` — consumers converge on the envelope key.
+    data: z.array(inventoryItemSchema),
     items: z.array(inventoryItemSchema),
     total: z.number(),
     page: z.number(),
@@ -2687,8 +2734,8 @@ export function buildOpenApiDocument() {
     openapi: '3.0.0',
     info: {
       title: 'SinaiCamps API',
-      description: 'Serverless API for the SinaiCamps multi-tenant hospitality marketplace (Cloudflare Worker + D1). Wire contract is camelCase end-to-end (T3); structured errors `{ success:false, error, errors? }` (T4).',
-      version: '2.1.0',
+      description: 'Serverless API for the SinaiCamps multi-tenant hospitality marketplace (Cloudflare Worker + D1). Wire contract is camelCase end-to-end (T3); structured errors `{ success:false, error, errors? }` (T4). Phase 9 versioning: every path below is also served under the /api/v1 prefix by replacing "/api/" with "/api/v1/" — the unversioned alias is deprecated and carries Deprecation + Sunset headers until 2026-11-21.',
+      version: '2.2.0',
     },
     servers: [{ url: 'https://sinaicamps.com' }],
   });

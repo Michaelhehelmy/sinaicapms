@@ -603,7 +603,7 @@ describe('handleAuthRoute', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns 401 when current password is wrong', async () => {
+    it('returns 400 when current password is wrong', async () => {
       verifyToken.mockResolvedValue({ sub: 'a1' });
       verifyPassword.mockResolvedValue(false);
       const { db, chain } = makeDbMock();
@@ -612,7 +612,7 @@ describe('handleAuthRoute', () => {
         currentPassword: 'wrong', newPassword: 'newpass123'
       }, { Authorization: 'Bearer valid' });
       const res = await handleAuthRoute(req, { DB: db, JWT_SECRET: 'secret' });
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(400);
     });
 
     it('changes password successfully', async () => {

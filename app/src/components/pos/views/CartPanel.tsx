@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import * as apiClient from '@/lib/api';
 import { posUrl } from '@/lib/posUrl';
+import { push } from '@/lib/navigation';
 import ReceiptModal from './ReceiptModal';
 import type { CartItem, Order, PosUser } from '../types';
 
@@ -47,8 +48,8 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
       const res = await apiClient.posCreateOrder(body);
       setCart([]);
       onCheckout();
-      // Navigate to orders page after successful checkout
-      window.location.href = posUrl('/pos/orders');
+      // Navigate to orders page after successful checkout (pushState — no reload)
+      push(posUrl('/pos/orders'));
     } catch (err: any) {
       showToast(err.message || 'Checkout failed', 'error');
     } finally {
@@ -60,7 +61,7 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
   // set to null (checkout navigates to /pos/orders instead of rendering a receipt)
   if (receiptOrder) {
     return (
-      <ReceiptModal order={receiptOrder} user={user} onClose={() => { setReceiptOrder(null); window.location.href = posUrl('/pos/orders'); }} />
+      <ReceiptModal order={receiptOrder} user={user} onClose={() => { setReceiptOrder(null); push(posUrl('/pos/orders')); }} />
     );
   }
   // v8 ignore stop

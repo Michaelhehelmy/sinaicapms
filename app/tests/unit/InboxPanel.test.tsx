@@ -366,8 +366,8 @@ describe('InboxPanel SSE live refresh', () => {
     latestConnection().onEvent({ type: 'new-lead', leadId: 'lead-9' });
 
     await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['inbox'] });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['inbox', 'unread'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'inbox'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'inbox', 'unread'] });
     });
   });
 
@@ -379,7 +379,7 @@ describe('InboxPanel SSE live refresh', () => {
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     latestConnection().onEvent({ type: 'new-booking', orderId: 'ord-9' });
     await waitFor(() =>
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['inbox'] }),
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'inbox'] }),
     );
 
     invalidateSpy.mockClear();

@@ -52,6 +52,18 @@ export const TEST_RATE_PLAN = {
   endDate: '2026-09-30',
 };
 
+export const TEST_MEAL_CATEGORIES = [
+  { name: 'Main Courses', position: 1 },
+  { name: 'Drinks', position: 2 },
+];
+
+export const TEST_MEALS = [
+  { name: 'Grilled Chicken', price: 150, description: 'Delicious grilled chicken', catIndex: 0 },
+  { name: 'Pasta Carbonara', price: 120, description: 'Classic Italian pasta', catIndex: 0 },
+  { name: 'Fresh Orange Juice', price: 30, description: 'Freshly squeezed', catIndex: 1 },
+  { name: 'Iced Tea', price: 25, description: 'Refreshing cold tea', catIndex: 1 },
+];
+
 export const TEST_POS_USER = {
   identifier: process.env.POS_IDENTIFIER || 'cashier',
   // NOTE: must be 8+ chars — POST /api/pos-users enforces min(8) on create.

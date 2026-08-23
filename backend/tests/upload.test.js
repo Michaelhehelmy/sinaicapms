@@ -1,12 +1,36 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  handleUploadRoute,
-  handleMediaRoute,
-  makeObjectKey,
-  allowedExt,
-  sanitizeMediaKey,
-  MAX_UPLOAD_BYTES,
-} from '../src/api/upload.js';
+// Signature-compatible shims: legacy handlers took (Request, env, tenantId).
+// They now execute against the Hono sub-routers mounted by index.js.
+import uploadRoutes, { mediaRoutes, makeObjectKey, allowedExt, sanitizeMediaKey, MAX_UPLOAD_BYTES } from '../src/api/upload.js';
+import { mountRouter } from './helpers/routerHarness.js';
+
+// Apps cached per (basePath, tenant) — tests exercise multiple tenants.
+const appCache = new Map();
+function appFor(routes, basePath, tenant) {
+  const key = basePath + ':' + String(tenant);
+  if (!appCache.has(key)) {
+    appCache.set(key, mountRouter(routes, { tenantId: tenant ?? null, basePath }));
+  }
+  return appCache.get(key);
+}
+
+async function dispatch(app, req, env = {}) {
+  const url = new URL(req.url);
+  // Binary passthrough covers multipart, octet-stream and JSON alike —
+  // Hono parses formData()/json() from the buffered bytes.
+  const init = { method: req.method, headers: req.headers };
+  if (!['GET', 'HEAD', 'DELETE'].includes(req.method)) {
+    init.body = await req.arrayBuffer();
+  }
+  return app.request(url.pathname + url.search, init, env);
+}
+
+async function handleUploadRoute(req, env = {}, _tenant = null) {
+  return dispatch(appFor(uploadRoutes, '/api/upload', _tenant), req, env);
+}
+async function handleMediaRoute(req, env = {}) {
+  return dispatch(appFor(mediaRoutes, '/api/media', null), req, env);
+}
 
 function makeRequest(method, path, opts = {}) {
   const { body, headers = {}, filename } = opts;

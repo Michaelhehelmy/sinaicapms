@@ -55,23 +55,23 @@ function createWrapper() {
 
 describe('queryKeys', () => {
   it('has correct key factories', () => {
-    expect(queryKeys.camps).toEqual(['camps']);
-    expect(queryKeys.camp('1')).toEqual(['camps', '1']);
-    expect(queryKeys.products).toEqual(['products']);
-    expect(queryKeys.rooms).toEqual(['rooms']);
-    expect(queryKeys.orders()).toEqual(['orders', undefined]);
-    expect(queryKeys.orders({ status: 'active' })).toEqual(['orders', { status: 'active' }]);
-    expect(queryKeys.order('1')).toEqual(['orders', '1']);
-    expect(queryKeys.ratePlans).toEqual(['ratePlans']);
-    expect(queryKeys.plans).toEqual(['plans']);
-    expect(queryKeys.meals).toEqual(['meals']);
-    expect(queryKeys.categories).toEqual(['categories']);
-    expect(queryKeys.mealCategories).toEqual(['mealCategories']);
-    expect(queryKeys.settings).toEqual(['settings']);
-    expect(queryKeys.adminStats).toEqual(['adminStats']);
-    expect(queryKeys.tenants).toEqual(['tenants']);
-    expect(queryKeys.admins).toEqual(['admins']);
-    expect(queryKeys.lowStock).toEqual(['inventory', 'low-stock']);
+    expect(queryKeys.camps).toEqual(['admin', 'camps']);
+    expect(queryKeys.camp('1')).toEqual(['admin', 'camps', '1']);
+    expect(queryKeys.products).toEqual(['admin', 'products']);
+    expect(queryKeys.rooms).toEqual(['admin', 'rooms']);
+    expect(queryKeys.orders()).toEqual(['admin', 'orders', undefined]);
+    expect(queryKeys.orders({ status: 'active' })).toEqual(['admin', 'orders', { status: 'active' }]);
+    expect(queryKeys.order('1')).toEqual(['admin', 'orders', '1']);
+    expect(queryKeys.ratePlans).toEqual(['admin', 'ratePlans']);
+    expect(queryKeys.plans).toEqual(['admin', 'plans']);
+    expect(queryKeys.meals).toEqual(['admin', 'meals']);
+    expect(queryKeys.categories).toEqual(['admin', 'categories']);
+    expect(queryKeys.mealCategories).toEqual(['admin', 'mealCategories']);
+    expect(queryKeys.settings).toEqual(['admin', 'settings']);
+    expect(queryKeys.adminStats).toEqual(['admin', 'stats']);
+    expect(queryKeys.tenants).toEqual(['admin', 'tenants']);
+    expect(queryKeys.admins).toEqual(['admin', 'admins']);
+    expect(queryKeys.lowStock).toEqual(['admin', 'inventory', 'low-stock']);
   });
 });
 

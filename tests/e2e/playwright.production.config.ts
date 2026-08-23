@@ -1,25 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Production/Staging E2E config — READ-ONLY smoke tests.
+ * Production/Staging E2E config — CRITICAL-FLOWS ONLY.
  *
  * Points at live Cloudflare Pages (sinaicamps.com or staging.sinaicamps.com).
  * No local webServer — the backend+frontend are already deployed.
  *
- * ⚠️  Only production-safe specs are included:
- *   - Read-only browsing (marketplace, tenant pages, public pages, routing)
- *   - API smoke tests (no auth, no mutations)
- *   - Critical flow checks (the production/ project)
- *
- * EXCLUDED (need auth or mutate data):
- *   - admin/   — CRUD operations, needs SUPER_ADMIN/tenant admin auth
- *   - auth/    — login flows with test credentials that may not exist on prod
- *   - pos/     — needs POS cashier auth (TEST_POS_USER seed may fail)
- *   - public/booking-submission  — no room types on production acaciacamp (empty Accommodations section)
- *   - public/gallery-navigation   — uses ?tenant= query param (ignored on prod root host)
- *   - public/menu-filtering       — /camp/{id}/menu redirects to /404 (same-zone Worker fetch)
- *   - public/admin-reservation-log — needs super_admin login (seed data may not exist)
- *   - cross-cutting/ (most)       — need POS auth or ?tenant= query param
+ * ⚠️  Only the production/ project is included (11 tests).
+ *     All other projects (marketplace, tenant, public, cross-cutting, admin,
+ *     auth, pos) are run via the local config (playwright.config.ts).
  *
  * Usage:
  *   npx playwright test --config=tests/e2e/playwright.production.config.ts
@@ -53,42 +42,12 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   projects: [
+    // Critical-flows only — the 11 tests that must pass before every deploy.
+    // All other projects (marketplace, tenant, public, cross-cutting, admin,
+    // auth, pos) are run via the local config (playwright.config.ts) only.
     {
       name: 'production',
       testDir: './specs/production',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'marketplace',
-      testDir: './specs/marketplace',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'tenant',
-      testDir: './specs/tenant',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'public',
-      testDir: './specs/public',
-      // Exclude specs that need admin auth or use ?tenant= query param
-      // (ignored on production root host — logbook line 67)
-      // Exclude menu-filtering: /camp/{id}/menu redirects to /404 on sinaicamps.com
-      // (same-zone Worker fetch issue - logbook line 66)
-      // Exclude gallery-navigation: uses ?tenant= query param (ignored on prod root host)
-      // Exclude admin-reservation-log: needs super_admin login (seed data may not exist)
-      // Exclude booking-submission: no room types on production acaciacamp (empty Accommodations)
-      testIgnore: /booking-submission|gallery-navigation|menu-filtering|admin-reservation-log/,
-      use: { ...devices['Desktop Chrome'] },
-    },
-    // routing/ excluded: zone-exclusivity tests use ?tenant= query param
-    // which is IGNORED on production root host (logbook line 67)
-    {
-      name: 'cross-cutting-read-only',
-      testDir: './specs/cross-cutting',
-      // Only include specs that are fully read-only: no auth, no ?tenant=, no mutations
-      // Exclude i18n: Cloudflare challenge script injection differs between page loads
-      testMatch: /api-comprehensive|api-endpoints|axe-accessibility/,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

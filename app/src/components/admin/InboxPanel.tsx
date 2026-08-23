@@ -137,7 +137,7 @@ export default function InboxPanel({ tenantId, token, onOpenOrder }: InboxPanelP
     mutationFn: ({ id, status }: { id: string; status: 'new' | 'contacted' | 'converted' | 'archived' }) =>
       api.updateLead(id, { status }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inbox'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
       showToast('Lead status updated', 'success');
     },
     onError: (err) => {
@@ -154,8 +154,8 @@ export default function InboxPanel({ tenantId, token, onOpenOrder }: InboxPanelP
     (event: unknown) => {
       const ev = (event ?? {}) as { type?: string };
       if (ev.type !== 'new-lead' && ev.type !== 'new-booking') return;
-      queryClient.invalidateQueries({ queryKey: ['inbox'] });
-      queryClient.invalidateQueries({ queryKey: ['inbox', 'unread'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox', 'unread'] });
     },
     [queryClient],
   );

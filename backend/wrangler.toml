@@ -52,6 +52,12 @@ RATE_LIMIT_KV_ENABLED = "false"
 MAX_LOGIN_ATTEMPTS = "5"
 LOCKOUT_DURATION = "1800"
 SESSION_TIMEOUT = "86400"
+# Phase 5 (opt-in): shorter access-token lifetime for org/POS sessions, in
+# seconds. Clamped to [300 .. 86400]; unset keeps the legacy 24h. Leave it
+# DISABLED until Phase 6 ships the silent-refresh session kernel — enabling
+# it now would strand cashiers mid-shift when the 24h token expires with no
+# client-side renewal path.
+# POS_ACCESS_TTL_SECONDS = "900"
 RATE_LIMIT_LOGIN = "20"
 RATE_LIMIT_API = "100"
 DEFAULT_CURRENCY = "USD"
@@ -75,6 +81,7 @@ RATE_LIMIT_KV_ENABLED = "false"
 MAX_LOGIN_ATTEMPTS = "5"
 LOCKOUT_DURATION = "1800"
 SESSION_TIMEOUT = "86400"
+# POS_ACCESS_TTL_SECONDS = "900"  # Phase 5 opt-in — see production [vars]
 RATE_LIMIT_LOGIN = "20"
 RATE_LIMIT_API = "100"
 DEFAULT_CURRENCY = "USD"

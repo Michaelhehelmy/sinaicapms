@@ -40,14 +40,15 @@ test.describe('Forgot Password — Request Flow', () => {
     expect(errorCount).toBe(0);
   });
 
-  test('back-to-login link navigates to /login', async ({ page }) => {
+  test('back-to-login link navigates to login page', async ({ page }) => {
     await page.goto('/auth/forgot-password');
 
     const backLink = page.locator('a[href="/login"]');
     await expect(backLink).toBeVisible();
     await backLink.click();
 
-    await expect(page).toHaveURL(/\/login/);
+    // /login redirects to /admin — both are the login page
+    await expect(page).toHaveURL(/\/(admin|login)/);
   });
 });
 
@@ -93,13 +94,14 @@ test.describe('Reset Password — Token & Form', () => {
     await expect(page.locator('text=Passwords do not match')).toBeVisible({ timeout: 5000 });
   });
 
-  test('back-to-login link navigates to /login', async ({ page }) => {
+  test('back-to-login link navigates to login page', async ({ page }) => {
     await page.goto('/auth/reset-password?token=fake-token');
 
     const backLink = page.locator('a[href="/login"]');
     await expect(backLink).toBeVisible();
     await backLink.click();
 
-    await expect(page).toHaveURL(/\/login/);
+    // /login redirects to /admin — both are the login page
+    await expect(page).toHaveURL(/\/(admin|login)/);
   });
 });

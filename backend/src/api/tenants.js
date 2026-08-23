@@ -1,7 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { jsonResponse, cachedJsonResponse, errorResponse, toSnake } from '../utils/response';
 import { validationError } from '../utils/errors';
-import { verifyJWT } from './auth';
+import { verifyToken } from '../middleware/sharedAuth.js';
+import { extractRequestToken, isActiveAdmin } from '../middleware/requireAuth.js';
+import { getScope } from '../middleware/resolveScope.js';
+import { Hono } from 'hono';
 import { z } from 'zod';
 
 export const tenantPostSchema = z.object({
@@ -72,14 +75,15 @@ export async function handleTenants(request, env) {
 
   let isSuperAdmin = false;
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      const decoded = await verifyJWT(token, env.JWT_SECRET);
+    // Soft elevation: never rejects — an absent/invalid token simply means
+    // the public view. Token parsing and the activity probe are shared with
+    // requireAuth so no inline Authorization handling remains here.
+    const token = extractRequestToken(request);
+    if (token) {
+      const decoded = await verifyToken(token, env.JWT_SECRET);
       if (decoded && decoded.role === 'super_admin') {
         // P0-6/P0-7: Verify super admin is active before granting access
-        const { results: activeCheck } = await env.DB.prepare('SELECT is_active FROM admins WHERE id = ?').bind(decoded.userId || decoded.sub).all();
-        if (activeCheck.length && activeCheck[0].is_active !== 0) {
+        if (await isActiveAdmin(env, decoded.userId || decoded.sub)) {
           isSuperAdmin = true;
         }
       }
@@ -237,92 +241,108 @@ export async function handleTenants(request, env) {
   return errorResponse('Method not allowed', 405);
 }
 
-export async function handleMe(request, env, tenantId) {
-  const method = request.method;
-  
-  if (method === 'GET') {
-    // R-9 fix: /api/me is public — return graceful 200 when no tenant context
-    if (!tenantId) {
-      return jsonResponse({ id: null, name: null, subdomain: null, message: 'No tenant context provided' });
+/**
+ * /api/me sub-router (Phase 4 T1). Mixed visibility: GET is public (R-9 —
+ * graceful 200 without tenant context), PUT/PATCH are admin-scoped.
+ *
+ * Mounted by index.js as:
+ *   app.use('/api/me', meScope);
+ *   app.route('/api/me', meRoutes);
+ */
+const meRoutes = new Hono();
+
+// R-9 fix: /api/me is public — return graceful 200 when no tenant context
+meRoutes.get('/', async (c) => {
+  const tenantId = getScope(c).tenantId;
+  if (!tenantId) {
+    return jsonResponse({ id: null, name: null, subdomain: null, message: 'No tenant context provided' });
+  }
+  const { results } = await c.env.DB.prepare(
+      `SELECT t.id, t.name, t.subdomain, t.type, t.custom_domain, t.logo_url, t.favicon_url, t.primary_color, t.footer_text, t.location, t.whatsapp_number, t.phone, t.email, t.description, t.hero_image_url, t.gallery_images, t.about_text, t.faq_items, t.reviews, t.map_embed_url, t.activities, t.capacity, t.currency, t.status, t.menu_config,
+              (SELECT COUNT(*) FROM meals WHERE tenant_id = t.id AND (is_active = 1 OR is_active IS NULL)) AS has_meals
+       FROM tenants t WHERE t.id = ?`
+  ).bind(tenantId).all();
+  if (results.length === 0) return errorResponse('Tenant not found', 404);
+  return jsonResponse(results[0]);
+});
+
+async function meUpdate(c) {
+  try {
+    const tenantId = getScope(c).tenantId;
+    const parsed = tenantMePutSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
     }
-    const { results } = await env.DB.prepare(
-        `SELECT t.id, t.name, t.subdomain, t.type, t.custom_domain, t.logo_url, t.favicon_url, t.primary_color, t.footer_text, t.location, t.whatsapp_number, t.phone, t.email, t.description, t.hero_image_url, t.gallery_images, t.about_text, t.faq_items, t.reviews, t.map_embed_url, t.activities, t.capacity, t.currency, t.status, t.menu_config,
-                (SELECT COUNT(*) FROM meals WHERE tenant_id = t.id AND (is_active = 1 OR is_active IS NULL)) AS has_meals
-         FROM tenants t WHERE t.id = ?`
-    ).bind(tenantId).all();
-    if (results.length === 0) return errorResponse('Tenant not found', 404);
-    return jsonResponse(results[0]);
-  } else if (method === 'PUT' || method === 'PATCH') {
-    try {
-      const parsed = tenantMePutSchema.safeParse(toSnake(await request.json()));
-      if (!parsed.success) {
-        return validationError(parsed);
+    const {
+      name, logo_url, favicon_url, primary_color, footer_text,
+      location, whatsapp_number, phone, email, description,
+      hero_image_url, gallery_images, about_text, faq_items, reviews, map_embed_url, activities, capacity, currency,
+      admin_email, admin_first_name, admin_last_name, admin_password, admin_id
+    } = parsed.data;
+
+    await c.env.DB.prepare(
+      `UPDATE tenants SET
+        name = COALESCE(?, name),
+        logo_url = COALESCE(?, logo_url),
+        favicon_url = COALESCE(?, favicon_url),
+        primary_color = COALESCE(?, primary_color),
+        footer_text = COALESCE(?, footer_text),
+        location = COALESCE(?, location),
+        whatsapp_number = COALESCE(?, whatsapp_number),
+        phone = COALESCE(?, phone),
+        email = COALESCE(?, email),
+        description = COALESCE(?, description),
+        hero_image_url = COALESCE(?, hero_image_url),
+        gallery_images = COALESCE(?, gallery_images),
+        about_text = COALESCE(?, about_text),
+        faq_items = COALESCE(?, faq_items),
+        reviews = COALESCE(?, reviews),
+        map_embed_url = COALESCE(?, map_embed_url),
+        activities = COALESCE(?, activities),
+        capacity = COALESCE(?, capacity),
+        currency = COALESCE(?, currency)
+      WHERE id = ?`
+    ).bind(
+      name || null, logo_url || null, favicon_url || null, primary_color || null, footer_text || null,
+      location || null, whatsapp_number || null, phone || null, email || null, description || null,
+      hero_image_url || null, gallery_images || null, about_text || null, faq_items || null,
+      reviews || null, map_embed_url || null, activities || null, capacity ?? null, currency || null,
+      tenantId
+    ).run();
+
+    // Update admin user if fields provided
+    if (admin_id && (admin_email || admin_first_name || admin_last_name || admin_password)) {
+      let hashedPassword = null;
+      if (admin_password) {
+        hashedPassword = await bcrypt.hash(admin_password, 12);
       }
-      const { 
-        name, logo_url, favicon_url, primary_color, footer_text, 
-        location, whatsapp_number, phone, email, description,
-        hero_image_url, gallery_images, about_text, faq_items, reviews, map_embed_url, activities, capacity, currency,
-        admin_email, admin_first_name, admin_last_name, admin_password, admin_id
-      } = parsed.data;
-      
-      await env.DB.prepare(
-        `UPDATE tenants SET 
-          name = COALESCE(?, name), 
-          logo_url = COALESCE(?, logo_url), 
-          favicon_url = COALESCE(?, favicon_url), 
-          primary_color = COALESCE(?, primary_color), 
-          footer_text = COALESCE(?, footer_text), 
-          location = COALESCE(?, location), 
-          whatsapp_number = COALESCE(?, whatsapp_number), 
-          phone = COALESCE(?, phone), 
-          email = COALESCE(?, email), 
-          description = COALESCE(?, description),
-          hero_image_url = COALESCE(?, hero_image_url),
-          gallery_images = COALESCE(?, gallery_images),
-          about_text = COALESCE(?, about_text),
-          faq_items = COALESCE(?, faq_items),
-          reviews = COALESCE(?, reviews),
-          map_embed_url = COALESCE(?, map_embed_url),
-          activities = COALESCE(?, activities),
-          capacity = COALESCE(?, capacity),
-          currency = COALESCE(?, currency)
-        WHERE id = ?`
+      await c.env.DB.prepare(
+        `UPDATE admins SET
+          email = COALESCE(?, email),
+          first_name = COALESCE(?, first_name),
+          last_name = COALESCE(?, last_name),
+          password_hash = COALESCE(?, password_hash),
+          updated_at = datetime('now')
+        WHERE id = ? AND tenant_id = ?`
       ).bind(
-        name || null, logo_url || null, favicon_url || null, primary_color || null, footer_text || null, 
-        location || null, whatsapp_number || null, phone || null, email || null, description || null,
-        hero_image_url || null, gallery_images || null, about_text || null, faq_items || null, 
-        reviews || null, map_embed_url || null, activities || null, capacity ?? null, currency || null,
+        admin_email || null,
+        admin_first_name || null,
+        admin_last_name || null,
+        hashedPassword,
+        admin_id,
         tenantId
       ).run();
-
-      // Update admin user if fields provided
-      if (admin_id && (admin_email || admin_first_name || admin_last_name || admin_password)) {
-        let hashedPassword = null;
-        if (admin_password) {
-          hashedPassword = await bcrypt.hash(admin_password, 12);
-        }
-        await env.DB.prepare(
-          `UPDATE admins SET
-            email = COALESCE(?, email),
-            first_name = COALESCE(?, first_name),
-            last_name = COALESCE(?, last_name),
-            password_hash = COALESCE(?, password_hash),
-            updated_at = datetime('now')
-          WHERE id = ? AND tenant_id = ?`
-        ).bind(
-          admin_email || null,
-          admin_first_name || null,
-          admin_last_name || null,
-          hashedPassword,
-          admin_id,
-          tenantId
-        ).run();
-      }
-      
-      return jsonResponse({ success: true });
-    } catch (e) {
-      return errorResponse('Failed to update tenant');
     }
+
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return errorResponse('Failed to update tenant');
   }
-  return errorResponse('Method not allowed', 405);
 }
+
+meRoutes.put('/', meUpdate);
+meRoutes.patch('/', meUpdate);
+
+meRoutes.all('*', () => errorResponse('Method not allowed', 405));
+
+export default meRoutes;

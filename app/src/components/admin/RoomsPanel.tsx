@@ -159,19 +159,23 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
       showToast('Product type and room name are required.', 'warning');
       return;
     }
-    await saveRoomMutation.mutateAsync({
-      campId: roomForm.campId || activeCampId,
-      productId: roomForm.productId,
-      name: roomForm.name.trim(),
-      floor: roomForm.floor || undefined,
-      status: roomForm.status,
-      bedType: roomForm.bedType,
-      maxGuests: parseInt(roomForm.maxGuests) || 2,
-      basePrice: parseFloat(roomForm.basePrice) || 0,
-    });
-    setShowRoomForm(false);
-    setEditRoomId(null);
-    setRoomForm(emptyRoomForm);
+    try {
+      await saveRoomMutation.mutateAsync({
+        campId: roomForm.campId || activeCampId,
+        productId: roomForm.productId,
+        name: roomForm.name.trim(),
+        floor: roomForm.floor || undefined,
+        status: roomForm.status,
+        bedType: roomForm.bedType,
+        maxGuests: parseInt(roomForm.maxGuests) || 2,
+        basePrice: parseFloat(roomForm.basePrice) || 0,
+      });
+      setShowRoomForm(false);
+      setEditRoomId(null);
+      setRoomForm(emptyRoomForm);
+    } catch {
+      // Error toast already shown by mutation's onError
+    }
   }, [roomForm, editRoomId, showToast, saveRoomMutation, activeCampId]);
 
   const openAddType = useCallback(() => {

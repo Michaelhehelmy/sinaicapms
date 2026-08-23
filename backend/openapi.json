@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "SinaiCamps API",
-    "description": "Serverless API for the SinaiCamps multi-tenant hospitality marketplace (Cloudflare Worker + D1). Wire contract is camelCase end-to-end (T3); structured errors `{ success:false, error, errors? }` (T4).",
-    "version": "2.1.0"
+    "description": "Serverless API for the SinaiCamps multi-tenant hospitality marketplace (Cloudflare Worker + D1). Wire contract is camelCase end-to-end (T3); structured errors `{ success:false, error, errors? }` (T4). Phase 9 versioning: every path below is also served under the /api/v1 prefix by replacing \"/api/\" with \"/api/v1/\" — the unversioned alias is deprecated and carries Deprecation + Sunset headers until 2026-11-21.",
+    "version": "2.2.0"
   },
   "servers": [
     {
@@ -3359,6 +3359,9 @@
           "token": {
             "type": "string"
           },
+          "refreshToken": {
+            "type": "string"
+          },
           "user": {
             "$ref": "#/components/schemas/PosLoginUser"
           }
@@ -3383,6 +3386,36 @@
           "identifier",
           "password"
         ]
+      },
+      "PosAuthRefreshResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "token": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/PosLoginUser"
+          }
+        },
+        "required": [
+          "success",
+          "token",
+          "user"
+        ]
+      },
+      "PosAuthRefreshRequest": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string"
+          }
+        }
       },
       "PosProduct": {
         "type": "object",
@@ -3639,11 +3672,35 @@
           "createdAt"
         ]
       },
-      "PosOrderList": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/PosOrder"
-        }
+      "PaginatedPosOrders": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PosOrder"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "page",
+          "pageSize",
+          "hasMore"
+        ]
       },
       "PosOrderDetailItem": {
         "type": "object",
@@ -4081,6 +4138,12 @@
       "InventoryLowStockList": {
         "type": "object",
         "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventoryItem"
+            }
+          },
           "items": {
             "type": "array",
             "items": {
@@ -4101,6 +4164,7 @@
           }
         },
         "required": [
+          "data",
           "items",
           "total",
           "page",
@@ -6749,7 +6813,7 @@
         "tags": [
           "orders"
         ],
-        "summary": "Server-side price calculation for a room + date range (public GET)",
+        "summary": "Server-side price calculation for a room + date range; 400 when roomId/checkIn/checkOut are missing (public GET)",
         "parameters": [
           {
             "schema": {
@@ -9233,7 +9297,8 @@
         "tags": [
           "leads"
         ],
-        "summary": "Contact form submission (public, rate-limited; same handler as POST /api/leads)",
+        "deprecated": true,
+        "summary": "DEPRECATED — use POST /api/leads (source defaults to \"contact\"). Contact form alias kept during the Phase 9 transition window (Deprecation + Sunset headers).",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10677,93 +10742,6 @@
         }
       }
     },
-    "/api/payments/create-checkout": {
-      "post": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Create a checkout payment intent (auth + tenant; same handler as create-intent)",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "orderId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "amount": {
-                    "type": "number",
-                    "minimum": 0,
-                    "exclusiveMinimum": true
-                  },
-                  "currency": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "orderId",
-                  "amount"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Payment intent created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentIntentResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request / validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/payments/confirm": {
       "post": {
         "tags": [
@@ -10907,12 +10885,12 @@
         }
       }
     },
-    "/api/pos/auth/login": {
+    "/api/auth/pos-login": {
       "post": {
         "tags": [
           "pos"
         ],
-        "summary": "POS cashier login (identifier = email or username)",
+        "summary": "POS cashier login (Phase 9 canonical path; identifier = email or username)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -10929,6 +10907,147 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PosLoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pos/auth/login": {
+      "post": {
+        "tags": [
+          "pos"
+        ],
+        "deprecated": true,
+        "summary": "DEPRECATED — use POST /api/auth/pos-login. Legacy POS cashier login kept during the Phase 9 transition window (Deprecation + Sunset headers).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosLoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pos/auth/refresh": {
+      "post": {
+        "tags": [
+          "pos"
+        ],
+        "summary": "Refresh a POS session. Send the refresh token as Authorization: Bearer <refreshToken> OR in the body ({ refreshToken }). Header wins when both are present.",
+        "requestBody": {
+          "required": false,
+          "description": "Optional — omit when sending the token via the Authorization header",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PosAuthRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session refreshed (new access + refresh tokens)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PosAuthRefreshResponse"
                 }
               }
             }
@@ -11108,14 +11227,40 @@
         "tags": [
           "pos"
         ],
-        "summary": "List POS orders (latest 100, pos_token auth)",
+        "summary": "List POS orders as a paginated envelope, newest first (default pageSize 100; pos_token auth). Legacy: `raw=1` returns the bare page array during migration",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "pageSize",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "raw",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Orders",
+            "description": "Paginated orders",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PosOrderList"
+                  "$ref": "#/components/schemas/PaginatedPosOrders"
                 }
               }
             }

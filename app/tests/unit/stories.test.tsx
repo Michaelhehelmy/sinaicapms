@@ -10,7 +10,6 @@ import * as InputStories from '@/stories/Input.stories';
 import * as LoadingSpinnerStories from '@/stories/LoadingSpinner.stories';
 import * as ModalStories from '@/stories/Modal.stories';
 import * as StatCardStories from '@/stories/StatCard.stories';
-import * as TabsStories from '@/stories/Tabs.stories';
 import * as ToastStories from '@/stories/Toast.stories';
 
 // Storybook fixtures are not shipped in the production Astro build, but we
@@ -26,7 +25,6 @@ const storyModules: Array<[string, Record<string, unknown>]> = [
   ['LoadingSpinner', LoadingSpinnerStories as unknown as Record<string, unknown>],
   ['Modal', ModalStories as unknown as Record<string, unknown>],
   ['StatCard', StatCardStories as unknown as Record<string, unknown>],
-  ['Tabs', TabsStories as unknown as Record<string, unknown>],
   ['Toast', ToastStories as unknown as Record<string, unknown>],
 ];
 

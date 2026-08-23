@@ -34,7 +34,7 @@ describe('getTenantSSRData', () => {
     expect(data.roomTypes).toEqual([]);
     expect(data.primaryColor).toBe('#4a7c4f');
     expect(data.tenantName).toBe('Camp Portal');
-    expect(data.API_BASE).toBe('http://localhost:8787/api');
+    expect(data.API_BASE).toBe('http://localhost:8787/api/v1');
     expect(data.theme.primary).toBe('#4a7c4f');
     expect(data.theme.darkMode).toBe('class');
     expect(Object.keys(data.theme.cssVars)).toEqual([
@@ -54,15 +54,15 @@ describe('getTenantSSRData', () => {
 
     const data = await getTenantSSRData(new URL('https://localhost/?tenant=acacia'));
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8787/api/tenants/acacia');
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8787/api/v1/tenants/acacia');
     expect(data.tenantId).toBe('acacia');
     expect(data.tenant?.name).toBe('Acacia Camp');
     expect(data.camps).toHaveLength(1);
     expect(data.roomTypes).toHaveLength(1);
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8787/api/camps', {
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8787/api/v1/camps', {
       headers: { 'x-tenant-id': 'acacia' },
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8787/api/products', {
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8787/api/v1/products', {
       headers: { 'x-tenant-id': 'acacia' },
     });
     // Tenant resolved without a branding color → default theme palette.
@@ -91,8 +91,8 @@ describe('getTenantSSRData', () => {
 
     const data = await getTenantSSRData(new URL('https://sinaicamps.com/'));
 
-    expect(data.API_BASE).toBe('https://sinaicamps.com/api');
-    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/tenants/marketplace');
+    expect(data.API_BASE).toBe('https://sinaicamps.com/api/v1');
+    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/v1/tenants/marketplace');
     expect(data.tenantId).toBe('marketplace');
     expect(data.tenantName).toBe('SinaiCamps');
   });
@@ -102,8 +102,8 @@ describe('getTenantSSRData', () => {
 
     const data = await getTenantSSRData(new URL('https://acacia.sinaicamps.com/'));
 
-    expect(data.API_BASE).toBe('https://acacia.sinaicamps.com/api');
-    expect(fetchMock).toHaveBeenCalledWith('https://acacia.sinaicamps.com/api/tenants/acacia');
+    expect(data.API_BASE).toBe('https://acacia.sinaicamps.com/api/v1');
+    expect(fetchMock).toHaveBeenCalledWith('https://acacia.sinaicamps.com/api/v1/tenants/acacia');
     expect(data.tenantId).toBe('acacia');
   });
 
@@ -113,7 +113,7 @@ describe('getTenantSSRData', () => {
     const data = await getTenantSSRData(new URL('https://www.sinaicamps.com/'));
 
     expect(data.tenantId).toBe('marketplace');
-    expect(fetchMock).toHaveBeenCalledWith('https://www.sinaicamps.com/api/tenants/marketplace');
+    expect(fetchMock).toHaveBeenCalledWith('https://www.sinaicamps.com/api/v1/tenants/marketplace');
   });
 
   it('uses the full hostname as the lookup key for custom domains', async () => {
@@ -121,8 +121,8 @@ describe('getTenantSSRData', () => {
 
     const data = await getTenantSSRData(new URL('https://acaciacamp.com/'));
 
-    expect(data.API_BASE).toBe('https://sinaicamps.com/api');
-    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/tenants/acaciacamp.com');
+    expect(data.API_BASE).toBe('https://sinaicamps.com/api/v1');
+    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/v1/tenants/acaciacamp.com');
     expect(data.tenantId).toBe('custom');
   });
 
@@ -132,7 +132,7 @@ describe('getTenantSSRData', () => {
     const data = await getTenantSSRData(new URL('https://www.foo.sinaicamps.com/'));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://www.foo.sinaicamps.com/api/tenants/foo.sinaicamps.com',
+      'https://www.foo.sinaicamps.com/api/v1/tenants/foo.sinaicamps.com',
     );
     expect(data.tenantId).toBe('x1');
   });
@@ -142,8 +142,8 @@ describe('getTenantSSRData', () => {
 
     const data = await getTenantSSRData(new URL('https://www.acaciacamp.com/'));
 
-    expect(data.API_BASE).toBe('https://sinaicamps.com/api');
-    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/tenants/acaciacamp.com');
+    expect(data.API_BASE).toBe('https://sinaicamps.com/api/v1');
+    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/v1/tenants/acaciacamp.com');
     expect(data.tenantId).toBe('acacia');
   });
 
@@ -152,7 +152,7 @@ describe('getTenantSSRData', () => {
 
     const data = await getTenantSSRData(new URL('https://acaciacamp.com/'));
 
-    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/tenants/acaciacamp.com');
+    expect(fetchMock).toHaveBeenCalledWith('https://sinaicamps.com/api/v1/tenants/acaciacamp.com');
     expect(data.tenantId).toBe('acacia');
   });
 
@@ -162,7 +162,7 @@ describe('getTenantSSRData', () => {
     const data = await getTenantSSRData(new URL('https://www.sinaicamps.com/'));
 
     expect(data.tenantId).toBe('marketplace');
-    expect(fetchMock).toHaveBeenCalledWith('https://www.sinaicamps.com/api/tenants/marketplace');
+    expect(fetchMock).toHaveBeenCalledWith('https://www.sinaicamps.com/api/v1/tenants/marketplace');
   });
 
   it('keeps defaults when the tenant lookup returns not-ok', async () => {
@@ -231,7 +231,7 @@ describe('tenant onRequest middleware', () => {
       expect(next).toHaveBeenCalledOnce();
       expect(fetchMock).not.toHaveBeenCalled();
       expect(context.locals.tenantId).toBe('marketplace');
-      expect(context.locals.API_BASE).toBe('https://sinaicamps.com/api');
+      expect(context.locals.API_BASE).toBe('https://sinaicamps.com/api/v1');
       fetchMock.mockReset();
     }
   });
@@ -268,7 +268,7 @@ describe('tenant onRequest middleware', () => {
     await onRequest(context, next);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://acacia.sinaicamps.com/api/tenants/acacia',
+      'https://acacia.sinaicamps.com/api/v1/tenants/acacia',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(context.locals.tenant).toEqual({ id: 't1', name: 'Acacia', subdomain: 'acacia' });
@@ -469,13 +469,13 @@ describe('resolveApiFetcher', () => {
     const bindingFetch = vi.fn().mockResolvedValue(new Response('ok'));
     const runtimeEnv = { API_BACKEND: { fetch: bindingFetch } };
 
-    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api');
+    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api/v1');
     await fetcher('/tenants/123');
 
     expect(bindingFetch).toHaveBeenCalledTimes(1);
     const [request, init] = bindingFetch.mock.calls[0];
     expect(request).toBeInstanceOf(URL);
-    expect(request.pathname).toBe('/api/tenants/123');
+    expect(request.pathname).toBe('/api/v1/tenants/123');
     expect(request.origin).toBe('https://campmaster-backend');
   });
 
@@ -483,7 +483,7 @@ describe('resolveApiFetcher', () => {
     const bindingFetch = vi.fn().mockResolvedValue(new Response('ok'));
     const runtimeEnv = { API_BACKEND: { fetch: bindingFetch } };
 
-    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api');
+    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api/v1');
     await fetcher('/camps', { method: 'POST', headers: { 'x-tenant-id': 't1' } });
 
     const [, init] = bindingFetch.mock.calls[0];
@@ -492,25 +492,25 @@ describe('resolveApiFetcher', () => {
   });
 
   it('falls back to cross-origin fetch when binding is absent', async () => {
-    const fetcher = resolveApiFetcher(undefined, 'http://localhost:8787/api');
+    const fetcher = resolveApiFetcher(undefined, 'http://localhost:8787/api/v1');
     await fetcher('/camps');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/camps');
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/v1/camps');
   });
 
   it('falls back to cross-origin fetch when binding lacks a fetch function', async () => {
-    const fetcher = resolveApiFetcher({ API_BACKEND: {} }, 'http://localhost:8787/api');
+    const fetcher = resolveApiFetcher({ API_BACKEND: {} }, 'http://localhost:8787/api/v1');
     await fetcher('/camps');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/camps');
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/v1/camps');
   });
 
   it('passes init to the fallback fetch when provided', async () => {
-    const fetcher = resolveApiFetcher(undefined, 'http://localhost:8787/api');
+    const fetcher = resolveApiFetcher(undefined, 'http://localhost:8787/api/v1');
     await fetcher('/camps', { method: 'POST', body: '{}' });
 
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/camps', { method: 'POST', body: '{}' });
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/v1/camps', { method: 'POST', body: '{}' });
   });
 });

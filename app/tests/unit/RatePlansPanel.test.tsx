@@ -92,6 +92,17 @@ vi.mock('@/components/ui/Badge', () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
+vi.mock('@/hooks/useQueryHooks', () => ({
+  useProductsQuery: () => ({
+    data: [
+      { id: 'p1', name: 'Standard Tent', type: 'room', tenantId: 'acaciacamp', sellingPrice: 100, capacity: 2, isActive: true },
+      { id: 'p2', name: 'Deluxe Cabin', type: 'room', tenantId: 'acaciacamp', sellingPrice: 250, capacity: 4, isActive: true },
+    ],
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 const camps = [{ id: 'c1', name: 'Camp 1', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' }];
 
 describe('RatePlansPanel', () => {
@@ -179,6 +190,7 @@ describe('RatePlansPanel', () => {
       expect(screen.getByText('Add Rate Plan')).toBeInTheDocument();
     });
     fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'New Plan' } });
+    fireEvent.change(screen.getByTestId('select-Product *'), { target: { value: 'p1' } });
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => {
       expect(mockSaveRatePlan).toHaveBeenCalled();
@@ -196,6 +208,7 @@ describe('RatePlansPanel', () => {
       expect(screen.getByText('Add Rate Plan')).toBeInTheDocument();
     });
     fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'New Plan' } });
+    fireEvent.change(screen.getByTestId('select-Product *'), { target: { value: 'p1' } });
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('Error: Save failed', 'error');
@@ -351,6 +364,7 @@ describe('RatePlansPanel', () => {
       expect(screen.getByText('Add Rate Plan')).toBeInTheDocument();
     });
     fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'Custom Season' } });
+    fireEvent.change(screen.getByTestId('select-Product *'), { target: { value: 'p1' } });
     fireEvent.change(screen.getByLabelText('Price Per Night'), { target: { value: '150' } });
     fireEvent.change(screen.getByTestId('select-Season'), { target: { value: 'off' } });
     fireEvent.change(screen.getByLabelText('Min Stay (nights)'), { target: { value: '2' } });
@@ -359,12 +373,12 @@ describe('RatePlansPanel', () => {
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => {
       expect(mockSaveRatePlan).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Custom Season', pricePerNight: 150, minStay: 2, season: 'off', startDate: '2025-06-01', endDate: '2025-08-31' }),
+        expect.objectContaining({ name: 'Custom Season', productId: 'p1', pricePerNight: 150, minStay: 2, season: 'off', startDate: '2025-06-01', endDate: '2025-08-31' }),
         undefined,
       );
     });
     expect(mockShowToast).toHaveBeenCalledWith('Plan created.', 'success');
-    expect(mockTrackEvent).toHaveBeenCalledWith('Tenant: Price Updated', { productId: '', planId: 'rp1' });
+    expect(mockTrackEvent).toHaveBeenCalledWith('Tenant: Price Updated', { productId: 'p1', planId: 'rp1' });
   });
 
   it('renders the Min Stay column values for every plan', async () => {

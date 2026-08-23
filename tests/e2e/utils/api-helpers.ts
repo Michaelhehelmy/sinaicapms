@@ -1,4 +1,4 @@
-import { API_BASE, SUPER_ADMIN, TEST_TENANT, TEST_TENANT_ADMIN, TEST_POS_USER, TEST_PRODUCT, TEST_CUSTOMER, TEST_CAMPS, TEST_PRODUCTS, TEST_RATE_PLAN } from '../fixtures/test-data';
+import { API_BASE, SUPER_ADMIN, TEST_TENANT, TEST_TENANT_ADMIN, TEST_POS_USER, TEST_PRODUCT, TEST_CUSTOMER, TEST_CAMPS, TEST_PRODUCTS, TEST_RATE_PLAN, TEST_MEAL_CATEGORIES, TEST_MEALS } from '../fixtures/test-data';
 
 let superAdminToken = '';
 let tenantAdminToken = '';
@@ -98,6 +98,59 @@ export async function seedTestData(): Promise<void> {
   }
 
   await apiRequest('POST', '/api/rateplans', TEST_RATE_PLAN, headers);
+
+  await seedMealData(token, TEST_TENANT.id);
+}
+
+/**
+ * Seed meal categories and meals so the menu page renders TenantMenu.
+ * Without meals, MenuPage.astro shows "Menu not available yet" and the
+ * TenantMenu React island (data-testid="tenant-nav") never mounts.
+ *
+ * Idempotent: deletes existing categories/meals before creating fresh ones
+ * so repeated global-setup runs don't accumulate duplicates.
+ */
+async function seedMealData(token: string, tenantId: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${token}`, 'x-tenant-id': tenantId };
+
+  // --- Clean up existing data first (idempotent seeding) ---
+  try {
+    const existingCats = await apiRequest('GET', '/api/meal-categories', undefined, headers);
+    if (existingCats.ok) {
+      const cats = (await existingCats.json()) as Array<{ id: string }>;
+      for (const cat of cats) {
+        await apiRequest('DELETE', `/api/meal-categories/${cat.id}`, undefined, headers);
+      }
+    }
+    const existingMeals = await apiRequest('GET', '/api/meals', undefined, headers);
+    if (existingMeals.ok) {
+      const meals = (await existingMeals.json()) as Array<{ id: string }>;
+      for (const meal of meals) {
+        await apiRequest('DELETE', `/api/meals/${meal.id}`, undefined, headers);
+      }
+    }
+  } catch { /* best-effort cleanup; proceed with seeding either way */ }
+
+  // Create meal categories and capture their auto-generated IDs
+  const catIds: string[] = [];
+  for (const cat of TEST_MEAL_CATEGORIES) {
+    const res = await apiRequest('POST', '/api/meal-categories', cat, headers);
+    if (res.ok) {
+      const data = (await res.json()) as { id: string };
+      if (data?.id) catIds.push(data.id);
+    }
+  }
+
+  // Create meals, linking each to a category
+  for (const meal of TEST_MEALS) {
+    const catId = catIds[meal.catIndex] || catIds[0] || null;
+    await apiRequest('POST', '/api/meals', {
+      name: meal.name,
+      price: meal.price,
+      description: meal.description,
+      meal_category_id: catId,
+    }, headers);
+  }
 }
 
 /**

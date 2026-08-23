@@ -37,7 +37,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
     ],
     isLoading: false,
   }),
-  queryKeys: { camps: ['camps'] },
+  queryKeys: { camps: ['admin', 'camps'] },
 }));
 
 const sampleTenant = {

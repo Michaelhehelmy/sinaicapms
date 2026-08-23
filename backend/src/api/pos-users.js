@@ -1,8 +1,14 @@
 import { jsonResponse, errorResponse, toSnake } from '../utils/response.js';
 import { validationError } from '../utils/errors.js';
 import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
-import { verifyToken as verifyJWT, hashPassword } from '../middleware/sharedAuth.js';
+import { hashPassword } from '../middleware/sharedAuth.js';
+import { requireAuth } from '../middleware/requireAuth.js';
 import { z } from 'zod';
+
+// ensureTenantOrg moved verbatim to middleware/resolveScope.js (Phase 4 T3);
+// re-exported here so existing import paths keep working.
+import { ensureTenantOrg as _ensureTenantOrg } from '../middleware/resolveScope.js';
+export const ensureTenantOrg = _ensureTenantOrg;
 
 export const POS_USER_ROLES = ['cashier', 'manager', 'admin'];
 
@@ -76,47 +82,6 @@ export function scopeTenant(decoded, url, tenantId) {
   return { error: errorResponse('Forbidden: Insufficient permissions', 403) };
 }
 
-/**
- * Auto-provision a POS organization + store + tenant_org_mapping for a tenant
- * that has none. Idempotent (INSERT OR IGNORE on the UNIQUE slug/code) so a
- * partial failure can be safely retried. Returns the organization_id or null.
- */
-export async function ensureTenantOrg(env, tenantId) {
-  try {
-    const { results: existing } = await env.DB.prepare(
-      'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
-    ).bind(tenantId).all();
-    if (existing.length > 0) return existing[0].organization_id;
-
-    const slug = ('org_' + tenantId).replace(/[^a-zA-Z0-9_]/g, '_');
-
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO pos_organizations (name, slug, created_at, updated_at)
-       VALUES (?, ?, datetime('now'), datetime('now'))`
-    ).bind(tenantId, slug).run();
-
-    const { results: orgRows } = await env.DB.prepare(
-      'SELECT id FROM pos_organizations WHERE slug = ?'
-    ).bind(slug).all();
-    if (!orgRows.length) return null;
-    const organizationId = orgRows[0].id;
-
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO pos_stores (organization_id, name, code, address, city, created_at, updated_at)
-       VALUES (?, ?, ?, 'N/A', 'N/A', datetime('now'), datetime('now'))`
-    ).bind(organizationId, tenantId + ' Store', 'ST_' + tenantId).run();
-
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO tenant_org_mapping (tenant_id, organization_id) VALUES (?, ?)`
-    ).bind(tenantId, organizationId).run();
-
-    return organizationId;
-  } catch (e) {
-    console.error('ensureTenantOrg failed:', e.message);
-    return null;
-  }
-}
-
 async function resolveOrganization(env, tenantId) {
   const { results } = await env.DB.prepare(
     'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
@@ -125,27 +90,28 @@ async function resolveOrganization(env, tenantId) {
   return await ensureTenantOrg(env, tenantId);
 }
 
+// Phase 1: the one auth gate (defense-in-depth behind the /api/pos-users
+// route gate). Byte-compat with the former inline gate, including its quirk
+// of reporting a missing Authorization header with the invalid-token message.
+// checkActive stays off here: the wrapping route gate already runs the
+// every-request activity probe — running it twice would double the DB cost.
+const posUsersHandlerGate = requireAuth({
+  realm: 'admin',
+  roles: ['super_admin', 'admin'],
+  requireTenant: false,
+  missingToken: { message: 'Session expired or invalid signature' },
+  checkActive: false,
+});
+
 export async function handlePosUsersRoute(request, env, tenantId) {
   const url = new URL(request.url);
   const method = request.method;
   const path = url.pathname.split('/').filter(Boolean);
 
   // ─── Authz (all methods, first) ───────────────────────────
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Session expired or invalid signature', 401);
-  }
-  const token = authHeader.substring(7);
-  const decoded = await verifyJWT(token, env.JWT_SECRET);
-  if (!decoded) {
-    return errorResponse('Session expired or invalid signature', 401);
-  }
-  if (decoded.posType === 'pos') {
-    return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
-  }
-  if (decoded.role !== 'super_admin' && decoded.role !== 'admin') {
-    return errorResponse('Forbidden: Insufficient permissions', 403);
-  }
+  const auth = await posUsersHandlerGate(request, env);
+  if (auth instanceof Response) return auth;
+  const decoded = auth.user;
 
   // ─── Scope resolution ─────────────────────────────────────
   const scoped = scopeTenant(decoded, url, tenantId);

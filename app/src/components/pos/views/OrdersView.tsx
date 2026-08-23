@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import * as apiClient from '@/lib/api';
+import { usePosOrders } from '@/hooks/usePosQueries';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Card } from '@/components/ui/Card';
@@ -15,22 +14,12 @@ const statusLabels: Record<string, string> = {
 };
 
 // ─── Orders View ───────────────────────────────────────────
-export default function OrdersView({ refreshKey }: { refreshKey: number }) {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+export default function OrdersView() {
+  const { data: rawOrders, isLoading, error } = usePosOrders();
+  const orders = (Array.isArray(rawOrders) ? rawOrders : []) as Order[];
 
-  useEffect(() => {
-    setLoading(true);
-    setError('');
-    apiClient.posGetOrders()
-      .then((data) => setOrders((Array.isArray(data) ? data : []) as Order[]))
-      .catch((e) => setError(e.message || 'Failed to load orders'))
-      .finally(() => setLoading(false));
-  }, [refreshKey]);
-
-  if (loading) return <div className="p-6"><TableSkeleton rows={5} columns={5} /></div>;
-  if (error) return <div className="p-8 text-red-500">{error}</div>;
+  if (isLoading) return <div className="p-6"><TableSkeleton rows={5} columns={5} /></div>;
+  if (error) return <div className="p-8 text-red-500">{error.message || 'Failed to load orders'}</div>;
 
   return (
     <div className="p-6 space-y-4" data-testid="pos-orders">

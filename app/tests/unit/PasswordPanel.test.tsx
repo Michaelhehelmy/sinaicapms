@@ -2,17 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import PasswordPanel from '@/components/admin/PasswordPanel';
 
-const mockShowToast = vi.fn();
-vi.mock('@/components/ui/Toast', () => ({
-  useToast: () => ({ showToast: mockShowToast }),
-}));
+const mockMutateAsync = vi.fn();
+const mockIsPending = false;
 
-vi.mock('@/lib/api', () => ({
-  changePassword: vi.fn(),
+vi.mock('@/hooks/useQueryHooks', () => ({
+  useChangePasswordMutation: () => ({
+    mutateAsync: mockMutateAsync,
+    isPending: mockIsPending,
+  }),
 }));
-
-import * as api from '@/lib/api';
-const mockChangePassword = vi.mocked(api.changePassword);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -38,7 +36,7 @@ describe('PasswordPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Current password is required')).toBeInTheDocument();
     });
-    expect(mockChangePassword).not.toHaveBeenCalled();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
   it('validates new password minimum length', async () => {
@@ -50,7 +48,7 @@ describe('PasswordPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Password must be at least 8 characters')).toBeInTheDocument();
     });
-    expect(mockChangePassword).not.toHaveBeenCalled();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
   it('validates passwords must match', async () => {
@@ -62,48 +60,39 @@ describe('PasswordPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Passwords do not match')).toBeInTheDocument();
     });
-    expect(mockChangePassword).not.toHaveBeenCalled();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
   it('submits password change successfully', async () => {
-    mockChangePassword.mockResolvedValue({ success: true });
+    mockMutateAsync.mockResolvedValue({ success: true });
     render(<PasswordPanel />);
     fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'oldpass123' } });
     fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpass123' } });
     fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'newpass123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
     await waitFor(() => {
-      expect(mockChangePassword).toHaveBeenCalledWith('oldpass123', 'newpass123');
-      expect(mockShowToast).toHaveBeenCalledWith('Password changed successfully!', 'success');
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        currentPassword: 'oldpass123',
+        newPassword: 'newpass123',
+      });
     });
   });
 
-  it('handles server rejection', async () => {
-    mockChangePassword.mockResolvedValue({ success: false });
+  it('handles API error gracefully', async () => {
+    mockMutateAsync.mockRejectedValue(new Error('Current password is incorrect'));
     render(<PasswordPanel />);
-    fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'oldpass123' } });
+    fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'wrongpass' } });
     fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpass123' } });
     fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'newpass123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Error'), 'error');
+      expect(mockMutateAsync).toHaveBeenCalled();
     });
-  });
-
-  it('handles API error', async () => {
-    mockChangePassword.mockRejectedValue(new Error('Network error'));
-    render(<PasswordPanel />);
-    fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'oldpass123' } });
-    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpass123' } });
-    fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'newpass123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
-    await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Error changing password: Network error', 'error');
-    });
+    // Error toast handled by the hook, not by the panel
   });
 
   it('clears form after successful change', async () => {
-    mockChangePassword.mockResolvedValue({ success: true });
+    mockMutateAsync.mockResolvedValue({ success: true });
     render(<PasswordPanel />);
     const currentInput = screen.getByLabelText('Current Password');
     const newInput = screen.getByLabelText('New Password');

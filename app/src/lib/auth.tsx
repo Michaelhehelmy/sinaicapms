@@ -7,12 +7,12 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
-import { getAuthMe, login as apiLogin, logout as apiLogout, getTenantId, REFRESH_TOKEN_KEY, setTenantScope } from './api';
+import { getAuthMe, login as apiLogin, logout as apiLogout, getTenantId, setTenantScope } from './api';
+import { session } from './session';
+import { roleAtLeast } from './rbac';
 
-export const ROLE_HIERARCHY: Record<string, number> = {
-  super_admin: 10,
-  admin: 4,
-};
+// Phase 6 / Task 3: hierarchy lives in ./rbac (mirrors backend ROLE_RANKS).
+export { ROLE_HIERARCHY } from './rbac';
 
 export interface AuthUser {
   userId?: string;
@@ -37,28 +37,17 @@ export interface AuthContextValue {
   hasRole: (minRole: string) => boolean;
 }
 
-const TOKEN_KEY = 'sinaicamps_token';
-const USER_KEY = 'sinaicamps_user';
-
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const saved = localStorage.getItem(USER_KEY);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<AuthUser | null>(() => session.getUser<AuthUser>('admin'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     async function validate() {
-      const token = localStorage.getItem(TOKEN_KEY);
+      const token = session.getAccessToken('admin');
       if (!token) {
         if (!cancelled) setLoading(false);
         return;
@@ -70,13 +59,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = (res as Record<string, unknown>).user as AuthUser | undefined;
         if (userData) {
           setUser(userData);
-          localStorage.setItem(USER_KEY, JSON.stringify(userData));
+          session.setUser('admin', userData);
         }
       } catch {
         if (cancelled) return;
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
+        session.clear('admin');
         setUser(null);
       } finally {
         if (!cancelled) setLoading(false);
@@ -100,13 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const refreshToken = (res.refreshToken as string) || (tokens?.refreshToken as string) || undefined;
 
         if (accessToken) {
-          localStorage.setItem(TOKEN_KEY, accessToken);
-        }
-        if (refreshToken) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+          session.setTokens('admin', accessToken, refreshToken ?? null);
+          // Refresh the cached user blob alongside tokens so /auth/me
+          // validation has a fallback identity even before it runs.
+          if (userData) session.setUser('admin', userData);
         }
         if (userData) {
-          localStorage.setItem(USER_KEY, JSON.stringify(userData));
           setUser(userData);
         }
         return { success: true };
@@ -129,19 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // T9: clear any active super-admin tenant-scope override so a subsequent
     // login (e.g. as a tenant admin) never inherits the drill-down scope.
     setTenantScope(null);
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    session.clear('admin');
     setUser(null);
   }, []);
 
   const hasRole = useCallback(
-    (minRole: string): boolean => {
-      if (!user?.role) return false;
-      const userLevel = ROLE_HIERARCHY[user.role] ?? 0;
-      const requiredLevel = ROLE_HIERARCHY[minRole] ?? 0;
-      return userLevel >= requiredLevel;
-    },
+    (minRole: string): boolean => roleAtLeast(user?.role, minRole),
     [user],
   );
 

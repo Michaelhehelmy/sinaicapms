@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
-import * as api from '@/lib/api';
-import { useToast } from '@/components/ui/Toast';
+import { useChangePasswordMutation } from '@/hooks/useQueryHooks';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
 export default function PasswordPanel() {
-  const { showToast } = useToast();
-  const [saving, setSaving] = useState(false);
+  const changePassword = useChangePasswordMutation();
   const [form, setForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -35,20 +33,15 @@ export default function PasswordPanel() {
   const handleSubmit = async () => {
     if (!validate()) return;
 
-    setSaving(true);
     try {
-      const res = (await api.changePassword(form.currentPassword, form.newPassword)) as { success?: boolean };
-      if (res && res.success) {
-        showToast('Password changed successfully!', 'success');
-        setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        setErrors({});
-      } else {
-        throw new Error('Server rejected the request');
-      }
-    } catch (err) {
-      showToast('Error changing password: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally {
-      setSaving(false);
+      await changePassword.mutateAsync({
+        currentPassword: form.currentPassword,
+        newPassword: form.newPassword,
+      });
+      setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setErrors({});
+    } catch {
+      // Error toast handled by useChangePasswordMutation hook
     }
   };
 
@@ -90,7 +83,7 @@ export default function PasswordPanel() {
             <Button
               variant="success"
               size="md"
-              loading={saving}
+              loading={changePassword.isPending}
               onClick={handleSubmit}
             >
               Change Password

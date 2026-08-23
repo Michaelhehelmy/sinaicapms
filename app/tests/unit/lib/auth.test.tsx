@@ -314,7 +314,7 @@ describe('AuthProvider — role hierarchy checking', () => {
     expect(screen.getByTestId('hasRole-cashier').textContent).toBe('true');
   });
 
-  it('unregistered role (cashier, manager) passes everything (level 0 >= level 0)', async () => {
+  it('cashier passes only cashier checks (Phase 6: registered POS roles)', async () => {
     vi.mocked(getAuthMe).mockResolvedValue({ user: { role: 'cashier', email: 'a@b.com' } } as never);
     localStorage.setItem('sinaicamps_token', 'tok');
 
@@ -327,10 +327,48 @@ describe('AuthProvider — role hierarchy checking', () => {
     });
     await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
 
-    // cashier and manager are not in ROLE_HIERARCHY → level 0; minRole 'manager'/'cashier' also level 0
+    // cashier (level 30) satisfies only its own tier
+    expect(screen.getByTestId('hasRole-cashier').textContent).toBe('true');
+    // manager (50), admin (80), super_admin (100) require higher
+    expect(screen.getByTestId('hasRole-manager').textContent).toBe('false');
+    expect(screen.getByTestId('hasRole-admin').textContent).toBe('false');
+    expect(screen.getByTestId('hasRole-super_admin').textContent).toBe('false');
+  });
+
+  it('manager passes manager and cashier checks, fails admin', async () => {
+    vi.mocked(getAuthMe).mockResolvedValue({ user: { role: 'manager', email: 'a@b.com' } } as never);
+    localStorage.setItem('sinaicamps_token', 'tok');
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+
     expect(screen.getByTestId('hasRole-cashier').textContent).toBe('true');
     expect(screen.getByTestId('hasRole-manager').textContent).toBe('true');
-    // but admin (level 4) and super_admin (level 10) require higher
+    expect(screen.getByTestId('hasRole-admin').textContent).toBe('false');
+    expect(screen.getByTestId('hasRole-super_admin').textContent).toBe('false');
+  });
+
+  it('unregistered role fails every registered check', async () => {
+    vi.mocked(getAuthMe).mockResolvedValue({ user: { role: 'ghost_role', email: 'a@b.com' } } as never);
+    localStorage.setItem('sinaicamps_token', 'tok');
+
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <AuthConsumer />
+        </AuthProvider>,
+      );
+    });
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+
+    expect(screen.getByTestId('hasRole-cashier').textContent).toBe('false');
+    expect(screen.getByTestId('hasRole-manager').textContent).toBe('false');
     expect(screen.getByTestId('hasRole-admin').textContent).toBe('false');
     expect(screen.getByTestId('hasRole-super_admin').textContent).toBe('false');
   });
@@ -481,12 +519,20 @@ describe('AuthProvider — auth state persistence (localStorage)', () => {
 // ── ROLE_HIERARCHY unit tests ─────────────────────────────────────────
 
 describe('ROLE_HIERARCHY constants', () => {
-  it('super_admin has level 10', () => {
-    expect(ROLE_HIERARCHY.super_admin).toBe(10);
+  it('super_admin has level 100', () => {
+    expect(ROLE_HIERARCHY.super_admin).toBe(100);
   });
 
-  it('admin has level 4', () => {
-    expect(ROLE_HIERARCHY.admin).toBe(4);
+  it('admin has level 80', () => {
+    expect(ROLE_HIERARCHY.admin).toBe(80);
+  });
+
+  it('manager has level 50', () => {
+    expect(ROLE_HIERARCHY.manager).toBe(50);
+  });
+
+  it('cashier has level 30', () => {
+    expect(ROLE_HIERARCHY.cashier).toBe(30);
   });
 
   it('super_admin is greater than admin', () => {

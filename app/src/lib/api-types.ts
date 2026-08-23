@@ -711,7 +711,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create a camp (auth + tenant scoped) */
+        /** Create a camp (auth + tenant scoped; 409 if the tenant already has a camp) */
         post: {
             parameters: {
                 query?: never;
@@ -754,6 +754,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Conflict — tenant already has a camp */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2441,7 +2450,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Server-side price calculation for a room + date range (public GET) */
+        /** Server-side price calculation for a room + date range; 400 when roomId/checkIn/checkOut are missing (public GET) */
         get: {
             parameters: {
                 query: {
@@ -4874,7 +4883,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Contact form submission (public, rate-limited; same handler as POST /api/leads) */
+        /**
+         * DEPRECATED — use POST /api/leads (source defaults to "contact"). Contact form alias kept during the Phase 9 transition window (Deprecation + Sunset headers).
+         * @deprecated
+         */
         post: {
             parameters: {
                 query?: never;
@@ -6167,86 +6179,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/payments/create-checkout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create a checkout payment intent (auth + tenant; same handler as create-intent) */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": {
-                        orderId: string;
-                        amount: number;
-                        currency?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Payment intent created */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["PaymentIntentResponse"];
-                    };
-                };
-                /** @description Bad request / validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorEnvelope"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorEnvelope"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorEnvelope"];
-                    };
-                };
-                /** @description Internal server error */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorEnvelope"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/payments/confirm": {
         parameters: {
             query?: never;
@@ -6398,7 +6330,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/pos/auth/login": {
+    "/api/auth/pos-login": {
         parameters: {
             query?: never;
             header?: never;
@@ -6407,7 +6339,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** POS cashier login (identifier = email or username) */
+        /** POS cashier login (Phase 9 canonical path; identifier = email or username) */
         post: {
             parameters: {
                 query?: never;
@@ -6428,6 +6360,162 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["PosLoginResponse"];
+                    };
+                };
+                /** @description Bad request / validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pos/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * DEPRECATED — use POST /api/auth/pos-login. Legacy POS cashier login kept during the Phase 9 transition window (Deprecation + Sunset headers).
+         * @deprecated
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PosLoginRequest"];
+                };
+            };
+            responses: {
+                /** @description Login successful */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PosLoginResponse"];
+                    };
+                };
+                /** @description Bad request / validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pos/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh a POS session. Send the refresh token as Authorization: Bearer <refreshToken> OR in the body ({ refreshToken }). Header wins when both are present. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            /** @description Optional — omit when sending the token via the Authorization header */
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PosAuthRefreshRequest"];
+                };
+            };
+            responses: {
+                /** @description Session refreshed (new access + refresh tokens) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PosAuthRefreshResponse"];
                     };
                 };
                 /** @description Bad request / validation error */
@@ -6553,23 +6641,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List POS orders (latest 100, pos_token auth) */
+        /** List POS orders as a paginated envelope, newest first (default pageSize 100; pos_token auth). Legacy: `raw=1` returns the bare page array during migration */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    page?: string;
+                    pageSize?: string;
+                    raw?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Orders */
+                /** @description Paginated orders */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["PosOrderList"];
+                        "application/json": components["schemas"]["PaginatedPosOrders"];
                     };
                 };
                 /** @description Bad request / validation error */
@@ -7642,6 +7734,7 @@ export interface components {
             sku?: string;
             isActive?: number;
             campIds?: string[];
+            campId?: string;
         };
         ProductUpdateRequest: {
             id?: string;
@@ -7659,6 +7752,7 @@ export interface components {
             sku?: string;
             isActive?: number;
             campIds?: string[];
+            campId?: string;
         };
         Room: {
             id: string;
@@ -8405,11 +8499,21 @@ export interface components {
         PosLoginResponse: {
             success: boolean;
             token: string;
+            refreshToken?: string;
             user: components["schemas"]["PosLoginUser"];
         };
         PosLoginRequest: {
             identifier: string;
             password: string;
+        };
+        PosAuthRefreshResponse: {
+            success: boolean;
+            token: string;
+            refreshToken?: string;
+            user: components["schemas"]["PosLoginUser"];
+        };
+        PosAuthRefreshRequest: {
+            refreshToken?: string;
         };
         PosProduct: {
             id: string;
@@ -8471,7 +8575,13 @@ export interface components {
             createdAt: string;
             cashierName?: string | null;
         };
-        PosOrderList: components["schemas"]["PosOrder"][];
+        PaginatedPosOrders: {
+            data: components["schemas"]["PosOrder"][];
+            total: number;
+            page: number;
+            pageSize: number;
+            hasMore: boolean;
+        };
         PosOrderDetailItem: {
             id: string;
             tenantId: string;
@@ -8580,6 +8690,7 @@ export interface components {
             status: "low" | "out";
         };
         InventoryLowStockList: {
+            data: components["schemas"]["InventoryItem"][];
             items: components["schemas"]["InventoryItem"][];
             total: number;
             page: number;

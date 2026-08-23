@@ -4,7 +4,7 @@ export class LoginPage {
   constructor(private page: Page) {}
 
   async goto() {
-    await this.page.goto('/pos/login');
+    await this.page.goto('/pos/login', { waitUntil: 'domcontentloaded' });
   }
 
   async fillIdentifier(value: string) {

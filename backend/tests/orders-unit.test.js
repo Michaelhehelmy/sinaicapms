@@ -1,5 +1,41 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleOrdersRoute, handleAvailability } from '../src/api/orders.js';
+import ordersRoutes, { availabilityRoutes } from '../src/api/orders.js';
+import { mountRouter } from './helpers/routerHarness.js';
+
+// Signature-compatible shims: legacy handlers took (Request, env, tenantId).
+// They now execute against the Hono sub-routers mounted by index.js.
+let ordersApp;
+let availabilityApp;
+
+beforeEach(() => {
+  ordersApp = mountRouter(ordersRoutes, { tenantId: 't1', basePath: '/api/orders' });
+  availabilityApp = mountRouter(availabilityRoutes, { tenantId: 't1', basePath: '/api/availability' });
+});
+
+async function dispatch(app, req, env = {}) {
+  const url = new URL(req.url);
+  let body;
+  if (!['GET', 'HEAD', 'DELETE'].includes(req.method)) {
+    try {
+      body = JSON.stringify(await req.json());
+    } catch {
+      body = undefined;
+    }
+  }
+  return app.request(url.pathname + url.search, {
+    method: req.method,
+    headers: req.headers,
+    ...(body ? { body } : {}),
+  }, env);
+}
+
+async function handleOrdersRoute(req, env = {}, _tenant = null) {
+  return dispatch(ordersApp, req, env);
+}
+
+async function handleAvailability(req, env = {}, _tenant = null) {
+  return dispatch(availabilityApp, req, env);
+}
 
 function makeDbMock() {
   const chain = {
@@ -100,12 +136,20 @@ describe('handleOrdersRoute', () => {
   });
 
   describe('GET /orders/calculate-price', () => {
-    it('returns 0 when missing params', async () => {
+    it('returns 400 when params are missing', async () => {
       const { db } = makeDbMock();
       const req = makeRequest('GET', 'https://x.com/api/orders/calculate-price');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.totalPrice).toBe(0);
+      expect(body.success).toBe(false);
+    });
+
+    it('returns 400 when only some params are present', async () => {
+      const { db } = makeDbMock();
+      const req = makeRequest('GET', 'https://x.com/api/orders/calculate-price?roomId=r1');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
     });
 
     it('returns 0 when room not found', async () => {
@@ -279,6 +323,27 @@ describe('handleOrdersRoute', () => {
       const req = makeRequest('POST', 'https://x.com/api/orders/bulk-delete', { ids: ['o1'] });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(200);
+    });
+
+    it('cascades inbox_reads read-acks for deleted bookings (Phase 3)', async () => {
+      const sqls = [];
+      const { db } = makeDbMock();
+      db.prepare.mockImplementation((sql) => {
+        sqls.push(sql);
+        return {
+          bind: vi.fn().mockReturnThis(),
+          first: vi.fn().mockResolvedValue(null),
+          all: vi.fn().mockResolvedValue({ results: [{ room_id: 'r1' }, { room_id: 'r2' }] }),
+          run: vi.fn().mockResolvedValue({ success: true }),
+        };
+      });
+      const req = makeRequest('POST', 'https://x.com/api/orders/bulk-delete', { ids: ['o1', 'o2'] });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const cascadeSql = sqls.find((s) => s.includes('DELETE FROM inbox_reads'));
+      expect(cascadeSql).toBeDefined();
+      expect(cascadeSql).toContain("ref_type = 'booking'");
+      expect(cascadeSql).toContain('IN (?,?)');
     });
 
     it('returns error on DB failure', async () => {
@@ -759,6 +824,26 @@ describe('handleOrdersRoute', () => {
       const req = makeRequest('DELETE', 'https://x.com/api/orders/o1');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(200);
+    });
+
+    it('cascades inbox_reads read-ack when deleting a booking (Phase 3)', async () => {
+      const sqls = [];
+      const { db } = makeDbMock();
+      db.prepare.mockImplementation((sql) => {
+        sqls.push(sql);
+        return {
+          bind: vi.fn().mockReturnThis(),
+          first: vi.fn().mockResolvedValue(null),
+          all: vi.fn().mockResolvedValue({ results: [] }),
+          run: vi.fn().mockResolvedValue({ success: true }),
+        };
+      });
+      const req = makeRequest('DELETE', 'https://x.com/api/orders/o1');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const cascadeSql = sqls.find((s) => s.includes('DELETE FROM inbox_reads'));
+      expect(cascadeSql).toBeDefined();
+      expect(cascadeSql).toContain("ref_type = 'booking'");
     });
 
     it('returns error on delete failure', async () => {

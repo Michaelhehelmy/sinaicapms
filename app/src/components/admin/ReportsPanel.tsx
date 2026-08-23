@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import * as api from '@/lib/api';
-import { useCamps, type Camp } from '@/hooks/useAdminData';
+import type { Camp } from '@/hooks/useAdminData';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';

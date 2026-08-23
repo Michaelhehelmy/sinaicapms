@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import * as api from '@/lib/api';
-import { usePlans, useCamps, type Plan, type Camp } from '@/hooks/useAdminData';
+import type { Plan, Camp } from '@/hooks/useAdminData';
+import { usePlansQuery, queryKeys } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -54,7 +56,14 @@ const filterStatusOptions = [
 ];
 
 export default function PlanningPanel({ campIds, camps }: PlanningPanelProps) {
-  const { data: plans, loading, refresh } = usePlans();
+  const queryClient = useQueryClient();
+  const { data: plansData, isLoading: loading } = usePlansQuery();
+  const plans = plansData ?? [];
+  // Phase 6: refresh = invalidate the ['admin', ...] concern in the TanStack cache.
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.plans }),
+    [queryClient],
+  );
   const { showToast } = useToast();
 
   const [showForm, setShowForm] = useState(false);

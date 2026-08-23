@@ -2,28 +2,32 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
 import { getTenant } from './middleware/tenant';
-import { rateLimitMiddleware } from './middleware/rateLimit';
-import { handleAuthRoute, verifyJWT } from './api/auth';
-import { handleTenants, handleMe } from './api/tenants';
+import { policyLimiter } from './middleware/rateLimit';
+import { requireAuth } from './middleware/requireAuth.js';
+import { handleAuthRoute } from './api/auth';
+import { handleTenants } from './api/tenants';
+import meRoutes from './api/tenants';
 import { handleAdminRoute } from './api/admin';
-import { handleCampsRoute, handleProductsRoute, handleRoomsRoute, handleRatePlansRoute } from './api/camps';
-import { handleOrdersRoute, handleAvailability } from './api/orders';
-import { handlePriceOverridesRoute } from './api/priceOverrides';
-import { handleUploadRoute, handleMediaRoute } from './api/upload';
-import { handleMealsRoute } from './api/meals';
+import campsRoutes, { productsRoutes, roomsRoutes, ratePlansRoutes } from './api/camps';
+import ordersRoutes, { availabilityRoutes } from './api/orders';
+import uploadRoutes, { mediaRoutes } from './api/upload';
 import { handleMealSchedulesRoute } from './api/meal-schedules';
 import { handlePosUsersRoute } from './api/pos-users';
-import { handlePlansRoute } from './api/others';
-import { handleCategoriesRoute } from './api/categories';
-import { handleMealCategoriesRoute } from './api/meal-categories';
 import { jsonResponse, errorResponse } from './utils/response';
 import { handleCreatePaymentIntent, handleConfirmPayment, handleStripeWebhook } from './api/payments';
-import { handleReportsRoute } from './api/reports';
-import { handleInventoryRoute } from './api/inventory';
-import { handleLeadsRoute } from './api/leads';
-import { handleInboxRoute } from './api/inbox';
+import reportsRoutes from './api/reports';
+import inventoryRoutes from './api/inventory';
+import priceOverridesRoutes from './api/priceOverrides';
+import plansRoutes from './api/others';
+import mealCategoriesRoutes from './api/meal-categories';
+import categoriesRoutes from './api/categories';
+import mealsRoutes from './api/meals';
+import { resolveScope } from './middleware/resolveScope.js';
+import leadsRoutes, { createLead } from './api/leads';
+import inboxRoutes from './api/inbox';
 import { buildOpenApiDocument } from './routes/registry';
-import posRoutes from './routes/pos/index.js';
+import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
+import { withSunset } from './utils/deprecation.js';
 import { Broadcaster } from './durable/broadcaster.js';
 
 // Durable Object class export — required so `wrangler deploy` can register the
@@ -93,6 +97,12 @@ app.use('*', cors({
   maxAge: 86400,
 }));
 
+// ── Global declarative rate limiting (Phase 4 T2) ──────────
+// One ordered policy table (RATE_LIMIT_POLICIES) replaces every previously
+// scattered explicit rateLimitMiddleware mount. First matching entry wins;
+// SSE streams are exempted inside policyLimiter.
+app.use('/api/*', policyLimiter());
+
 app.get('/', (c) => c.html(`<!DOCTYPE html>
 <html><head><title>SinaiCamps API</title></head>
 <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #f8f9fa;">
@@ -100,159 +110,105 @@ app.get('/', (c) => c.html(`<!DOCTYPE html>
   <p>Serverless API worker is running.</p>
 </body></html>`));
 
-// ── Auth routes (rate-limited) ────────────────────────────
-app.all('/api/auth/*', rateLimitMiddleware({ windowMs: 60000, max: 30 }), async (c) => {
+// ── Auth routes (rate-limited by policy table: /api/auth/* 30/min) ────────
+// Phase 9: consolidated POS login — canonical path, shared handler with the
+// legacy POST /api/pos/auth/login (which keeps a stricter 15/min policy and
+// Sunset headers). Registered BEFORE the auth catch-all.
+app.post('/api/auth/pos-login', (c) => handlePosLoginRequest(c.req.raw, c.env));
+
+app.all('/api/auth/*', async (c) => {
   return handleAuthRoute(c.req.raw, c.env);
 });
 
 // ── Tenant routes (S-C1 fix: only explicit GET + POST, no app.all shadow) ──
 const handleTenantsRoute = async (c) => handleTenants(c.req.raw, c.env);
-app.post('/api/tenants', rateLimitMiddleware({ windowMs: 300000, max: 5 }), handleTenantsRoute);
-app.get('/api/tenants', rateLimitMiddleware({ windowMs: 60000, max: 60 }), handleTenantsRoute);
-app.get('/api/tenants/*', rateLimitMiddleware({ windowMs: 60000, max: 60 }), handleTenantsRoute);
+app.post('/api/tenants', handleTenantsRoute);
+app.get('/api/tenants', handleTenantsRoute);
+app.get('/api/tenants/*', handleTenantsRoute);
 
-// ── Admin routes (rate-limited, super-admin only) ─────────
-app.use('/api/admin/*', rateLimitMiddleware({ windowMs: 60000, max: 20 }));
+// ── Admin routes (rate-limited by policy table; super-admin only) ─────────
 const handleSuperAdminRoute = async (c) => handleAdminRoute(c.req.raw, c.env);
 app.all('/api/admin', handleSuperAdminRoute);
 app.all('/api/admin/*', handleSuperAdminRoute);
 
-// ── Payment routes ────────────────────────────────────────
-app.use('/api/payments/*', rateLimitMiddleware({ windowMs: 60000, max: 20 }));
+// ── Payment routes (rate-limited by policy table: /api/payments* 20/min) ──
+
+const paymentGate = requireAuth({
+  realm: 'admin',
+  realmMismatch: { message: 'Forbidden: POS sessions cannot access payment routes' },
+  scopeDenied: { message: 'Forbidden: Access denied to this tenant' },
+});
 
 app.post('/api/payments/create-intent', async (c) => {
   const tenantId = await getTenant(c.req.raw, c.env);
   if (!tenantId) return errorResponse('Tenant not found', 404);
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') return errorResponse('Forbidden: POS sessions cannot access payment routes', 403);
-  if (decoded.role !== 'super_admin' && decoded.tenantId !== tenantId) return errorResponse('Forbidden: Access denied to this tenant', 403);
-  return handleCreatePaymentIntent(c.req.raw, c.env, tenantId);
-});
-
-app.post('/api/payments/create-checkout', async (c) => {
-  const tenantId = await getTenant(c.req.raw, c.env);
-  if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') return errorResponse('Forbidden: POS sessions cannot access payment routes', 403);
-  if (decoded.role !== 'super_admin' && decoded.tenantId !== tenantId) return errorResponse('Forbidden: Access denied to this tenant', 403);
+  const auth = await paymentGate(c.req.raw, c.env, { tenantId });
+  if (auth instanceof Response) return auth;
   return handleCreatePaymentIntent(c.req.raw, c.env, tenantId);
 });
 
 app.post('/api/payments/confirm', async (c) => {
   const tenantId = await getTenant(c.req.raw, c.env);
   if (!tenantId) return errorResponse('Tenant not found', 404);
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') return errorResponse('Forbidden: POS sessions cannot access payment routes', 403);
-  if (decoded.role !== 'super_admin' && decoded.tenantId !== tenantId) return errorResponse('Forbidden: Access denied to this tenant', 403);
+  const auth = await paymentGate(c.req.raw, c.env, { tenantId });
+  if (auth instanceof Response) return auth;
   return handleConfirmPayment(c.req.raw, c.env, tenantId);
 });
 
-// S-C2 fix: Webhook is already rate-limited by the /api/payments/* middleware above.
-// Stripe requires reliable delivery, so do NOT apply a second (stricter) rate limiter here.
+// S-C2 fix: Webhook is covered by the /api/payments* entry in the policy table.
+// Stripe requires reliable delivery, so do NOT apply a stricter limiter here.
 app.post('/api/payments/webhook', async (c) => {
   return handleStripeWebhook(c.req.raw, c.env);
 });
 
-// ── POS routes (self-contained auth, before catch-all) ─────
-app.use('/api/pos/auth/login', rateLimitMiddleware({ windowMs: 60000, max: 15 }));
-app.use('/api/pos/*', rateLimitMiddleware({ windowMs: 60000, max: 60 }));
+// ── POS routes (self-contained auth, before catch-all;
+//    login + general POS limits live in the policy table) ────
 app.route('/api/pos', posRoutes);
 
-// ── Contact form route (public, rate-limited) ──────────────
-app.post('/api/contact', rateLimitMiddleware({ windowMs: 60000, max: 10 }), async (c) => {
-  const tenantId = await getTenant(c.req.raw, c.env);
-  return handleLeadsRoute(c.req.raw, c.env, tenantId);
-});
-
-// ── Leads route (public, rate-limited) ─────────────────────
-app.post('/api/leads', rateLimitMiddleware({ windowMs: 60000, max: 10 }), async (c) => {
-  const tenantId = await getTenant(c.req.raw, c.env);
-  return handleLeadsRoute(c.req.raw, c.env, tenantId);
-});
+// ── Contact form (public; POST /api/contact 10/min via policy table).
+// Phase 9: DEPRECATED alias of POST /api/leads (source defaults to 'contact').
+// Kept during the transition window with Deprecation + Sunset headers. ────
+const contactPublicScope = resolveScope({ public: true });
+app.post('/api/contact', contactPublicScope, (c) => createLead(c).then(withSunset));
 
 // ── Meal Schedules routes (auth + tenant scoping) ─────────
+const mealSchedulesGate = requireAuth({ realm: 'admin' });
+
 app.all('/api/meal-schedules', async (c) => {
   const tenantId = await getTenant(c.req.raw, c.env);
   if (!tenantId) return errorResponse('Tenant not found', 404);
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') {
-    return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
-  }
-  if (decoded.role !== 'super_admin' && decoded.tenantId !== tenantId) {
-    return errorResponse('Forbidden: Access denied to this tenant partition', 403);
-  }
+  const auth = await mealSchedulesGate(c.req.raw, c.env, { tenantId });
+  if (auth instanceof Response) return auth;
   return handleMealSchedulesRoute(c.req.raw, c.env, tenantId);
 });
 app.all('/api/meal-schedules/*', async (c) => {
   const tenantId = await getTenant(c.req.raw, c.env);
   if (!tenantId) return errorResponse('Tenant not found', 404);
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') {
-    return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
-  }
-  if (decoded.role !== 'super_admin' && decoded.tenantId !== tenantId) {
-    return errorResponse('Forbidden: Access denied to this tenant partition', 403);
-  }
+  const auth = await mealSchedulesGate(c.req.raw, c.env, { tenantId });
+  if (auth instanceof Response) return auth;
   return handleMealSchedulesRoute(c.req.raw, c.env, tenantId);
 });
 
 // ── POS Users routes (tenant-admin + super-admin staff management) ──
+// requireTenant:false — the outer gate runs BEFORE getTenant() resolves the
+// tenant, so an 'equals' scope check here would compare the claim against
+// undefined and 403 every tenant admin (regression vs the pre-requireAuth
+// inline gate). Partition scoping is enforced inside handlePosUsersRoute,
+// where scopeTenant hard-scopes admins to their own decoded.tenantId.
+const posUsersGate = requireAuth({ realm: 'admin', roles: ['super_admin', 'admin'], requireTenant: false });
+
 app.all('/api/pos-users', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
-  if (decoded.role !== 'super_admin' && decoded.role !== 'admin') return errorResponse('Forbidden: Insufficient permissions', 403);
+  const auth = await posUsersGate(c.req.raw, c.env);
+  if (auth instanceof Response) return auth;
   const tenantId = await getTenant(c.req.raw, c.env);
-  if (decoded.role !== 'super_admin' && !tenantId) return errorResponse('Tenant not found', 404);
+  if (auth.user.role !== 'super_admin' && !tenantId) return errorResponse('Tenant not found', 404);
   return handlePosUsersRoute(c.req.raw, c.env, tenantId);
 });
 app.all('/api/pos-users/*', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return errorResponse('Missing or invalid Authorization header', 401);
-  }
-  const token = authHeader.split(' ')[1];
-  const decoded = await verifyJWT(token, c.env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
-  if (decoded.role !== 'super_admin' && decoded.role !== 'admin') return errorResponse('Forbidden: Insufficient permissions', 403);
+  const auth = await posUsersGate(c.req.raw, c.env);
+  if (auth instanceof Response) return auth;
   const tenantId = await getTenant(c.req.raw, c.env);
-  if (decoded.role !== 'super_admin' && !tenantId) return errorResponse('Tenant not found', 404);
+  if (auth.user.role !== 'super_admin' && !tenantId) return errorResponse('Tenant not found', 404);
   return handlePosUsersRoute(c.req.raw, c.env, tenantId);
 });
 
@@ -267,6 +223,16 @@ app.all('/api/pos-users/*', async (c) => {
 // (regular admin API clients) OR from the `token` query parameter when the
 // header is absent — EventSource cannot set custom headers, so the frontend
 // sends `?token=<jwt>`. Header wins when both are present; 401 when neither.
+const sseOrdersGate = requireAuth({
+  realm: 'admin',
+  allowQueryToken: true,
+  missingToken: { message: 'Missing or invalid Authorization header or token query parameter' },
+  roles: ['admin', 'super_admin'],
+  insufficientRole: { message: 'Forbidden: admin role required' },
+  scopeMode: 'lenient',
+  scopeDenied: { message: 'Forbidden: Access denied to this tenant' },
+});
+
 app.get('/api/stream/orders', async (c) => {
   const env = c.env;
   const tenantId = c.req.query('tenantId');
@@ -274,24 +240,8 @@ app.get('/api/stream/orders', async (c) => {
     return errorResponse('tenantId query parameter is required', 400);
   }
 
-  const authHeader = c.req.header('Authorization');
-  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const queryToken = c.req.query('token');
-  const token = headerToken || queryToken;
-  if (!token) {
-    return errorResponse('Missing or invalid Authorization header or token query parameter', 401);
-  }
-  const decoded = await verifyJWT(token, env.JWT_SECRET);
-  if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-  if (decoded.posType === 'pos') {
-    return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
-  }
-  if (decoded.role !== 'admin' && decoded.role !== 'super_admin') {
-    return errorResponse('Forbidden: admin role required', 403);
-  }
-  if (decoded.role !== 'super_admin' && decoded.tenantId && decoded.tenantId !== tenantId) {
-    return errorResponse('Forbidden: Access denied to this tenant', 403);
-  }
+  const auth = await sseOrdersGate(c.req.raw, env, { tenantId });
+  if (auth instanceof Response) return auth;
 
   if (!env.BROADCASTER) {
     return errorResponse('SSE broadcaster is not configured', 503);
@@ -310,93 +260,184 @@ app.get('/api/stream/orders', async (c) => {
 // pass through untouched) ──────────────────────────────────────────────────────
 app.get('/api/openapi.json', (c) => c.json(buildOpenApiDocument()));
 
-// ── Main API catch-all (auth + tenant scoping) ────────────
-// Note: /api/me = tenant data (public). /api/auth/me = admin user data (JWT required).
-// P0-7: Rate limit general catch-all to protect public marketplace endpoints from abuse.
-app.all('/api/*', rateLimitMiddleware({ windowMs: 60000, max: 100 }), async (c) => {
-  const path = c.req.path;
-  const method = c.req.method;
-  const env = c.env;
+// ── Reports (Phase 4 T1: first catch-all branch converted to a sub-router).
+// Auth + tenant scoping via resolveScope (admin realm); the router itself
+// enforces GET-only and the legacy fallthrough messages.
+const reportsScope = resolveScope();
+app.use('/api/reports', reportsScope);
+app.use('/api/reports/*', reportsScope);
+app.route('/api/reports', reportsRoutes);
 
-  const publicPaths = [
-    { path: '/api/me', method: 'GET' },
-  ];
-  const isPublic = publicPaths.some(p => p.path === path && p.method === method)
-    || (path.startsWith('/api/availability') && method === 'GET')
-    || (path.startsWith('/api/camps') && method === 'GET')
-    || (path.startsWith('/api/products') && method === 'GET')
-    || (path.startsWith('/api/rooms') && method === 'GET')
-    || (path.startsWith('/api/rateplans') && method === 'GET')
-    || (path.startsWith('/api/meals') && method === 'GET')
-    || (path.startsWith('/api/categories') && method === 'GET')
-    || (path.startsWith('/api/meal-categories') && method === 'GET')
-    || (path === '/api/orders' && method === 'POST')
-    || (path.match(/^\/api\/orders\/status\/.+$/) && method === 'GET')
-    || (path === '/api/orders/calculate-price' && method === 'GET')
-    || (path === '/api/leads' && method === 'POST')
-    || (path === '/api/contact' && method === 'POST')
-    || (path.startsWith('/api/media') && method === 'GET'); // public media stream (key embeds tenantId)
+// ── Inventory (Phase 4 T1) — admin-scoped low-stock reporting.
+const inventoryScope = resolveScope();
+app.use('/api/inventory', inventoryScope);
+app.use('/api/inventory/*', inventoryScope);
+app.route('/api/inventory', inventoryRoutes);
 
-  const tenantId = await getTenant(c.req.raw, env);
+// ── Price overrides (Phase 4 T1) — tenant-scoped CRUD (GET list / PUT bulk
+// upsert / DELETE single). Admin realm, same as the legacy catch-all gate.
+const priceOverridesScope = resolveScope();
+app.use('/api/price-overrides', priceOverridesScope);
+app.use('/api/price-overrides/*', priceOverridesScope);
+app.route('/api/price-overrides', priceOverridesRoutes);
 
-  if (!isPublic) {
-    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+// ── Plans (Phase 4 T1) — tenant-scoped via camp ownership.
+const plansScope = resolveScope();
+app.use('/api/plans', plansScope);
+app.use('/api/plans/*', plansScope);
+app.route('/api/plans', plansRoutes);
 
-    if (path.startsWith('/api/')) {
-      const authHeader = c.req.header('Authorization');
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return errorResponse('Missing or invalid Authorization header', 401);
-      }
-      const token = authHeader.split(' ')[1];
-      const decoded = await verifyJWT(token, env.JWT_SECRET);
-      if (!decoded) return errorResponse('Session expired or invalid signature', 401);
-      // P0-6: Verify user is still active (inline JWT calls don't use authMiddleware)
-      const { results: activeCheck } = await env.DB.prepare('SELECT is_active FROM admins WHERE id = ?').bind(decoded.userId || decoded.sub).all();
-      if (!activeCheck.length || activeCheck[0].is_active === 0) {
-        return errorResponse('Account deactivated', 401);
-      }
-      if (decoded.posType === 'pos') {
-        return errorResponse('Forbidden: POS sessions are not allowed to access admin routes', 403);
-      }
-      if (decoded.role !== 'super_admin' && decoded.tenantId !== tenantId) {
-        return errorResponse('Forbidden: Access denied to this tenant partition', 403);
-      }
-      c.set('user', decoded);
-    }
-  }
+// ── Meal categories (Phase 4 T1). Mixed visibility, matching the legacy
+// catch-all publicPaths entry: GET is public (menu browsing — best-effort
+// tenant resolution), mutations require admin auth + tenant context.
+const mealCategoriesPublicScope = resolveScope({ public: true });
+const mealCategoriesAdminScope = resolveScope();
+const mealCategoriesScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? mealCategoriesPublicScope(c, next)
+    : mealCategoriesAdminScope(c, next);
+app.use('/api/meal-categories', mealCategoriesScope);
+app.use('/api/meal-categories/*', mealCategoriesScope);
+app.route('/api/meal-categories', mealCategoriesRoutes);
 
-  try {
-    if (path === '/api/me') return handleMe(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/reports')) return await handleReportsRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/inventory')) return await handleInventoryRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/camps')) return await handleCampsRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/products')) return await handleProductsRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/rooms')) return await handleRoomsRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/rateplans')) return await handleRatePlansRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/price-overrides')) return await handlePriceOverridesRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/orders')) return await handleOrdersRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/availability')) return await handleAvailability(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/meals')) return await handleMealsRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/meal-categories')) return await handleMealCategoriesRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/categories')) return await handleCategoriesRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/plans')) return await handlePlansRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/leads') || path.startsWith('/api/contact')) return await handleLeadsRoute(c.req.raw, env, tenantId);
-    // Unified inbox (Phase 4): auth + tenant scoped like leads/admin — NOT public.
-    if (path.startsWith('/api/inbox')) return await handleInboxRoute(c.req.raw, env, tenantId);
-    // POST /api/upload runs through the auth gate above (tenant-admin only);
-    // GET /api/media/* is public and streams from R2.
-    if (path === '/api/upload') return await handleUploadRoute(c.req.raw, env, tenantId);
-    if (path.startsWith('/api/media')) return await handleMediaRoute(c.req.raw, env);
+// ── Categories (Phase 4 T1). Same mixed visibility: GET public
+// (header-cached), mutations admin.
+const categoriesPublicScope = resolveScope({ public: true });
+const categoriesAdminScope = resolveScope();
+const categoriesScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? categoriesPublicScope(c, next)
+    : categoriesAdminScope(c, next);
+app.use('/api/categories', categoriesScope);
+app.use('/api/categories/*', categoriesScope);
+app.route('/api/categories', categoriesRoutes);
 
-    return errorResponse('API endpoint not found', 404);
-  } catch (e) {
-    // S-M4 fix: Never leak raw error messages in production
-    if (env.ENVIRONMENT === 'production') {
-      console.error('[ROUTE ERROR]', e.message);
-    }
-    return errorResponse(env.ENVIRONMENT === 'production' ? 'Internal Server Error' : e.message, 500);
-  }
-});
+// ── Meals (Phase 4 T1). Same mixed visibility: GET public (menu browsing),
+// mutations admin.
+const mealsPublicScope = resolveScope({ public: true });
+const mealsAdminScope = resolveScope();
+const mealsScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? mealsPublicScope(c, next)
+    : mealsAdminScope(c, next);
+app.use('/api/meals', mealsScope);
+app.use('/api/meals/*', mealsScope);
+app.route('/api/meals', mealsRoutes);
+
+// ── Unified inbox (Phase 4): auth + tenant scoped like leads/admin — NOT public.
+const inboxAdminScope = resolveScope();
+app.use('/api/inbox', inboxAdminScope);
+app.use('/api/inbox/*', inboxAdminScope);
+app.route('/api/inbox', inboxRoutes);
+
+// ── Leads (Phase 4 T1). POST is public (contact/reservation forms; 10/min
+// via policy table), GET/PUT/DELETE are admin-scoped.
+const leadsPublicScope = resolveScope({ public: true });
+const leadsAdminScope = resolveScope();
+const leadsScope = async (c, next) =>
+  c.req.method === 'POST'
+    ? leadsPublicScope(c, next)
+    : leadsAdminScope(c, next);
+app.use('/api/leads', leadsScope);
+app.use('/api/leads/*', leadsScope);
+app.route('/api/leads', leadsRoutes);
+
+// ── /api/me (Phase 4 T1). Mixed visibility: GET is public (R-9 — graceful
+// 200 without tenant context), PUT/PATCH are tenant-admin only.
+const mePublicScope = resolveScope({ public: true });
+const meAdminScope = resolveScope();
+const meScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? mePublicScope(c, next)
+    : meAdminScope(c, next);
+app.use('/api/me', meScope);
+app.route('/api/me', meRoutes);
+
+// ── Catalog routers (Phase 4 T1): camps / products / rooms / rateplans.
+// Mixed visibility: GET is public (marketplace browsing, price preview),
+// mutations are admin-scoped. Camps GET also serves the cross-tenant
+// marketplace listing when the host has no tenant context.
+const catalogPublicScope = resolveScope({ public: true });
+const catalogAdminScope = resolveScope();
+const catalogScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? catalogPublicScope(c, next)
+    : catalogAdminScope(c, next);
+app.use('/api/camps', catalogScope);
+app.use('/api/camps/*', catalogScope);
+app.route('/api/camps', campsRoutes);
+
+const productsPublicScope = resolveScope({ public: true });
+const productsAdminScope = resolveScope();
+const productsScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? productsPublicScope(c, next)
+    : productsAdminScope(c, next);
+app.use('/api/products', productsScope);
+app.use('/api/products/*', productsScope);
+app.route('/api/products', productsRoutes);
+
+const roomsPublicScope = resolveScope({ public: true });
+const roomsAdminScope = resolveScope();
+const roomsScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? roomsPublicScope(c, next)
+    : roomsAdminScope(c, next);
+app.use('/api/rooms', roomsScope);
+app.use('/api/rooms/*', roomsScope);
+app.route('/api/rooms', roomsRoutes);
+
+const ratePlansPublicScope = resolveScope({ public: true });
+const ratePlansAdminScope = resolveScope();
+const ratePlansScope = async (c, next) =>
+  c.req.method === 'GET'
+    ? ratePlansPublicScope(c, next)
+    : ratePlansAdminScope(c, next);
+app.use('/api/rateplans', ratePlansScope);
+app.use('/api/rateplans/*', ratePlansScope);
+app.route('/api/rateplans', ratePlansRoutes);
+
+// ── Orders (Phase 4 T1). Mixed visibility by path+method: public are
+// POST /api/orders (booking form), GET /api/orders/status/:ref and
+// GET /api/orders/calculate-price (price preview widget); everything
+// else (list/detail/update/delete/bulk) is admin-scoped.
+const ordersPublicScope = resolveScope({ public: true });
+const ordersAdminScope = resolveScope();
+const isOrdersPublic = (c) =>
+  (c.req.method === 'POST' && c.req.path === '/api/orders') ||
+  (c.req.method === 'GET' &&
+    (c.req.path.startsWith('/api/orders/status/') ||
+      c.req.path === '/api/orders/calculate-price'));
+const ordersScope = async (c, next) =>
+  isOrdersPublic(c) ? ordersPublicScope(c, next) : ordersAdminScope(c, next);
+app.use('/api/orders', ordersScope);
+app.use('/api/orders/*', ordersScope);
+app.route('/api/orders', ordersRoutes);
+
+// ── Availability (Phase 4 T1). Fully public read-only (60s header cache).
+const availabilityPublicScope = resolveScope({ public: true });
+app.use('/api/availability', availabilityPublicScope);
+app.route('/api/availability', availabilityRoutes);
+
+// ── Upload + media (Phase 4 T1). POST /api/upload is tenant-admin only
+// (resolveScope admin realm); GET/HEAD /api/media/* is fully public and
+// streams from R2 (the key embeds the tenantId, so no auth is needed).
+const uploadAdminScope = resolveScope();
+app.use('/api/upload', uploadAdminScope);
+app.route('/api/upload', uploadRoutes);
+
+const mediaPublicScope = resolveScope({ public: true });
+app.use('/api/media', mediaPublicScope);
+app.use('/api/media/*', mediaPublicScope);
+app.route('/api/media', mediaRoutes);
+
+// ── API terminal fallback ─────────────────────────────────
+// Phase 4 complete: every Paradigm-B dispatcher module above this line has
+// been converted to a Hono sub-router with its own resolveScope mount. What
+// remains for unmatched /api/* paths is a plain 404 — unknown prefixes no
+// longer leak their existence via 401-before-404, and rate-limit protection
+// is provided by the global policyLimiter above.
+app.all('/api/*', () => errorResponse('API endpoint not found', 404));
 
 app.onError((err, c) => {
   if (c.env?.ENVIRONMENT !== 'production') {
@@ -407,8 +448,34 @@ app.onError((err, c) => {
 
 app.notFound((c) => errorResponse('Not found', 404));
 
+// ── Phase 9: versioned cutover (/api/v1/*) ────────────────────────────────
+// Every /api route is also served under the versioned /api/v1 prefix by
+// rewriting the path at the entrypoint BEFORE Hono dispatch — one mount,
+// two surfaces, zero duplicated registrations. The unversioned /api/*
+// alias stays fully functional during the transition window and is marked
+// deprecated (Deprecation + Sunset) so clients can detect and migrate.
+const VERSION_PREFIX = '/api/v1';
+
 export default {
-  async fetch(request, env) {
-    return app.fetch(request, env);
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    let versioned = false;
+    if (url.pathname === VERSION_PREFIX || url.pathname.startsWith(`${VERSION_PREFIX}/`)) {
+      versioned = true;
+      const rewritten = new URL(
+        `/api${url.pathname.slice(VERSION_PREFIX.length)}${url.search}`,
+        url,
+      );
+      request = new Request(rewritten, request);
+    }
+    const res = await app.fetch(request, env, ctx);
+    // Surface-level deprecation: only the unversioned alias carries Sunset.
+    // Versioned requests (and non-API paths) stay clean. Endpoint-level
+    // Sunsets (/contact, POS login) are stamped inside their handlers and
+    // therefore survive the rewrite on both surfaces.
+    if (!versioned && (url.pathname === '/api' || url.pathname.startsWith('/api/'))) {
+      return withSunset(res);
+    }
+    return res;
   },
 };

@@ -54,12 +54,18 @@ test.describe('Camp Menu Page (/camp/[id]/menu)', () => {
     const waCount = await waBtn.count();
     const waVisible = waCount > 0 && await waBtn.isVisible();
     if (!waVisible) {
-      // No meals — check for empty state text in body
+      // No WhatsApp button visible: either no meals (empty state) or the
+      // interactive menu rendered — the send button is cart-gated inside
+      // TenantMenu and only appears once an item is added.
       const content = await page.locator('body').textContent() ?? '';
+      const menuRendered =
+        (await page.locator('[data-testid="tenant-nav-link"]').count()) > 0 ||
+        (await page.locator('input[type="text"]').count()) > 0;
       expect(
         content.includes('Menu not available yet') ||
         content.includes('No meals') ||
-        content.includes('No menu has been set up')
+        content.includes('No menu has been set up') ||
+        menuRendered
       ).toBeTruthy();
     }
   });

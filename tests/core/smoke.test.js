@@ -96,6 +96,41 @@ describe('Post-Deploy Smoke Tests', () => {
       });
       expect(res.status).toBe(401);
     });
+
+    it('POST /api/auth/pos-login (Phase 9 canonical) with invalid creds returns 401', async () => {
+      const res = await fetch(`${API_BASE}/api/auth/pos-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'nonexistent@fake.com', password: 'wrong' })
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('Phase 9: versioned cutover', () => {
+    it('GET /api/v1/camps serves the versioned surface', async () => {
+      const res = await fetch(`${API_BASE}/api/v1/camps`, {
+        headers: { 'x-tenant-id': 'marketplace' }
+      });
+      expect(res.ok).toBeTruthy();
+      const data = await res.json();
+      expect(Array.isArray(data)).toBeTruthy();
+    });
+
+    it('unversioned /api/* responses carry Deprecation + Sunset', async () => {
+      const res = await fetch(`${API_BASE}/api/camps`, {
+        headers: { 'x-tenant-id': 'marketplace' }
+      });
+      expect(res.headers.get('Deprecation')).toBe('true');
+      expect(res.headers.get('Sunset')).toBeTruthy();
+    });
+
+    it('versioned /api/v1/* responses carry NO Sunset', async () => {
+      const res = await fetch(`${API_BASE}/api/v1/camps`, {
+        headers: { 'x-tenant-id': 'marketplace' }
+      });
+      expect(res.headers.get('Sunset')).toBeNull();
+    });
   });
 
   describe('Error Handling', () => {

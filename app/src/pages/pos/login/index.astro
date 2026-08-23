@@ -18,8 +18,11 @@ if (forbidden) Astro.response.status = 404;
   import { createRoot } from 'react-dom/client';
   import { createElement } from 'react';
   import POSApp from '@/components/pos/POSApp';
+  import { ToastProvider } from '@/components/ui/Toast';
   const rootEl = document.getElementById('pos-login-root');
   if (rootEl) {
-    createRoot(rootEl).render(createElement(POSApp));
+    createRoot(rootEl).render(
+      createElement(ToastProvider, null, createElement(POSApp))
+    );
   }
 </script>

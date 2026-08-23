@@ -16,7 +16,6 @@ import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { StatCard } from '@/components/ui/StatCard';
 import { StatusTag } from '@/components/ui/StatusTag';
-import { Tabs, TabList, Tab, TabPanel } from '@/components/ui/Tabs';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 
 /* ─── Helper: render within ToastProvider for toast tests ─── */
@@ -171,60 +170,6 @@ describe('A11y: Modal role="dialog"', () => {
       </Modal>,
     );
     expect(container.innerHTML).toBe('');
-  });
-});
-
-/* ────────────────────────────────────────────────────────── */
-/*  Tabs — correct ARIA roles                                 */
-/* ────────────────────────────────────────────────────────── */
-describe('A11y: Tabs ARIA roles', () => {
-  it('renders tablist, tab, and tabpanel with correct roles', () => {
-    render(
-      <Tabs defaultValue="overview">
-        <TabList>
-          <Tab value="overview" label="Overview" />
-          <Tab value="details" label="Details" />
-        </TabList>
-        <TabPanel value="overview">Overview content</TabPanel>
-        <TabPanel value="details">Details content</TabPanel>
-      </Tabs>,
-    );
-
-    expect(screen.getByRole('tablist')).toBeInTheDocument();
-
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(2);
-
-    // Active tab has aria-selected="true"
-    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
-    expect(tabs[1]).toHaveAttribute('aria-selected', 'false');
-
-    // Tab controls the correct panel
-    expect(tabs[0]).toHaveAttribute('aria-controls', 'tabpanel-overview');
-    expect(tabs[1]).toHaveAttribute('aria-controls', 'tabpanel-details');
-
-    // Active tabpanel is present
-    const panel = screen.getByRole('tabpanel');
-    expect(panel).toHaveAttribute('aria-labelledby', 'tab-overview');
-    expect(panel).toHaveTextContent('Overview content');
-  });
-
-  it('activates tab with Enter key', () => {
-    render(
-      <Tabs defaultValue="overview">
-        <TabList>
-          <Tab value="overview" label="Overview" />
-          <Tab value="details" label="Details" />
-        </TabList>
-        <TabPanel value="overview">Overview content</TabPanel>
-        <TabPanel value="details">Details content</TabPanel>
-      </Tabs>,
-    );
-
-    const detailsTab = screen.getByRole('tab', { name: 'Details' });
-    fireEvent.keyDown(screen.getByRole('tablist'), { key: 'ArrowRight' });
-    // ArrowRight should focus the next tab
-    expect(detailsTab).toHaveFocus();
   });
 });
 

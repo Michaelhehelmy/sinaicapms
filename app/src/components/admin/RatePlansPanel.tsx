@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import * as api from '@/lib/api';
-import { useCamps as useAllCamps, type Camp } from '@/hooks/useAdminData';
+import type { Camp } from '@/hooks/useAdminData';
+import { useProductsQuery } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -55,6 +56,7 @@ const seasonOptions = [
 
 export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) {
   const { showToast } = useToast();
+  const { data: products } = useProductsQuery();
   const [plans, setPlans] = useState<RatePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -82,6 +84,11 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
   // camp filter (campIds.includes(p.campId)) matched nothing and hid all plans.
   const filtered = useMemo(() => plans.filter((p) => !p.campId || campIds.includes(p.campId)), [plans, campIds]);
 
+  const productSelectOptions = useMemo(
+    () => (products ?? []).map((p: { id: string; name: string }) => ({ value: p.id, label: p.name })),
+    [products],
+  );
+
   const openAdd = useCallback(() => { setEditingId(null); setForm(emptyForm); setShowForm(true); }, []);
   const openEdit = useCallback((p: RatePlan) => {
     setEditingId(p.id);
@@ -91,15 +98,16 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
 
   const handleSave = useCallback(async () => {
     if (!form.name.trim()) { showToast('Name is required.', 'warning'); return; }
+    if (!form.productId) { showToast('Product is required.', 'warning'); return; }
     setSaving(true);
     try {
       // T8-C: RatePlanCreateRequest has no campId and non-nullable dates
       const saved = (await api.saveRatePlan({ name: form.name.trim(), productId: form.productId, pricePerNight: parseFloat(form.pricePerNight) || 0, minStay: parseInt(form.minStay) || 1, startDate: form.startDate || undefined, endDate: form.endDate || undefined, season: form.season, isActive: 1 }, editingId ?? undefined)) as { id?: string } | undefined;
       showToast(editingId ? 'Plan updated.' : 'Plan created.', 'success');
       trackEvent('Tenant: Price Updated', { productId: form.productId, planId: saved?.id ?? editingId });
-      setShowForm(false); setEditingId(null); setForm(emptyForm);
       const data = (await api.getRatePlans()) as RatePlan[];
       setPlans(data);
+      setShowForm(false); setEditingId(null); setForm(emptyForm);
     } catch (err) { showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error'); }
     finally { setSaving(false); }
   }, [form, editingId, showToast]);
@@ -186,6 +194,13 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
             type="text"
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+          />
+          <Select
+            label="Product *"
+            options={productSelectOptions}
+            value={form.productId}
+            onChange={(e) => setForm((p) => ({ ...p, productId: e.target.value }))}
+            placeholder="Select Product"
           />
           <Input
             label="Price Per Night"

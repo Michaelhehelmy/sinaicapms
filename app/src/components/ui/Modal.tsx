@@ -17,6 +17,15 @@ interface ModalProps {
   closeOnEsc?: boolean;
   showCloseButton?: boolean;
   className?: string;
+  /** Overrides the default `modal-overlay` testid on the dialog root. */
+  testId?: string;
+  /** Overrides the default `modal-content` testid on the modal card. */
+  contentTestId?: string;
+  /**
+   * Returns the element to focus when the modal opens (instead of the card).
+   * Called after mount — query the DOM for an inner input, etc.
+   */
+  initialFocus?: () => HTMLElement | null;
 }
 
 const sizeMap: Record<string, string> = {
@@ -46,6 +55,9 @@ export function Modal({
   closeOnEsc = true,
   showCloseButton = true,
   className,
+  testId = 'modal-overlay',
+  contentTestId = 'modal-content',
+  initialFocus,
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -70,9 +82,10 @@ export function Modal({
     const { overflow } = document.body.style;
     document.body.style.overflow = 'hidden';
 
-    // Focus the modal container after render
+    // Focus the requested element (or the modal container) after render
     const timer = setTimeout(() => {
-      modalRef.current?.focus();
+      const target = initialFocus?.() ?? modalRef.current;
+      target?.focus();
     }, 0);
 
     return () => {
@@ -120,24 +133,25 @@ export function Modal({
 
   const modalContent = (
     <div
-      data-testid="modal-overlay"
+      data-testid={testId}
       className="fixed inset-0 z-[9000] flex items-center justify-center p-4 animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? titleId : undefined}
+      onClick={closeOnOverlay ? onClose : undefined}
     >
-      {/* Overlay */}
+      {/* Overlay (visual only — clicks bubble to the dialog root handler) */}
       <div
         className="absolute inset-0 bg-black/50 transition-opacity duration-200"
-        onClick={closeOnOverlay ? onClose : undefined}
         aria-hidden="true"
       />
 
-      {/* Modal card */}
+      {/* Modal card — stops propagation so inner clicks never close */}
       <div
         ref={modalRef}
         tabIndex={-1}
-        data-testid="modal-content"
+        data-testid={contentTestId}
+        onClick={(e) => e.stopPropagation()}
         className={cn(
           'relative w-full bg-white rounded-xl shadow-2xl',
           'animate-in zoom-in-95 fade-in duration-200',

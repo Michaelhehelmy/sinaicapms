@@ -3,7 +3,26 @@
  * Tests: handleMealCategoriesRoute with mocked DB for all HTTP methods.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleMealCategoriesRoute } from '../../backend/src/api/meal-categories.js';
+import mealCategoriesRoutes from '../../backend/src/api/meal-categories.js';;
+
+// Signature-compatible shim: legacy handlers took (Request, env, tenantId).
+// They now execute against the Hono sub-router mounted by index.js.
+import { mountRouter } from '../../backend/tests/helpers/routerHarness.js';
+
+const __app = mountRouter(mealCategoriesRoutes, { tenantId: 'tenant_1', basePath: '/api/meal-categories' });
+
+async function dispatch(req, env = {}) {
+  const url = new URL(req.url);
+  const init = { method: req.method, headers: req.headers };
+  if (!['GET', 'HEAD', 'DELETE'].includes(req.method)) {
+    try { init.body = JSON.stringify(await req.json()); } catch { /* passthrough */ }
+  }
+  return __app.request(url.pathname + url.search, init, env);
+}
+
+async function handleMealCategoriesRoute(req, env = {}, _tenant = null) {
+  return dispatch(req, env);
+}
 
 // ─── Mock Helpers ────────────────────────────────────────────
 function createMockDb({ allResults = [], firstResult = null, changes = 1, ownershipResult = [{ id: 'mcat_1' }] } = {}) {

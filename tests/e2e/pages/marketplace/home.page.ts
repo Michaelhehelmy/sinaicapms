@@ -4,7 +4,7 @@ export class MarketplaceHomePage {
   constructor(private page: Page) {}
 
   async goto() {
-    await this.page.goto('/');
+    await this.page.goto('/', { waitUntil: 'domcontentloaded' });
     await this.page.waitForLoadState('networkidle');
   }
 

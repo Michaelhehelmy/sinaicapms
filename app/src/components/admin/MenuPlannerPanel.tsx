@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useMeals, useMealSchedules, useCamps, type Meal, type MealSchedule, type Camp } from '@/hooks/useAdminData';
+import { useQueryClient } from '@tanstack/react-query';
+import type { Meal, MealSchedule, Camp } from '@/hooks/useAdminData';
+import { useMealsQuery, useMealSchedulesQuery, queryKeys } from '@/hooks/useQueryHooks';
 import { createMealSchedule, deleteMealSchedule } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -74,8 +76,16 @@ const packageTypeOptions = [
 ];
 
 export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelProps) {
-  const { data: meals, loading: loadingMeals } = useMeals();
-  const { data: schedules, loading: loadingSchedules, refresh: refreshSchedules } = useMealSchedules();
+  const queryClient = useQueryClient();
+  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery();
+  const meals = mealsData ?? [];
+  const { data: schedulesData, isLoading: loadingSchedules } = useMealSchedulesQuery();
+  const schedules = schedulesData ?? [];
+  // Phase 6: refresh = invalidate the ['admin', ...] concern in the TanStack cache.
+  const refreshSchedules = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.mealSchedules() }),
+    [queryClient],
+  );
   const { showToast } = useToast();
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));

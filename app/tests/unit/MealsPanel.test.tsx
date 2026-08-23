@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MealsPanel from '@/components/admin/MealsPanel';
 
 const mockShowToast = vi.fn();
-const mockRefreshMeals = vi.fn();
-const mockRefreshCats = vi.fn();
 let mockMeals: unknown[] = [];
 let mockMealCategories: unknown[] = [];
 
@@ -12,10 +11,15 @@ vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
 
-vi.mock('@/hooks/useAdminData', () => ({
-  useMeals: () => ({ data: mockMeals, loading: false, refresh: mockRefreshMeals }),
-  useMealCategories: () => ({ data: mockMealCategories, loading: false, refresh: mockRefreshCats }),
-  useCamps: () => ({ data: [] }),
+// Phase 6: MealsPanel consumes TanStack Query data hooks + invalidates
+// ['admin', ...] concerns on change instead of legacy useAdminData.refresh().
+vi.mock('@/hooks/useQueryHooks', () => ({
+  queryKeys: {
+    meals: ['admin', 'meals'],
+    mealCategories: ['admin', 'mealCategories'],
+  },
+  useMealsQuery: () => ({ data: mockMeals, isLoading: false }),
+  useMealCategoriesQuery: () => ({ data: mockMealCategories, isLoading: false }),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -56,6 +60,19 @@ const mockDeleteMealCategory = vi.mocked(api.deleteMealCategory);
 
 const camps = [{ id: 'c1', name: 'Camp 1', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' }];
 
+// The panel reads useQueryClient() to invalidate concerns — provide a fresh
+// client per render and expose an invalidation spy for refresh assertions.
+let invalidateSpy: ReturnType<typeof vi.fn>;
+function renderPanel() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+  return render(
+    <QueryClientProvider client={client}>
+      <MealsPanel campIds={['c1']} camps={camps} />
+    </QueryClientProvider>,
+  );
+}
+
 describe('MealsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,18 +81,18 @@ describe('MealsPanel', () => {
   });
 
   it('renders with meals section by default', () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Menu Meals')).toBeInTheDocument();
     expect(screen.getAllByText('Add Meal').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows empty state when no meals', () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('No meals yet')).toBeInTheDocument();
   });
 
   it('switches to categories section', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => {
       expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1);
@@ -84,7 +101,7 @@ describe('MealsPanel', () => {
 
   it('shows empty state for categories', async () => {
     mockMealCategories = [];
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => {
       expect(screen.getByText('No categories yet')).toBeInTheDocument();
@@ -92,7 +109,7 @@ describe('MealsPanel', () => {
   });
 
   it('opens add meal form', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Meal')[0]);
     await waitFor(() => {
       expect(screen.getByText('Add New Meal')).toBeInTheDocument();
@@ -100,7 +117,7 @@ describe('MealsPanel', () => {
   });
 
   it('validates meal name required', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Meal')[0]);
     await waitFor(() => { expect(screen.getByText('Add New Meal')).toBeInTheDocument(); });
     fireEvent.click(screen.getByText('Save Meal'));
@@ -110,7 +127,7 @@ describe('MealsPanel', () => {
   });
 
   it('validates category required for meal', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Meal')[0]);
     await waitFor(() => { expect(screen.getByText('Add New Meal')).toBeInTheDocument(); });
     fireEvent.change(screen.getByPlaceholderText('Meal name'), { target: { value: 'Burger' } });
@@ -122,7 +139,7 @@ describe('MealsPanel', () => {
 
   it('saves meal with valid data', async () => {
     mockSaveMeal.mockResolvedValue({} as any);
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Meal')[0]);
     await waitFor(() => { expect(screen.getByText('Add New Meal')).toBeInTheDocument(); });
     fireEvent.change(screen.getByPlaceholderText('Meal name'), { target: { value: 'Burger' } });
@@ -134,7 +151,7 @@ describe('MealsPanel', () => {
   });
 
   it('opens add category form', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Category')[0]);
@@ -144,7 +161,7 @@ describe('MealsPanel', () => {
   });
 
   it('validates category name required', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Category')[0]);
@@ -157,7 +174,7 @@ describe('MealsPanel', () => {
 
   it('saves category with valid name', async () => {
     mockSaveMealCategory.mockResolvedValue({} as any);
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Category')[0]);
@@ -170,7 +187,7 @@ describe('MealsPanel', () => {
   });
 
   it('closes meal form on cancel', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Meal')[0]);
     await waitFor(() => { expect(screen.getByText('Add New Meal')).toBeInTheDocument(); });
     fireEvent.click(screen.getByLabelText('Close dialog'));
@@ -180,7 +197,7 @@ describe('MealsPanel', () => {
   });
 
   it('closes category form on cancel', async () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Category')[0]);
@@ -196,7 +213,7 @@ describe('MealsPanel', () => {
       { id: 'm1', name: 'Burger', mealCategoryId: 'cat1', price: 50, description: 'Juicy', imageUrl: '', isActive: 1 },
       { id: 'm2', name: 'Salad', mealCategoryId: 'missing', price: 0, description: '', imageUrl: '', isActive: 0 },
     ];
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Burger')).toBeInTheDocument();
     expect(screen.getByText('Salad')).toBeInTheDocument();
     expect(screen.getByText('Main Course')).toBeInTheDocument();
@@ -209,7 +226,7 @@ describe('MealsPanel', () => {
   });
 
   it('switches back to the meals section', () => {
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     fireEvent.click(screen.getByText('Meals'));
     expect(screen.getAllByText('Add Meal').length).toBeGreaterThanOrEqual(1);
@@ -220,7 +237,7 @@ describe('MealsPanel', () => {
       { id: 'm1', name: 'Burger', mealCategoryId: 'cat1', price: 50, description: 'Juicy', imageUrl: '', isActive: 1 },
     ];
     mockSaveMeal.mockResolvedValue({} as any);
-    const { container } = render(<MealsPanel campIds={['c1']} camps={camps} />);
+    const { container } = renderPanel();
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => { expect(screen.getByText('Edit Meal')).toBeInTheDocument(); });
     expect(screen.getByPlaceholderText('Meal name')).toHaveValue('Burger');
@@ -233,22 +250,21 @@ describe('MealsPanel', () => {
 
     await waitFor(() => {
       expect(mockSaveMeal).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'm1',
         name: 'Burger',
         mealCategoryId: 'cat1',
         price: 60,
         imageUrl: 'https://x.png',
         description: 'New desc',
         isActive: 0,
-      }));
+      }), 'm1');
       expect(mockShowToast).toHaveBeenCalledWith('Meal updated.', 'success');
-      expect(mockRefreshMeals).toHaveBeenCalled();
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'meals'] });
     });
   });
 
   it('handles meal save error', async () => {
     mockSaveMeal.mockRejectedValue(new Error('boom'));
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Meal')[0]);
     await waitFor(() => { expect(screen.getByText('Add New Meal')).toBeInTheDocument(); });
     fireEvent.change(screen.getByPlaceholderText('Meal name'), { target: { value: 'Burger' } });
@@ -261,7 +277,7 @@ describe('MealsPanel', () => {
 
   it('handles category save error', async () => {
     mockSaveMealCategory.mockRejectedValue(new Error('cat boom'));
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Category')[0]);
@@ -278,7 +294,7 @@ describe('MealsPanel', () => {
       { id: 'm1', name: 'Burger', mealCategoryId: 'cat1', price: 50, description: '', imageUrl: '', isActive: 1 },
     ];
     mockDeleteMeal.mockResolvedValue({} as any);
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
       expect(screen.getByText(/Are you sure you want to delete this meal/)).toBeInTheDocument();
@@ -287,7 +303,7 @@ describe('MealsPanel', () => {
     await waitFor(() => {
       expect(mockDeleteMeal).toHaveBeenCalledWith('m1');
       expect(mockShowToast).toHaveBeenCalledWith('Meal deleted.', 'success');
-      expect(mockRefreshMeals).toHaveBeenCalled();
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'meals'] });
     });
   });
 
@@ -295,7 +311,7 @@ describe('MealsPanel', () => {
     mockMeals = [
       { id: 'm1', name: 'Burger', mealCategoryId: 'cat1', price: 50, description: '', imageUrl: '', isActive: 1 },
     ];
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
       expect(screen.getByText(/Are you sure you want to delete this meal/)).toBeInTheDocument();
@@ -312,7 +328,7 @@ describe('MealsPanel', () => {
       { id: 'm1', name: 'Burger', mealCategoryId: 'cat1', price: 50, description: '', imageUrl: '', isActive: 1 },
     ];
     mockDeleteMeal.mockRejectedValue(new Error('nope'));
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => { expect(screen.getByText(/Are you sure you want to delete this meal/)).toBeInTheDocument(); });
     fireEvent.click(screen.getAllByText('Delete')[1]);
@@ -324,7 +340,7 @@ describe('MealsPanel', () => {
   it('edits a category', async () => {
     mockMealCategories = [{ id: 'cat1', name: 'Main Course', position: 1 }];
     mockSaveMealCategory.mockResolvedValue({} as any);
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Edit')[0]);
@@ -334,14 +350,14 @@ describe('MealsPanel', () => {
     await waitFor(() => {
       expect(mockSaveMealCategory).toHaveBeenCalledWith({ name: 'Starters' }, 'cat1');
       expect(mockShowToast).toHaveBeenCalledWith('Category updated.', 'success');
-      expect(mockRefreshCats).toHaveBeenCalled();
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'mealCategories'] });
     });
   });
 
   it('deletes a category after confirmation', async () => {
     mockMealCategories = [{ id: 'cat1', name: 'Main Course', position: 1 }];
     mockDeleteMealCategory.mockResolvedValue({} as any);
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getAllByText('Add Category').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Delete')[0]);
@@ -352,13 +368,13 @@ describe('MealsPanel', () => {
     await waitFor(() => {
       expect(mockDeleteMealCategory).toHaveBeenCalledWith('cat1');
       expect(mockShowToast).toHaveBeenCalledWith('Category deleted.', 'success');
-      expect(mockRefreshCats).toHaveBeenCalled();
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'mealCategories'] });
     });
   });
 
   it('opens the add category form from the empty state action', async () => {
     mockMealCategories = [];
-    render(<MealsPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Categories'));
     await waitFor(() => { expect(screen.getByText('No categories yet')).toBeInTheDocument(); });
     fireEvent.click(screen.getAllByText('Add Category')[1]);

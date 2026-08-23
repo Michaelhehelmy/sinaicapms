@@ -22,10 +22,9 @@ import {
   saveLead, getLeads, updateLead, deleteLead,
   getInbox, markInboxRead, deleteInboxLead,
   createPaymentIntent, confirmPayment,
-  posLogin, posGetDashboard, posGetProducts, posCreateProduct, posUpdateProduct, posDeleteProduct,
+  posLogin, posGetDashboard, posGetProducts,
   posGetOrders, posGetOrder, posCreateOrder,
   posGetActiveShift, posOpenShift, posCloseShift,
-  posGetCustomers, posGetInventory, posGetStaff, posGetReports,
   getLowStock,
   getPosUsers, createPosUser, updatePosUser, deletePosUser, resetPosUserPassword,
 } from '@/lib/api';
@@ -999,11 +998,12 @@ describe('POS endpoints', () => {
   beforeEach(() => { mockFetch({}); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('posLogin POST /pos/auth/login', async () => {
+  it('posLogin POST /auth/pos-login (Phase 9 canonical path)', async () => {
     await posLogin('user', 'pass');
     const [url, opts] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
-    expect(url).toContain('/pos/auth/login');
+    expect(url).toContain('/auth/pos-login');
+    expect(url).not.toContain('/pos/auth/login');
   });
 
   it('posGetDashboard GET /pos/dashboard', async () => {
@@ -1014,21 +1014,6 @@ describe('POS endpoints', () => {
   it('posGetProducts GET /pos/products', async () => {
     await posGetProducts();
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/products'), expect.any(Object));
-  });
-
-  it('posCreateProduct POST /pos/products', async () => {
-    await posCreateProduct({ name: 'Burger', price: 10 });
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/products'), expect.objectContaining({ method: 'POST' }));
-  });
-
-  it('posUpdateProduct PUT /pos/products/1', async () => {
-    await posUpdateProduct(1, { price: 12 });
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/products/1'), expect.objectContaining({ method: 'PUT' }));
-  });
-
-  it('posDeleteProduct DELETE /pos/products/2', async () => {
-    await posDeleteProduct(2);
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/products/2'), expect.objectContaining({ method: 'DELETE' }));
   });
 
   it('posGetOrders GET /pos/orders', async () => {
@@ -1059,26 +1044,6 @@ describe('POS endpoints', () => {
   it('posCloseShift POST /pos/shifts/close', async () => {
     await posCloseShift({ closingCash: 200 });
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/shifts/close'), expect.objectContaining({ method: 'POST' }));
-  });
-
-  it('posGetCustomers GET /pos/customers', async () => {
-    await posGetCustomers();
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/customers'), expect.any(Object));
-  });
-
-  it('posGetInventory GET /pos/inventory', async () => {
-    await posGetInventory();
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/inventory'), expect.any(Object));
-  });
-
-  it('posGetStaff GET /pos/staff', async () => {
-    await posGetStaff();
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/staff'), expect.any(Object));
-  });
-
-  it('posGetReports GET /pos/reports', async () => {
-    await posGetReports();
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/reports'), expect.any(Object));
   });
 
   it('getLowStock GET /inventory/low-stock', async () => {

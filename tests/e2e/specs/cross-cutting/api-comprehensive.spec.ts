@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { API_BASE } from '../../fixtures/test-data';
+import { API_BASE, TEST_TENANT } from '../../fixtures/test-data';
 
 test.describe('Meals API Endpoints', () => {
   test('GET /api/meals without auth returns 200 (public route)', async ({ request }) => {
@@ -21,9 +21,20 @@ test.describe('Meals API Endpoints', () => {
 });
 
 test.describe('Payments API Endpoints', () => {
-  test('POST /api/payments/create-checkout without auth returns 401', async ({ request }) => {
+  // create-checkout (byte-for-byte alias of create-intent) was retired in
+  // Phase 0 of the Unified Architecture Plan — create-intent is canonical.
+  test('POST /api/payments/create-checkout is retired and no longer creates intents', async ({ request }) => {
     const response = await request.post(`${API_BASE}/api/payments/create-checkout`, {
       data: { amount: 100, currency: 'usd' },
+      headers: { 'x-tenant-id': TEST_TENANT.id },
+    });
+    expect([401, 404]).toContain(response.status());
+  });
+
+  test('POST /api/payments/create-intent without auth returns 401', async ({ request }) => {
+    const response = await request.post(`${API_BASE}/api/payments/create-intent`, {
+      data: { amount: 100, currency: 'usd' },
+      headers: { 'x-tenant-id': TEST_TENANT.id },
     });
     expect(response.status()).toBe(401);
   });

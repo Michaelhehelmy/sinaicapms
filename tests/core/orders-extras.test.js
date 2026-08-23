@@ -111,13 +111,13 @@ describe('Core Orders — Extras', () => {
     expect(data.totalPrice).toBeGreaterThanOrEqual(0);
   });
 
-  it('GET /api/orders/calculate-price with missing params returns 0', async () => {
+  it('GET /api/orders/calculate-price with missing params returns 400', async () => {
     const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     const data = await res.json();
-    expect(res.status).toBe(200);
-    expect(data.totalPrice).toBe(0);
+    expect(res.status).toBe(400);
+    expect(data.success).toBe(false);
   });
 
   it('GET /api/orders/:id returns order with customer details', async () => {

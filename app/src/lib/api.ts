@@ -26,16 +26,15 @@ const isCustomDomain =
   window.location.hostname !== 'localhost';
 
 export const API_BASE = isLocal
-  ? 'http://localhost:8787/api'
+  ? 'http://localhost:8787/api/v1'
   : isSinaicamps
-    ? '/api'
-    : 'https://sinaicamps.com/api';
+    ? '/api/v1'
+    : 'https://sinaicamps.com/api/v1';
 
-const TOKEN_KEY = 'sinaicamps_token';
-
-// T7: refresh token used for silent session renewal on 401 (admin token only).
-// POS has no refresh token (POS login issues only an access token).
-export const REFRESH_TOKEN_KEY = 'sinaicamps_refresh_token';
+// Phase 6 / Task 2: token storage is owned by the session kernel (./session).
+// Legacy key names are re-exported for back-compat imports.
+import { session, type Realm } from './session';
+export { REFRESH_TOKEN_KEY } from './session';
 
 // T6: pagination envelope shape shared by list endpoints
 // { data, total, page, pageSize, hasMore } — clean migration from limit/offset
@@ -95,19 +94,35 @@ const _inflight = new Map<string, Promise<unknown>>();
 
 // T7: shared in-flight silent-refresh — concurrent 401s await one refresh call
 // instead of stampeding /auth/refresh. Uses a raw fetch on purpose: apiFetch
-// must never trigger a refresh while refreshing.
-let _refreshPromise: Promise<boolean> | null = null;
+// must never trigger a refresh while refreshing. Phase 6: one singleton per
+// realm (admin + POS both rotate via their Phase 5 endpoints).
+const _refreshPromises: Record<Realm, Promise<boolean> | null> = {
+  admin: null,
+  pos: null,
+};
 
-async function refreshAccessToken(): Promise<boolean> {
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+// Phase 6: auth transitions invalidate request deduplication so a GET cached
+// under one identity is never reused across login/logout/401-clear.
+session.onAuthChange(() => {
+  _inflight.clear();
+});
+
+async function refreshAccessToken(realm: Realm): Promise<boolean> {
+  const refreshToken = session.getRefreshToken(realm);
   if (!refreshToken) return false;
 
-  try {
-    const tenant = getTenantId();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (tenant) headers['x-tenant-id'] = tenant;
+  const endpoint = realm === 'pos' ? '/pos/auth/refresh' : '/auth/refresh';
+  const headers: Record<string, string> = {
+    // POS refresh gate reads the Bearer header; the admin endpoint accepts it
+    // as well and the body below covers legacy expectations for both.
+    Authorization: `Bearer ${refreshToken}`,
+    'Content-Type': 'application/json',
+  };
+  const tenant = getTenantId();
+  if (tenant) headers['x-tenant-id'] = tenant;
 
-    const response = await fetch(`${API_BASE}/auth/refresh`, {
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ refreshToken }),
@@ -115,12 +130,19 @@ async function refreshAccessToken(): Promise<boolean> {
     if (!response.ok) return false;
 
     const data = (await response.json()) as Record<string, unknown>;
-    const accessToken = data.token as string | undefined;
+    const accessToken =
+      (data.token as string | undefined) ||
+      ((data.data as Record<string, unknown> | undefined)?.token as string | undefined);
     if (!accessToken) return false;
 
-    localStorage.setItem(TOKEN_KEY, accessToken);
-    const newRefresh = data.refreshToken as string | undefined;
-    if (newRefresh) localStorage.setItem(REFRESH_TOKEN_KEY, newRefresh);
+    session.setTokens(
+      realm,
+      accessToken,
+      (data.refreshToken as string | undefined) ??
+        ((data.data as Record<string, unknown> | undefined)?.refreshToken as
+          | string
+          | undefined),
+    );
     return true;
   } catch {
     return false;
@@ -132,9 +154,10 @@ export async function apiFetch<T = unknown>(
   options: RequestInit = {},
 ): Promise<T> {
   const tenant = getTenantId();
-  const isPosEndpoint = endpoint.startsWith('/pos/');
-  const tokenKey = isPosEndpoint ? 'pos_token' : TOKEN_KEY;
-  const token = localStorage.getItem(tokenKey);
+  // Phase 9: POS login moved to /auth/pos-login — still a POS-realm session.
+  const realm: Realm =
+    endpoint.startsWith('/pos/') || endpoint.startsWith('/auth/pos-') ? 'pos' : 'admin';
+  const token = session.getAccessToken(realm);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -158,19 +181,21 @@ export async function apiFetch<T = unknown>(
     try {
       let response = await fetch(`${API_BASE}${endpoint}`, fetchOpts);
 
-      // T7: silent-refresh for admin sessions only. On 401 (not POS, not the refresh
-      // endpoint itself), exchange the stored refresh token for a new access token and
-      // retry the original request once. Falls through to the shared 401 handling below
-      // if there is no refresh token, the refresh fails, or the retry still 401s.
-      if (response.status === 401 && !isPosEndpoint && endpoint !== '/auth/refresh') {
-        if (!_refreshPromise) {
-          _refreshPromise = refreshAccessToken().finally(() => {
-            _refreshPromise = null;
+      // T7 + Phase 6: silent-refresh for BOTH realms on 401 (never for the
+      // refresh endpoints themselves). Exchange the stored refresh token for a
+      // new access token and retry the original request once. Falls through to
+      // the shared 401 handling below if there is no refresh token, the refresh
+      // fails, or the retry still 401s.
+      const refreshEndpoint = realm === 'pos' ? '/pos/auth/refresh' : '/auth/refresh';
+      if (response.status === 401 && endpoint !== refreshEndpoint) {
+        if (!_refreshPromises[realm]) {
+          _refreshPromises[realm] = refreshAccessToken(realm).finally(() => {
+            _refreshPromises[realm] = null;
           });
         }
-        const refreshed = await _refreshPromise;
+        const refreshed = await _refreshPromises[realm];
         if (refreshed) {
-          const newToken = localStorage.getItem(TOKEN_KEY);
+          const newToken = session.getAccessToken(realm);
           if (newToken) {
             const retryHeaders = {
               ...headers,
@@ -183,14 +208,7 @@ export async function apiFetch<T = unknown>(
       }
 
       if (response.status === 401) {
-        if (isPosEndpoint) {
-          localStorage.removeItem('pos_token');
-          localStorage.removeItem('pos_user');
-        } else {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(REFRESH_TOKEN_KEY);
-          localStorage.removeItem('sinaicamps_user');
-        }
+        session.clear(realm);
         throw new Error('Unauthorized');
       }
 
@@ -693,9 +711,9 @@ export function confirmPayment(data: { paymentIntentId: string; orderId: string 
 // POS endpoints use /api/pos/* prefix. The centralized apiFetch handles
 // tenant isolation and auth headers automatically.
 
-/** POS: Login */
+/** POS: Login (Phase 9: consolidated onto the /api/auth surface) */
 export function posLogin(identifier: string, password: string) {
-  return apiFetch<Schemas['PosLoginResponse']>('/pos/auth/login', {
+  return apiFetch<Schemas['PosLoginResponse']>('/auth/pos-login', {
     method: 'POST',
     body: JSON.stringify({ identifier, password } satisfies Schemas['PosLoginRequest']),
   });
@@ -711,30 +729,10 @@ export function posGetProducts() {
   return apiFetch<Schemas['PosProductList']>('/pos/products');
 }
 
-/** POS: Create a product */
-export function posCreateProduct(data: unknown) {
-  return apiFetch('/pos/products', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-/** POS: Update a product */
-export function posUpdateProduct(id: string | number, data: unknown) {
-  return apiFetch(`/pos/products/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-}
-
-/** POS: Delete a product */
-export function posDeleteProduct(id: string | number) {
-  return apiFetch(`/pos/products/${id}`, { method: 'DELETE' });
-}
-
-/** POS: Get orders */
-export function posGetOrders() {
-  return apiFetch<Schemas['PosOrderList']>('/pos/orders');
+/** POS: Get orders (paginated envelope — unwrapped to the page rows) */
+export async function posGetOrders() {
+  const page = await apiFetch<Schemas['PaginatedPosOrders']>('/pos/orders');
+  return page.data;
 }
 
 /** POS: Get a single order with items */
@@ -769,26 +767,6 @@ export function posCloseShift(data: Schemas['PosShiftCloseRequest']) {
     method: 'POST',
     body: JSON.stringify(data),
   });
-}
-
-/** POS: Get customers */
-export function posGetCustomers() {
-  return apiFetch('/pos/customers');
-}
-
-/** POS: Get inventory */
-export function posGetInventory() {
-  return apiFetch('/pos/inventory');
-}
-
-/** POS: Get staff */
-export function posGetStaff() {
-  return apiFetch('/pos/staff');
-}
-
-/** POS: Get reports */
-export function posGetReports() {
-  return apiFetch('/pos/reports');
 }
 
 // ─── Inventory (tenant admin) ─────────────────────────────────────────
@@ -838,7 +816,7 @@ export function upload(file: File) {
   const body = new FormData();
   body.append('file', file);
   const tenant = getTenantId();
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = session.getAccessToken('admin');
   const headers: Record<string, string> = {};
   if (tenant) headers['x-tenant-id'] = tenant;
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -860,11 +838,3 @@ export function upload(file: File) {
     return (await response.json()) as Schemas['UploadResponse'];
   });
 }
-
-// ─── Backward-compat aliases (gradual migration) ──────────────────────
-export const getReservations = getOrders;
-export const saveReservation = saveOrder;
-export const deleteReservation = deleteOrder;
-export const getRoomTypes = getProducts;
-export const saveRoomType = saveProduct;
-export const deleteRoomType = deleteProduct;

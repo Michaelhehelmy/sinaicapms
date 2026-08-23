@@ -4,9 +4,12 @@
  * broadcast hook in leads.js, and the /api/inbox dispatch through the worker.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { handleInboxRoute, inboxReadSchema } from '../src/api/inbox.js';
-import { broadcastNewLead, handleLeadsRoute } from '../src/api/leads.js';
+import { beforeEach } from 'vitest';
+import inboxRoutes, { inboxReadSchema } from '../src/api/inbox.js';
+import { broadcastNewLead } from '../src/api/leads.js';
+import leadsRoutes from '../src/api/leads.js';
 import { generateToken } from '../src/middleware/sharedAuth.js';
+import { mountRouter } from './helpers/routerHarness.js';
 
 import app from '../src/index.js';
 
@@ -59,7 +62,21 @@ const BOOKING_ROW = {
   order_state_id: 2, reference: 'REF-1', created_at: '2030-01-02 10:00:00',
 };
 
-describe('handleInboxRoute — GET /api/inbox', () => {
+describe('inboxRoutes — GET /api/inbox', () => {
+  let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
+
+  beforeEach(() => {
+    env = {};
+    app = mountRouter(inboxRoutes, { tenantId: 't1', basePath: '/api/inbox' });
+  });
+
   it('returns both kinds sorted desc with the pagination envelope + unread count', async () => {
     const db = { prepare: vi.fn() };
     db.prepare.mockImplementation(chainMock([
@@ -68,8 +85,9 @@ describe('handleInboxRoute — GET /api/inbox', () => {
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 1 }] }); },
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 1 }] }); },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(makeRequest('GET', 'https://x.com/api/inbox'), { DB: db }, 't1');
+    const res = await request('GET', 'https://x.com/api/inbox');
     expect(res.status).toBe(200);
     const body = await res.json();
 
@@ -105,12 +123,9 @@ describe('handleInboxRoute — GET /api/inbox', () => {
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 0 }] }); },
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 1 }] }); },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('GET', 'https://x.com/api/inbox?kind=booking'),
-      { DB: db },
-      't1'
-    );
+    const res = await request('GET', 'https://x.com/api/inbox?kind=booking');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(1);
@@ -133,12 +148,9 @@ describe('handleInboxRoute — GET /api/inbox', () => {
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 1 }] }); },
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 0 }] }); },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('GET', 'https://x.com/api/inbox?kind=lead&status=new'),
-      { DB: db },
-      't1'
-    );
+    const res = await request('GET', 'https://x.com/api/inbox?kind=lead&status=new');
     expect(res.status).toBe(200);
 
     const sqls = db.prepare.mock.calls.map((c) => c[0]);
@@ -156,12 +168,9 @@ describe('handleInboxRoute — GET /api/inbox', () => {
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 0 }] }); },
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 0 }] }); },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('GET', 'https://x.com/api/inbox?status=paid'),
-      { DB: db },
-      't1'
-    );
+    const res = await request('GET', 'https://x.com/api/inbox?status=paid');
     expect(res.status).toBe(200);
     const sqls = db.prepare.mock.calls.map((c) => c[0]);
     expect(sqls[0]).toContain('l.status = ?');
@@ -170,11 +179,8 @@ describe('handleInboxRoute — GET /api/inbox', () => {
 
   it('returns 400 for an unknown kind filter', async () => {
     const db = { prepare: vi.fn() };
-    const res = await handleInboxRoute(
-      makeRequest('GET', 'https://x.com/api/inbox?kind=bogus'),
-      { DB: db },
-      't1'
-    );
+    env.DB = db;
+    const res = await request('GET', 'https://x.com/api/inbox?kind=bogus');
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain('kind');
@@ -192,12 +198,9 @@ describe('handleInboxRoute — GET /api/inbox', () => {
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 1 }] }); },
       (ch) => { ch.all.mockResolvedValue({ results: [{ total: 0 }] }); },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('GET', 'https://x.com/api/inbox?page=2&pageSize=10&kind=lead'),
-      { DB: db },
-      't1'
-    );
+    const res = await request('GET', 'https://x.com/api/inbox?page=2&pageSize=10&kind=lead');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.page).toBe(2);
@@ -207,7 +210,21 @@ describe('handleInboxRoute — GET /api/inbox', () => {
   });
 });
 
-describe('handleInboxRoute — PATCH /api/inbox/read', () => {
+describe('inboxRoutes — PATCH /api/inbox/read', () => {
+  let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
+
+  beforeEach(() => {
+    env = {};
+    app = mountRouter(inboxRoutes, { tenantId: 't1', basePath: '/api/inbox' });
+  });
+
   it('marks a lead read (is_read + read_at), tenant-scoped', async () => {
     const db = { prepare: vi.fn() };
     let bindArgs = null;
@@ -217,12 +234,9 @@ describe('handleInboxRoute — PATCH /api/inbox/read', () => {
         ch.run.mockResolvedValue({ changes: 1 });
       },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('PATCH', 'https://x.com/api/inbox/read', { kind: 'lead', id: 'lead_1' }),
-      { DB: db },
-      't1'
-    );
+    const res = await request('PATCH', 'https://x.com/api/inbox/read', { kind: 'lead', id: 'lead_1' });
     expect(res.status).toBe(200);
     expect((await res.json()).success).toBe(true);
 
@@ -237,12 +251,9 @@ describe('handleInboxRoute — PATCH /api/inbox/read', () => {
     db.prepare.mockImplementation(chainMock([
       (ch) => { ch.run.mockResolvedValue({ changes: 0 }); },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('PATCH', 'https://x.com/api/inbox/read', { kind: 'lead', id: 'nope' }),
-      { DB: db },
-      't1'
-    );
+    const res = await request('PATCH', 'https://x.com/api/inbox/read', { kind: 'lead', id: 'nope' });
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toBe('Lead not found');
@@ -257,20 +268,13 @@ describe('handleInboxRoute — PATCH /api/inbox/read', () => {
         ch.run.mockResolvedValue({});
       },
     ]));
+    env.DB = db;
 
-    const first = await handleInboxRoute(
-      makeRequest('PATCH', 'https://x.com/api/inbox/read', { kind: 'booking', id: 'ord_1' }),
-      { DB: db },
-      't1'
-    );
+    const first = await request('PATCH', 'https://x.com/api/inbox/read', { kind: 'booking', id: 'ord_1' });
     expect(first.status).toBe(200);
     expect((await first.json()).success).toBe(true);
 
-    const second = await handleInboxRoute(
-      makeRequest('PATCH', 'https://x.com/api/inbox/read', { kind: 'booking', id: 'ord_1' }),
-      { DB: db },
-      't1'
-    );
+    const second = await request('PATCH', 'https://x.com/api/inbox/read', { kind: 'booking', id: 'ord_1' });
     expect(second.status).toBe(200);
 
     const sql = db.prepare.mock.calls[0][0];
@@ -281,11 +285,8 @@ describe('handleInboxRoute — PATCH /api/inbox/read', () => {
 
   it('validates the body via zod (400 on bad kind or empty id)', async () => {
     const db = { prepare: vi.fn() };
-    const bad = await handleInboxRoute(
-      makeRequest('PATCH', 'https://x.com/api/inbox/read', { kind: 'order', id: '' }),
-      { DB: db },
-      't1'
-    );
+    env.DB = db;
+    const bad = await request('PATCH', 'https://x.com/api/inbox/read', { kind: 'order', id: '' });
     expect(bad.status).toBe(400);
     const body = await bad.json();
     expect(body.success).toBe(false);
@@ -301,7 +302,21 @@ describe('handleInboxRoute — PATCH /api/inbox/read', () => {
   });
 });
 
-describe('handleInboxRoute — DELETE /api/inbox/:kind/:id', () => {
+describe('inboxRoutes — DELETE /api/inbox/:kind/:id', () => {
+  let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
+
+  beforeEach(() => {
+    env = {};
+    app = mountRouter(inboxRoutes, { tenantId: 't1', basePath: '/api/inbox' });
+  });
+
   it('deletes a lead, tenant-scoped', async () => {
     const db = { prepare: vi.fn() };
     let bindArgs = null;
@@ -311,12 +326,9 @@ describe('handleInboxRoute — DELETE /api/inbox/:kind/:id', () => {
         ch.run.mockResolvedValue({ changes: 1 });
       },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('DELETE', 'https://x.com/api/inbox/lead/lead_1'),
-      { DB: db },
-      't1'
-    );
+    const res = await request('DELETE', 'https://x.com/api/inbox/lead/lead_1');
     expect(res.status).toBe(200);
     expect((await res.json()).success).toBe(true);
 
@@ -330,23 +342,17 @@ describe('handleInboxRoute — DELETE /api/inbox/:kind/:id', () => {
     db.prepare.mockImplementation(chainMock([
       (ch) => { ch.run.mockResolvedValue({ changes: 0 }); },
     ]));
+    env.DB = db;
 
-    const res = await handleInboxRoute(
-      makeRequest('DELETE', 'https://x.com/api/inbox/lead/nope'),
-      { DB: db },
-      't1'
-    );
+    const res = await request('DELETE', 'https://x.com/api/inbox/lead/nope');
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBe('Lead not found');
   });
 
   it('rejects booking deletion with 400', async () => {
     const db = { prepare: vi.fn() };
-    const res = await handleInboxRoute(
-      makeRequest('DELETE', 'https://x.com/api/inbox/booking/ord_1'),
-      { DB: db },
-      't1'
-    );
+    env.DB = db;
+    const res = await request('DELETE', 'https://x.com/api/inbox/booking/ord_1');
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain('Booking deletion not allowed');
@@ -355,11 +361,8 @@ describe('handleInboxRoute — DELETE /api/inbox/:kind/:id', () => {
 
   it('returns 400 when the lead id segment is missing', async () => {
     const db = { prepare: vi.fn() };
-    const res = await handleInboxRoute(
-      makeRequest('DELETE', 'https://x.com/api/inbox/lead'),
-      { DB: db },
-      't1'
-    );
+    env.DB = db;
+    const res = await request('DELETE', 'https://x.com/api/inbox/lead');
     expect(res.status).toBe(400);
   });
 });
@@ -383,13 +386,11 @@ describe('broadcastNewLead (leads.js hook)', () => {
     ]));
     const { broadcaster, fetchSpy } = makeBroadcasterStub();
 
-    const res = await handleLeadsRoute(
-      makeRequest('POST', 'https://x.com/api/leads', {
-        name: 'Alice', email: 'a@x.com', subject: 'Hello', message: 'msg',
-      }),
-      { DB: db, BROADCASTER: broadcaster },
-      't1'
-    );
+    const leadsApp = mountRouter(leadsRoutes, { tenantId: 't1', basePath: '/api/leads' });
+    const res = await leadsApp.request('https://x.com/api/leads', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Alice', email: 'a@x.com', subject: 'Hello', message: 'msg' }),
+    }, { DB: db, BROADCASTER: broadcaster });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
@@ -415,11 +416,11 @@ describe('broadcastNewLead (leads.js hook)', () => {
     ]));
     const { fetchSpy } = makeBroadcasterStub();
 
-    const res = await handleLeadsRoute(
-      makeRequest('POST', 'https://x.com/api/leads', { name: 'Bob', email: 'b@x.com' }),
-      { DB: db },
-      null
-    );
+    const leadsApp = mountRouter(leadsRoutes, { tenantId: null, basePath: '/api/leads' });
+    const res = await leadsApp.request('https://x.com/api/leads', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Bob', email: 'b@x.com' }),
+    }, { DB: db });
     expect(res.status).toBe(200);
     await new Promise((r) => setTimeout(r, 10));
     expect(fetchSpy).not.toHaveBeenCalled();

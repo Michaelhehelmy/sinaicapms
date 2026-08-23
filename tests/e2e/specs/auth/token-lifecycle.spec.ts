@@ -122,14 +122,11 @@ test.describe('POS Token Lifecycle', () => {
         .fill(process.env.POS_PASSWORD || 'pass1234');
       await page.locator('[data-testid="pos-signin-btn"]').click();
 
-      // POS uses hash routing
+      // POS uses pushState path routing (Phase 7): login lands on /pos/dashboard
       try {
-        await page.waitForFunction(
-          () => window.location.hash.includes('dashboard'),
-          { timeout: 10_000 }
-        );
+        await page.waitForURL('**/pos/dashboard*', { timeout: 10_000 });
       } catch {
-        // Hash may not update immediately — continue
+        // URL may not update immediately — continue
       }
     
       const token = await page.evaluate(() => localStorage.getItem('pos_token'));
@@ -153,12 +150,9 @@ test.describe('POS Token Lifecycle', () => {
       await page.locator('[data-testid="pos-signin-btn"]').click();
 
       try {
-        await page.waitForFunction(
-          () => window.location.hash.includes('dashboard'),
-          { timeout: 10_000 }
-        );
+        await page.waitForURL('**/pos/dashboard*', { timeout: 10_000 });
       } catch {
-        // Hash may not update immediately — continue
+        // URL may not update immediately — continue
       }
 
       if (page.url().includes('dashboard')) {

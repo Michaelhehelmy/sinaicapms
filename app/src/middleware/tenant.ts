@@ -67,7 +67,8 @@ interface ApiBackendBinding {
  * `fetch()` to `https://sinaicamps.com/api/*` is rejected by Cloudflare with
  * error 1042 on the root host, so SSR must call the binding instead. The
  * binding's hostname is arbitrary (the service is selected by the binding);
- * the path must keep the backend's `/api` prefix.
+ * the path must keep the backend's versioned `/api/v1` prefix (Phase 9) —
+ * the worker entrypoint rewrites it back to `/api/*` before dispatch.
  *
  * Falls back to a plain cross-origin `fetch(\`${apiBase}${path}\`)` when the
  * binding is absent (local dev / preview / tests) — there the cross-origin
@@ -79,7 +80,7 @@ export function resolveApiFetcher(
 ): ApiFetcher {
   const binding = runtimeEnv?.API_BACKEND as ApiBackendBinding | undefined;
   if (binding && typeof binding?.fetch === 'function') {
-    return (path, init) => binding.fetch(new URL(`/api${path}`, 'https://campmaster-backend/'), init);
+    return (path, init) => binding.fetch(new URL(`/api/v1${path}`, 'https://campmaster-backend/'), init);
   }
   return (path, init) => {
     const url = `${apiBase}${path}`;
@@ -125,9 +126,9 @@ function getApiBase(url: URL): string {
     url.hostname === '127.0.0.1' ||
     url.hostname.endsWith('.localhost') ||
     url.hostname.endsWith('.127.0.0.1');
-  if (isLocal) return 'http://localhost:8787/api';
+  if (isLocal) return 'http://localhost:8787/api/v1';
   const isSinaicamps = url.hostname === 'sinaicamps.com' || url.hostname.endsWith('.sinaicamps.com');
-  return isSinaicamps ? `${url.origin}/api` : `https://sinaicamps.com/api`;
+  return isSinaicamps ? `${url.origin}/api/v1` : `https://sinaicamps.com/api/v1`;
 }
 
 export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<TenantSSRData> {

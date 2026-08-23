@@ -22,6 +22,7 @@ import {
 } from '@/hooks/useQueryHooks';
 import { useSseOrders } from '@/hooks/useSseOrders';
 import { useAuth } from '@/lib/auth';
+import { session } from '@/lib/session';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Card } from '@/components/ui/Card';
@@ -31,9 +32,6 @@ import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
 import type { Camp, Order, RatePlan } from '@/hooks/useAdminData';
-
-// Admin JWT storage key — kept in lockstep with auth.tsx / api.ts.
-const TOKEN_KEY = 'sinaicamps_token';
 
 interface BookingCalendarProps {
   campIds: string[];
@@ -166,12 +164,11 @@ export default function BookingCalendar({ campIds, camps }: BookingCalendarProps
 
   // ─── Live refresh via the SSE orders stream ─────────────────────────
   // The admin JWT cannot travel in an EventSource header, so it is read from
-  // the same localStorage slot auth.tsx/api.ts use and sent as a query param.
-  // The stream only opens when the admin is authed, a tenant is resolved
-  // (user.tenantId matches the JWT the backend validates), and a product is
-  // in view.
-  const accessToken =
-    typeof window !== 'undefined' ? window.localStorage.getItem(TOKEN_KEY) : null;
+  // the session kernel (same storage slot auth.tsx/api.ts use) and sent as a
+  // query param. The stream only opens when the admin is authed, a tenant is
+  // resolved (user.tenantId matches the JWT the backend validates), and a
+  // product is in view.
+  const accessToken = session.getAccessToken('admin');
   const tenantId = user?.tenantId;
   const sseEnabled =
     isAuthenticated && Boolean(accessToken) && Boolean(tenantId) && Boolean(activeProductId);
@@ -185,8 +182,8 @@ export default function BookingCalendar({ campIds, camps }: BookingCalendarProps
       if (campIds.length > 0 && ev.campId !== undefined && !campIds.includes(String(ev.campId))) {
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ['availability'] });
-      queryClient.invalidateQueries({ queryKey: ['price-overrides'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'availability'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'price-overrides'] });
     },
     [campIds, queryClient],
   );
@@ -379,7 +376,7 @@ export default function BookingCalendar({ campIds, camps }: BookingCalendarProps
       const offset = offsets[e.key];
       if (offset === undefined) return;
       e.preventDefault();
-      let target = addDays(parseDay(key), offset);
+      const target = addDays(parseDay(key), offset);
       const targetKey = toDateKey(target);
       if (!visibleDayKeys.has(targetKey)) {
         const targetMonth = startOfMonth(target);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sendEmail, sendPasswordResetEmail, sendBookingConfirmationEmail } from '../src/services/emailService.js';
+import { sendEmail, sendPasswordResetEmail } from '../src/services/emailService.js';
 
 describe('emailService', () => {
   beforeEach(() => {
@@ -106,59 +106,6 @@ describe('emailService', () => {
       const result = await sendPasswordResetEmail('user@example.com', 'tok123');
       expect(result).toBe(true);
       expect(logSpy).toHaveBeenCalled();
-    });
-  });
-
-  describe('sendBookingConfirmationEmail', () => {
-    it('sends confirmation with all booking details', async () => {
-      const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchSpy);
-      const result = await sendBookingConfirmationEmail('guest@test.com', {
-        guestName: 'John Smith',
-        campName: 'Sinai Camp',
-        roomName: 'Deluxe Tent',
-        checkIn: '2026-08-01',
-        checkOut: '2026-08-05',
-        totalAmount: 1200.50,
-        reservationId: 'RES-001',
-      }, { RESEND_API_KEY: 'key' });
-      expect(result).toBe(true);
-      const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
-      expect(body.html).toContain('John Smith');
-      expect(body.html).toContain('Sinai Camp');
-      expect(body.html).toContain('Deluxe Tent');
-      expect(body.html).toContain('2026-08-01');
-      expect(body.html).toContain('2026-08-05');
-      expect(body.html).toContain('1200.50');
-      expect(body.html).toContain('RES-001');
-      expect(body.subject).toContain('Booking Confirmation');
-    });
-
-    it('handles null/undefined optional fields gracefully', async () => {
-      const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal('fetch', fetchSpy);
-      const result = await sendBookingConfirmationEmail('guest@test.com', {
-        guestName: 'Jane',
-        campName: null,
-        roomName: undefined,
-        checkIn: '2026-08-01',
-        checkOut: '2026-08-05',
-        totalAmount: 0,
-        reservationId: 'RES-002',
-      }, { RESEND_API_KEY: 'key' });
-      expect(result).toBe(true);
-      const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
-      expect(body.html).toContain('N/A');
-      expect(body.html).toContain('0.00');
-    });
-
-    it('sends without RESEND_API_KEY (log-only mode)', async () => {
-      const result = await sendBookingConfirmationEmail('guest@test.com', {
-        guestName: 'Test', campName: 'Camp', roomName: 'Room',
-        checkIn: '2026-08-01', checkOut: '2026-08-05',
-        totalAmount: 100, reservationId: 'RES-003',
-      });
-      expect(result).toBe(true);
     });
   });
 });

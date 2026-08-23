@@ -4,7 +4,7 @@ import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 
 async function loginAsSuperAdmin(page: import('@playwright/test').Page) {
-  await page.goto('/admin');
+  await page.goto('/admin', { waitUntil: 'domcontentloaded' });
   await page.locator('[data-testid="login-email"]').fill(SUPER_ADMIN.email);
   await page.locator('[data-testid="login-password"]').fill(SUPER_ADMIN.password);
   await page.locator('[data-testid="login-submit"]').click();

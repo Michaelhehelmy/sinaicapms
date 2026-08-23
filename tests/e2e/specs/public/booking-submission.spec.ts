@@ -75,8 +75,9 @@ test.describe('Booking Submission Flow', () => {
       await booking.setCheckout(co1);
       const total1 = await page.locator('[data-testid="booking-form"] .text-2xl.font-black').textContent();
 
-      // Change to a longer stay
-      const { checkIn: ci2, checkOut: co2 } = datePair(10);
+      // Change to a longer stay (4 nights instead of 2)
+      const ci2 = futureDate(10);
+      const co2 = futureDate(14);
       await booking.setCheckin(ci2);
       await booking.setCheckout(co2);
       const total2 = await page.locator('[data-testid="booking-form"] .text-2xl.font-black').textContent();
@@ -101,7 +102,9 @@ test.describe('Booking Submission Flow', () => {
     });
 
     test('increase button increments guest count', async ({ page }) => {
-      await booking.openRoomBooking(0);
+      // Use room 1 (Deluxe Cabin, capacity 4) so increment has room to grow
+      // Room 0 (Standard Tent) has capacity 2 which equals the default guest count
+      await booking.openRoomBooking(1);
       const before = parseInt((await booking.guestCount.textContent()) ?? '0', 10);
       await booking.guestIncreaseBtn.click();
       const after = parseInt((await booking.guestCount.textContent()) ?? '0', 10);
@@ -167,7 +170,7 @@ test.describe('Booking Submission Flow', () => {
       await booking.submitToAddReservation();
 
       const barText = await booking.getReservationBarText();
-      expect(barText).toContain('2 rooms');
+      expect(barText).toContain('2 room(s)');
     });
 
     test('clear button removes all items from reservation', async ({ page }) => {
@@ -208,8 +211,10 @@ test.describe('Booking Submission Flow', () => {
       await booking.submitToAddReservation();
       await booking.clickViewSummary();
 
-      const content = await page.locator('body').textContent() ?? '';
-      expect(content).toContain(roomName?.trim() ?? '');
+      // Wait for React hydration — the SSR renders "No rooms in your reservation"
+      // because localStorage is unavailable server-side. After hydration the
+      // useEffect reads localStorage and renders the room cards.
+      await expect(page.locator('body')).toContainText(roomName?.trim() ?? '', { timeout: 15_000 });
     });
 
     test('summary page shows guest info form', async ({ page }) => {

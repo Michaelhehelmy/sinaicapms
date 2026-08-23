@@ -3,27 +3,28 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody } from '@/components/ui/Card';
-import * as apiClient from '@/lib/api';
+import { useCloseShiftMutation } from '@/hooks/usePosQueries';
 import type { Shift } from '../types';
 
 // ─── Shift Dashboard View ──────────────────────────────────
-export default function ShiftDashboard({ shift, onShiftClosed }: { shift: Shift; onShiftClosed: () => void }) {
+export default function ShiftDashboard({ shift, onShiftClosed }: { shift: Shift | null; onShiftClosed: () => void }) {
   const [closingCash, setClosingCash] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
+  const closeShift = useCloseShiftMutation();
 
   async function handleClose() {
     const amount = parseFloat(closingCash);
     if (isNaN(amount)) { setError('Enter closing cash amount'); return; }
-    setLoading(true);
     setError('');
     try {
-      const res = await apiClient.posCloseShift({ actualClosingCash: amount, notes: '' });
-      setResult(res.shift);
-    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+      const res = await closeShift.mutateAsync({ actualClosingCash: amount, notes: '' });
+      setResult((res as { shift: any }).shift);
+    } catch (err: any) { setError(err.message); }
   }
 
+  // If the shift was just closed (result exists), show the summary regardless of whether the parent
+  // still has activeShift (it may have been nullified by polling after the close API succeeded).
   if (result) {
     return (
       <div className="p-6 space-y-4" data-testid="shift-dashboard">
@@ -45,6 +46,23 @@ export default function ShiftDashboard({ shift, onShiftClosed }: { shift: Shift;
         <Button variant="primary" size="md" onClick={onShiftClosed}>
           Back to POS
         </Button>
+      </div>
+    );
+  }
+
+  // No active shift and no close result — show a "no shift" state with action to open one.
+  if (!shift) {
+    return (
+      <div className="p-6 space-y-4" data-testid="shift-dashboard">
+        <h2 className="text-xl font-bold text-gray-900">No Active Shift</h2>
+        <Card>
+          <CardBody>
+            <p className="text-gray-500 mb-4">There is no active shift. Open a new shift to start taking orders.</p>
+            <Button variant="primary" size="md" onClick={onShiftClosed}>
+              Open Shift
+            </Button>
+          </CardBody>
+        </Card>
       </div>
     );
   }
@@ -80,7 +98,7 @@ export default function ShiftDashboard({ shift, onShiftClosed }: { shift: Shift;
             variant="danger"
             size="lg"
             fullWidth
-            loading={loading}
+            loading={closeShift.isPending}
             onClick={handleClose}
             className="min-h-[48px]"
           >

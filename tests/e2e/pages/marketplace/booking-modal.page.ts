@@ -112,7 +112,9 @@ export class BookingModalPage {
   }
 
   async clickClearReservation() {
-    await this.reservationBar.locator('button:has-text("Clear")').click();
+    // force: true needed because the Astro dev toolbar overlay intercepts
+    // pointer events on small bottom-positioned buttons.
+    await this.reservationBar.locator('button:has-text("Clear")').click({ force: true });
   }
 
   /* ---- ReservationSummary (book) page helpers ---- */

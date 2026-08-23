@@ -4,7 +4,17 @@ export class AdminDashboardPage {
   constructor(private page: Page) {}
 
   async goto(tenantId = 'marketplace') {
-    await this.page.goto(`/admin?tenant=${tenantId}`);
+    await this.page.goto(`/admin?tenant=${tenantId}`, { waitUntil: 'domcontentloaded' });
+  }
+
+  /**
+   * Navigate to a specific admin panel via its canonical path (/admin/<tab>).
+   * Phase 7: AdminApp resolves path deep links on mount through the pushState
+   * kernel; legacy `#tab=` hashes are still honored (see navigation.spec.ts)
+   * during the migration window.
+   */
+  async gotoTab(tenantId = 'marketplace', tabName = 'dashboard') {
+    await this.page.goto(`/admin/${tabName}?tenant=${tenantId}`, { waitUntil: 'domcontentloaded' });
   }
 
   async isLoginOverlayVisible(): Promise<boolean> {
@@ -15,6 +25,10 @@ export class AdminDashboardPage {
     await this.page.locator('[data-testid="login-email"]').fill(email);
     await this.page.locator('[data-testid="login-password"]').fill(password);
     await this.page.locator('[data-testid="login-submit"]').click();
+    // Wait for login overlay to disappear (login succeeded) before returning.
+    // Without this, concurrent tests can race against the backend response and
+    // expectPanelReady times out on content-area that never appears.
+    await this.page.locator('[data-testid="login-overlay"]').waitFor({ state: 'hidden', timeout: 15_000 });
   }
 
   async isDashboardLoaded(): Promise<boolean> {

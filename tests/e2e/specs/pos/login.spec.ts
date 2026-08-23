@@ -170,7 +170,7 @@ test.describe('POS Login', () => {
     expect(url).toContain('/dashboard');
   });
 
-  test('valid login navigates to /dashboard (hash routing)', async ({ page }) => {
+  test('valid login navigates to /dashboard (pushState path routing)', async ({ page }) => {
     await page.goto(TENANT_URL('/pos/login', TENANT_ID));
     await page.locator('[data-testid="pos-login"]').waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('[data-testid="pos-identifier"]').fill(VALID_IDENTIFIER);

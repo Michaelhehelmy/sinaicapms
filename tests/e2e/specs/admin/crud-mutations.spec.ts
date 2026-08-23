@@ -17,10 +17,19 @@ let createdRatePlanId: string | null = null;
 
 async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
   const admin = new AdminDashboardPage(page);
-  await admin.goto(TEST_TENANT.id);
-  await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
-  await expectPanelReady(page);
-  return admin;
+  // Retry login up to 3 times — the backend can return errors under concurrent
+  // load from Playwright workers.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await admin.goto(TEST_TENANT.id);
+    await admin.login(TEST_TENANT_ADMIN.email, TEST_TENANT_ADMIN.password);
+    try {
+      await expectPanelReady(page);
+      return admin; // login succeeded
+    } catch {
+      if (attempt === 2) throw new Error(`Admin login failed after ${attempt + 1} attempts`);
+    }
+  }
+  return admin; // unreachable but satisfies TypeScript
 }
 
 async function waitForToast(page: import('@playwright/test').Page, text: string, timeout = 8000) {
@@ -39,7 +48,7 @@ async function dismissAllToasts(page: import('@playwright/test').Page) {
   }
 }
 
-test.describe('Admin CRUD Mutations — Rooms', () => {
+test.describe.serial('Admin CRUD Mutations — Rooms', () => {
   test('create a new room and verify it appears in the list', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('rooms');
@@ -92,14 +101,13 @@ test.describe('Admin CRUD Mutations — Rooms', () => {
     const nameInput = page.locator('[data-testid="modal-content"] input[placeholder="e.g. Room 101"]');
     await nameInput.clear();
     await nameInput.fill(ROOM_NAME_EDITED);
+    // Ensure React state has updated before clicking save
+    await expect(nameInput).toHaveValue(ROOM_NAME_EDITED);
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    await waitForToast(page, 'Room updated').catch(() =>
-      waitForToast(page, 'updated')
-    );
-
-    await page.locator('[data-testid="modal-overlay"]').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+    // Wait for modal to close (indicates save succeeded) — more reliable than toast assertion
+    await page.locator('[data-testid="modal-overlay"]').waitFor({ state: 'hidden', timeout: 15000 });
 
     await expectPanelContentReady(page, 'rooms-panel');
     const editedRow = page.locator('[data-testid="data-table-row"]:has-text("' + ROOM_NAME_EDITED + '")');
@@ -134,7 +142,7 @@ test.describe('Admin CRUD Mutations — Rooms', () => {
   });
 });
 
-test.describe('Admin CRUD Mutations — Meals', () => {
+test.describe.serial('Admin CRUD Mutations — Meals', () => {
   test('create a new meal and verify it appears in the list', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('meals');
@@ -189,14 +197,13 @@ test.describe('Admin CRUD Mutations — Meals', () => {
     const nameInput = page.locator('[data-testid="modal-content"] input[placeholder="Meal name"]');
     await nameInput.clear();
     await nameInput.fill(MEAL_NAME_EDITED);
+    // Ensure React state has updated before clicking save
+    await expect(nameInput).toHaveValue(MEAL_NAME_EDITED);
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    await waitForToast(page, 'Meal updated').catch(() =>
-      waitForToast(page, 'updated')
-    );
-
-    await page.locator('[data-testid="modal-overlay"]').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+    // Wait for modal to close (indicates save succeeded) — more reliable than toast assertion
+    await page.locator('[data-testid="modal-overlay"]').waitFor({ state: 'hidden', timeout: 15000 });
 
     await expectPanelContentReady(page, 'meals-panel');
     const editedRow = page.locator('[data-testid="data-table-row"]:has-text("' + MEAL_NAME_EDITED + '")');
@@ -231,7 +238,7 @@ test.describe('Admin CRUD Mutations — Meals', () => {
   });
 });
 
-test.describe('Admin CRUD Mutations — Rate Plans', () => {
+test.describe.serial('Admin CRUD Mutations — Rate Plans', () => {
   test('create a new rate plan and verify it appears', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('rateplans');
@@ -244,6 +251,14 @@ test.describe('Admin CRUD Mutations — Rate Plans', () => {
 
     const nameInput = page.locator('[data-testid="modal-content"] input').first();
     await nameInput.fill(RATE_PLAN_NAME);
+
+    // Select a product from the dropdown (required field)
+    const productSelect = page.locator('[data-testid="modal-content"] select').first();
+    const options = productSelect.locator('option');
+    const optionCount = await options.count();
+    if (optionCount > 1) {
+      await productSelect.selectOption({ index: 1 });
+    }
 
     const priceInput = page.locator('[data-testid="modal-content"] input[type="number"]').first();
     await priceInput.clear();
@@ -280,6 +295,8 @@ test.describe('Admin CRUD Mutations — Rate Plans', () => {
     const nameInput = page.locator('[data-testid="modal-content"] input').first();
     await nameInput.clear();
     await nameInput.fill(RATE_PLAN_NAME_EDITED);
+    // Ensure React state has updated before clicking save
+    await expect(nameInput).toHaveValue(RATE_PLAN_NAME_EDITED);
 
     const priceInput = page.locator('[data-testid="modal-content"] input[type="number"]').first();
     await priceInput.clear();
@@ -287,11 +304,8 @@ test.describe('Admin CRUD Mutations — Rate Plans', () => {
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    await waitForToast(page, 'Plan updated').catch(() =>
-      waitForToast(page, 'updated')
-    );
-
-    await page.locator('[data-testid="modal-overlay"]').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+    // Wait for modal to close (indicates save succeeded) — more reliable than toast assertion
+    await page.locator('[data-testid="modal-overlay"]').waitFor({ state: 'hidden', timeout: 15000 });
 
     await expectPanelContentReady(page, 'rate-plans-panel');
     const editedRow = page.locator('[data-testid="data-table-row"]:has-text("' + RATE_PLAN_NAME_EDITED + '")');
@@ -498,6 +512,20 @@ test.describe('Admin CRUD Mutations — Success Toast Notifications', () => {
     await expect(page.locator('[data-testid="modal-overlay"]')).toBeVisible({ timeout: 5000 });
 
     await page.locator('[data-testid="modal-content"] input').first().fill(uniqueName);
+
+    // Select a product from the dropdown (required field)
+    const productSelect = page.locator('[data-testid="modal-content"] select').first();
+    const options = productSelect.locator('option');
+    const optionCount = await options.count();
+    if (optionCount > 1) {
+      await productSelect.selectOption({ index: 1 });
+    }
+
+    // Fill price (required to be positive)
+    const priceInput = page.locator('[data-testid="modal-content"] input[type="number"]').first();
+    await priceInput.clear();
+    await priceInput.fill('50');
+
     await page.locator('[data-testid="modal-save"]').click();
 
     const toast = page.locator('[role="alert"]');

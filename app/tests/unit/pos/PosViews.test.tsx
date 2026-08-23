@@ -1,7 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mockShowToast = vi.fn();
+
+// Phase 6: data views consume TanStack Query hooks — wrap them in a fresh
+// QueryClient per render so tests stay isolated from each other.
+function renderWithClient(ui: React.ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -153,7 +166,7 @@ describe('OrdersView', () => {
     mockPosGetOrders.mockResolvedValue([
       { id: '1', orderNumber: 'ORD-001', totalAmount: 25.50, subtotal: 23.18, taxAmount: 2.32, paymentMethod: 'cash', status: 'completed', createdAt: new Date().toISOString() },
     ] as any);
-    render(<OrdersView refreshKey={0} />);
+    renderWithClient(<OrdersView />);
     await waitFor(() => {
       expect(screen.getByText('ORD-001')).toBeInTheDocument();
     });
@@ -161,7 +174,7 @@ describe('OrdersView', () => {
 
   it('shows error state', async () => {
     mockPosGetOrders.mockRejectedValue(new Error('Orders load failed'));
-    render(<OrdersView refreshKey={0} />);
+    renderWithClient(<OrdersView />);
     await waitFor(() => {
       expect(screen.getByText('Orders load failed')).toBeInTheDocument();
     });
@@ -169,7 +182,7 @@ describe('OrdersView', () => {
 
   it('shows empty state', async () => {
     mockPosGetOrders.mockResolvedValue([] as any);
-    render(<OrdersView refreshKey={0} />);
+    renderWithClient(<OrdersView />);
     await waitFor(() => {
       expect(screen.getByText('No orders found')).toBeInTheDocument();
     });
@@ -180,7 +193,7 @@ describe('OrdersView', () => {
 describe('ShiftOverlay', () => {
   it('validates cash input', async () => {
     const onShiftOpened = vi.fn();
-    render(<ShiftOverlay onShiftOpened={onShiftOpened} />);
+    renderWithClient(<ShiftOverlay onShiftOpened={onShiftOpened} />);
     fireEvent.click(screen.getByText('Open Shift'));
     await waitFor(() => {
       expect(screen.getByText('Enter a valid opening cash amount')).toBeInTheDocument();
@@ -193,7 +206,7 @@ describe('ShiftOverlay', () => {
       shift: { id: 's2', status: 'open', openingTime: new Date().toISOString(), openingCash: 200, expectedClosingCash: 200, notes: null },
     } as any);
     const onShiftOpened = vi.fn();
-    render(<ShiftOverlay onShiftOpened={onShiftOpened} />);
+    renderWithClient(<ShiftOverlay onShiftOpened={onShiftOpened} />);
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '200' } });
     fireEvent.click(screen.getByText('Open Shift'));
     await waitFor(() => {
@@ -205,7 +218,7 @@ describe('ShiftOverlay', () => {
   it('shows error', async () => {
     mockPosOpenShift.mockRejectedValue(new Error('Cannot open shift'));
     const onShiftOpened = vi.fn();
-    render(<ShiftOverlay onShiftOpened={onShiftOpened} />);
+    renderWithClient(<ShiftOverlay onShiftOpened={onShiftOpened} />);
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
     fireEvent.click(screen.getByText('Open Shift'));
     await waitFor(() => {
@@ -218,7 +231,7 @@ describe('ShiftOverlay', () => {
 describe('ProductsView', () => {
   it('loads and renders products', async () => {
     mockPosGetProducts.mockResolvedValue([sampleProduct] as any);
-    render(<ProductsView cart={[]} setCart={vi.fn()} />);
+    renderWithClient(<ProductsView cart={[]} setCart={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText('Water Bottle')).toBeInTheDocument();
     });
@@ -227,7 +240,7 @@ describe('ProductsView', () => {
   it('adds to cart', async () => {
     mockPosGetProducts.mockResolvedValue([sampleProduct] as any);
     const setCart = vi.fn();
-    render(<ProductsView cart={[]} setCart={setCart} />);
+    renderWithClient(<ProductsView cart={[]} setCart={setCart} />);
     await waitFor(() => {
       expect(screen.getByText('Water Bottle')).toBeInTheDocument();
     });
@@ -239,7 +252,7 @@ describe('ProductsView', () => {
 
   it('filters by search', async () => {
     mockPosGetProducts.mockResolvedValue([sampleProduct] as any);
-    render(<ProductsView cart={[]} setCart={vi.fn()} />);
+    renderWithClient(<ProductsView cart={[]} setCart={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText('Water Bottle')).toBeInTheDocument();
     });
@@ -251,7 +264,7 @@ describe('ProductsView', () => {
 
   it('shows error', async () => {
     mockPosGetProducts.mockRejectedValue(new Error('Products load failed'));
-    render(<ProductsView cart={[]} setCart={vi.fn()} />);
+    renderWithClient(<ProductsView cart={[]} setCart={vi.fn()} />);
     await waitFor(() => {
       expect(screen.getByText('Products load failed')).toBeInTheDocument();
     });
@@ -276,14 +289,14 @@ describe('ShiftDashboard', () => {
   }
 
   it('shows shift info', () => {
-    render(<ShiftDashboard shift={activeShift} onShiftClosed={vi.fn()} />);
+    renderWithClient(<ShiftDashboard shift={activeShift} onShiftClosed={vi.fn()} />);
     expect(screen.getByText('Current Shift')).toBeInTheDocument();
     expect(screen.getByText('Shift ID')).toBeInTheDocument();
   });
 
   it('validates closing cash', async () => {
     const onShiftClosed = vi.fn();
-    render(<ShiftDashboard shift={activeShift} onShiftClosed={onShiftClosed} />);
+    renderWithClient(<ShiftDashboard shift={activeShift} onShiftClosed={onShiftClosed} />);
     clickCloseShiftButton();
     await waitFor(() => {
       expect(screen.getByText('Enter closing cash amount')).toBeInTheDocument();
@@ -295,7 +308,7 @@ describe('ShiftDashboard', () => {
       shift: { id: 's1', status: 'closed', openingCash: 100, totalCashSales: 150, expectedClosingCash: 250, actualClosingCash: 250, discrepancy: 0 },
     } as any);
     const onShiftClosed = vi.fn();
-    render(<ShiftDashboard shift={activeShift} onShiftClosed={onShiftClosed} />);
+    renderWithClient(<ShiftDashboard shift={activeShift} onShiftClosed={onShiftClosed} />);
     fireEvent.change(screen.getByLabelText('Actual Closing Cash ($)'), { target: { value: '250' } });
     clickCloseShiftButton();
     await waitFor(() => {
@@ -309,7 +322,7 @@ describe('ShiftDashboard', () => {
       shift: { id: 's1', status: 'closed', openingCash: 100, totalCashSales: 150, expectedClosingCash: 250, actualClosingCash: 200, discrepancy: -50 },
     } as any);
     const onShiftClosed = vi.fn();
-    render(<ShiftDashboard shift={activeShift} onShiftClosed={onShiftClosed} />);
+    renderWithClient(<ShiftDashboard shift={activeShift} onShiftClosed={onShiftClosed} />);
     fireEvent.change(screen.getByLabelText('Actual Closing Cash ($)'), { target: { value: '200' } });
     clickCloseShiftButton();
     await waitFor(() => {
@@ -328,7 +341,7 @@ describe('DashboardView', () => {
       activeProducts: 10,
       recentOrders: [],
     } as any);
-    render(<DashboardView />);
+    renderWithClient(<DashboardView />);
     await waitFor(() => {
       expect(screen.getByText("Today's Revenue")).toBeInTheDocument();
     });
@@ -336,7 +349,7 @@ describe('DashboardView', () => {
 
   it('shows error state', async () => {
     mockPosGetDashboard.mockRejectedValue(new Error('Dashboard load failed'));
-    render(<DashboardView />);
+    renderWithClient(<DashboardView />);
     await waitFor(() => {
       expect(screen.getByText('Dashboard load failed')).toBeInTheDocument();
     });
@@ -349,7 +362,7 @@ describe('DashboardView', () => {
       activeProducts: 0,
       recentOrders: [],
     } as any);
-    render(<DashboardView />);
+    renderWithClient(<DashboardView />);
     await waitFor(() => {
       expect(screen.getByText('No orders yet')).toBeInTheDocument();
     });

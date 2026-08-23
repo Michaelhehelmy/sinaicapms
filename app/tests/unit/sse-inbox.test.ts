@@ -63,7 +63,7 @@ describe('parseSSEEvent (inbox payloads)', () => {
 });
 
 describe('openInboxStream', () => {
-  const API = 'http://localhost:8787/api';
+  const API = 'http://localhost:8787/api/v1';
 
   it('connects to the same per-tenant /stream/orders URL as orders', () => {
     openInboxStream({
@@ -74,7 +74,7 @@ describe('openInboxStream', () => {
     });
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(FakeEventSource.instances[0].url).toBe(
-      'http://localhost:8787/api/stream/orders?tenantId=my%20camp&token=tok%2F1',
+      'http://localhost:8787/api/v1/stream/orders?tenantId=my%20camp&token=tok%2F1',
     );
   });
 
@@ -92,7 +92,7 @@ describe('openInboxStream', () => {
 
   it('defaults apiBase to API_BASE from api.ts', () => {
     openInboxStream({ tenantId: 't1', token: 'tok', onEvent: () => {} });
-    expect(FakeEventSource.instances[0].url).toContain('http://localhost:8787/api/stream/orders');
+    expect(FakeEventSource.instances[0].url).toContain('http://localhost:8787/api/v1/stream/orders');
   });
 
   it('forwards new-lead and new-booking events to onEvent', () => {
@@ -204,7 +204,7 @@ describe('useSseInbox', () => {
     enabled: true,
     tenantId: 't1',
     token: 'tok',
-    apiBase: 'http://localhost:8787/api',
+    apiBase: 'http://localhost:8787/api/v1',
     onEvent: vi.fn(),
   };
 
@@ -230,7 +230,7 @@ describe('useSseInbox', () => {
     const { result } = renderHook(() => useSseInbox(baseProps));
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(FakeEventSource.instances[0].url).toBe(
-      'http://localhost:8787/api/stream/orders?tenantId=t1&token=tok',
+      'http://localhost:8787/api/v1/stream/orders?tenantId=t1&token=tok',
     );
     expect(result.current.connected).toBe(false);
   });

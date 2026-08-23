@@ -86,7 +86,7 @@ describe('Core Auth — Extended', () => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}` },
       body: JSON.stringify({ currentPassword: 'WrongPass99!', newPassword: 'SomePass1!' })
     });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.success).toBe(false);
   });

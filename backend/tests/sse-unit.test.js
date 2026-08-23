@@ -1,9 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Broadcaster, makeEventMessage, parseTenantId } from '../src/durable/broadcaster.js';
-import { broadcastNewBooking, handleOrdersRoute } from '../src/api/orders.js';
+import ordersRoutes, { broadcastNewBooking } from '../src/api/orders.js';
+import { mountRouter } from './helpers/routerHarness.js';
 import { generateToken } from '../src/middleware/sharedAuth.js';
 
 import app from '../src/index.js';
+
+const ordersApp = mountRouter(ordersRoutes, { tenantId: 't1', basePath: '/api/orders' });
 
 const SECRET = 'test-secret';
 
@@ -42,12 +45,25 @@ function chainMock(fns) {
 function makeEnv(overrides = {}) {
   return {
     DB: {
-      prepare: vi.fn(() => ({
-        bind: vi.fn().mockReturnThis(),
-        all: vi.fn().mockResolvedValue({ results: [] }),
-        first: vi.fn().mockResolvedValue(null),
-        run: vi.fn().mockResolvedValue({}),
-      })),
+      // Phase 1: requireAuth re-validates is_active on every authenticated
+      // request via 'SELECT is_active FROM admins WHERE id = ?'. Answer it
+      // with an active row so happy-path tests exercise the SSE logic.
+      prepare: vi.fn((sql) => {
+        if (sql.includes('SELECT is_active FROM admins')) {
+          return {
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ is_active: 1 }] }),
+            first: vi.fn().mockResolvedValue({ is_active: 1 }),
+            run: vi.fn().mockResolvedValue({}),
+          };
+        }
+        return {
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockResolvedValue({ results: [] }),
+          first: vi.fn().mockResolvedValue(null),
+          run: vi.fn().mockResolvedValue({}),
+        };
+      }),
     },
     JWT_SECRET: SECRET,
     ENVIRONMENT: 'test',
@@ -434,7 +450,13 @@ describe('broadcastNewBooking (orders.js hook)', () => {
       guest_email: 'john@test.com', guest_phone: '12345',
       check_in_date: '2030-08-01', check_out_date: '2030-08-05',
     });
-    const res = await handleOrdersRoute(req, { DB: db, BROADCASTER: broadcaster }, 't1');
+    const reqUrl = new URL(req.url);
+    const bodyStr = JSON.stringify(await req.json());
+    const res = await ordersApp.request(reqUrl.pathname + reqUrl.search, {
+      method: req.method,
+      headers: req.headers,
+      ...(bodyStr ? { body: bodyStr } : {}),
+    }, { DB: db, BROADCASTER: broadcaster });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);

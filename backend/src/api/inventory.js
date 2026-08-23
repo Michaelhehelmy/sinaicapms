@@ -1,19 +1,33 @@
+import { Hono } from 'hono';
 import { jsonResponse, errorResponse } from '../utils/response';
 import { parsePagination } from '../utils/pagination';
+import { getScope } from '../middleware/resolveScope.js';
 
-export async function handleInventoryRoute(request, env, tenantId) {
-  const url = new URL(request.url);
-  const method = request.method;
-  const path = url.pathname.split('/').filter(Boolean);
+/**
+ * Inventory sub-router (Phase 4 T1).
+ *
+ * Mounted by index.js as:
+ *   app.use('/api/inventory', resolveScope());
+ *   app.use('/api/inventory/*', resolveScope());
+ *   app.route('/api/inventory', inventoryRoutes);
+ *
+ * Byte-compat with the former dispatcher: non-GET → 405 'Method not allowed'
+ * (checked before path matching); anything but exactly /low-stock →
+ * 404 'Endpoint not found'.
+ */
+const inventoryRoutes = new Hono();
 
-  if (method !== 'GET') {
+// Legacy fallthrough guard: method check ran before path parsing.
+inventoryRoutes.use('*', async (c, next) => {
+  if (c.req.method !== 'GET') {
     return errorResponse('Method not allowed', 405);
   }
+  await next();
+});
 
-  if (path[1] !== 'inventory' || path[2] !== 'low-stock' || path.length > 3) {
-    return errorResponse('Endpoint not found', 404);
-  }
-
+inventoryRoutes.get('/low-stock', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
   try {
     // Resolve the caller's organization via tenant_org_mapping (migration 0041).
     // No mapping row => the tenant has no POS org yet: return an empty page.
@@ -22,11 +36,12 @@ export async function handleInventoryRoute(request, env, tenantId) {
     ).bind(tenantId).all();
 
     if (!orgRows.length) {
-      return jsonResponse({ items: [], total: 0, page: 1, pageSize: 50, hasMore: false });
+      // Phase 3: `data` mirrors `items` (paginated-envelope convergence).
+      return jsonResponse({ data: [], items: [], total: 0, page: 1, pageSize: 50, hasMore: false });
     }
 
     const organizationId = orgRows[0].organization_id;
-    const { page, pageSize, offset } = parsePagination(url);
+    const { page, pageSize, offset } = parsePagination(new URL(c.req.url));
 
     const { results: countRows } = await env.DB.prepare(
       `SELECT COUNT(*) AS count
@@ -39,10 +54,12 @@ export async function handleInventoryRoute(request, env, tenantId) {
 
     const total = countRows[0]?.count ?? 0;
 
+    // `pos_categories` was dropped by migration 0057 (zero rows, display-only join).
+    // `category` stays in the payload as null — wire-compatible with InventoryItem
+    // (`category: string | null`) and renders as "—" in LowStockPanel.
     const { results: rows } = await env.DB.prepare(
-      `SELECT p.id, p.name, p.stock_quantity, p.min_stock_level, p.unit, pc.name AS category
+      `SELECT p.id, p.name, p.stock_quantity, p.min_stock_level, p.unit
        FROM pos_products p
-       LEFT JOIN pos_categories pc ON pc.id = p.category_id
        WHERE p.organization_id = ?
          AND p.deleted_at IS NULL
          AND p.is_active = 1
@@ -57,11 +74,13 @@ export async function handleInventoryRoute(request, env, tenantId) {
       stockQuantity: r.stock_quantity,
       minStockLevel: r.min_stock_level,
       unit: r.unit ?? null,
-      category: r.category ?? null,
+      category: null,
       status: r.stock_quantity <= 0 ? 'out' : 'low',
     }));
 
     return jsonResponse({
+      // Phase 3: `data` mirrors `items` — consumers converge on the envelope key.
+      data: items,
       items,
       total,
       page,
@@ -71,4 +90,9 @@ export async function handleInventoryRoute(request, env, tenantId) {
   } catch (e) {
     return errorResponse('Failed to load low-stock inventory', 500);
   }
-}
+});
+
+// Legacy fallthrough: every other inventory path keeps the dispatcher message.
+inventoryRoutes.all('*', () => errorResponse('Endpoint not found', 404));
+
+export default inventoryRoutes;

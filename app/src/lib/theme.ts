@@ -101,6 +101,17 @@ export function hexToRgb(hex: string): RgbColor {
   };
 }
 
+/**
+ * Hydration-safe `rgba()` string for alpha tints in React inline styles.
+ * NEVER append alpha to a hex token (`${hex}08`) in island markup — 8-digit
+ * hex is normalized by the browser but not by React's server renderer,
+ * causing hydration mismatches (logbook 2026-08-03). `alpha` is 0–1.
+ */
+export function hexToRgba(hex: string, alpha: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 /** WCAG 2.x relative luminance of an sRGB color (0 = black, 1 = white). */
 export function luminance(rgb: RgbColor): number {
   const channel = (value: number): number => {

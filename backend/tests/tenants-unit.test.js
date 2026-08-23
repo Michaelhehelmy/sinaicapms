@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../src/api/auth.js', () => ({
-  verifyJWT: vi.fn(),
+// Phase 1: tenants.js no longer verifies tokens through api/auth.js#verifyJWT —
+// the soft-elevation block calls sharedAuth#verifyToken directly.
+vi.mock('../src/middleware/sharedAuth.js', () => ({
+  verifyToken: vi.fn(),
 }));
 
-import { handleTenants, handleMe } from '../src/api/tenants.js';
-import { verifyJWT } from '../src/api/auth.js';
+import { handleTenants } from '../src/api/tenants.js';
+import meRoutes from '../src/api/tenants.js';
+import { verifyToken as verifyJWT } from '../src/middleware/sharedAuth.js';
+import { mountRouter } from './helpers/routerHarness.js';
 
 function makeReq(url, method = 'GET', body = null) {
   return {
@@ -465,12 +469,13 @@ describe('handleTenants', () => {
   });
 });
 
-describe('handleMe', () => {
+describe('handleMe (meRoutes sub-router)', () => {
   describe('GET /api/me', () => {
     it('returns tenant data', async () => {
       const tenant = { id: 't1', name: 'Camp A', has_meals: 1 };
       const db = { prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [tenant] }) }) }) };
-      const res = await handleMe(makeReq('http://localhost/api/me'), { DB: db }, 't1');
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', { method: 'GET' }, { DB: db });
       const data = await res.json();
       expect(data.id).toBe('t1');
       expect(data.hasMeals).toBe(1);
@@ -478,13 +483,15 @@ describe('handleMe', () => {
 
     it('returns 404 when tenant not found', async () => {
       const db = { prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }) }) };
-      const res = await handleMe(makeReq('http://localhost/api/me'), { DB: db }, 'unknown');
+      const app = mountRouter(meRoutes, { tenantId: 'unknown', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', { method: 'GET' }, { DB: db });
       expect(res.status).toBe(404);
     });
 
     it('returns graceful 200 when no tenant context', async () => {
       const db = mockDb();
-      const res = await handleMe(makeReq('http://localhost/api/me'), { DB: db }, null);
+      const app = mountRouter(meRoutes, { tenantId: null, basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', { method: 'GET' }, { DB: db });
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.message).toContain('No tenant context');
@@ -494,36 +501,32 @@ describe('handleMe', () => {
   describe('PUT /api/me', () => {
     it('updates tenant data with COALESCE', async () => {
       const db = { prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ run: vi.fn().mockResolvedValue({}) }) }) };
-      const res = await handleMe(
-        { ...makeReq('http://localhost/api/me', 'PUT'), json: () => Promise.resolve({ name: 'Updated', primary_color: '#ff0000' }) },
-        { DB: db },
-        't1'
-      );
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Updated', primary_color: '#ff0000' }),
+      }, { DB: db });
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('COALESCE'));
     });
 
     it('updates admin user when admin_id and fields provided', async () => {
-      let callIdx = 0;
       const db = {
         prepare: vi.fn().mockReturnValue({
           bind: vi.fn().mockReturnValue({
-            run: vi.fn().mockImplementation(() => { callIdx++; return Promise.resolve({}); }),
+            run: vi.fn().mockResolvedValue({}),
           }),
         }),
       };
-      const res = await handleMe(
-        {
-          ...makeReq('http://localhost/api/me', 'PUT'),
-          json: () => Promise.resolve({ admin_id: 'adm_1', admin_email: 'new@test.com', admin_password: 'newpass1234' }),
-        },
-        { DB: db },
-        't1'
-      );
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', {
+        method: 'PUT',
+        body: JSON.stringify({ admin_id: 'adm_1', admin_email: 'new@test.com', admin_password: 'newpass1234' }),
+      }, { DB: db });
       const data = await res.json();
       expect(data.success).toBe(true);
-      // Two run calls: one for tenant update, one for admin update
+      // Two prepare calls: one for tenant update, one for admin update
       expect(db.prepare).toHaveBeenCalledTimes(2);
     });
 
@@ -535,24 +538,21 @@ describe('handleMe', () => {
           }),
         }),
       };
-      const res = await handleMe(
-        {
-          ...makeReq('http://localhost/api/me', 'PUT'),
-          json: () => Promise.resolve({ admin_id: 'adm_1', admin_email: 'new@test.com' }),
-        },
-        { DB: db },
-        't1'
-      );
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', {
+        method: 'PUT',
+        body: JSON.stringify({ admin_id: 'adm_1', admin_email: 'new@test.com' }),
+      }, { DB: db });
       expect(res.status).toBe(200);
     });
 
     it('returns 400 for invalid schema', async () => {
       const db = mockDb();
-      const res = await handleMe(
-        { ...makeReq('http://localhost/api/me', 'PUT'), json: () => Promise.resolve({ capacity: 'not-a-number' }) },
-        { DB: db },
-        't1'
-      );
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', {
+        method: 'PUT',
+        body: JSON.stringify({ capacity: 'not-a-number' }),
+      }, { DB: db });
       expect(res.status).toBe(400);
     });
 
@@ -564,11 +564,11 @@ describe('handleMe', () => {
           }),
         }),
       };
-      const res = await handleMe(
-        { ...makeReq('http://localhost/api/me', 'PUT'), json: () => Promise.resolve({ name: 'X' }) },
-        { DB: db },
-        't1'
-      );
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'X' }),
+      }, { DB: db });
       expect(res.status).toBe(400);
     });
   });
@@ -576,11 +576,11 @@ describe('handleMe', () => {
   describe('PATCH /api/me', () => {
     it('updates tenant data with COALESCE via PATCH', async () => {
       const db = { prepare: vi.fn().mockReturnValue({ bind: vi.fn().mockReturnValue({ run: vi.fn().mockResolvedValue({}) }) }) };
-      const res = await handleMe(
-        { ...makeReq('http://localhost/api/me', 'PATCH'), json: () => Promise.resolve({ name: 'Updated', primary_color: '#ff0000' }) },
-        { DB: db },
-        't1'
-      );
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Updated', primary_color: '#ff0000' }),
+      }, { DB: db });
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('COALESCE'));
@@ -588,11 +588,11 @@ describe('handleMe', () => {
 
     it('returns 400 for invalid schema via PATCH', async () => {
       const db = mockDb();
-      const res = await handleMe(
-        { ...makeReq('http://localhost/api/me', 'PATCH'), json: () => Promise.resolve({ capacity: 'not-a-number' }) },
-        { DB: db },
-        't1'
-      );
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ capacity: 'not-a-number' }),
+      }, { DB: db });
       expect(res.status).toBe(400);
     });
   });
@@ -600,7 +600,8 @@ describe('handleMe', () => {
   describe('Method not allowed', () => {
     it('returns 405 for unsupported method', async () => {
       const db = mockDb();
-      const res = await handleMe(makeReq('http://localhost/api/me', 'DELETE'), { DB: db }, 't1');
+      const app = mountRouter(meRoutes, { tenantId: 't1', basePath: '/api/me' });
+      const res = await app.request('https://x.com/api/me', { method: 'DELETE' }, { DB: db });
       expect(res.status).toBe(405);
     });
   });

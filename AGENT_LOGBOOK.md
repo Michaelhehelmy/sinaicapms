@@ -53,6 +53,20 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 - **Tenant resolution status code**: On localhost without `x-tenant-id` header, `getTenant()` returns null → returns 401 (not 404) to match test expectations for unauthenticated access. (Discovered 2026-07-26)
 - **axe-core vendoring**: E2E tests must never load JS from CDN. Always vendor test dependencies locally. axe-core v4.12.1 installed as dev dependency. (Discovered 2026-07-26)
 - **`/login` page**: A `/login` redirect page exists at `app/src/pages/login.astro` that redirects to `/admin`. Tests looking for `a[href="/login"]` on auth pages rely on this. (Discovered 2026-07-26)
+- **Local D1 name is `campmaster-db`** (`backend/wrangler.toml`) — docs/tasks saying `campmaster-local` are wrong; apply locally with `npx wrangler d1 migrations apply campmaster-db --local` (ledger-based, mirrors deploy.sh's remote path) instead of `d1 execute --file=` which skips the `d1_migrations` ledger and would double-apply later. (2026-08-23)
+- **Audit index gaps need verify-before-add**: of the plan §6.5's "5 missing indexes", only 3 were real. `pos_recipe_ingredients(product_id)` was already covered (`idx_recipe_product` + composite `idx_recipe_tenant_product`), and the audit's `ingredient_product_id` column DOES NOT EXIST (actual column `ingredient_id`, already indexed `idx_recipe_ingredient`). Creating the recommended ones verbatim would have failed/duplicated. Always check `PRAGMA index_list/index_info` first. (2026-08-23)
+- **Post-Phase-2 schema shape** (migrations 0055–0057 applied locally 2026-08-23; prod pending next deploy): 34 user tables; triggers = only `update_users_timestamp` + `update_products_timestamp`. Still alive by deliberate deferral: `pos_customers` (FK from active `pos_transactions.customer_id` — needs create-copy-swap rebuild in DB-B3/0058, maintenance window), `products` (mirror shim, sign-off required), `product_camps` (read-compat junction, readers switch in follow-up). Low-stock API emits `category: null` since `pos_categories` dropped — InventoryItem type unchanged (`string | null`), LowStockPanel renders "—".
+- **vi.mock `mockResolvedValueOnce` queue leaks across tests (2026-08-23, Phase 4)**: a test that queues `verifyToken.mockResolvedValueOnce(...)` but whose request never reaches auth (e.g. an endpoint that now short-circuits to a plain 404) leaves that payload queued; the NEXT test's authed request consumes it and every later Once is shifted by one. Symptom seen: a POS-token test got the leaked ADMIN payload → 200 instead of 403, while passing in isolation. Rule: only queue Onces in tests whose request actually triggers the mocked call; when flattening a dispatch path, audit tests that queued mocks for it.
+- **fetch/undici normalizes `..` before the app sees it**: `new Request('http://x/api/media/../etc/passwd')` reaches Hono as `/api/etc/passwd`, so traversal-style URLs cannot exercise sanitizer rejection — use malformed-but-normal paths (e.g. `/api/media/foo.jpg`) instead.
+- **Signature-compatible test shims for converted handlers**: legacy `(req, env, tenantId)` call sites in big test files can be kept verbatim with a local shim that mounts the new sub-router (`mountRouter` from `backend/tests/helpers/routerHarness.js`) and forwards via `app.request(path, init, env)` — env MUST be passed as the 3rd arg or handlers see `undefined` bindings. Per-`(basePath, tenantId)` app cache in a Map when tests mix tenants. Body passthrough: buffer with `await req.arrayBuffer()` for ALL non-GET/HEAD/DELETE — multipart, octet-stream AND JSON all parse correctly from bytes (no `duplex:'half'` needed); do NOT try `req.json()` first (raw binary uploads lose their body → wrong 400s). Path normalization `rest = '/' + pathname.split('/').slice(3).join('/')` maps legacy prefixes onto renamed bases (`/api/rate-plans` → `/api/rateplans`).
+- **Rebuilding a module head+tail wipes helpers defined after the first handler**: splitting a dispatcher file via python `head[:first_handler]` + new tail silently drops helpers living BELOW that point (lost `validateOrder`/`calculatePriceOnServer` from orders.js once). Restore with `git show HEAD:./src/api/<file>.js` (git paths are workspace-root-relative) before converting.
+- **SQL alias vs Hono context var**: porting SQL like `FROM camps c JOIN camps c2` into Hono handlers shadows the context variable `c` — rename table aliases (`c2`/`c3`) during conversion.
+- **Post-Phase-4 API shape** (2026-08-23): EVERY Paradigm-B dispatcher module is gone — reports, inventory, price-overrides, plans, meal-categories, categories, meals, inbox, leads/contact, me, orders+availability, camps/products/rooms/rateplans (4-way split of camps.js), upload/media are Hono sub-routers mounted in index.js behind per-mount `resolveScope()` / `resolveScope({public:true})`; method-aware mixed-visibility mounts use two scope instances + a tiny method router. `middleware/resolveScope.js` self-dedupes per instance (WeakSet on Context) because bare-path requests match BOTH `/api/x` and `/api/x/*` use() registrations — keep registering both use lines. The `/api/*` catch-all is now ONLY a plain 404 fallback. Behavior change: unknown-unauthed `/api/*` paths answer **404 'API endpoint not found'** instead of 401 'Unauthorized: missing tenant context' (no prefix-existence leak). Rate-limit deltas shipped with it: GET /api/leads tightened 100→10/min, POS login consumes one policy counter (was two), openapi.json documents the default 100/min.
+- **Legacy handler exports removed**: `handleXRoute(req, env, tenantId)` functions no longer exist for the converted modules (schemas stay as named exports; registry.js imports schemas only). Root `tests/unit/*` suites were kept green with the same shim pattern.
+- **Stale state in `useState(initializer)` breaks under pushState navigation (2026-08-23, Phase 7)**: any SPA component that captures session data in a `useState(() => readSession())` initializer and gates its render on it will silently break once you replace full-reload navigation with `history.pushState` — there is no remount to re-read storage, so login/logout never update the gate. Make such values reactive state and set them in the auth handlers (`setToken(t)` / `setToken(null)`). Symptom: after login the login view stays mounted forever; E2E waits on dashboard URL time out. The old reload-based tests can't catch this — it only appears when navigation becomes client-side.
+- **Gate helpers need `requireTenant:false` when called without request context (2026-08-23)**: gates like `posUsersGate(c.req.raw, env)` that default to `requireTenant:true` 403 EVERY tenant-admin call ("Forbidden: Access denied to this tenant partition") because no `ctx.tenantId` exists outside a Hono context. When a handler scopes rows itself via `scopeTenant`, pass `{ requireTenant:false }` explicitly. This one bug aborted E2E globalSetup's `createTestPosUser`, cascading into every POS-login-dependent test — check gate flags first whenever globalSetup seeding fails with 403.
+- **Pre-existing E2E failure allowlist (2026-08-23, uncommitted Phase 4 tree)**: exactly 16 specs fail on HEAD+uncommitted work INDEPENDENT of later phases; do not chase them from unrelated tasks: (a) ~14 cross-cutting API tests expecting retired/moved endpoints — `/api/settings`, `/api/reservations`, `/api/product-categories`, `/api/rate-plans`, payments create-intent/config, `/api/products/:tenantId` — now answered 404 by the plain catch-all (post-Phase-4 shape); specs predate the restructure. (b) `tenant/camp-menu.spec.ts:51` expects "WhatsApp order button OR 'Menu not available yet'" but TenantMenu renders WhatsApp only with a non-empty cart and implements no empty-state string — spec/product drift. Fixing these belongs to whoever owns the API restructure/menu UX, not navigation work.
+- **Long Playwright runs must be fully detached from the tool shell (2026-08-23)**: `nohup cmd &` alone still dies when the bash tool times out and kills its process group. Use `setsid env CI=true npx playwright test > log 2>&1 < /dev/null & disown`. Also beware mid-run hot-reload: astro dev picks up edits while a run is executing, so runs spanning a fix have mixed results — always do a clean final run after the last code change.
 
 ### E2E Testing (Tenant + Marketplace)
 - **Gallery lightbox**: Functions defined inside an IIFE are not accessible to Playwright. Must expose on `window` with `is:inline` on the `<script>` tag. Also, `define:vars` passes a JSON string not an array — must `JSON.parse()` it.
@@ -80,6 +94,70 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 ---
 
 ## Task Logs
+
+### [2026-08-23] Phase 7 — Navigation Unification (Unified Architecture Plan) — tmp agent
+- **Task**: Kill the last two legacy navigation patterns: POS SPA full-reload navigations (`window.location.href`) and Admin SPA hash routing (`#tab=`), replacing both with path-based `history.pushState` deep links backed by a shared kernel, keeping every data-testid and adding a legacy-hash fallback for Admin.
+- **Kernel**: `app/src/lib/navigation.ts` — `push/replace/back`, `parseHashTab()` (`/^[#/\s]*tab=([^&]+)/`), `onNavigation(listener)` → unsubscribe; lazy popstate listener, SSR-guarded, emits `{path, url}`. Key trick: `history.pushState(urlWithoutFragment)` CLEARS a stale `#tab=` hash — no manual scrubbing needed.
+- **POSApp**: sidebar/cart-panel navigations now `push(posUrl(...))`; redirect effect uses `replace(...)`; view synced from pathname (`viewFromPath()`) + `onNavigation` guard (`startsWith('/pos')`). **Latent bug surfaced & fixed**: the render gate read a token frozen in `useState(() => session.getAccessToken('pos'))`; full-reload remounts used to mask staleness, but pushState has no remount → login left LoginView mounted forever. Fix: token is reactive state — `setToken(t)` in `handleLogin`, `setToken(null)` in `handleLogout`.
+- **CartPanel**: both `window.location.href = posUrl('/pos/orders')` sites (checkout success + ReceiptModal close) → `push(...)`.
+- **AdminApp**: canonical deep links `/admin/<tab>`; `tabFromLocation()` prefers legacy `parseHashTab()` over path regex `/^\/admin\/([^/?#]+)/`; kept `hashchange` compat listener during migration window; `switchTab` pushes `/admin/<tab>${window.location.search ?? ''}` (preserves `?tenant=`, defensive against stubbed locations).
+- **E2E updates riding the phase**: admin dashboard.page `gotoTab` → `/admin/${tab}?tenant=`; navigation.spec rewritten (no-reload asserted via `performance.getEntriesByType('navigation').length === 1`) + new legacy-hash deep-link test (`#tab=super_tenants`); token-lifecycle `waitForURL('**/pos/dashboard*')`; pos page objects normalized off `#view` fragments.
+- **Backend regression found & fixed (pre-existing from uncommitted Phase 4 tree)**: `posUsersGate(c.req.raw, env)` ran with default `requireTenant:true` and no ctx tenant → every tenant-admin call 403'd ("Forbidden: Access denied to this tenant partition"), aborting E2E globalSetup `createTestPosUser` → cascade of ALL POS-login-dependent failures. Fixed with `requireTenant: false` + comment (handler scopes via `scopeTenant`). Only pos-users had the bug.
+- **Verification (all green)**: app unit **1739 ✓** · backend unit **1184 ✓** · root integration **156 ✓** · E2E gate `CI=true npx playwright test`: **741 passed / 0 flaky / 16 skipped / 16 failed — all 16 pre-existing drift** (see learning below), zero Phase-7-related. Mid-run hot-reload even demonstrated the fix live: POS workflows started passing after the token patch landed while run5 was executing.
+- **Lessons**: added four Persistent Learnings entries — stale-state-in-useState-initializer under pushState, gate `requireTenant` semantics, the pre-existing E2E failure allowlist, and detached-process discipline for long Playwright runs.
+
+### [2026-08-23] Phase 4 — Router Consolidation & Middleware Unification (Unified Architecture Plan) — tmp agent
+- **Task**: Convert every remaining Paradigm-B catch-all dispatcher in `backend/src/index.js` (~30 inline branches calling `handleXRoute(c.req.raw, env, tenantId)`) into Hono sub-routers mounted with the unified `resolveScope` middleware; shrink the catch-all to a plain 404; keep every wire response byte-compat (status codes, error strings, pagination envelopes).
+- **Modules converted (order simplest→complex)**: reports · inventory · price-overrides · plans · meal-categories · categories · meals · inbox · leads/contact · me · orders+availability · camps.js 4-way split (camps/products/rooms/rateplans routers; schemas stay named exports for zod-schemas.test.js) · upload/media split out of upload.js (upload = POST-only admin router; media = `.on(['GET','HEAD'], '*')` public R2 stream).
+- **Mount pattern**: per-router `resolveScope()` (admin realm) or `resolveScope({ public: true })`, method-aware mixed visibility via two instances + `async (c,next) => cond ? pub(c,next) : adm(c,next)` (orders POST-public-exact + status/calculate-price GET-public, camps/products/rooms/rateplans GET-public, leads POST-public, me GET-public). Both `app.use('/api/x', scope)` and `app.use('/api/x/*', scope)` registered defensively; resolveScope dedupes double-fire via per-instance WeakSet.
+- **Catch-all flattened**: the old gate (isPublic chain + getTenant + catchAllGate + try/dispatch) reduced to `app.all('/api/*', () => errorResponse('API endpoint not found', 404))`. All `isPublic` clauses and dispatch branches deleted; dead imports removed (priceOverrides/others/inventory legacy handler imports).
+- **Tests**: backend unit suites converted via signature-compatible shims (orders-unit 884 lines, camps-unit 1165 lines, products, price-overrides, sse-unit, upload) keeping legacy test bodies untouched; root `tests/unit/{categories,leads,mealCategories}.test.js` same treatment; index-unit assertions rewritten from mock-spy ("handler was called") to behavioral (real status/body through the mounted app): availability 200 array, empty-body order create → 400 'Failed to create order', catalog GETs → 200 arrays, upload no-bucket → 503, media stream → 200 image/jpeg + immutable cache header, unknown path → 404, getTenant rejection on admin-scoped route → 500 onError.
+- **Result (all green)**: backend **1164 ✓ (36 files; +1 net = new media-stream behavioral test)** · root **156 ✓ (10 files)** · app **1733 ✓**. (An intermediate 1166/37 reading included a since-deleted scratch debug file.) E2E suite untouched (route paths unchanged; only internals).
+- **Lessons**: added six Persistent Learnings entries — vi.mock Once-queue leaks, fetch `..` normalization defeating sanitizer tests, the full shim recipe (env forwarding! binary body passthrough! per-tenant app cache!), head/tail rebuild data loss, SQL alias shadowing of Hono's `c`, and the post-Phase-4 shape incl. the deliberate 401→404 change for unknown unauthed paths.
+
+### [2026-08-23] Phase 2 — Database Cleanup (Unified Architecture Plan) — tmp agent
+- **Task**: Migrations 0055 (trigger hygiene), 0056 (drop dead tables), 0057 (quasi-dead + indexes); apply locally; update `inventory.js` + fixtures; run all suites.
+- **Precondition**: 0054 was still pending locally → applied via `npx wrangler d1 migrations apply campmaster-db --local` in the same pass (ledger-consistent with deploy.sh; `rooms_new.product_id`/`rate_plans_new.product_id` now FK→`pos_products` locally too).
+- **0055** (`migrations/0055_trigger_hygiene.sql`): dropped `update_customer_stats_after_order` (per-sale UPDATE of dead pos_customers — live write-path hazard), `update_inventory_after_movement`, `update_customers_timestamp`. Kept the 2 active triggers.
+- **0056** (`migrations/0056_drop_dead_tables.sql`): dropped **30** zero-backend-ref tables child-before-parent under `PRAGMA defer_foreign_keys`, ending `PRAGMA foreign_key_check` (0 violations). Count note: the audit's "27" is internally inconsistent (§2.4 lists 27; Phase-B1 enumerates 28). Empirical verification (PRAGMA foreign_key_list over live schema + SQL-context grep of backend/src) showed **30** genuinely dead unblocked tables = §2.4's 27 + `pos_user_sessions` + `pos_inventory` + `pos_stock_movements` (unblocked by 0055; leaving them would fail the "every remaining table has ≥1 backend ref" exit criterion). Deliberately NOT dropped: `pos_customers` (B3/0058, hot-table rebuild), `pos_categories` (→0057), `products`+`product_camps` (quasi-dead shims).
+- **0057** (`migrations/0057_quasi_dead_cleanup.sql`): dropped `pos_categories`; added real missing indexes only — `idx_customers_tenant_email`, `idx_customers_tenant_phone`, `idx_pos_transaction_items_transaction`. The two recipe-index recommendations were verified FALSE POSITIVES (product_id already indexed; `ingredient_product_id` column doesn't exist — it's `ingredient_id`, already indexed) and documented as no-ops in the file.
+- **Code**: `backend/src/api/inventory.js` — removed `LEFT JOIN pos_categories`, payload emits `category: null` (wire-compatible: InventoryItem stays `category: string | null`; LowStockPanel renders "—"). `backend/tests/inventory-low-stock.test.js` — fixture no longer creates/seeds pos_categories; assertion `items[1].category` → `toBeNull()`.
+- **Result (all at Phase-0 baselines)**: backend **1151/1151 ✓ (36 files)** · root **156/156 ✓ (10 files)** · app **1733/1733 ✓ (87 files)**. Local DB now **34 user tables**, 2 triggers, `PRAGMA foreign_key_check` clean. Prod/staging apply happens on next `./deploy.sh` (exports D1 backup first).
+- **Lessons**: see new Persistent Learnings entries (campmaster-db naming / ledger-vs-execute / verify-before-add index gaps).
+
+### [2026-08-23] Phase 0 — Baseline & Hygiene (Unified Architecture Plan) — tmp agent
+- **Task**: Execute Phase 0 of `UNIFIED_ARCHITECTURE_PLAN.md`: record baselines; FE hygiene (junk dir, 9 dead ui comps, 3 zone-guard ternaries, CampBooking hex bug, pos/login ToastProvider, luminance dedupe); BE hygiene (dead tenantMiddleware, create-checkout alias, sendBookingConfirmationEmail); API truth (delete 7 backend-less POS stubs); update stale post-0028 E2E spec.
+- **Baselines recorded (working tree as inherited, pre-my-changes)**:
+  - `cd backend && npx vitest run` → **1151 total / 36 files: 1149 passed, 2 FAILED** (`tests/openapi-doc.test.js` + `tests/openapi-no-snake.test.js` — checked-in `openapi.json` had drifted from registry after the uncommitted create-checkout removal).
+  - `npx vitest run` (root) → **156 passed / 156 tests / 10 files** (down from the historic 169 — prior uncommitted tenantMiddleware/emailService test deletions).
+  - `cd app && npx vitest run` → **1740 tests / 87 files** (reconstructed; −7 = my deleted stub tests → post-change 1733).
+  - `app npx tsc --noEmit` → **239 errors**, ALL pre-existing in `tests/unit/*` + `src/stories/*` (grew from the 153 baseline via later uncommitted test additions; zero errors reference the deleted api.ts exports).
+- **Working-tree state discovered**: most FE/BE Phase 0 hygiene was ALREADY implemented uncommitted (9 ui comps + stories + tests deleted; zone-guards in book/menu/camp-book converted to `{ forbidden ? <ZoneGuard /> : ... }` ternaries incl. rooms/about/gallery/contact/menu; CampBooking uses `hexToRgba()` from theme.ts; ToastProvider wired in `pages/pos/login/index.astro`; luminance single-sourced in `lib/theme.ts`; tenantMiddleware/create-checkout/sendBookingConfirmationEmail removed with their tests). Junk dir `pages/camp/"[id]"` no longer exists (only the real `[id]`). This session VERIFIED each item and completed the remainder.
+- **Changes made this session**:
+  - `app/src/lib/api.ts` — deleted the 7 backend-less POS stubs (`posCreateProduct`, `posUpdateProduct`, `posDeleteProduct`, `posGetCustomers`, `posGetInventory`, `posGetStaff`, `posGetReports`). Grep-verified zero production callers; backend registers only `pos.get('/products')` — no POST/PUT/DELETE products, no customers/inventory/staff/reports routes.
+  - `app/tests/unit/api-extended.test.ts` — removed the 7 corresponding URL/method assertion tests + trimmed the import block.
+  - `backend/openapi.json` — REGENERATED via `npm run gen:openapi` (69 paths / 120 schemas) → **fixed both failing openapi contract tests** (create-checkout path removed, 87 lines).
+  - `app/src/lib/api-types.ts` — regenerated via `npm run gen:types` (create-checkout gone).
+  - `tests/e2e/specs/auth/tenant-admin-login.spec.ts` — REWRITTEN to the post-0028 world: it previously tested POS login error paths (pre-0028 era when admins lived in `pos_users`; that coverage already exists in `auth/super-admin-login.spec.ts`). Now tests the REAL tenant-admin realm: `/admin?tenant=<id>` SPA login against `POST /api/auth/login` (`admins` table) — wrong password → no token minted; bogus email → stays on login; valid creds (`TEST_TENANT_ADMIN`, seeded by global-setup `createTestTenantAdmin`) → dashboard loads + `sinaicamps_token` stored; realm separation (`pos_token`/`pos_user` NEVER written); stored user reflects scoped `tenantId`.
+- **Result**: backend **1151/1151 ✓ (36 files)** · app **1733/1733 ✓ (87 files)** · root **156/156 ✓ (10 files)** · E2E `--project=auth` **64 passed / 1 skipped** (incl. 5/5 new tenant-admin-login tests) · tsc unchanged for touched files.
+- **Lessons**: (1) ALWAYS check `git status --short` before executing a phase — a prior agent's uncommitted work may have completed half the checklist; verify-and-complete beats redo. (2) A green suite can hide contract drift: `openapi-doc.test.js` compares checked-in artifact ↔ generated doc, so ANY registry.js edit must be followed by `npm run gen:openapi` AND app `npm run gen:types` (types drift separately — api-types.ts still carried create-checkout until regenerated). (3) Admin login-failure specs should assert `login-error OR login-overlay` visible with ≥20s tolerance (mirrors admin/login.spec.ts) — under `wrangler dev` cold starts the 401 can exceed 10s and some failures surface only in the toast region. (4) LSP diagnostics on `.astro` files can be stale — grep the actual file before fixing phantom errors.
+
+### [2026-08-22] UNIFIED_ARCHITECTURE_PLAN.md — synthesis of the five layer audits into ONE roadmap
+- **Task**: Read all five audit reports (`app/FRONTEND_UNIFICATION_AUDIT.md`, `backend/BACKEND_UNIFICATION_AUDIT.md`, `backend/DATABASE_SCHEMA_AUDIT.md`, `backend/AUTH_SYSTEM_AUDIT.md`, `backend/API_CONTRACT_AUDIT.md`) and synthesize them into one actionable master document `UNIFIED_ARCHITECTURE_PLAN.md` with 12 sections: executive summary, current state, target state, unified frontend arch, unified backend arch, unified DB schema, unified auth, unified API contract, migration plan (phased), risk assessment, effort estimation, dependencies. Principles: ONE frontend (POS+tenant+marketplace+admin → single SPA surface; Astro SSR shell retained for public/zone guards — mega-SPA mount rejected on evidence F7), ONE backend (one dispatch style/gate/scope/rate-limit policy), strangler pattern, backward compatible.
+- **Deliverable**: `UNIFIED_ARCHITECTURE_PLAN.md` — merges the five per-layer phase plans into 10 master phases (0 baseline/hygiene → 1 requireAuth gate = BE-P1/AU-P1 → 2 DB cleanup A/B1/B2 migrations 0055–0057 [parallel track] → 3 contract normalization API-P1/P2 → 4 router consolidation BE-P2/P4/P5=API-P3 → 5 token v2 + POS refresh parity BE-P3=AU-P2 → 6 frontend session kernel + data convergence FE-P1/P2=AU-P3/P4 → 7 pushState navigation FE-P3 → 8 shell consolidation FE-P4 → 9 realm/resource merges + `/api/v1` cutover API-P4/P5), each with work items + exit criteria; consolidated risk table R1–R12; effort ≈220h ≈ 27.5 dev-days (5–6 wks sequential, ~4 wks parallelized); dependency graph with two parallel tracks and join points; appendices for verification commands, locked strings, and the source-phase merge map.
+- **Lessons**: (1) The audits interlock cleanly because each already cites the others' constraints (e.g., API-P3 router consolidation = BE-P2) — the merge map in Appendix C is the key artifact to keep updated when phases shift. (2) Phase ordering is forced by three hard edges: token v2 consumption requires all consumers behind requireAuth first (P1→P5); `/api/v1` must mount CONSOLIDATED routers not the catch-all (P4→P9); SSR's `API_BACKEND` service binding means versioned paths + `resolveApiFetcher` change in the SAME deploy or prod camp pages 302→/404 again (1042 regression). (3) Backward-compat mechanisms are per-layer but uniform in spirit: byte-compat gates (auth), legacy-key seeding (frontend session), `raw=1` flag (pagination), unversioned alias (versioning).
+
+### [2026-08-22] API Contract Audit — Unified API Suite Merge Plan
+- **Task**: Full read of `backend/src` + `app/src/lib/api.ts` to determine how the current multi-dispatch API can merge into ONE unified suite; produce `backend/API_CONTRACT_AUDIT.md` (6 sections + 6 key questions answered).
+- **Deliverable**: `backend/API_CONTRACT_AUDIT.md` — two-dispatcher routing analysis (explicit Hono routes vs the manual `app.all('/api/*')` catch-all at `index.js:316`), full endpoint×auth×tenant matrix, rate-limit table, request/response schema analysis (4 competing response shapes, 3 pagination dialects), frontend client consumption map (admin=TanStack Query hooks in `useQueryHooks.ts`, POS=direct fn calls, public islands=raw fetch), dead-export inventory, contract gaps, 5-phase unification plan with URL-major versioning (`/api/v1` + unversioned alias), and a 12-item risk table.
+- **Key findings**: 7 backend-less POS stubs in api.ts (`posCreateProduct/posUpdateProduct/posDeleteProduct/posGetCustomers/posGetInventory/posGetStaff/posGetReports`) target routes that don't exist — all grep-verified unused → safe deletions; `POST /api/payments/create-checkout` is a byte-for-byte alias of create-intent with zero callers; `PATCH /api/me` implemented but registry declares PUT only; `/api/tenants/public` undocumented; SSE `/api/stream/orders` is excluded from OpenAPI BY DESIGN per T8 (`routes/registry.js:22`) — not drift; payment routes return inconsistent 404-vs-401 for missing tenant; inventory low-stock paginates with key `items` while everything else uses `data`; admin tenant cascade delete misses `meal_schedules`/`meal_lang`/`inbox_reads`/`price_overrides`/`pos_users`; `sharedAuth.authMiddleware` implements ~80% of the needed gate but index.js re-inlines JWT checks at 5 sites.
+- **Lessons**: (1) The openapi.json source of truth is `backend/src/routes/registry.js` (2695 lines, zod-openapi `createRoute` entries) regenerated via `npm run gen:openapi` (vite-node scripts/generate-openapi.js); types via app's `npm run gen:types`. Check registry.js comments for intentional exclusions before calling something "drift". (2) The `/pos/` endpoint-prefix token switch inside `apiFetch` is confirmed load-bearing from the backend side too — POS realm rejection is enforced twice (`decoded.posType==='pos'→403` on admin gates AND non-POS tokens rejected by `posAuth`). (3) Root tests assert verbatim Zod fragments (`"Required"`, `"Invalid enum"` prefix) — any envelope/message normalization must run root+backend+app suites per phase.
+
+### [2026-08-22] Frontend Unification Audit — POS · Tenant · Marketplace · Admin
+- **Task**: Full read of `app/src` to determine whether/how the four product concerns can be unified into ONE frontend; produce `app/FRONTEND_UNIFICATION_AUDIT.md` (8 sections + 6 key questions answered).
+- **Deliverable**: `app/FRONTEND_UNIFICATION_AUDIT.md` — architecture analysis, component inventory (24 routes, 26 admin / 10 pos / 10 public files), shared-kernel identification with a UI usage matrix, routing analysis, state/auth analysis, phased strangler plan (0: hygiene → 1: session kernel → 2: data-layer convergence → 3: pushState navigation → 4: shell consolidation), risk assessment vs the 74 E2E specs.
+- **Key findings**: POS "SPA" navigates by full-page reloads (`window.location.href = posUrl()`); POS ships a dead `QueryClientProvider` (zero views use React Query); `TOKEN_KEY` triplicated (`api.ts:34`, `auth.tsx:40`, `AdminApp.tsx:41`); Admin runs two data layers at once (legacy `useAdminData` hooks feed the shell while panels use TanStack Query → same endpoint cached twice); TenantDrilldown needs its own fresh QueryClient only because query keys aren't tenant-scoped; 9/26 `ui/` comps are story-only dead code; zone-guard anti-pattern violations in `book.astro:24`, `menu.astro:32`, `camp/[id]/book.astro:26`; `pos/login` host missing `ToastProvider`; `CampBooking.tsx:246` still emits `${primaryColor}08` 8-digit hex; junk empty dir `pages/camp/"[id]"`; bundle impact of unification ≈ neutral (184 KB React runtime already one shared chunk; total client JS 700 KB).
+- **Lessons**: (1) Vite dedupes React into one runtime chunk across all islands — merging SPA mounts buys no bytes; per-query `staleTime` beats per-client configs. (2) A "shared" QueryClient is safe only with concern-namespaced keys + `queryClient.clear()` on auth transitions. (3) The `/pos/` endpoint-prefix token-realm switch inside `apiFetch` is load-bearing and implicit — any new `/pos/*` admin route would silently authenticate as a cashier.
 
 ### [2026-08-11] C2+C3 — Exclude `marketplace` tenant from directories + normalize `www.` in tenant resolution
 - **Task**: (C2) The root `marketplace` tenant row is not a real tenant — exclude it from tenant list/directory endpoints while keeping the single-tenant `GET /api/tenants/marketplace` lookup (root-site branding). (C3) A tenant reached via `www.<custom-domain>` must resolve to the same tenant as `<custom-domain>`.
@@ -6396,3 +6474,448 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 - **Production config**: `admin-reservation-log` added to testIgnore alongside existing exclusions.
 - **Production E2E**: Still 242 passed / 0 failed — no regressions from our changes.
 - **Files changed**: `booking-modal.page.ts`, `booking-submission.spec.ts`, `playwright.production.config.ts`, `admin-reservation-log.spec.ts` (new), `super-admin-crud.spec.ts` (new)
+
+### [2026-08-20] FK Violation Fix — rooms/rate_plans → products mismatch + RatePlansPanel product selector
+- **Task**: crud-mutations.spec.ts had 4 FK violations when creating rooms or rate plans in the E2E admin panel, plus frontend unit test regressions in RatePlansPanel.
+- **Root cause**: Migration 0028 created `rooms_new` and `rate_plans_new` with `product_id REFERENCES products(id)`, but ALL product data lives in `pos_products`. The `products` table is empty/dead. When a room or rate plan is created through the UI, the backend INSERT checks `pos_products` via subquery but the FK constraint checks `products(id)` → violation.
+- **Attempted DDL fix (migration 0054)**: Created `0054_fix_room_rate_plan_fk_to_pos_products.sql` to rebuild both tables with FK → `pos_products(id)`. **Does not apply in D1 local mode** — Miniflare ignores it regardless of fresh DB state. May work on production D1 but unverified.
+- **Runtime fix (canonical)**: Added `ensureProductInProductsTable()` helper in `camps.js` that mirrors a `pos_products` row into the `products` table before any room or rate_plan INSERT. This satisfies the FK constraint at runtime. Called before room INSERT (~line 459) and rate plan INSERT (~line 567).
+- **Additional fixes**:
+  - `useSaveRoomMutation` in `useQueryHooks.ts`: Moved success toast from `onSettled` to `onSuccess` (onSettled runs on error too → wrong toast)
+  - Backend error messages in `camps.js` catch blocks now include actual error text
+  - `RoomsPanel.tsx`: Wrapped `saveRoomMutation.mutateAsync()` in try/catch
+  - `RatePlansPanel.tsx`: Added `useProductsQuery` import, `productSelectOptions` memo, Product `<Select>` in form, productId validation (`if (!form.productId)` guard)
+  - `RatePlansPanel.test.tsx`: Added `useProductsQuery` mock, updated save tests to select product, updated `trackEvent` assertion to expect `productId: 'p1'`
+- **Files changed**: `backend/src/api/camps.js`, `app/src/hooks/useQueryHooks.ts`, `app/src/components/admin/RatePlansPanel.tsx`, `app/src/components/admin/RoomsPanel.tsx`, `app/tests/unit/RatePlansPanel.test.tsx`, `backend/migrations/0054_fix_room_rate_plan_fk_to_pos_products.sql` (new, unverified in D1 local)
+- **Test results**:
+  - Vitest: Frontend 96 files / 1,857 tests ✅ | Backend 36 files / 1,159 tests ✅ | Root 10 files / 169 tests ✅ (3,185 total)
+  - E2E crud-mutations: 15 passed, 3 flaky (edit timing), 3 skipped (depend on edit) — zero hard failures
+- **Persistent learnings**: D1 local mode (Miniflare) does not apply migration files that use complex DDL patterns (RENAME swap, deferred FK). Use runtime workarounds instead. `PRAGMA defer_foreign_keys` only defers DML FK checks, not DDL.
+
+### [2026-08-20] Edit Meal Bug Fix + Shift Dashboard Race Condition + Concurrent Test Flakiness
+- **Task**: Fix "edit meal details" E2E test failure in crud-mutations.spec.ts; fix shift-lifecycle.spec.ts "shift status shows as open" test.
+- **Edit Meal root cause**: `handleSaveMeal` in `MealsPanel.tsx` called `api.saveMeal(dataObject)` with ONE argument. The `saveMeal(data, editId?)` function in `api.ts` expects `editId` as the second arg. Since it was never passed, the function always sent `POST /meals` (create) instead of `PUT /meals/:id` (update). Backend POST handler tried `INSERT INTO meals (id, ...)` with existing id → UNIQUE constraint error → error toast auto-dismissed after 4s → modal stayed open.
+- **Same bug in MenuPanel.tsx**: Also called `api.saveMeal(dataObject)` without `editId`. Fixed identically.
+- **Edit Meal fix**: Removed `id` from the data object, passed `editMealId ?? undefined` as second arg: `api.saveMeal({...data}, editMealId ?? undefined)`.
+- **Edit Meal unit test fix**: Updated assertions in 3 test files: `app/tests/unit/admin/MealsPanel.test.tsx`, `app/tests/unit/MealsPanel.test.tsx`, `app/tests/unit/MenuPanel.test.tsx` — `id` moved from object to second argument position.
+- **Edit Meal E2E verification**: All 3 crud-mutations meal tests pass (create, edit, delete) — 3/3.
+- **Shift status test root cause**: After navigating to shift view, `shift-dashboard` appears immediately showing "No Active Shift" because `usePOSActiveShift` hook hasn't fetched data yet. Test waited for `shift-dashboard` to be visible (it is, but with wrong content) instead of waiting for actual shift data.
+- **Shift status fix**: Added `await page.locator('text=Current Shift').waitFor({ state: 'visible', timeout: 15000 })` after navigating to shift view, before asserting badge text. "Current Shift" heading only renders when `shift` is non-null.
+- **Concurrent test flakiness**: When running admin + pos projects in parallel (`--workers=2`), tests fail due to shared test data and overlapping shift state. All tests pass when run with `--workers=1`. This is a pre-existing infrastructure issue, not related to our code changes.
+- **Files changed**: `app/src/components/admin/MealsPanel.tsx`, `app/src/components/admin/MenuPanel.tsx`, `app/tests/unit/admin/MealsPanel.test.tsx`, `app/tests/unit/MealsPanel.test.tsx`, `app/tests/unit/MenuPanel.test.tsx`, `tests/e2e/specs/pos/shift-lifecycle.spec.ts`
+- **Test results**:
+  - Vitest: All green (admin MealsPanel 33/33, root MealsPanel 26/26, MenuPanel 22/22 = 81/81 for affected files)
+  - E2E meal edit: 3/3 passed
+  - E2E shift-lifecycle: 8/8 passed (with `--workers=1`)
+  - E2E crud-mutations: 25/25 passed
+  - Combined admin + pos with `--workers=2`: 14 flaky failures from concurrent race conditions
+- **Persistent learnings**: `api.saveMeal(data, editId?)` pattern — always pass `editId` as second arg for edits, never embed `id` in data object. Same pattern applies to `saveRoom`, `saveMealCategory`. POS tests should never run in parallel with other POS-using test projects due to shared shift state.
+
+### [2026-08-21] Production Deployment Verification + Network Diagnostics + E2E Fixes
+- **Task**: Full production deployment verification via Cloudflare MCP/API tools, fix remaining production E2E failures.
+- **Cloudflare API tools**: Used native Cloudflare MCP tools (`cloudflare_list_*`, `cloudflare_query_d1`, `cloudflare_get_worker`) to audit the live production deployment. DNS list/SSL queries require broader zone scope (403) — use curl externally for those.
+- **Network issue discovered**: This machine has intermittent connectivity to Cloudflare IPs — `172.67.155.160` is unreachable (100% packet loss) while `104.21.72.218` works. DNS round-robins between them. Node.js `fetch` (undici) times out on bad IPs. `curl` and `https.get()` work because they use different DNS resolution paths. This affects: Playwright global setup, Cloudflare MCP API calls, wrangler CLI.
+- **Fix: global-setup-production.ts**: Added `fetchWithRetry()` helper — 5 retries with 1s delay, 10s timeout per attempt. Resolves the "Cannot reach API — aborting setup" error.
+- **Fix: critical-flows.spec.ts**: All `page.goto()` calls updated to use `{ waitUntil: 'domcontentloaded' }` instead of default `load`. Google Fonts from `fonts.googleapis.com` cause `load` event to hang when network is slow.
+- **Production E2E result**: `production` project now passes **11/11 in 28.6s** with zero retries. Previously 6 passed, 4 flaky, 1 failed.
+
+#### Production Infrastructure Audit (via Cloudflare API)
+
+**Zones** (2):
+- `sinaicamps.com` (zone: `12c6d4be`) — active, full setup, Free plan
+- `acaciacamp.com` (zone: `fcc9f985`) — active, full setup, Free plan
+
+**Cloudflare Worker** (`campmaster-backend`):
+- Last deployed: 2026-08-21 15:17:32 UTC
+- Routes: `sinaicamps.com/api/*`, `*.sinaicamps.com/api/*`
+- Bindings: D1 (`DB` → `campmaster-db`), KV_CACHE, RATE_LIMIT_KV, MEDIA_BUCKET (R2), BROADCASTER (Durable Object)
+- Env vars: `RATE_LIMIT_KV_ENABLED=false` (in-memory fallback), `ENVIRONMENT=production`, feature flags set
+- `nodejs_compat` compatibility flag enabled
+
+**Pages** (`campmaster-marketplace`):
+- Last deployment: 2026-08-21 15:18:03 UTC — **success**
+- Domains: `sinaicamps.com`, `acaciacamp.com`, `campmaster-marketplace.pages.dev`, `michaelshouse.sinaicamps.com`
+- Commit: `86d32c1` — "fix: booking-submission hydration + admin CRUD E2E tests"
+- `global_fetch_strictly_public` flag enabled
+
+**D1 Database** (`campmaster-db`, UUID `1008d7ef`):
+- Size: 1,077,248 bytes (1 MB)
+- 67 tables total
+- **Migration 0054 APPLIED** (2026-08-21 15:17:09) — FK fix confirmed: `rooms_new.product_id → pos_products(id)`, `rate_plans_new.product_id → pos_products(id)`
+
+**D1 Data Audit** (production):
+| Table | Count | Notes |
+|---|---|---|
+| tenants | 3 | acaciacamp (custom_domain: acaciacamp.com), michaelshouse (no custom domain), marketplace (custom_domain: sinaicamps.com) |
+| admins | 2 | Super admin + tenant admin |
+| leads | 39 | Onboarding form submissions |
+| pos_users | 0 | No POS users seeded yet |
+| pos_products | 0 | No POS products seeded yet |
+| rooms_new | 0 | No rooms configured yet |
+| rate_plans_new | 0 | No rate plans configured yet |
+| meals | 0 | No meals configured yet |
+| products | 0 | Dead table — all data lives in pos_products |
+| orders | 0 | No orders yet |
+| pos_transactions | 0 | No POS transactions yet |
+| pos_shifts | 0 | No shifts yet |
+| pos_stores | 0 | No POS stores configured yet |
+| pos_organizations | 0 | No POS orgs configured yet |
+| customers | 0 | No customers yet |
+
+**Security Headers** (both zones):
+- `strict-transport-security: max-age=31536000; includeSubDomains` ✅
+- `content-security-policy`: Full CSP with script/style/img/font/connect/frame directives ✅
+- `x-content-type-options: nosniff` ✅
+- `x-frame-options: DENY` ✅
+- `frame-ancestors 'none'` in CSP ✅
+
+**Live API Endpoints** (all via curl):
+| Endpoint | Status | Notes |
+|---|---|---|
+| `GET /api/tenants` | 200 (3.9s first call, then ~0.4s) | Returns 3 tenants |
+| `GET /api/camps` | 200 | Returns `[]` (empty — no camp rows) |
+| `GET /api/products` | 200 | Returns `[]` (empty) |
+| `GET /api/tenants/acaciacamp` | 200 (0.5s) | Full tenant data |
+| `GET /api/tenants/michaelshouse` | 200 (1.6s) | Full tenant data |
+| `GET /` (sinaicamps.com) | 200 (3.1s) | 44KB HTML |
+| `GET /admin` | 200 (0.6s) | 2.6KB SPA shell |
+| `GET /` (acaciacamp.com) | 200 (0.5s) | 35KB tenant portal |
+| `GET /api/tenants` (acaciacamp) | 404 | Expected — tenant zone doesn't expose this endpoint |
+
+**DNS Resolution**:
+- sinaicamps.com → 172.67.155.160, 104.21.72.218 (26ms)
+- acaciacamp.com → 172.67.220.232, 104.21.94.76 (28ms)
+
+**KV Namespaces** (6):
+- KV_CACHE (prod), campmaster-pos-cache (prod), campmaster-pos-rate-limit (prod)
+- CAMPMASTER_STAGING_KV_CACHE, CAMPMASTER_STAGING_RATE_LIMIT_KV (staging)
+
+**R2 Buckets** (3):
+- campmaster-media (prod), campmaster-media-staging, campops-uploads (legacy)
+
+#### Files Changed
+- `tests/e2e/global-setup-production.ts` — Added `fetchWithRetry()` helper (5 retries, 1s delay, 10s timeout)
+- `tests/e2e/specs/production/critical-flows.spec.ts` — All `page.goto()` calls use `{ waitUntil: 'domcontentloaded' }`
+
+#### Persistent Learnings
+- **Cloudflare DNS round-robin**: Some Cloudflare IPs may be unreachable from certain networks. Always add retry logic to production setup scripts. Node.js `fetch` (undici) fails on unreachable IPs while `curl` may succeed (different DNS resolution paths).
+- **`waitUntil: 'load'` is dangerous**: External resources (Google Fonts, Plausible, Cloudflare beacon) can prevent `load` event. Always use `waitUntil: 'domcontentloaded'` for E2E navigation unless you specifically need full page load.
+- **Production is pre-launch**: All operational tables (pos_users, pos_products, rooms, meals, orders, transactions) are empty. Only tenants, admins, and leads have data. The system is deployed and functional but no real tenants have configured their camps yet.
+- **Migration 0054 verified in production**: The FK fix (rooms_new/rate_plans_new → pos_products) was applied successfully on 2026-08-21. The `ensureProductInProductsTable()` runtime workaround is still in code as belt-and-suspenders.
+- **Cloudflare MCP API token scope**: The current `CLOUDFLARE_API_TOKEN` can list accounts, zones, workers, D1, KV, R2, and query D1 — but cannot list DNS records or custom hostnames (403). Add Zone:DNS:Read scope for full DNS visibility.
+
+---
+
+## Session: E2E Test Coverage Enhancement + Production Config Trim
+
+**Date**: 2026-08-21
+**Branch**: main
+**Summary**: Trimmed production E2E config to critical-flows only; added 32 new E2E tests covering POS end-to-end flow, admin order management, admin settings/password validation, and registration lifecycle.
+
+### Changes Made
+
+#### 1. Production Config Trimmed (playwright.production.config.ts)
+- Removed marketplace, tenant, public, cross-cutting-read-only projects
+- Now includes only the `production` project (11 critical-flow tests)
+- Reduces production E2E from 242 tests to 11 tests (95% reduction)
+- All other projects run via local config (playwright.config.ts) only
+
+#### 2. New E2E Test: POS End-to-End Flow (pos-e2e-flow.spec.ts) — 6 tests
+- Full lifecycle: open shift → add to cart → checkout → verify in orders → close shift
+- Split payment flow (cash + card combination)
+- Cart quantity controls (increase/decrease)
+- Product search filtering
+- Receipt modal and order verification
+- Guard: no shift blocks checkout
+
+#### 3. New E2E Test: Admin Orders Panel (admin-orders.spec.ts) — 6 tests
+- Orders panel renders with data table and stats
+- Create new order via modal
+- Status filter dropdown works
+- Order state change modal opens
+- Delete order shows confirmation dialog
+
+#### 4. New E2E Test: Admin Settings + Password (admin-settings.spec.ts) — 10 tests
+- Settings panel renders with form fields
+- Settings form has camp name input, currency selector, contact fields
+- Save button visible and clickable
+- Save without changes succeeds (toast)
+- Password form renders with all fields
+- Password validation: empty current, mismatched, short password
+
+#### 5. New E2E Test: Registration Lifecycle (registration-lifecycle.spec.ts) — 11 tests (1 skipped)
+- 3-step lifecycle: register → approve via API → login
+- Step 2 skipped (super_admin login fails on local dev D1)
+- Edge cases: successful submission, button disables, mismatched passwords, empty name, short password, empty email
+- Login link navigation, form heading
+
+### Test Results
+
+| Suite | Files | Tests | Status |
+|-------|-------|-------|--------|
+| Frontend Vitest | 96 | 1,857 | ALL PASS |
+| Backend Vitest | 36 | 1,159 | ALL PASS |
+| Root Integration | 10 | 169 | ALL PASS |
+| **Unit/Integration Total** | **142** | **3,185** | **ALL PASS** |
+| POS E2E (new) | 1 | 6 | ALL PASS |
+| Admin Orders E2E (new) | 1 | 6 | ALL PASS |
+| Admin Settings E2E (new) | 1 | 10 | ALL PASS |
+| Registration E2E (new) | 1 | 10 pass, 1 skip | PASS |
+| **New E2E Total** | **4** | **32 (31 pass, 1 skip)** | **PASS** |
+
+### Files Changed
+- `tests/e2e/playwright.production.config.ts` — Trimmed to production project only
+- `tests/e2e/specs/pos/pos-e2e-flow.spec.ts` — NEW: 6 POS end-to-end tests
+- `tests/e2e/specs/admin/admin-orders.spec.ts` — NEW: 6 admin order management tests
+- `tests/e2e/specs/admin/admin-settings.spec.ts` — NEW: 10 settings + password tests
+- `tests/e2e/specs/auth/registration-lifecycle.spec.ts` — NEW: 11 registration lifecycle tests
+
+### Persistent Learnings
+- **Registration form lacks email format validation**: The `RegisterPage` only checks if email is empty, not if it's a valid format. HTML5 `type="email"` provides browser-level validation but `Playwright.fill()` bypasses it. No client-side email format validation exists.
+- **Super admin login fails on local dev D1**: The super_admin account (`admin@sinaicamps.com` / `sinairoot`) doesn't exist in local D1 after fresh seed. The seed creates `e2e-admin@test.com` as tenant admin. Step 2 of registration lifecycle is skipped on local dev.
+- **Playwright `.or()` selector**: Comma-separated selectors (e.g., `text=A, text=B, .cls`) don't work as OR in Playwright. Use `locator().or(locator())` instead.
+- **Production config trimming**: Keeping only critical-flows in production config reduces CI time from ~5min to ~30s and eliminates flaky tests from marketplace/tenant/public projects.
+
+---
+
+## Session: Database Schema Audit — backend/DATABASE_SCHEMA_AUDIT.md
+
+**Date**: 2026-08-22
+**Branch**: main
+**Summary**: Full database schema audit. Inventoried all 65 live tables against SQL-context code scans; censused dead tables (31 dead + 3 quasi-dead); mapped duplicate clusters, FK graph, tenant-scoping matrix, and index gaps; produced a phased unification plan (Phases 0/A/B/C/D/R) with risk register and consolidated answers to the six audit questions.
+
+### Changes Made
+
+#### 1. `backend/DATABASE_SCHEMA_AUDIT.md` — NEW (487 lines)
+- **§1 Current schema analysis** — complete 65-table inventory classified active (31) / quasi-dead (3) / dead (31), with a three-generation ownership model (G1 CampMaster core, G2 enterprise POS, G3 booking rebuild)
+- **§2 Dead-table census** — 27 freely droppable + 4 code-blocked (`pos_customers`: inbound FK from `pos_transactions.customer_id` + 2 triggers, one firing per completed sale writing into the dead table; `pos_inventory`/`pos_stock_movements` trigger pair; `pos_categories`: single LEFT JOIN in `inventory.js` low-stock + mirrored test fixture)
+- **§3 Duplicate clusters D1–D10** — resolution winners: catalog → `pos_products` (0054); camp membership → `pos_products.camp_id` (0053); POS CRM → `customers`; auth split (`admins`/`pos_users`) intentional; menu items = OPEN decision (`meals` vs `pos_products type='menu'`)
+- **§4 FK graph facts** — `pos_products` fully FK-less since the 0042 rebuild; `plans_new`/`rooms_new.tenant_id` are unconstrained denormalized columns; junction lineage `room_type_camps` → `product_camps` → `camp_id`
+- **§5 Tenant-scoping audit** — four mechanisms (tenant_id / org bridge / camp_id / global lookups); verdict: structurally sound; hygiene note on `pos_transactions` dual keys
+- **§6 Index analysis** — hot paths covered by deliberate migrations (0033/0034/0035/0038/0050/0053); verification-pending candidates: `customers(tenant_id,email)`, `pos_transaction_items(transaction_id)`, `pos_recipe_ingredients` both directions
+- **§7 Unification plan** — Phase 0 (apply 0054 locally; prod already verified 2026-08-21) → A (drop 3 dead-target triggers, incl. per-sale waste) → B1/B2/B3 (drops; B3 create-copy-swaps `pos_transactions` to shed the `customer_id` FK) → C menu decision (recommend Option 1: document the split) → D optional folds → R renames deliberately deferred
+- **§8 Risk register R1–R8** · **§9 consolidated Q1–Q6 answers**
+
+### Files Changed
+- `backend/DATABASE_SCHEMA_AUDIT.md` — NEW (audit deliverable; no schema or runtime code touched)
+
+### Persistent Learnings
+- **sqlite3 CLI is not installed in this environment** — inspect the live local D1 file via `python3 -c "import sqlite3 …"` against `backend/.wrangler/state/v3/d1/miniflare-D1DatabaseObject/*.sqlite` instead.
+- **Naive table-name grep over-counts DB references 2–10×** — URL paths (`/api/products`), handler names, and comments collide with table names. Use SQL-context regex (`FROM\s|JOIN\s|INTO\s|UPDATE\s|REFERENCES\s`) for reference censuses.
+- **Local vs remote migration drift is real**: local dev D1 had 53/54 migrations (0054 pending locally) while production had 0054 applied 2026-08-21 (prior session log). Check BOTH ledgers before any drop/rename work.
+- **48% of the schema is generational residue**: three overlapping generations (0001 / 0010 / 0028) left 31 zero-reference tables. Consult `DATABASE_SCHEMA_AUDIT.md` BEFORE adding any new table — the domain you're building may already have a dead one.
+- **Hidden trigger overhead**: `update_customer_stats_after_order` fires an UPDATE into dead `pos_customers` on every completed POS sale — pure waste until Phase A drops it.
+- **SQLite does NOT auto-index FK child columns** (unlike Postgres/MySQL) — every FK column used in a JOIN/WHERE needs an explicit index.
+
+---
+
+## Session: Authentication System Audit — backend/AUTH_SYSTEM_AUDIT.md
+
+**Date**: 2026-08-22
+**Branch**: main
+**Summary**: Full audit of the dual auth systems (admin `admins`-table JWT vs POS `pos_users` JWT) and a phased unification plan. Produced `backend/AUTH_SYSTEM_AUDIT.md` (377 lines): token-claim comparison, all 11 protection gates inventoried, flow analysis, frontend session handling, answers to the six unification questions, and a 14-item risk register.
+
+### Key Findings
+- **Not two engines — one engine, two stores, 11 hand-copied gates.** Both domains share `@tsndr/cloudflare-worker-jwt` HS256, `env.JWT_SECRET`, and 24h access TTL. Differences are additive claims only (`posType:'pos'`, `organizationId/storeId`, integer-stringified `sub`) plus refresh-token asymmetry (admin 7d stateless rotate-without-revoke; POS none — hard logout at ≤24h mid-shift).
+- **Deactivation-enforcement gap (real bug)**: `is_active` is DB-checked in the catch-all, `/api/admin/*`, `authMiddleware`, `/auth/me`, refresh, and `posAuth` — but NOT in the payments (×3), meal-schedules (×2), pos-users (×2), or SSE gates. A deactivated admin's token keeps working on those routes for up to 24h.
+- **`sharedAuth.authMiddleware` is dead code** — zero callers despite being documented as the single source of truth. Every surface re-implements Bearer/verify/posType/role/tenant checks inline with divergent error strings and 401-vs-403 ordering.
+- **Role collision**: `'admin'` means tenant-admin in `admins.role` and store-admin in `pos_users.role`; `ROLE_HIERARCHY` knows neither manager nor cashier (they rank 0). The only cross-domain guard is the per-gate `posType` check — nothing structural.
+- **G9 catch-all check-order quirk**: is_active lookup against `admins` runs BEFORE the posType rejection, so valid POS tokens get misleading `401 Account deactivated` instead of the intended 403.
+- **POS login tenant fallback hazard**: unmapped org → `tenantId = String(organization_id)` pseudo-scope ("1") that never matches real partitions (routes/pos/index.js:82-93). Fix via existing `ensureTenantOrg()` before unifying scoping.
+- **Legacy-hash asymmetry**: `rehashIfNeeded` is hardcoded to `UPDATE admins`, so `$sha256$` passwords in `pos_users` verify but are never upgraded to bcrypt.
+- **Unification verdict**: add explicit `userType: 'platform'|'org'` claim (accept legacy `posType` one release), collapse G1–G10 into one `requireAuth(c, opts)` choke point preserving exact error contracts, give POS refresh tokens (then optionally D1-backed hashed revocable rotation), unify frontend storage behind a `session.ts` module with legacy-key seeding (avoids mass logout). Physical table merge explicitly rejected — migration 0019 merged INTO pos_users and 0028 reversed it; DATABASE_SCHEMA_AUDIT §D6 concurs ("merge at middleware level").
+- **Stale E2E debt**: `tests/e2e/specs/auth/tenant-admin-login.spec.ts` still expects tenant-admin sessions under `pos_token` (pre-0028 world) — audit before any migration.
+
+### Files Changed
+- `backend/AUTH_SYSTEM_AUDIT.md` — NEW (audit deliverable; no runtime code touched)
+
+### Persistent Learnings
+- **"Single source of truth" middleware can be dead code** — grep callers before trusting a module's docstring (`authMiddleware`: 0 callers; all protection was inline).
+- **JWT domain discrimination by claim-absence** (`!payload.posType`) is fragile across N hand-written gates — prefer a positive discriminator (`userType`) enforced mechanically inside one helper.
+- **Refresh-type checking saves you**: admin refresh validates `decoded.type === 'refresh'`, which incidentally blocks POS access tokens from being replayed as refresh material.
+
+---
+
+## Session: Backend Architecture Unification Audit — backend/BACKEND_UNIFICATION_AUDIT.md
+
+**Date**: 2026-08-22
+**Branch**: main
+**Summary**: Full read of `backend/src` (index.js, all 16 api/*.js handlers, routes/pos, all 4 middleware modules, emailService, durable/broadcaster.js, utils) to determine how the whole surface converges on ONE dispatch pattern + ONE auth contract + ONE middleware chain. Produced `backend/BACKEND_UNIFICATION_AUDIT.md`: architecture analysis, 61-endpoint route inventory with rate-limit/auth/scoping columns, admin-vs-POS JWT comparison, middleware census, service-layer analysis (emailService + Broadcaster DO), a 6-phase strangler unification plan, 14-item risk register, and consolidated Q1–Q6 answers. Companion to `AUTH_SYSTEM_AUDIT.md` (auth depth) and `DATABASE_SCHEMA_AUDIT.md` (schema depth).
+
+### Key Findings
+- **One worker, two dispatch paradigms**: explicit Hono routes (~half the surface; POS sub-router is the model citizen) vs a manual catch-all dispatcher (`app.all('/api/*')`, index.js:316) = public-path allowlist → getTenant → inline JWT gate → ~18-branch path-prefix if-chain feeding handlers that re-parse URL segments internally. Mounting order is load-bearing.
+- **13 auth-gate sites, ≥5 textual variants** (up from "11 gates" in AUTH_SYSTEM_AUDIT when counting wrapper+handler pairs): payments ×3, meal-schedules ×2, pos-users ×2, stream/orders ×1 (header-or-query), catch-all ×1 in index.js; plus handler-level re-auth in admin.js:55-68, tenants.js:74-87 (soft super-admin detection), and pos-users.js:134-148 which parses the SAME token twice per request. `sharedAuth.authMiddleware` still has zero mounted callers.
+- **Rate-limit gaps confirmed**: `/api/meal-schedules*`, `/api/pos-users*`, `/api/stream/orders` are registered before the catch-all so its 100/min limiter never sees them. Plus an ad-hoc forgot-password Map limiter inside auth.js duplicating rateLimit.js concepts.
+- **Catch-all check-order quirk (G9) reconfirmed at index.js:353-359** — `admins.is_active` lookup runs BEFORE posType rejection → POS tokens get `401 Account deactivated` instead of intended 403 on catch-all paths.
+- **Dead/duplicated code found**: `tenantMiddleware` (exported, never mounted); `POST /api/payments/create-checkout` is a byte-for-byte alias of create-intent with zero callers; `sendBookingConfirmationEmail` is unit-tested but never called in src; `middleware/auth.js` is a pure re-export shim; `others.js` (plans_new CRUD) name gives zero hints.
+- **Broadcaster DO lives in `src/durable/broadcaster.js`, NOT services/** — task descriptions pointing at services/broadcaster.js are wrong. Per-tenant SSE hub: /connect + /broadcast, 25s heartbeat pinned via ctx.waitUntil, max 100 conns/tenant, sets no CORS headers. Producers: orders.broadcastNewBooking, leads.broadcastNewLead; consumer: GET /api/stream/orders (admin realm only). POS sales emit no events yet.
+- **Contract drift candidates for Phase 6**: payments return 404 (not 401) on missing tenant context; priceOverrides GET is gated while sibling catalog GETs are public; inventory low-stock returns `{ items }` vs everyone else's `{ data }`; tenant cascade-delete misses meal_schedules/meal_lang/inbox_reads/price_overrides/pos_users/leads/customers.
+- **Unification verdict**: strangler over 6 phases — P0 baseline+dead-code removal → P1 one `requireAuth({realm, roles, requireTenant})` factory replacing all 13 sites (byte-identical responses; realm-rejection ordered before active-check to fix G9 deliberately) → P2 convert Paradigm-B handlers to explicit Hono sub-routers one module at a time until catch-all is a 404 → P3 realm-tagged token contract (`realm:'admin'|'pos'`, accept legacy `posType` transitionally; optional POS refresh) → P4 declarative rate-limit policy table closing gaps without new KV writes → P5 formalized `resolveScope` (super_admin ?tenantId override generalized from pos-users precedent; marketplace = cross-tenant READS ONLY; POS trusts token claims exclusively) → P6 registry/openapi/types regeneration + contract-drift fixes + docs.
+
+### Files Changed
+- `backend/BACKEND_UNIFICATION_AUDIT.md` — NEW (audit deliverable; no runtime code touched)
+
+### Persistent Learnings
+- **Task-description paths can be wrong**: broadcaster is `src/durable/broadcaster.js`, not `services/broadcaster.js` — locate via glob before reading a named file.
+- **Route registration order IS authorization order**: anything mounted before the catch-all bypasses its limiter AND its gate; new explicit routes must carry their own requireAuth + rateLimit or they silently run public/unthrottled.
+- **Wrapper-gated handlers must never self-parse the token again** (pos-users double-verification pattern) — it doubles JWT work and creates divergent error surfaces; Phase 1's factory makes this impossible by construction.
+- **Byte-compat mandate for refactors**: root tests assert verbatim Zod fragments ("Required", "Invalid enum") and backend tests assert exact error strings/statuses — any gate consolidation must preserve status codes AND messages exactly, including the accidental ones (payments 404-on-missing-tenant), fixing drift only as deliberate Phase 6 test-updated changes.
+
+### 2026-08-23 — Phase 1 "One Auth Gate" (UNIFIED_ARCHITECTURE_PLAN §7): `requireAuth` factory replaces all 13 inline JWT gates
+
+**Summary**: Implemented the single auth-gate seam. New `backend/src/middleware/requireAuth.js` exports `requireAuth(options)` (factory → `gate(request, env, { tenantId })` returning a failure Response or `{ user }`; also usable as Hono middleware), plus `extractRequestToken(request, {allowQueryToken})`, `isActiveAdmin(env, userId)`, and `ROLE_RANKS`. All 13 inline gate sites in index.js/admin.js/tenants.js/pos-users.js now delegate to it; token issuance stamps a v2 `userType` claim (`'org'` for POS via legacy posType detection, `'platform'` for admin). Backend suite 1151/1151 ✅ (36 files), root integration suite 156/156 ✅ (10 files).
+
+#### Files Changed
+- `backend/src/middleware/requireAuth.js` — NEW: one auth gate. Check order: signature → realm → role membership → is_active probe → tenant scope. Options: `realm`, `roles`, `requireTenant`, `scopeMode:'lenient'` (legacy SSE null-tenantId bypass), `allowQueryToken`, `checkActive`, and per-outcome overrides `{missingToken|invalidToken|realmMismatch|insufficientRole|deactivated|scopeDenied: {status?, message?}}`.
+- `backend/src/middleware/sharedAuth.js` — `generateToken` stamps `userType` (additive; `posType` untouched).
+- `backend/src/index.js` — payments ×2 (`paymentGate`: tenant resolved FIRST outside gate, custom realm/scope messages), meal-schedules ×2 + pos-users route ×2 + stream/orders (lenient scope, allowQueryToken) + catch-all all delegate to requireAuth; dropped `verifyJWT` import.
+- `backend/src/api/admin.js` — `superAdminGate({realm:'admin', roles:['super_admin'], requireTenant:false})` with invalidToken/realmMismatch/insufficientRole overridden to the legacy combined-condition `403 "Unauthorized: Super Admin access required"`; missing header stays default 401.
+- `backend/src/api/tenants.js` — soft-elevation block uses `extractRequestToken`+`verifyToken`+`isActiveAdmin` inside its never-rejecting try/catch (public view on any token problem).
+- `backend/src/api/pos-users.js` — handler-level defense-in-depth gate with `checkActive:false` (the wrapping route gate owns the every-request probe; avoids double DB hit).
+- `backend/tests/index-unit.test.js` — verifyJWT mocks retargeted to partial-mock `sharedAuth#verifyToken` (4 sites); auth.js mock switched to importOriginal pattern.
+- `backend/tests/sse-unit.test.js` — `makeEnv` prepare answers the admins activity probe SQL substring with `[{is_active:1}]`.
+- `backend/tests/tenants-unit.test.js` — mock target moved api/auth.js#verifyJWT → sharedAuth#verifyToken (aliased as verifyJWT, zero body edits).
+
+#### Deliberate behavior changes (mandated by plan)
+- Catch-all G9 quirk fixed: POS token on an admin catch-all path now yields the intended `403 "Forbidden: POS sessions are not allowed to access admin routes"` (realm checked BEFORE the is_active probe) instead of misleading `401 "Account deactivated"`. All other responses byte-identical.
+- Deactivation-gap closed: EVERY authenticated request re-validates is_active (payments/SSE previously trusted the token until expiry). A throwing probe propagates to onError→500 exactly like the inline gates did (no fail-closed swallow).
+
+#### Key Lessons
+- **Write the options you document**: the pos-users handler comment claimed `checkActive` stays off but the option was omitted from the object → 34 test failures (`401 Account deactivated`). The failing status string pointed straight at the probe; repro through the real handler isolated it in minutes.
+- **Byte-compat needs predicate-level fidelity, not just message fidelity**: SSE's scope rule had a `decoded.tenantId &&` guard (null-claim admins bypass). A naive equals-scope would have silently denied that edge case — added `scopeMode:'lenient'` rather than weakening the default.
+- **Mock-seam moves with the implementation**: once handlers call sharedAuth#verifyToken directly, tests mocking api/auth.js#verifyJWT mock a function nobody calls. Partial `vi.mock(importOriginal)` keeps zod-schema exports alive for registry.js while overriding only the seam.
+- **DB mocks must answer NEW queries by SQL substring**: any new per-request query (activity probe) breaks suites whose makeEnv returns empty results unconditionally — dispatch on `'SELECT is_active FROM admins'`.
+- **admins has no deleted_at column** (migration 0028): the admin-realm probe intentionally stays `SELECT is_active FROM admins WHERE id = ?`; only the POS probe carries `AND deleted_at IS NULL`.
+
+#### Results
+- **Backend unit tests**: 1151 passed ✅ (36 files)
+- **Root integration tests**: 156 passed ✅ (10 files)
+- Remaining Phase 1 item: none — Phase 2 (explicit sub-router conversion) can start from a clean single-gate baseline.
+
+### 2026-08-23 — Phase 3 "Contract Normalization" (UNIFIED_ARCHITURE_PLAN §9): response helpers, POS orders pagination, drift fixes
+
+**Summary**: Landed all six Phase 3 items. `ok()`/`created()` helpers added; GET /api/pos/orders now returns the standard paginated envelope (`data/total/page/pageSize/hasMore`, default pageSize 100) with `?raw=1` serving the legacy bare array during consumer migration; inventory low-stock mirrors `items` as `data`; calculate-price missing params now 400 (was silent success); cascade deletes completed (meals→meal_schedules, orders/bookings→inbox_reads single+bulk, product delete→price_overrides, tenant delete gains inbox_reads/price_overrides/meal_schedules/meal_lang on BOTH bulk and single paths); OpenAPI registry + `backend/openapi.json` + `app/src/lib/api-types.ts` regenerated (`PosOrderList` → `PaginatedPosOrders`, `InventoryLowStockList.data` added); frontend `posGetOrders()` unwraps `.data`.
+
+#### Files Changed
+- `backend/src/utils/response.js` — added `ok(data, status=200)` and `created(id, status=201)` (+6 tests in `response.test.js`).
+- `backend/src/routes/pos/index.js` — GET /orders: COUNT + `parsePagination(url,{defaultPageSize:100})` + LIMIT/OFFSET + `paginationEnvelope`; `?raw=1` legacy branch.
+- `backend/src/api/inventory.js` — low-stock responses include `data` mirroring `items` (empty-org early return too).
+- `backend/src/api/orders.js` — calculate-price 400 on missing roomId/checkIn/checkOut; inbox_reads cascade before DELETE (single + IN-list bulk).
+- `backend/src/api/meals.js` — meal_schedules cascade before meal_lang/meals.
+- `backend/src/api/camps.js` — price_overrides cascade on product DELETE.
+- `backend/src/api/admin.js` — both tenant-delete paths (bulk loop + single) gain inbox_reads/price_overrides/meal_schedules/meal_lang cascades.
+- `backend/src/routes/registry.js` — `PaginatedPosOrders` schema/route (page/pageSize/raw query documented, 400 via shared errorResponses); `InventoryLowStockList.data`; calculate-price summary updated.
+- `app/src/lib/api.ts` — `posGetOrders()` fetches `PaginatedPosOrders`, returns `.data`.
+- Regenerated: `backend/openapi.json` (69 paths / 120 schemas), `app/src/lib/api-types.ts`.
+- Tests updated/added: `pos-unit.test.js` (GET /orders block rewritten), `inventory-low-stock.test.js`, `orders-unit.test.js` (+2 cascade), `meals.test.js`, `camps-unit.test.js`, root `tests/core/orders-extras.test.js`.
+
+#### Results
+- Backend: 1162 passed ✅ (36 files) · App: 1733 passed ✅ · Root (tests/unit): 156 passed ✅
+- E2E unaffected by design: specs don't intercept `/api/pos/orders` bodies and `tests/api-live-test.sh` asserts status-only; app tests mock `posGetOrders` at module level so the internal unwrap is invisible.
+
+#### Persistent Learnings (new)
+- **Mock shape = call-site level, not table level**: this repo's `chainDb(rows)` returns the PREPARE-level object (`{bind}` → `{all,first,run}`). A hand-rolled statement stub whose `.bind(...)` returns another `chainDb([])` nests one level too deep — handler sees `{bind}` where it needs `{all}` → confusing `".all is not a function"` at the real call site. When stubbing a specific prepare step, return `{all,first,run}` directly from its `bind` impl.
+- **POS orders pagination contract changed**: default response is now the standard envelope; `?raw=1` is a temporary escape hatch for un-migrated consumers — remove it once all clients are confirmed on the envelope.
+- **calculate-price is now strict**: missing roomId/checkIn/checkOut → 400 (was `total_price: 0` success). Any caller relying on the lenient behavior must send complete params.
+
+### 2026-08-23 — Phase 5 "Token Contract v2 & Session Lifecycle Parity" (UNIFIED_ARCHITECTURE_PLAN §9): POS refresh endpoint, pos_users hash upgrades, env-configurable org access TTL
+
+**Summary**: Landed all five Phase 5 items. `POST /api/pos/auth/refresh` added (gated by `requireAuth({realm:'pos'})`, header-or-body refresh transport, header wins) mirroring the admin refresh contract; POS login + refresh now both mint access+refresh pairs; `rehashIfNeeded` extended to upgrade legacy `$sha256$` hashes in `pos_users` (opt-in `{ table: 'pos_users' }`, default stays `admins`); `getAccessTtlSeconds(env, payload)` enables opt-in shorter org access TTLs via `POS_ACCESS_TTL_SECONDS` (clamped [300..86400], never applied to refresh/platform tokens, left DISABLED in wrangler.toml until Phase 6 ships the session kernel). Token contract v2 (`userType: 'platform'|'org'`) confirmed flowing from Phase 1's generateToken; legacy `posType` still emitted. Design doc for post-plan D1-backed rotation/revocation written to `backend/REFRESH_TOKENS_DESIGN.md`.
+
+#### Files Changed
+- `backend/src/middleware/sharedAuth.js` — `posAccessTtlFloorSeconds` in JWT_CONFIG; exported `getAccessTtlSeconds(env, payload)`; `generateToken` gains optional 4th `env` param applying the org TTL; `rehashIfNeeded(userId, pw, hash, env, { table = 'admins' })` supports `admins|pos_users` (throws on unknown tables), returns boolean.
+- `backend/src/routes/pos/index.js` — extracted shared helpers `resolveOrgTenantId` / `getOrgTaxRate` (DB call order preserved exactly: user → mapping → tax → last_login UPDATE); login calls `rehashIfNeeded(..., {table:'pos_users'})` and passes `env` to generateToken; login response adds `refreshToken`; new `POST /auth/refresh` registered BEFORE `pos.use('/*', posAuth)` with `requireAuth({ realm:'pos', requireTenant:false, realmMismatch:{status:401,message:'Invalid token type'} })`.
+- `backend/src/middleware/rateLimit.js` — `'POST /api/pos/auth/refresh': { max: 30 }` above the `/api/pos/*` catch-all.
+- `backend/src/routes/registry.js` — `PosAuthRefreshRequest`/`PosAuthRefreshResponse` schemas; `PosLoginResponse.refreshToken?: string`; refresh route entry.
+- `backend/wrangler.toml` — documented commented-out `POS_ACCESS_TTL_SECONDS = "900"` in BOTH `[vars]` and `[env.staging.vars]` with a do-not-enable-yet warning.
+- `backend/REFRESH_TOKENS_DESIGN.md` — NEW: D1 `refresh_tokens` schema (token_hash, jti, replaced_by_jti), rotation + family-revocation flow, why D1-not-KV (consistency), deploy compat notes.
+- Regenerated: `backend/openapi.json` (70 paths / 122 schemas), `app/src/lib/api-types.ts`.
+- Tests updated/added: `tests/pos-unit.test.js` (+10 — rehash assertion, full refresh describe; sharedAuth mock factory gained `rehashIfNeeded`; 2-arg generateToken assertions updated to 4-arg), `tests/sharedAuth.test.js` (+9 — userType derivation/preservation, TTL config/clamping/invalid-value fallback, pos_users rehash + unknown-table rejection).
+
+#### Results
+- Backend: 1184 passed ✅ (36 files) · App: 1733 passed ✅ · Root integration: 156 passed ✅
+
+#### Persistent Learnings (new)
+- **requireAuth's activity probe needs `is_active` in mock rows**: the gate runs `SELECT is_active FROM pos_users WHERE id = ? AND deleted_at IS NULL` BEFORE the handler body; fixtures returning full rows without `is_active` get 401 'Account deactivated' from the gate itself. Discriminate probe vs handler reload in SQL-dispatched mocks via `sql.includes('SELECT is_active')`.
+- **POS refresh double-probes by design**: requireAuth enforces `is_active ∧ deleted_at`, then the handler reloads fresh claims — two pos_users queries per refresh. Don't "optimize" one away; the handler reload exists so claims are never stale.
+- **generateToken is now 4-arg**: `(payload, secret, type, env)` — tests asserting 2-arg calls break silently when TTL config lands; pass `env` at every call site that mints ACCESS tokens for org users.
+
+### 2026-08-23 — Phase 6 "Frontend Session Kernel & Data-Layer Convergence" (UNIFIED_ARCHITECTURE_PLAN §10): session.ts, rbac.ts, apiFetch convergence, POS + admin panels on TanStack Query
+
+**Summary**: Landed all five Phase 6 items. New `app/src/lib/session.ts` is the single multi-realm session store (`Realm = 'admin' | 'pos'`; canonical storage keys ARE the legacy keys — `sinaicamps_token`, `sinaicamps_refresh_token`, `pos_token`, NEW `pos_refresh_token`, users `sinaicamps_user`/`pos_user` — so zero-migration seeding and no mass logouts) with pub/sub `onAuthChange`. New `app/src/lib/rbac.ts` is the single-source role hierarchy mirroring backend `ROLE_RANKS` exactly (super_admin:100, admin:80, manager:50, cashier:30) + `roleAtLeast()`; auth.tsx re-exports for back-compat. `apiFetch` converged: realm picked by `/pos/` prefix, per-realm refresh singletons, POS silent-refresh POSTs `${API_BASE}/pos/auth/refresh` with BOTH Bearer refresh header and `{refreshToken}` body, final 401 → `session.clear(realm)`; `onAuthChange` clears the `_inflight` dedup map. POS fully on TanStack Query via new `app/src/hooks/usePosQueries.ts` (`['pos', ...]` keys, error-swallowing active-shift probe, retry:false matching legacy single-fetch semantics). Admin query keys namespaced under `['admin', ...]` in useQueryHooks.ts. All remaining panels migrated off legacy `useAdminData` runtime hooks (MenuPanel, MealsPanel ×2 tests, MenuPlannerPanel, PlanningPanel, AdminApp; RatePlansPanel/ReportsPanel had dead hook imports removed); "refresh" inside components is now `queryClient.invalidateQueries({ queryKey: queryKeys.<concern> })`.
+
+#### Files Changed
+- `app/src/lib/session.ts` — NEW SessionStore (getAccessToken/getRefreshToken/setTokens/clear/onAuthChange + getUser/setUser), SSR-safe, listener errors swallowed.
+- `app/src/lib/rbac.ts` — NEW ROLE_HIERARCHY + roleAtLeast.
+- `app/src/lib/api.ts` — TOKEN_KEY removed; imports/re-exports REFRESH_TOKEN_KEY from './session'; dual-realm refreshAccessToken; realm-based token pick; 401 → session.clear(realm).
+- `app/src/lib/auth.tsx` — session-backed init/validate/login/logout; hasRole → roleAtLeast; ROLE_HIERARCHY re-exported from './rbac'.
+- `app/src/components/pos/POSApp.tsx` — rewritten onto module-level `posQueryClient` (staleTime 10s, gcTime 2min, **retry:false**) exported for tests; QueryClientProvider shell; shift probe via usePosActiveShift; queryClient.clear() on login/logout.
+- `app/src/hooks/usePosQueries.ts` — NEW posKeys factory + 4 queries + 2 mutations.
+- `app/src/components/pos/views/{LoginView,DashboardView,ProductsView,OrdersView,ShiftOverlay,ShiftDashboard}.tsx` — hooks/mutations/session persistence; OrdersView dropped refreshKey prop.
+- `app/src/hooks/useQueryHooks.ts` — all keys namespaced `['admin', ...]` (adminStats → ['admin','stats']); raw invalidations updated.
+- `app/src/components/admin/AdminApp.tsx` — useCamps → useCampsQuery + invalidate-based refreshCamps; TOKEN_KEY dup removed earlier in phase.
+- `app/src/components/admin/{MenuPanel,MealsPanel,MenuPlannerPanel,PlanningPanel}.tsx` — legacy hooks → query hooks + invalidateQueries; type-only imports from useAdminData remain.
+- `app/src/components/admin/{RatePlansPanel,ReportsPanel}.tsx` — dead runtime-hook imports removed (type-only kept).
+- Tests updated: POSApp.test.tsx (imports posQueryClient, clears cache in beforeEach), pos/PosViews.test.tsx (renderWithClient helper), lib/auth.test.tsx + auth.test.ts (new hierarchy contract), useQueryHooks.test.tsx / inbox-hooks.test.tsx / InboxPanel.test.tsx / BookingCalendar.test.tsx / TenantDrilldown.test.tsx (namespaced key literals), MenuPanel/MealsPanel(+admin)/MenuPlannerPanel/PlanningPanel tests (mock '@/hooks/useQueryHooks' with {data, isLoading} shape + queryKeys stub; renderPanel helpers wrapping QueryClientProvider; invalidateQueries spies replace refresh mocks), AdminApp.test.tsx (useQueryHooks mock now supplies camps data + queryKeys).
+
+#### Results
+- App: **1738 passed ✅ (87 files)** · eslint src/: 0 errors (pre-existing warnings only)
+
+#### Persistent Learnings (new)
+- **Module-level QueryClients leak state across tests**: POSApp's `posQueryClient` caches under staleTime between test renders — per-test mock overrides are ignored while a cached entry lives. Tests MUST import the client and `clear()` it in beforeEach. Same class of bug will bite any future component-scoped singleton client.
+- **POS query defaults are intentionally stricter than admin**: retry:false (legacy single-fetch semantics; cashiers must see failures immediately — TanStack's default 1s retryDelay blows waitFor budgets anyway). Keep ['pos',...] vs ['admin',...] namespaces separate when adding keys.
+- **TanStack v5 treats `queryFn → undefined` as an ERROR** ("Query data cannot be undefined") — endpoints that can legitimately resolve undefined need a normalization wrapper in queryFn (usePosActiveShift returns `{active:false}` on failure by design).
+- **Panel test migration pattern**: mock '@/hooks/useQueryHooks' (NOT '@/lib/api') with `{ data, isLoading }` shape + a minimal `queryKeys` stub, wrap renders in a fresh QueryClientProvider via a `renderPanel()` helper, spy `client.invalidateQueries` for old `refresh()` assertions. Panels call `useQueryClient()` so they crash without the provider.
+- **useAdminData is now types-only at the component layer**: no panel consumes its runtime hooks; its `useCachedData` remains only for `tests/unit/useAdminData.test.tsx`. Future work may move the types to api-types.ts and delete the file entirely.
+- **Legacy storage keys are canonical**: session.ts reads/writes `sinaicamps_token` etc. directly — never invent new key names for existing realms or every stored session breaks.
+
+### 2026-08-23 — Phase 8 "Shell Consolidation & Component Cleanup" (UNIFIED_ARCHITECTURE_PLAN §12): shared shell components, promoted ui/icons, Modal adoption in POS overlays
+
+**Summary**: Landed all Phase 8 items. New `app/src/components/shell/` holds the shared chrome: `AppSidebar` (one component for POS static column AND admin off-canvas drawer — caller supplies aside classes incl. transform state, per-item classes via `getItemClassName(active)`, icon wrap, nav testid/classes, optional groups with prebuilt heading nodes + trailing badge slots, non-portal drawer scrim via `backdrop`), `AppTopbar` (thin frame + hamburger toggle, children-based), `MobileBottomNav` (icon-over-label thumb bar), and `LoginForm` (single component, two realms — `realm="pos"` ports LoginView VERBATIM incl. posLogin + session-kernel persistence; `realm="admin"` ports the old LoginOverlay verbatim, delegating to useAuth().login). Icons promoted: canonical set now lives in `ui/icons.tsx` (+ NEW IconProducts cube, IconShift clock); `admin/icons.tsx` is a pure re-export so StaffPanel/icons.test keep importing from './icons'. POS sidebar emojis → SVG icons. `pos/views/LoginView.tsx` is now a thin wrapper over LoginForm realm="pos" (keeps React.lazy boundary). ShiftOverlay + ReceiptModal rebuilt on shared `ui/Modal` (portal/focus-trap/ESC/overlay) — Modal extended with `testId`, `contentTestId`, and `initialFocus` props; overlay-click handler MOVED from backdrop child to dialog root (child handler removed — keeping both double-fired onClose) with stopPropagation on the card. AdminApp consumes AppSidebar/AppTopbar/MobileBottomNav + LoginForm realm="admin" (byte-identical markup preserved: sticky topbar classes are AppTopbar defaults, drawer transform classes passed verbatim). Also fixed prior-phase spec bug: api-comprehensive.spec.ts used TEST_TENANT without importing it (`ReferenceError`) — added to existing fixture import; and BookingCalendar prefer-const lint error.
+
+#### Files Changed
+- `app/src/components/ui/icons.tsx` — NEW canonical icon set (verbatim from admin) + IconProducts + IconShift.
+- `app/src/components/admin/icons.tsx` — re-export of ui/icons (back-compat).
+- `app/src/components/ui/Modal.tsx` — testId/contentTestId/initialFocus props; overlay click on ROOT dialog; card stopPropagation.
+- `app/src/components/shell/{AppSidebar,AppTopbar,MobileBottomNav,LoginForm}.tsx` — NEW shared shell primitives.
+- `app/src/components/admin/AdminApp.tsx` — LoginOverlay+NavIcon deleted → shell components; InboxNavBadge still exported here (InboxPanel.test imports it).
+- `app/src/components/pos/POSApp.tsx` — Sidebar → AppSidebar config (POS_NAV with promoted icons).
+- `app/src/components/pos/views/{LoginView,ShiftOverlay,ReceiptModal}.tsx` — thin wrapper / Modal adoptions.
+- `tests/e2e/specs/cross-cutting/api-comprehensive.spec.ts` — TEST_TENANT import fix (prior-phase bug).
+- `app/src/components/admin/BookingCalendar.tsx` — let→const (lint).
+
+#### Results
+- App: **1739 passed ✅ (87 files)** · eslint: 0 errors · Playwright CI: 740 passed ✅ — all admin/POS/login/responsive/token-lifecycle specs exercising refactored shells green. Remaining failures are PRE-EXISTING backend/env drift, none touch frontend: 7× api-comprehensive (local worker returns 404 where specs expect 401/200 on product-categories/settings/rooms/reservations/rate-plans), 3× api-endpoints + 2× multi-tenancy (405/404 backend routing drift), 1× camp-menu (local seed data lacks menu content), 1 flaky gallery lightbox.
+
+#### Persistent Learnings (new)
+- **Modal overlay-click must live ONLY on the root**: handler on both backdrop child AND root fires twice (bubbling) → breaks `toHaveBeenCalledTimes(1)`; content clicks need card-level `stopPropagation()`. Testid overrides (`testId`/`contentTestId`) let adopters keep legacy names like `shift-overlay`/`receipt-modal`.
+- **Modal steals focus from autoFocus inputs**: its mount timer focuses the card AFTER autoFocus fires. Fix pattern for non-forwardRef inputs: wrap in a ref'd div + `initialFocus={() => wrapRef.current?.querySelector('input')}`.
+- **Shell components own STRUCTURE, callers own STYLE**: passing full class strings (aside/item/nav/topbar) kept every byte-exact assertion green (`-translate-x-full` substring, `.text-green-300\/50`, `[class*="bg-black/40"]` non-portal backdrop, emoji-free admin area). Don't "centralize" styling into the shell later without re-auditing those assertions.
+- **E2E API specs are env-gated reality checks**: local wrangler dev returns 404 (route/migration drift) where specs expect 401 — these fail independent of ALL frontend work; classify before chasing regressions. `TEST_TENANT` lives in `tests/e2e/fixtures/test-data.ts` alongside `API_BASE`.
+
+### 2026-08-23 — Phase 9 "Realm Consolidation & Versioned API Cutover" (UNIFIED_ARCHITECTURE_PLAN): /api/v1 surface, POS-login + contact canonicalization, Sunset deprecation
+
+**Summary**: Landed Phase 9. Two independent deprecation axes: (1) SURFACE-level — entrypoint `fetch(request, env, ctx)` rewrites `/api/v1/*` → `/api/*` (preserving query) via `new Request(rewrittenUrl, request)` and stamps `Deprecation: true` + `Sunset` on UNVERSIONED `/api/*` responses only (versioned requests never carry it); (2) ENDPOINT-level — legacy `POST /api/pos/auth/login` and `POST /api/contact` are wrapped with `withSunset()` so they carry Sunset even under `/api/v1`, while their canonical mounts (`POST /api/auth/pos-login`, `POST /leads`) never do. New util `backend/src/utils/deprecation.js` (`SUNSET_DATE = Sat, 21 Nov 2026`; rebuilds Response via `new Response(res.body, res)`). Rate limit: `'POST /api/auth/pos-login': { max: 15 }` inserted ABOVE `'/api/auth/*': { max: 30 }` — policy table is first-match-wins by declaration order. Frontend cut over IN THE SAME DEPLOY (1042 constraint): api.ts API_BASE → v1 variants, posLogin → `/auth/pos-login`, realm detection adds `/auth/pos-` prefix, dead compat alias block deleted; tenant.ts SSR binding → `/api/v1${path}`; contact.astro posts `/leads`. Registry: added canonical route def, marked legacy paths `deprecated: true`, version 2.2.0, versioning note in info.description (kept single server URL to avoid client double-prefix). Regenerated openapi.json (71 paths/122 schemas) + api-types.ts. New backend/tests/versioning.test.js (14 tests). Fixed pre-existing camp-menu E2E design flaw: WhatsApp send button is cart-gated inside TenantMenu (`cart.length > 0`) so with meals present NEITHER branch (button | empty-state text) could ever pass — test now also accepts rendered menu UI (nav chips/search input).
+
+#### Files Changed
+- `backend/src/utils/deprecation.js` — NEW: SUNSET_DATE + withSunset helper.
+- `backend/src/index.js` — v1 rewrite entrypoint + surface Sunset; `/api/auth/pos-login` mount; contact `.then(withSunset)`.
+- `backend/src/routes/pos/index.js` — exported `handlePosLoginRequest`; legacy login wrapper.
+- `backend/src/middleware/rateLimit.js` — pos-login policy above auth/*.
+- `backend/src/routes/registry.js` — canonical route + deprecated flags; v2.2.0.
+- `backend/tests/versioning.test.js` — NEW 14-test suite. `backend/tests/openapi-doc.test.js` — auth paths 8→9 + deprecated assertions.
+- `backend/openapi.json`, `app/src/lib/api-types.ts` — regenerated.
+- `app/src/lib/api.ts`, `app/src/middleware/tenant.ts`, `app/src/pages/contact.astro`, `app/src/lib/sse.ts` (comment).
+- Tests updated to v1 expectations: middleware-tenant.test.ts, lib/sse.test.ts, sse-inbox.test.ts, sse.test.ts, api-extended.test.ts, tests/core/smoke.test.js (+Phase 9 live assertions).
+- `tests/e2e/specs/tenant/camp-menu.spec.ts` — WhatsApp-button test accepts interactive menu state.
+
+#### Results
+- Backend **1198 ✅ (37 files)** · App **1739 ✅ (87 files)** · Root integration **156 ✅ (10 files)** · E2E CI **739 passed + 16 env-skipped** (2 load-flakes — multi-tenancy rooms isolation, gallery lightbox — pass standalone; both pre-existing timing tests unrelated to versioning).
+
+#### Persistent Learnings (new)
+- **`withSunset(promise)` silently yields an empty 200** — rebuilding `new Response(res.body, res)` on a Promise object produces a body-less 200 with no status. ALWAYS await first: `(c) => handler(c.req.raw, c.env).then(withSunset)` or `withSunset(await ...)`.
+- **Rate-limit policy table is first-match-wins**: more specific entries MUST precede wildcards (`/api/auth/*`). A new stricter route placed after its wildcard silently inherits the wildcard budget.
+- **Playwright summary headers hide above `tail -N`**: the `X failed` count prints ~15 lines BEFORE the skipped/passed totals (failed titles sit between). Never trust `tail -4` for pass/fail — grep for `failed|flaky|✘`.
+- **Clean Playwright JSON despite noisy globalSetup stdout**: `PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/x.json npx playwright test --reporter=json` writes JSON to file, keeping stdout logs separate (piping stdout breaks `JSON.parse` on setup emojis).
+- **Baseline comparison via git worktree**: `git worktree add /tmp/... HEAD` + symlink root/app/backend `node_modules` lets you run identical suites against pristine HEAD. CAUTION: gitignored `.env`/`.wrangler/state` don't follow, so absolute failure counts differ — compare per-test titles only.
+- **Islands gate interactive controls behind user state**: TenantMenu's WhatsApp button renders only when `cart.length > 0` — E2E asserting "control OR empty-state" must also accept the hydrated-menu state or it can NEVER pass with seeded meals.

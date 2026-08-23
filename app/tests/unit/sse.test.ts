@@ -68,7 +68,7 @@ describe('parseSSEEvent', () => {
 });
 
 describe('openOrdersStream', () => {
-  const API = 'http://localhost:8787/api';
+  const API = 'http://localhost:8787/api/v1';
 
   it('connects to the encoded stream URL', () => {
     openOrdersStream({
@@ -79,13 +79,13 @@ describe('openOrdersStream', () => {
     });
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(FakeEventSource.instances[0].url).toBe(
-      'http://localhost:8787/api/stream/orders?tenantId=my%20camp&token=tok%2F123',
+      'http://localhost:8787/api/v1/stream/orders?tenantId=my%20camp&token=tok%2F123',
     );
   });
 
   it('defaults apiBase to API_BASE from api.ts', () => {
     openOrdersStream({ tenantId: 't1', token: 'tok', onEvent: () => {} });
-    expect(FakeEventSource.instances[0].url).toContain('http://localhost:8787/api/stream/orders');
+    expect(FakeEventSource.instances[0].url).toContain('http://localhost:8787/api/v1/stream/orders');
   });
 
   it('calls onEvent with parsed message data', () => {
@@ -178,7 +178,7 @@ describe('useSseOrders', () => {
     enabled: true,
     tenantId: 't1',
     token: 'tok',
-    apiBase: 'http://localhost:8787/api',
+    apiBase: 'http://localhost:8787/api/v1',
     onEvent: vi.fn(),
   };
 
@@ -208,7 +208,7 @@ describe('useSseOrders', () => {
     const { result } = renderHook(() => useSseOrders(baseProps));
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(FakeEventSource.instances[0].url).toBe(
-      'http://localhost:8787/api/stream/orders?tenantId=t1&token=tok',
+      'http://localhost:8787/api/v1/stream/orders?tenantId=t1&token=tok',
     );
     expect(result.current.connected).toBe(false);
   });

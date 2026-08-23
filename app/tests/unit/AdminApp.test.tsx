@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import AdminApp from '@/components/admin/AdminApp';
+import { push } from '@/lib/navigation';
+
+// Phase 7: admin tabs navigate via the pushState kernel — mock push so tests
+// assert the requested URL; parseHashTab/onNavigation stay real so the
+// legacy-hash fallback keeps its coverage.
+vi.mock('@/lib/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/navigation')>()),
+  push: vi.fn(),
+}));
 
 const mockShowToast = vi.fn();
 const mockLogin = vi.fn();
 const mockLogout = vi.fn();
-const mockRefreshCamps = vi.fn();
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -24,18 +32,19 @@ vi.mock('@/lib/auth', () => ({
   useAuth: () => authState,
 }));
 
-vi.mock('@/hooks/useAdminData', () => ({
-  useCamps: () => ({
+vi.mock('@/hooks/useQueryHooks', () => ({
+  queryKeys: {
+    camps: ['admin', 'camps'],
+    settings: ['admin', 'settings'],
+    inboxUnread: ['admin', 'inbox', 'unread'],
+  },
+  useCampsQuery: () => ({
     data: [
       { id: 'c1', name: 'Camp Alpha', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' },
       { id: 'c2', name: 'Camp Beta', location: 'Cairo', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 30, status: 'active', notes: '' },
     ],
-    refresh: mockRefreshCamps,
+    isLoading: false,
   }),
-}));
-
-vi.mock('@/hooks/useQueryHooks', () => ({
-  useCampsQuery: () => ({ data: [], isLoading: false }),
   useSaveCampMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCampMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useSettingsQuery: () => ({ data: { primaryColor: '#4a7c4f' } }),
@@ -112,7 +121,7 @@ describe('AdminApp', () => {
       hasRole: (role: string) => role === 'admin',
     });
     Object.defineProperty(window, 'location', {
-      value: { hash: '#tab=dashboard', assign: vi.fn(), reload: vi.fn(), href: '' },
+      value: { pathname: '/admin', search: '', hash: '#tab=dashboard', assign: vi.fn(), reload: vi.fn(), href: '' },
       writable: true,
     });
   });
@@ -322,13 +331,22 @@ describe('AdminApp', () => {
     expect(screen.queryByText('Signing in...')).not.toBeInTheDocument();
   });
 
-  it('switches tab via nav click and updates the hash', async () => {
+  it('switches tab via nav click and updates the URL via pushState', async () => {
     render(<AdminApp />);
     fireEvent.click(screen.getByTestId('nav-tab-rooms'));
     await waitFor(() => {
       expect(screen.getByTestId('rooms-panel')).toBeInTheDocument();
     });
-    expect(window.location.hash).toBe('#tab=rooms');
+    expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/rooms');
+  });
+
+  it('renders rooms panel for path deep link /admin/rooms (pushState routing)', () => {
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/admin/rooms', search: '', hash: '', assign: vi.fn(), reload: vi.fn(), href: '' },
+      writable: true,
+    });
+    render(<AdminApp />);
+    expect(screen.getByTestId('rooms-panel')).toBeInTheDocument();
   });
 
   it('responds to hashchange events', async () => {
@@ -513,7 +531,7 @@ describe('AdminApp', () => {
     await waitFor(() => {
       expect(screen.getByTestId('booking-calendar')).toBeInTheDocument();
     });
-    expect(window.location.hash).toBe('#tab=calendar');
+    expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/calendar');
   });
 
   it('applies tenant theme css vars on the shell', () => {

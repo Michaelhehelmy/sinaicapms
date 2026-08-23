@@ -1,18 +1,23 @@
-import { describe, it, expect, vi } from 'vitest';
-import { handleMealCategoriesRoute } from '../src/api/meal-categories.js';
-
-function makeReq(url, method = 'GET', body = null) {
-  return {
-    url,
-    method,
-    headers: { get: () => null },
-    json: () => Promise.resolve(body),
-  };
-}
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import mealCategoriesRoutes from '../src/api/meal-categories.js';
+import { mountRouter } from './helpers/routerHarness.js';
 
 const tenantId = 'tenant_1';
 
-describe('handleMealCategoriesRoute', () => {
+describe('mealCategoriesRoutes', () => {
+  let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
+
+  beforeEach(() => {
+    app = mountRouter(mealCategoriesRoutes, { tenantId, basePath: '/api/meal-categories' });
+  });
+
   describe('GET /api/meal-categories', () => {
     it('returns all meal categories', async () => {
       const cats = [{ id: 'mcat_1', name: 'Breakfast' }];
@@ -23,7 +28,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(makeReq('http://localhost/api/meal-categories'), { DB: db }, tenantId);
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/meal-categories');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data).toEqual(cats);
@@ -37,7 +43,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(makeReq('http://localhost/api/meal-categories'), { DB: db }, tenantId);
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/meal-categories');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to load meal categories');
@@ -54,9 +61,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_1'), { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/meal-categories/mcat_1');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data).toEqual(cat);
@@ -70,9 +76,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_999'), { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/meal-categories/mcat_999');
       const data = await res.json();
       expect(res.status).toBe(404);
       expect(data.error).toContain('Meal category not found');
@@ -86,9 +91,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_1'), { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/meal-categories/mcat_1');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to load meal category');
@@ -104,10 +108,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories', 'POST', { name: 'Dinner', position: 2 }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/meal-categories', { name: 'Dinner', position: 2 });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -122,10 +124,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories', 'POST', { position: 1 }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/meal-categories', { position: 1 });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
@@ -138,10 +138,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories', 'POST', { name: 'Cat' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/meal-categories', { name: 'Cat' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to create meal category');
@@ -150,22 +148,18 @@ describe('handleMealCategoriesRoute', () => {
 
   describe('PUT /api/meal-categories/:id', () => {
     it('updates a meal category', async () => {
-      let callIdx = 0;
       const db = {
         prepare: vi.fn(() => ({
           bind: vi.fn(() => ({
             all: vi.fn().mockImplementation(() => {
-              callIdx++;
               return Promise.resolve({ results: [{ id: 'mcat_1' }] });
             }),
             run: vi.fn().mockResolvedValue({}),
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_1', 'PUT', { name: 'Updated', position: 5 }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/meal-categories/mcat_1', { name: 'Updated', position: 5 });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -179,10 +173,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_999', 'PUT', { name: 'X' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/meal-categories/mcat_999', { name: 'X' });
       const data = await res.json();
       expect(res.status).toBe(404);
     });
@@ -195,10 +187,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_1', 'PUT', { position: 'not-a-number' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/meal-categories/mcat_1', { position: 'not-a-number' });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
@@ -212,10 +202,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_1', 'PUT', { name: 'X' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/meal-categories/mcat_1', { name: 'X' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to update meal category');
@@ -224,22 +212,18 @@ describe('handleMealCategoriesRoute', () => {
 
   describe('DELETE /api/meal-categories/:id', () => {
     it('deletes a meal category', async () => {
-      let callIdx = 0;
       const db = {
         prepare: vi.fn(() => ({
           bind: vi.fn(() => ({
             all: vi.fn().mockImplementation(() => {
-              callIdx++;
               return Promise.resolve({ results: [{ id: 'mcat_1' }] });
             }),
             run: vi.fn().mockResolvedValue({}),
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/meal-categories/mcat_1');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -253,10 +237,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_999', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/meal-categories/mcat_999');
       const data = await res.json();
       expect(res.status).toBe(404);
     });
@@ -270,10 +252,8 @@ describe('handleMealCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories/mcat_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/meal-categories/mcat_1');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to delete meal category');
@@ -282,11 +262,8 @@ describe('handleMealCategoriesRoute', () => {
 
   describe('method not allowed', () => {
     it('returns 405 for unsupported method', async () => {
-      const db = { prepare: vi.fn() };
-      const res = await handleMealCategoriesRoute(
-        makeReq('http://localhost/api/meal-categories', 'PATCH'),
-        { DB: db }, tenantId
-      );
+      env = { DB: { prepare: vi.fn() } };
+      const res = await request('PATCH', 'http://localhost/api/meal-categories');
       const data = await res.json();
       expect(res.status).toBe(405);
     });

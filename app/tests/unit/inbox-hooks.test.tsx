@@ -86,12 +86,12 @@ afterEach(() => {
 
 describe('inbox query keys', () => {
   it('queryKeys.inbox(params) embeds the params', () => {
-    expect(queryKeys.inbox()).toEqual(['inbox', undefined]);
-    expect(queryKeys.inbox({ kind: 'lead', page: '2' })).toEqual(['inbox', { kind: 'lead', page: '2' }]);
+    expect(queryKeys.inbox()).toEqual(['admin', 'inbox', undefined]);
+    expect(queryKeys.inbox({ kind: 'lead', page: '2' })).toEqual(['admin', 'inbox', { kind: 'lead', page: '2' }]);
   });
 
   it('queryKeys.inboxUnread is a stable distinct key', () => {
-    expect(queryKeys.inboxUnread).toEqual(['inbox', 'unread']);
+    expect(queryKeys.inboxUnread).toEqual(['admin', 'inbox', 'unread']);
   });
 });
 
@@ -205,8 +205,8 @@ describe('useMarkInboxReadMutation', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(api.markInboxRead).toHaveBeenCalledWith('lead', 'lead-1');
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['inbox'] });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['inbox', 'unread'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'inbox'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'inbox', 'unread'] });
     expect(mockShowToast).toHaveBeenCalledWith('Marked as read', 'success');
   });
 
@@ -238,8 +238,8 @@ describe('useDeleteInboxLeadMutation', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(api.deleteInboxLead).toHaveBeenCalledWith('lead-1');
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['inbox'] });
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['inbox', 'unread'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'inbox'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'inbox', 'unread'] });
     expect(mockShowToast).toHaveBeenCalledWith('Lead deleted', 'success');
   });
 

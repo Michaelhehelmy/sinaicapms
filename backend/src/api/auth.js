@@ -152,13 +152,13 @@ export async function handleAuthRoute(request, env) {
 
       // Generate JWT token
       const token = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || tenantId, email: admin.email, role: admin.role },
+        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || tenantId, email: admin.email, role: admin.role, userType: 'platform' },
         secret,
         'access'
       );
 
       const refreshToken = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || tenantId },
+        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || tenantId, userType: 'platform' },
         secret,
         'refresh'
       );
@@ -211,13 +211,13 @@ export async function handleAuthRoute(request, env) {
 
       // Issue new access + refresh tokens
       const token = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || decoded.tenantId, email: admin.email, role: admin.role },
+        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || decoded.tenantId, email: admin.email, role: admin.role, userType: 'platform' },
         secret,
         'access'
       );
 
       const newRefreshToken = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || decoded.tenantId },
+        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || decoded.tenantId, userType: 'platform' },
         secret,
         'refresh'
       );
@@ -450,7 +450,7 @@ export async function handleAuthRoute(request, env) {
       if (!admin) return errorResponse('Admin not found', 404);
 
       const valid = await verifyPassword(currentPassword, admin.password_hash);
-      if (!valid) return errorResponse('Current password is incorrect', 401);
+      if (!valid) return errorResponse('Current password is incorrect', 400);
 
       const passwordHash = await hashPassword(newPassword);
       await env.DB.prepare(

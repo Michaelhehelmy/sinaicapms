@@ -1,4 +1,6 @@
 import { jsonResponse, errorResponse } from '../utils/response';
+import { Hono } from 'hono';
+import { getScope } from '../middleware/resolveScope.js';
 
 // Max uploaded image size: 8 MB (matches the wizard's client-side limit).
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -65,9 +67,13 @@ export function sanitizeMediaKey(rawKey) {
  * Returns camelCase `{ url }` where url = `/api/media/{key}` (streamed by
  * handleMediaRoute).
  */
-export async function handleUploadRoute(request, env, tenantId) {
+const uploadRoutes = new Hono();
+
+uploadRoutes.post('/', async (c) => {
+  const request = c.req.raw;
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
   const url = new URL(request.url);
-  if (request.method !== 'POST') return errorResponse('Method not allowed', 405);
   if (!env.MEDIA_BUCKET) return errorResponse('Media storage is not configured', 503);
 
   const contentType = (request.headers.get('content-type') || '').toLowerCase();
@@ -104,7 +110,11 @@ export async function handleUploadRoute(request, env, tenantId) {
   await env.MEDIA_BUCKET.put(key, body, { httpMetadata: { contentType: declaredContentType } });
 
   return jsonResponse({ url: `/api/media/${key}` }, 200);
-}
+});
+
+uploadRoutes.all('*', () => errorResponse('Method not allowed', 405));
+
+export default uploadRoutes;
 
 /**
  * GET /api/media/* — PUBLIC stream of a stored media object.
@@ -114,7 +124,11 @@ export async function handleUploadRoute(request, env, tenantId) {
  * can never reach the R2 lookup. Missing objects and malformed keys both return
  * 404. NO CORS headers here — hono/cors in index.js is the single source.
  */
-export async function handleMediaRoute(request, env) {
+export const mediaRoutes = new Hono();
+
+mediaRoutes.on(['GET', 'HEAD'], '*', async (c) => {
+  const request = c.req.raw;
+  const env = c.env;
   const pathname = new URL(request.url).pathname;
   let rawKey;
   try {
@@ -135,4 +149,6 @@ export async function handleMediaRoute(request, env) {
       'Cache-Control': 'public, max-age=31536000, immutable',
     },
   });
-}
+});
+
+mediaRoutes.all('*', () => errorResponse('Not found', 404));

@@ -61,33 +61,3 @@ export async function sendPasswordResetEmail(email, token, baseUrl = 'https://si
   `;
   return sendEmail({ to: email, subject: 'Reset Your SinaiCamps Password', html }, env);
 }
-
-/**
- * Send a booking confirmation email.
- * @param {string} email - Recipient email
- * @param {{ guestName: string, campName: string, roomName: string, checkIn: string, checkOut: string, totalAmount: number, reservationId: string }} bookingDetails
- * @param {object} [env] - Cloudflare Worker env bindings
- * @returns {Promise<boolean>}
- */
-export async function sendBookingConfirmationEmail(email, bookingDetails, env) {
-  const { guestName, campName, roomName, checkIn, checkOut, totalAmount, reservationId } = bookingDetails;
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <h2 style="color: #4a7c4f;">Booking Confirmed! 🎉</h2>
-      <p>Hi ${guestName},</p>
-      <p>Your reservation has been confirmed. Here are the details:</p>
-      <div style="background: #f7fafc; padding: 16px; border-radius: 8px; margin: 16px 0;">
-        <p><strong>Reservation ID:</strong> ${reservationId}</p>
-        <p><strong>Camp:</strong> ${campName || 'N/A'}</p>
-        <p><strong>Room:</strong> ${roomName || 'N/A'}</p>
-        <p><strong>Check-In:</strong> ${checkIn}</p>
-        <p><strong>Check-Out:</strong> ${checkOut}</p>
-        <p><strong>Total Amount:</strong> $${(totalAmount || 0).toFixed(2)}</p>
-      </div>
-      <p>We look forward to welcoming you!</p>
-      <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-      <p style="color: #999; font-size: 0.8em;">SinaiCamps.com — Camp Management Platform</p>
-    </div>
-  `;
-  return sendEmail({ to: email, subject: 'Your SinaiCamps Booking Confirmation', html }, env);
-}

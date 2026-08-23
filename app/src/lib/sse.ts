@@ -39,8 +39,8 @@ export function parseSSEEvent(raw: string): unknown | null {
 
 export interface OpenOrdersStreamOptions {
   /**
-   * API base INCLUDING the `/api` prefix — reuse `API_BASE` from `./api`
-   * (e.g. `http://localhost:8787/api` or `/api`). Defaults to `API_BASE`.
+   * API base INCLUDING the `/api/v1` prefix — reuse `API_BASE` from `./api`
+   * (e.g. `http://localhost:8787/api/v1` or `/api/v1`). Defaults to `API_BASE`.
    */
   apiBase?: string;
   /** Tenant whose bookings should be streamed. */

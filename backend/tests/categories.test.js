@@ -1,18 +1,23 @@
-import { describe, it, expect, vi } from 'vitest';
-import { handleCategoriesRoute } from '../src/api/categories.js';
-
-function makeReq(url, method = 'GET', body = null) {
-  return {
-    url,
-    method,
-    headers: { get: () => null },
-    json: () => Promise.resolve(body),
-  };
-}
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import categoriesRoutes from '../src/api/categories.js';
+import { mountRouter } from './helpers/routerHarness.js';
 
 const tenantId = 'tenant_1';
 
-describe('handleCategoriesRoute', () => {
+describe('categoriesRoutes', () => {
+  let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
+
+  beforeEach(() => {
+    app = mountRouter(categoriesRoutes, { tenantId, basePath: '/api/categories' });
+  });
+
   describe('GET /api/categories', () => {
     it('returns all categories for tenant', async () => {
       const cats = [{ id: 'cat_1', name: 'Rooms' }];
@@ -23,7 +28,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(makeReq('http://localhost/api/categories'), { DB: db }, tenantId);
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/categories');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data).toEqual(cats);
@@ -37,7 +43,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(makeReq('http://localhost/api/categories'), { DB: db }, tenantId);
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/categories');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to load categories');
@@ -54,7 +61,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(makeReq('http://localhost/api/categories/cat_1'), { DB: db }, tenantId);
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/categories/cat_1');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data).toEqual(cat);
@@ -68,7 +76,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(makeReq('http://localhost/api/categories/cat_999'), { DB: db }, tenantId);
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/categories/cat_999');
       const data = await res.json();
       expect(res.status).toBe(404);
       expect(data.error).toContain('Category not found');
@@ -82,7 +91,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(makeReq('http://localhost/api/categories/cat_1'), { DB: db }, tenantId);
+      env = { DB: db };
+      const res = await request('GET', 'http://localhost/api/categories/cat_1');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to load category');
@@ -98,10 +108,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories', 'POST', { name: 'New Category', description: 'Desc' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/categories', { name: 'New Category', description: 'Desc' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -116,10 +124,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories', 'POST', { description: 'No name' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/categories', { description: 'No name' });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
@@ -132,10 +138,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories', 'POST', { name: 'Cat' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/categories', { name: 'Cat' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to create category');
@@ -144,22 +148,18 @@ describe('handleCategoriesRoute', () => {
 
   describe('PUT /api/categories/:id', () => {
     it('updates a category', async () => {
-      let callIdx = 0;
       const db = {
         prepare: vi.fn(() => ({
           bind: vi.fn(() => ({
             all: vi.fn().mockImplementation(() => {
-              callIdx++;
               return Promise.resolve({ results: [{ id: 'cat_1' }] });
             }),
             run: vi.fn().mockResolvedValue({}),
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_1', 'PUT', { name: 'Updated' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/categories/cat_1', { name: 'Updated' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -173,10 +173,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_999', 'PUT', { name: 'X' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/categories/cat_999', { name: 'X' });
       const data = await res.json();
       expect(res.status).toBe(404);
     });
@@ -189,10 +187,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_1', 'PUT', { name: 12345 }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/categories/cat_1', { name: 12345 });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
@@ -206,10 +202,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_1', 'PUT', { name: 'X' }),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('PUT', 'http://localhost/api/categories/cat_1', { name: 'X' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to update category');
@@ -231,10 +225,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/categories/cat_1');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -248,10 +240,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_999', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/categories/cat_999');
       const data = await res.json();
       expect(res.status).toBe(404);
       expect(data.error).toContain('Category not found or is global');
@@ -270,10 +260,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/categories/cat_1');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Cannot delete category with linked products');
@@ -293,10 +281,8 @@ describe('handleCategoriesRoute', () => {
           })),
         })),
       };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories/cat_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/categories/cat_1');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to delete category');
@@ -305,11 +291,8 @@ describe('handleCategoriesRoute', () => {
 
   describe('method not allowed', () => {
     it('returns 405 for unsupported method', async () => {
-      const db = { prepare: vi.fn() };
-      const res = await handleCategoriesRoute(
-        makeReq('http://localhost/api/categories', 'PATCH'),
-        { DB: db }, tenantId
-      );
+      env = { DB: { prepare: vi.fn() } };
+      const res = await request('PATCH', 'http://localhost/api/categories');
       const data = await res.json();
       expect(res.status).toBe(405);
     });

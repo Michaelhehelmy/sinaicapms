@@ -1,6 +1,8 @@
 import { jsonResponse, cachedJsonResponse, errorResponse, toSnake } from '../utils/response';
 import { validationError } from '../utils/errors';
 import { parsePagination, paginationEnvelope } from '../utils/pagination';
+import { getScope } from '../middleware/resolveScope.js';
+import { Hono } from 'hono';
 import { z } from 'zod';
 
 export const orderPostSchema = z.object({
@@ -159,303 +161,6 @@ function generateReference() {
   return `ORD-${rand}`;
 }
 
-export async function handleOrdersRoute(request, env, tenantId) {
-  const url = new URL(request.url);
-  const method = request.method;
-  const path = url.pathname.split('/').filter(Boolean);
-
-  // P-L1 fix: Removed PRAGMA foreign_keys = ON (D1 doesn't support PRAGMA)
-
-  if (method === 'GET' && path.length === 3 && path[2] === 'calculate-price') {
-    const roomId = url.searchParams.get('roomId');
-    const checkInStr = url.searchParams.get('checkIn');
-    const checkOutStr = url.searchParams.get('checkOut');
-
-    if (!roomId || !checkInStr || !checkOutStr) {
-      return jsonResponse({ total_price: 0 });
-    }
-
-    const totalPrice = await calculatePriceOnServer(env, tenantId, roomId, checkInStr, checkOutStr);
-    return jsonResponse({ total_price: totalPrice });
-  }
-
-  // Public order status lookup by reference code (no auth required)
-  if (method === 'GET' && path.length === 4 && path[2] === 'status') {
-    const ref = path[3];
-    try {
-      const order = await env.DB.prepare(
-        `SELECT o.id, o.reference, o.guest_name, o.check_in_date, o.check_out_date,
-                o.total_amount, o.amount_paid, o.payment_status, o.payment_method,
-                os.name as state_name, r.name as room_name
-         FROM orders o
-         LEFT JOIN order_state os ON o.order_state_id = os.id
-         LEFT JOIN rooms_new r ON o.room_id = r.id
-         WHERE o.tenant_id = ? AND o.reference = ?`
-      ).bind(tenantId, ref).first();
-
-      if (!order) return errorResponse('Order not found', 404);
-
-      return jsonResponse({
-        reference: order.reference,
-        guest_name: order.guest_name,
-        check_in_date: order.check_in_date,
-        check_out_date: order.check_out_date,
-        total_amount: order.total_amount,
-        amount_paid: order.amount_paid,
-        payment_status: order.payment_status,
-        payment_method: order.payment_method,
-        status: order.state_name,
-        room_name: order.room_name,
-      });
-    } catch (e) {
-      return errorResponse('Failed to fetch order status');
-    }
-  }
-
-  if (method === 'POST' && path.length === 3 && path[2] === 'bulk-delete') {
-    try {
-      const { ids } = toSnake(await request.json());
-      if (!Array.isArray(ids) || ids.length === 0) return errorResponse('Order IDs array is required', 400);
-
-      const placeholders = ids.map(() => '?').join(',');
-
-      const { results: orderList } = await env.DB.prepare(
-        `SELECT room_id FROM orders WHERE tenant_id = ? AND id IN (${placeholders})`
-      ).bind(tenantId, ...ids).all();
-
-      await env.DB.prepare(`DELETE FROM orders WHERE tenant_id = ? AND id IN (${placeholders})`).bind(tenantId, ...ids).run();
-
-      // P-H3 fix: Batch room status updates instead of per-order loop
-      const roomIds = [...new Set(orderList.map(o => o.room_id).filter(Boolean))];
-      if (roomIds.length > 0) {
-        const roomPh = roomIds.map(() => '?').join(',');
-        const orderPh = ids.map(() => '?').join(',');
-        // Update rooms to available only if they have no remaining orders
-        await env.DB.prepare(
-          `UPDATE rooms_new SET status = 'available', updated_at = datetime('now')
-           WHERE id IN (${roomPh})
-           AND id NOT IN (
-             SELECT DISTINCT room_id FROM orders
-             WHERE tenant_id = ? AND room_id IN (${roomPh}) AND id NOT IN (${orderPh})
-           )`
-        ).bind(...roomIds, tenantId, ...roomIds, ...ids).run();
-      }
-
-      return jsonResponse({ success: true, deleted: ids });
-    } catch (e) {
-      return errorResponse('Failed to delete orders');
-    }
-  }
-
-  // T5: PATCH /orders/:id/status — status-only partial update (dedicated route)
-  if (method === 'PATCH' && path.length === 4 && path[3] === 'status') {
-    try {
-      const ordId = path[2];
-      const parsed = orderStatusSchema.safeParse(toSnake(await request.json()));
-      if (!parsed.success) {
-        return validationError(parsed);
-      }
-      const { status } = parsed.data;
-
-      // S-H2 style: tenant-scoped existence check
-      const existing = await env.DB.prepare(
-        "SELECT id FROM orders WHERE tenant_id = ? AND id = ?"
-      ).bind(tenantId, ordId).first();
-      if (!existing) return errorResponse('Order not found', 404);
-
-      const state = await env.DB.prepare(
-        "SELECT id, paid FROM order_state WHERE id = ?"
-      ).bind(status).first();
-      if (!state) return errorResponse('Invalid order status', 400);
-
-      await env.DB.prepare(
-        "UPDATE orders SET order_state_id = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
-      ).bind(status, tenantId, ordId).run();
-
-      if (state.paid) {
-        await env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
-      }
-
-      return jsonResponse({ success: true, id: ordId, status });
-    } catch (e) {
-      return errorResponse('Failed to update order status');
-    }
-  }
-
-  if (method === 'GET') {
-    if (path.length === 2) {
-      const status = url.searchParams.get('status');
-      // T6: page/pageSize envelope (clean migration from limit/offset)
-      const { page, pageSize, offset } = parsePagination(url);
-
-      let countQuery = "SELECT COUNT(*) as total FROM orders WHERE tenant_id = ?";
-      let countBindings = [tenantId];
-      // P-M4 fix: Select specific columns instead of SELECT o.*
-      let dataQuery = `SELECT o.id, o.tenant_id, o.camp_id, o.room_id, o.customer_id,
-        o.order_state_id, o.check_in_date, o.check_out_date,
-        o.number_of_people, o.total_amount, o.amount_paid,
-        o.payment_status, o.reference, o.created_at,
-        c.first_name as customer_first_name, c.last_name as customer_last_name,
-        r.name as room_name, osi.name as state_name
-        FROM orders o
-        LEFT JOIN customers c ON c.id = o.customer_id
-        LEFT JOIN rooms_new r ON r.id = o.room_id
-        LEFT JOIN order_state_lang osi ON osi.order_state_id = o.order_state_id AND osi.lang = 'en'
-        WHERE o.tenant_id = ?`;
-      let dataBindings = [tenantId];
-
-      if (status) {
-        countQuery += " AND order_state_id = ?";
-        countBindings.push(status);
-        dataQuery += " AND o.order_state_id = ?";
-        dataBindings.push(status);
-      }
-
-      const { results: countResults } = await env.DB.prepare(countQuery).bind(...countBindings).all();
-      const total = countResults[0]?.total || 0;
-
-      dataQuery += " ORDER BY o.created_at DESC LIMIT ? OFFSET ?";
-      dataBindings.push(pageSize, offset);
-      const { results } = await env.DB.prepare(dataQuery).bind(...dataBindings).all();
-      return jsonResponse(paginationEnvelope(results, total, page, pageSize));
-    } else {
-      const { results } = await env.DB.prepare(
-        `SELECT o.id, o.tenant_id, o.camp_id, o.room_id, o.customer_id,
-          o.order_state_id, o.check_in_date, o.check_out_date,
-          o.number_of_people, o.total_amount, o.amount_paid,
-          o.payment_method, o.payment_status, o.reference, o.notes, o.created_at,
-          c.first_name as customer_first_name, c.last_name as customer_last_name,
-          c.email as customer_email, c.phone as customer_phone,
-          r.name as room_name, osi.name as state_name
-         FROM orders o
-         LEFT JOIN customers c ON c.id = o.customer_id
-         LEFT JOIN rooms_new r ON r.id = o.room_id
-         LEFT JOIN order_state_lang osi ON osi.order_state_id = o.order_state_id AND osi.lang = 'en'
-         WHERE o.tenant_id = ? AND o.id = ?`
-      ).bind(tenantId, path[2]).all();
-      if (results.length === 0) return errorResponse('Order not found', 404);
-      return jsonResponse(results[0]);
-    }
-  } else if (method === 'POST') {
-    try {
-      const parsed = orderPostSchema.safeParse(toSnake(await request.json()));
-      if (!parsed.success) {
-        return validationError(parsed);
-      }
-      const data = parsed.data;
-      const { id, camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes } = data;
-
-      const validationError = await validateOrder(env, tenantId, null, data);
-      if (validationError) return errorResponse(validationError, 400);
-
-      const ordId = id || 'ord_' + crypto.randomUUID().slice(0, 12); // L1 fix
-      const reference = generateReference();
-      const customerId = await findOrCreateCustomer(env, tenantId, guest_name, guest_email, guest_phone);
-
-      await env.DB.prepare(
-        `INSERT INTO orders (id, tenant_id, camp_id, room_id, customer_id, order_state_id, check_in_date, check_out_date, number_of_people, total_amount, amount_paid, payment_method, payment_status, reference, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-      ).bind(ordId, tenantId, camp_id, room_id, customerId, order_state_id || 'pending', check_in_date, check_out_date, number_of_people || 1, total_amount || 0, amount_paid || 0, payment_method || null, payment_status || null, reference, notes || null).run();
-
-      if (order_state_id) {
-        const { results: osResult } = await env.DB.prepare(
-          "SELECT paid FROM order_state WHERE id = ?"
-        ).bind(order_state_id).all();
-        if (osResult.length > 0 && osResult[0].paid) {
-          await env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
-        }
-      }
-
-      // T5a: push a live `new-booking` event to the tenant's admin dashboards.
-      broadcastNewBooking(env, tenantId, { id: ordId, camp_id, check_in_date, check_out_date });
-
-      return jsonResponse({ id: ordId, reference, success: true, customer_id: customerId });
-    } catch (e) {
-      return errorResponse('Failed to create order');
-    }
-  } else if (method === 'PUT') {
-    try {
-      const ordId = path[2];
-      const parsed = orderPutSchema.safeParse(toSnake(await request.json()));
-      if (!parsed.success) {
-        return validationError(parsed);
-      }
-      const data = parsed.data;
-      const { camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes } = data;
-
-      const validationError = await validateOrder(env, tenantId, ordId, data);
-      if (validationError) return errorResponse(validationError, 400);
-
-      // S-H2 fix: Add tenant_id scoping to old order lookup
-      const { results: oldResult } = await env.DB.prepare(
-        "SELECT room_id, customer_id FROM orders WHERE tenant_id = ? AND id = ?"
-      ).bind(tenantId, ordId).all();
-      const oldOrder = oldResult[0];
-      const oldRoomId = oldOrder ? oldOrder.room_id : null;
-      const oldCustomerId = oldOrder ? oldOrder.customer_id : null;
-
-      const newCustomerId = await updateOrCreateCustomer(env, tenantId, oldCustomerId, guest_name, guest_email, guest_phone);
-
-      await env.DB.prepare(
-        `UPDATE orders SET
-          camp_id = COALESCE(?, camp_id),
-          room_id = COALESCE(?, room_id),
-          customer_id = COALESCE(?, customer_id),
-          number_of_people = COALESCE(?, number_of_people),
-          check_in_date = COALESCE(?, check_in_date),
-          check_out_date = COALESCE(?, check_out_date),
-          total_amount = COALESCE(?, total_amount),
-          amount_paid = COALESCE(?, amount_paid),
-          payment_method = COALESCE(?, payment_method),
-          payment_status = COALESCE(?, payment_status),
-          order_state_id = COALESCE(?, order_state_id),
-          notes = COALESCE(?, notes),
-          updated_at = datetime('now')
-         WHERE tenant_id = ? AND id = ?`
-      ).bind(
-        camp_id || null, room_id || null, newCustomerId || null, number_of_people !== undefined ? number_of_people : null,
-        check_in_date || null, check_out_date || null, total_amount !== undefined ? total_amount : null, amount_paid !== undefined ? amount_paid : null,
-        payment_method !== undefined ? payment_method : null, payment_status !== undefined ? payment_status : null, order_state_id || null, notes !== undefined ? notes : null,
-        tenantId, ordId
-      ).run();
-
-      if (order_state_id) {
-        const { results: osRes } = await env.DB.prepare(
-          "SELECT paid FROM order_state WHERE id = ?"
-        ).bind(order_state_id).all();
-        if (osRes.length > 0 && osRes[0].paid) {
-          await env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
-        }
-      }
-
-      return jsonResponse({ success: true });
-    } catch (e) {
-      return errorResponse('Failed to update order');
-    }
-  } else if (method === 'DELETE') {
-    try {
-      const ordId = path[2];
-
-      const { results: ordResult } = await env.DB.prepare("SELECT room_id FROM orders WHERE tenant_id = ? AND id = ?").bind(tenantId, ordId).all();
-      const order = ordResult[0];
-
-      if (order) {
-        const { results: others } = await env.DB.prepare("SELECT id FROM orders WHERE tenant_id = ? AND id != ? AND room_id = ? AND order_state_id != 'cancelled'").bind(tenantId, ordId, order.room_id).all();
-        if (others.length === 0) {
-          // Only set available if no other active orders exist (exclude cancelled)
-          await env.DB.prepare("UPDATE rooms_new SET status = 'available', updated_at = datetime('now') WHERE id = ?").bind(order.room_id).run();
-        }
-      }
-
-      await env.DB.prepare("DELETE FROM orders WHERE tenant_id = ? AND id = ?").bind(tenantId, ordId).run();
-      return jsonResponse({ success: true });
-    } catch (e) {
-      return errorResponse('Failed to delete order');
-    }
-  }
-  return errorResponse('Method not allowed', 405);
-}
-
 async function validateOrder(env, tenantId, editId, data) {
   const { camp_id, room_id, guest_name, number_of_people, check_in_date, check_out_date } = data;
   if (!camp_id || !room_id || !guest_name) {
@@ -574,8 +279,332 @@ async function calculatePriceOnServer(env, tenantId, roomId, checkInDate, checkO
   return totalPrice;
 }
 
-export async function handleAvailability(request, env, tenantId) {
-  const url = new URL(request.url);
+const ordersRoutes = new Hono();
+
+// P-L1 fix: Removed PRAGMA foreign_keys = ON (D1 doesn't support PRAGMA)
+
+// Phase 3 contract fix: missing params are a client error (400), not a
+// silent { total_price: 0 } success. A room with no seasonal pricing still
+// returns total_price 0 below — only MISSING params are rejected here.
+ordersRoutes.get('/calculate-price', async (c) => {
+  const url = new URL(c.req.url);
+  const roomId = url.searchParams.get('roomId');
+  const checkInStr = url.searchParams.get('checkIn');
+  const checkOutStr = url.searchParams.get('checkOut');
+
+  if (!roomId || !checkInStr || !checkOutStr) {
+    return errorResponse('roomId, checkIn, and checkOut are required', 400);
+  }
+
+  const totalPrice = await calculatePriceOnServer(c.env, getScope(c).tenantId, roomId, checkInStr, checkOutStr);
+  return jsonResponse({ total_price: totalPrice });
+});
+
+// Public order status lookup by reference code (no auth required)
+ordersRoutes.get('/status/:ref', async (c) => {
+  const ref = c.req.param('ref');
+  try {
+    const order = await c.env.DB.prepare(
+      `SELECT o.id, o.reference, o.guest_name, o.check_in_date, o.check_out_date,
+              o.total_amount, o.amount_paid, o.payment_status, o.payment_method,
+              os.name as state_name, r.name as room_name
+       FROM orders o
+       LEFT JOIN order_state os ON o.order_state_id = os.id
+       LEFT JOIN rooms_new r ON o.room_id = r.id
+       WHERE o.tenant_id = ? AND o.reference = ?`
+    ).bind(getScope(c).tenantId, ref).first();
+
+    if (!order) return errorResponse('Order not found', 404);
+
+    return jsonResponse({
+      reference: order.reference,
+      guest_name: order.guest_name,
+      check_in_date: order.check_in_date,
+      check_out_date: order.check_out_date,
+      total_amount: order.total_amount,
+      amount_paid: order.amount_paid,
+      payment_status: order.payment_status,
+      payment_method: order.payment_method,
+      status: order.state_name,
+      room_name: order.room_name,
+    });
+  } catch (e) {
+    return errorResponse('Failed to fetch order status');
+  }
+});
+
+ordersRoutes.post('/bulk-delete', async (c) => {
+  try {
+    const { ids } = toSnake(await c.req.json());
+    const tenantId = getScope(c).tenantId;
+    if (!Array.isArray(ids) || ids.length === 0) return errorResponse('Order IDs array is required', 400);
+
+    const placeholders = ids.map(() => '?').join(',');
+
+    const { results: orderList } = await c.env.DB.prepare(
+      `SELECT room_id FROM orders WHERE tenant_id = ? AND id IN (${placeholders})`
+    ).bind(tenantId, ...ids).all();
+
+    // Phase 3 cascade: booking read-acks reference the deleted orders.
+    await c.env.DB.prepare(
+      `DELETE FROM inbox_reads WHERE tenant_id = ? AND ref_type = 'booking' AND ref_id IN (${placeholders})`
+    ).bind(tenantId, ...ids).run();
+
+    await c.env.DB.prepare(`DELETE FROM orders WHERE tenant_id = ? AND id IN (${placeholders})`).bind(tenantId, ...ids).run();
+
+    // P-H3 fix: Batch room status updates instead of per-order loop
+    const roomIds = [...new Set(orderList.map(o => o.room_id).filter(Boolean))];
+    if (roomIds.length > 0) {
+      const roomPh = roomIds.map(() => '?').join(',');
+      const orderPh = ids.map(() => '?').join(',');
+      // Update rooms to available only if they have no remaining orders
+      await c.env.DB.prepare(
+        `UPDATE rooms_new SET status = 'available', updated_at = datetime('now')
+         WHERE id IN (${roomPh})
+         AND id NOT IN (
+           SELECT DISTINCT room_id FROM orders
+           WHERE tenant_id = ? AND room_id IN (${roomPh}) AND id NOT IN (${orderPh})
+         )`
+      ).bind(...roomIds, tenantId, ...roomIds, ...ids).run();
+    }
+
+    return jsonResponse({ success: true, deleted: ids });
+  } catch (e) {
+    return errorResponse('Failed to delete orders');
+  }
+});
+
+// T5: PATCH /orders/:id/status — status-only partial update (dedicated route)
+ordersRoutes.patch('/:id/status', async (c) => {
+  try {
+    const ordId = c.req.param('id');
+    const tenantId = getScope(c).tenantId;
+    const parsed = orderStatusSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+    const { status } = parsed.data;
+
+    // S-H2 style: tenant-scoped existence check
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM orders WHERE tenant_id = ? AND id = ?"
+    ).bind(tenantId, ordId).first();
+    if (!existing) return errorResponse('Order not found', 404);
+
+    const state = await c.env.DB.prepare(
+      "SELECT id, paid FROM order_state WHERE id = ?"
+    ).bind(status).first();
+    if (!state) return errorResponse('Invalid order status', 400);
+
+    await c.env.DB.prepare(
+      "UPDATE orders SET order_state_id = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
+    ).bind(status, tenantId, ordId).run();
+
+    if (state.paid) {
+      await c.env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
+    }
+
+    return jsonResponse({ success: true, id: ordId, status });
+  } catch (e) {
+    return errorResponse('Failed to update order status');
+  }
+});
+
+ordersRoutes.get('/', async (c) => {
+  const url = new URL(c.req.url);
+  const tenantId = getScope(c).tenantId;
+  const status = url.searchParams.get('status');
+  // T6: page/pageSize envelope (clean migration from limit/offset)
+  const { page, pageSize, offset } = parsePagination(url);
+
+  let countQuery = "SELECT COUNT(*) as total FROM orders WHERE tenant_id = ?";
+  let countBindings = [tenantId];
+  // P-M4 fix: Select specific columns instead of SELECT o.*
+  let dataQuery = `SELECT o.id, o.tenant_id, o.camp_id, o.room_id, o.customer_id,
+    o.order_state_id, o.check_in_date, o.check_out_date,
+    o.number_of_people, o.total_amount, o.amount_paid,
+    o.payment_status, o.reference, o.created_at,
+    c.first_name as customer_first_name, c.last_name as customer_last_name,
+    r.name as room_name, osi.name as state_name
+    FROM orders o
+    LEFT JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN rooms_new r ON r.id = o.room_id
+    LEFT JOIN order_state_lang osi ON osi.order_state_id = o.order_state_id AND osi.lang = 'en'
+    WHERE o.tenant_id = ?`;
+  let dataBindings = [tenantId];
+
+  if (status) {
+    countQuery += " AND order_state_id = ?";
+    countBindings.push(status);
+    dataQuery += " AND o.order_state_id = ?";
+    dataBindings.push(status);
+  }
+
+  const { results: countResults } = await c.env.DB.prepare(countQuery).bind(...countBindings).all();
+  const total = countResults[0]?.total || 0;
+
+  dataQuery += " ORDER BY o.created_at DESC LIMIT ? OFFSET ?";
+  dataBindings.push(pageSize, offset);
+  const { results } = await c.env.DB.prepare(dataQuery).bind(...dataBindings).all();
+  return jsonResponse(paginationEnvelope(results, total, page, pageSize));
+});
+
+ordersRoutes.get('/:id', async (c) => {
+  const ordId = c.req.param('id');
+  const { results } = await c.env.DB.prepare(
+    `SELECT o.id, o.tenant_id, o.camp_id, o.room_id, o.customer_id,
+      o.order_state_id, o.check_in_date, o.check_out_date,
+      o.number_of_people, o.total_amount, o.amount_paid,
+      o.payment_method, o.payment_status, o.reference, o.notes, o.created_at,
+      c.first_name as customer_first_name, c.last_name as customer_last_name,
+      c.email as customer_email, c.phone as customer_phone,
+      r.name as room_name, osi.name as state_name
+     FROM orders o
+     LEFT JOIN customers c ON c.id = o.customer_id
+     LEFT JOIN rooms_new r ON r.id = o.room_id
+     LEFT JOIN order_state_lang osi ON osi.order_state_id = o.order_state_id AND osi.lang = 'en'
+     WHERE o.tenant_id = ? AND o.id = ?`
+  ).bind(getScope(c).tenantId, ordId).all();
+  if (results.length === 0) return errorResponse('Order not found', 404);
+  return jsonResponse(results[0]);
+});
+
+ordersRoutes.post('/', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    const parsed = orderPostSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+    const data = parsed.data;
+    const { id, camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes } = data;
+
+    const validationError = await validateOrder(c.env, tenantId, null, data);
+    if (validationError) return errorResponse(validationError, 400);
+
+    const ordId = id || 'ord_' + crypto.randomUUID().slice(0, 12); // L1 fix
+    const reference = generateReference();
+    const customerId = await findOrCreateCustomer(c.env, tenantId, guest_name, guest_email, guest_phone);
+
+    await c.env.DB.prepare(
+      `INSERT INTO orders (id, tenant_id, camp_id, room_id, customer_id, order_state_id, check_in_date, check_out_date, number_of_people, total_amount, amount_paid, payment_method, payment_status, reference, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+    ).bind(ordId, tenantId, camp_id, room_id, customerId, order_state_id || 'pending', check_in_date, check_out_date, number_of_people || 1, total_amount || 0, amount_paid || 0, payment_method || null, payment_status || null, reference, notes || null).run();
+
+    if (order_state_id) {
+      const { results: osResult } = await c.env.DB.prepare(
+        "SELECT paid FROM order_state WHERE id = ?"
+      ).bind(order_state_id).all();
+      if (osResult.length > 0 && osResult[0].paid) {
+        await c.env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
+      }
+    }
+
+    // T5a: push a live `new-booking` event to the tenant's admin dashboards.
+    broadcastNewBooking(c.env, tenantId, { id: ordId, camp_id, check_in_date, check_out_date });
+
+    return jsonResponse({ id: ordId, reference, success: true, customer_id: customerId });
+  } catch (e) {
+    return errorResponse('Failed to create order');
+  }
+});
+
+ordersRoutes.put('/:id', async (c) => {
+  try {
+    const ordId = c.req.param('id');
+    const tenantId = getScope(c).tenantId;
+    const parsed = orderPutSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+    const data = parsed.data;
+    const { camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes } = data;
+
+    const validationError = await validateOrder(c.env, tenantId, ordId, data);
+    if (validationError) return errorResponse(validationError, 400);
+
+    // S-H2 fix: Add tenant_id scoping to old order lookup
+    const { results: oldResult } = await c.env.DB.prepare(
+      "SELECT room_id, customer_id FROM orders WHERE tenant_id = ? AND id = ?"
+    ).bind(tenantId, ordId).all();
+    const oldOrder = oldResult[0];
+    const oldCustomerId = oldOrder ? oldOrder.customer_id : null;
+
+    const newCustomerId = await updateOrCreateCustomer(c.env, tenantId, oldCustomerId, guest_name, guest_email, guest_phone);
+
+    await c.env.DB.prepare(
+      `UPDATE orders SET
+        camp_id = COALESCE(?, camp_id),
+        room_id = COALESCE(?, room_id),
+        customer_id = COALESCE(?, customer_id),
+        number_of_people = COALESCE(?, number_of_people),
+        check_in_date = COALESCE(?, check_in_date),
+        check_out_date = COALESCE(?, check_out_date),
+        total_amount = COALESCE(?, total_amount),
+        amount_paid = COALESCE(?, amount_paid),
+        payment_method = COALESCE(?, payment_method),
+        payment_status = COALESCE(?, payment_status),
+        order_state_id = COALESCE(?, order_state_id),
+        notes = COALESCE(?, notes),
+        updated_at = datetime('now')
+       WHERE tenant_id = ? AND id = ?`
+    ).bind(
+      camp_id || null, room_id || null, newCustomerId || null, number_of_people !== undefined ? number_of_people : null,
+      check_in_date || null, check_out_date || null, total_amount !== undefined ? total_amount : null, amount_paid !== undefined ? amount_paid : null,
+      payment_method !== undefined ? payment_method : null, payment_status !== undefined ? payment_status : null, order_state_id || null, notes !== undefined ? notes : null,
+      tenantId, ordId
+    ).run();
+
+    if (order_state_id) {
+      const { results: osRes } = await c.env.DB.prepare(
+        "SELECT paid FROM order_state WHERE id = ?"
+      ).bind(order_state_id).all();
+      if (osRes.length > 0 && osRes[0].paid) {
+        await c.env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
+      }
+    }
+
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return errorResponse('Failed to update order');
+  }
+});
+
+ordersRoutes.delete('/:id', async (c) => {
+  try {
+    const ordId = c.req.param('id');
+    const tenantId = getScope(c).tenantId;
+
+    const { results: ordResult } = await c.env.DB.prepare("SELECT room_id FROM orders WHERE tenant_id = ? AND id = ?").bind(tenantId, ordId).all();
+    const order = ordResult[0];
+
+    if (order) {
+      const { results: others } = await c.env.DB.prepare("SELECT id FROM orders WHERE tenant_id = ? AND id != ? AND room_id = ? AND order_state_id != 'cancelled'").bind(tenantId, ordId, order.room_id).all();
+      if (others.length === 0) {
+        // Only set available if no other active orders exist (exclude cancelled)
+        await c.env.DB.prepare("UPDATE rooms_new SET status = 'available', updated_at = datetime('now') WHERE id = ?").bind(order.room_id).run();
+      }
+    }
+
+    // Phase 3 cascade: booking read-acks reference the deleted order.
+    await c.env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ? AND ref_type = 'booking' AND ref_id = ?").bind(tenantId, ordId).run();
+    await c.env.DB.prepare("DELETE FROM orders WHERE tenant_id = ? AND id = ?").bind(tenantId, ordId).run();
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return errorResponse('Failed to delete order');
+  }
+});
+
+ordersRoutes.all('*', () => errorResponse('Method not allowed', 405));
+
+/**
+ * /api/availability sub-router (Phase 4 T1) — entirely public.
+ */
+export const availabilityRoutes = new Hono();
+
+availabilityRoutes.get('/', async (c) => {
+  const url = new URL(c.req.url);
+  const tenantId = getScope(c).tenantId;
   const checkIn = url.searchParams.get('checkIn');
   const checkOut = url.searchParams.get('checkOut');
   const productId = url.searchParams.get('productId');
@@ -605,7 +634,7 @@ export async function handleAvailability(request, env, tenantId) {
       bindArgs.push(productId);
     }
 
-    const { results } = await env.DB.prepare(query).bind(...bindArgs).all();
+    const { results } = await c.env.DB.prepare(query).bind(...bindArgs).all();
 
     const availabilityMap = {};
     results.forEach(r => {
@@ -635,4 +664,8 @@ export async function handleAvailability(request, env, tenantId) {
   } catch (e) {
     return errorResponse('Failed to check availability');
   }
-}
+});
+
+availabilityRoutes.all('*', () => errorResponse('Method not allowed', 405));
+
+export default ordersRoutes;

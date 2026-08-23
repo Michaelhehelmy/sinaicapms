@@ -3,8 +3,7 @@ import PublicLayout from '@/layouts/PublicLayout.astro';
 import ZoneGuard from '@/components/public/ZoneGuard.astro';
 import SafeImage from '@/components/ui/SafeImage.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
-import { escHtml, normalizeAssetUrl, formatCurrency } from '@/lib/utils';
-import { hexToRgb, luminance } from '@/lib/theme';
+import { escHtml, normalizeAssetUrl, formatCurrency, readableTextOn } from '@/lib/utils';
 
 // `/rooms` is a tenant-zone route - forbidden on the marketplace zone.
 const forbidden = Astro.locals.routeForbidden;
@@ -13,11 +12,6 @@ if (forbidden) Astro.response.status = 404;
 function escapeUrl(url: string | undefined | null): string {
   if (!url) return '';
   return url.replace(/['")\)]/g, '');
-}
-
-/** Readable CTA text on a user-supplied primaryColor background (luminance rule). */
-function ctaInk(color: string): string {
-  return luminance(hexToRgb(color)) < 0.55 ? '#ffffff' : '#1a241d';
 }
 
 const { tenant, roomTypes, primaryColor, tenantName, tenantId } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
@@ -129,7 +123,7 @@ const bookingUrl = Astro.locals.zone === 'tenant' ? `/book${querySuffix}` : `/ca
                     <a
                       href={bookingUrl}
                       class="inline-block rounded-full px-6 py-3 text-center font-bold shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
-                      style={`background: linear-gradient(135deg, ${primaryColor}, ${primaryColor}d9); color: ${ctaInk(primaryColor)}; box-shadow: 0 10px 24px -8px ${primaryColor}59;`}
+                      style={`background: linear-gradient(135deg, ${primaryColor}, ${primaryColor}d9); color: ${readableTextOn(primaryColor)}; box-shadow: 0 10px 24px -8px ${primaryColor}59;`}
                     >
                       Check Availability
                     </a>

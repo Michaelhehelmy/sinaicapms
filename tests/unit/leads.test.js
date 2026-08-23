@@ -4,7 +4,26 @@
  * Uses mocked DB to test business logic without hitting a real database.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { handleLeadsRoute } from '../../backend/src/api/leads.js';
+import leadsRoutes from '../../backend/src/api/leads.js';;
+
+// Signature-compatible shim: legacy handlers took (Request, env, tenantId).
+// They now execute against the Hono sub-router mounted by index.js.
+import { mountRouter } from '../../backend/tests/helpers/routerHarness.js';
+
+const __app = mountRouter(leadsRoutes, { tenantId: 'tenant_1', basePath: '/api/leads' });
+
+async function dispatch(req, env = {}) {
+  const url = new URL(req.url);
+  const init = { method: req.method, headers: req.headers };
+  if (!['GET', 'HEAD', 'DELETE'].includes(req.method)) {
+    try { init.body = JSON.stringify(await req.json()); } catch { /* passthrough */ }
+  }
+  return __app.request(url.pathname + url.search, init, env);
+}
+
+async function handleLeadsRoute(req, env = {}, _tenant = null) {
+  return dispatch(req, env);
+}
 
 // ─── Mock DB Helper ──────────────────────────────────────────
 function createMockDb({ allResults = [], firstResult = null, changes = 1 } = {}) {

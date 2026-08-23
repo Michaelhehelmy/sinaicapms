@@ -17,6 +17,10 @@ const JWT_CONFIG = {
   refreshExpiresIn: '7d',
   accessTtl: 24 * 60 * 60,
   refreshTtl: 7 * 24 * 60 * 60,
+  // Phase 5: floor/clamp for the optional shorter org (POS) access TTL.
+  // A misconfigured env value can neither brick terminals with sub-5-minute
+  // sessions nor outlive the admin (platform) token lifetime.
+  posAccessTtlFloorSeconds: 5 * 60,
 };
 
 // ─── Role Hierarchy (single definition) ───────────────────
@@ -41,16 +45,57 @@ function getJwtSecret(env) {
 }
 
 /**
+ * Resolve the access-token TTL (seconds) for a payload.
+ *
+ * Phase 5: org (POS) sessions may run a SHORTER access TTL than admin
+ * sessions (e.g. 15 minutes vs 24 hours) so that a stolen terminal token has
+ * a small blast radius. Opt-in via `POS_ACCESS_TTL_SECONDS` — unset or
+ * invalid keeps the legacy 24h lifetime, and refresh/admin tokens are never
+ * shortened. Configured values are clamped to
+ * [JWT_CONFIG.posAccessTtlFloorSeconds .. JWT_CONFIG.accessTtl].
+ */
+export function getAccessTtlSeconds(env, payload) {
+  const isOrg = !!payload && (
+    payload.userType === 'org' ||
+    (payload.userType == null && payload.posType === 'pos')
+  );
+  if (!isOrg) return JWT_CONFIG.accessTtl;
+  const raw = env?.POS_ACCESS_TTL_SECONDS;
+  if (raw === undefined || raw === null || String(raw).trim() === '') return JWT_CONFIG.accessTtl;
+  const configured = Number(String(raw).trim());
+  if (!Number.isInteger(configured) || configured <= 0) return JWT_CONFIG.accessTtl;
+  return Math.min(
+    Math.max(configured, JWT_CONFIG.posAccessTtlFloorSeconds),
+    JWT_CONFIG.accessTtl
+  );
+}
+
+/**
  * Generate JWT token.
+ *
+ * Token contract v2 (Phase 5): every issued token carries `userType` —
+ * 'platform' for admin tokens, 'org' for POS tokens. The legacy `posType:
+ * 'pos'` claim stays EMITTED for backward compatibility; verifiers accept
+ * BOTH during the transition (plan §7.1).
+ *
  * @param {Object} payload - Must include at least { sub, userId, email, role, tenantId }
  * @param {string} secret - JWT secret
  * @param {'access'|'refresh'} type - Token type
+ * @param {Object} [env] - Worker env; enables POS_ACCESS_TTL_SECONDS for org access tokens
  * @returns {Promise<string>} Signed JWT
  */
-export async function generateToken(payload, secret, type = 'access') {
-  const ttl = type === 'refresh' ? JWT_CONFIG.refreshTtl : JWT_CONFIG.accessTtl;
+export async function generateToken(payload, secret, type = 'access', env = null) {
+  const ttl = type === 'refresh'
+    ? JWT_CONFIG.refreshTtl
+    : getAccessTtlSeconds(env, payload);
+  // v2 realm tag: every token carries `userType` — 'org' for POS sessions
+  // (detected via the legacy posType claim when the caller omits it),
+  // 'platform' for admin sessions. Legacy `posType` keeps flowing through
+  // untouched for backward compatibility.
+  const userType = payload.userType || (payload.posType === 'pos' ? 'org' : 'platform');
   const tokenPayload = {
     ...payload,
+    userType,
     type,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + ttl,
@@ -131,14 +176,23 @@ export async function hashPassword(password) {
 
 /**
  * Auto-rehash SHA-256 passwords to bcrypt on successful login.
+ *
+ * Phase 5: covers BOTH user stores. The default table stays `admins`
+ * (byte-compatible with every existing caller); POS login passes
+ * `{ table: 'pos_users' }` so legacy-hash cashiers are upgraded too.
+ *
+ * @returns {Promise<boolean>} true when a rehash was written
  */
-export async function rehashIfNeeded(userId, plaintext, storedHash, env) {
-  if (storedHash && storedHash.startsWith('$sha256$')) {
-    const newHash = await bcrypt.hash(plaintext, 12);
-    await env.DB.prepare(
-      "UPDATE admins SET password_hash = ?, updated_at = datetime('now') WHERE id = ?"
-    ).bind(newHash, userId).run();
+export async function rehashIfNeeded(userId, plaintext, storedHash, env, { table = 'admins' } = {}) {
+  if (!(storedHash && storedHash.startsWith('$sha256$'))) return false;
+  if (table !== 'admins' && table !== 'pos_users') {
+    throw new Error(`rehashIfNeeded: unsupported user table "${table}"`);
   }
+  const newHash = await bcrypt.hash(plaintext, 12);
+  await env.DB.prepare(
+    `UPDATE ${table} SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`
+  ).bind(newHash, userId).run();
+  return true;
 }
 
 /**

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PlanningPanel from '@/components/admin/PlanningPanel';
 
 const mockShowToast = vi.fn();
-const mockRefresh = vi.fn();
 const mockSavePlan = vi.fn();
 const mockDeletePlan = vi.fn();
 let mockPlans: unknown[] = [];
@@ -13,13 +13,13 @@ vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
 
-vi.mock('@/hooks/useAdminData', () => ({
-  usePlans: () => ({
-    data: mockPlans,
-    loading: mockPlansLoading,
-    refresh: mockRefresh,
-  }),
-  useCamps: () => ({ data: camps }),
+// Phase 6: PlanningPanel consumes TanStack Query data hooks instead of the
+// legacy useAdminData fetchers.
+vi.mock('@/hooks/useQueryHooks', () => ({
+  queryKeys: {
+    plans: ['admin', 'plans'],
+  },
+  usePlansQuery: () => ({ data: mockPlans, isLoading: mockPlansLoading }),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -95,6 +95,17 @@ vi.mock('@/components/ui/ConfirmDialog', () => ({
 
 const camps = [{ id: 'c1', name: 'Camp 1', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' }];
 
+// The panel reads useQueryClient() to invalidate concerns — provide a fresh
+// client per render.
+function renderPanel() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <PlanningPanel campIds={['c1']} camps={camps} />
+    </QueryClientProvider>,
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockPlans = [
@@ -105,18 +116,18 @@ beforeEach(() => {
 
 describe('PlanningPanel', () => {
   it('renders with list view by default', () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Camp Planning')).toBeInTheDocument();
     expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows plan data when plans exist', () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Plan 1')).toBeInTheDocument();
   });
 
   it('switches to calendar view', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Calendar'));
     await waitFor(() => {
       expect(screen.getByText(/Prev/)).toBeInTheDocument();
@@ -125,7 +136,7 @@ describe('PlanningPanel', () => {
   });
 
   it('navigates calendar months', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Calendar'));
     await waitFor(() => {
       expect(screen.getByText(/Next/)).toBeInTheDocument();
@@ -135,7 +146,7 @@ describe('PlanningPanel', () => {
   });
 
   it('opens add plan form', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Plan')[0]);
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
@@ -143,7 +154,7 @@ describe('PlanningPanel', () => {
   });
 
   it('validates plan on save', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Plan')[0]);
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
@@ -156,7 +167,7 @@ describe('PlanningPanel', () => {
 
   it('saves plan successfully', async () => {
     mockSavePlan.mockResolvedValueOnce({});
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Plan')[0]);
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
@@ -171,7 +182,7 @@ describe('PlanningPanel', () => {
 
   it('shows error when save plan fails', async () => {
     mockSavePlan.mockRejectedValueOnce(new Error('Plan save failed'));
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Plan')[0]);
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
@@ -185,22 +196,22 @@ describe('PlanningPanel', () => {
 
   it('shows empty state when no plans', () => {
     mockPlans = [];
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('No plans yet')).toBeInTheDocument();
   });
 
   it('shows delete button for plans', () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Delete')).toBeInTheDocument();
   });
 
   it('shows filter status dropdown', () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByTestId('select-filter')).toBeInTheDocument();
   });
 
   it('filters plans by status', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.change(screen.getByTestId('select-filter'), { target: { value: 'upcoming' } });
     await waitFor(() => {
       expect(screen.getByText('Plan 1')).toBeInTheDocument();
@@ -208,14 +219,14 @@ describe('PlanningPanel', () => {
   });
 
   it('shows empty filtered state', () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.change(screen.getByTestId('select-filter'), { target: { value: 'completed' } });
     expect(screen.getByText('No plans yet')).toBeInTheDocument();
   });
 
   it('shows loading state', () => {
     mockPlansLoading = true;
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Loading plans...')).toBeInTheDocument();
   });
 
@@ -224,7 +235,7 @@ describe('PlanningPanel', () => {
       { id: 'p1', campId: 'c1', name: 'Plan 1', description: '', date: '', time: '10:00', capacity: 20, status: 'upcoming', category: 'Activity' },
       { id: 'p2', campId: 'c1', name: 'Plan 2', description: '', date: '2025-08-01', time: '11:00', capacity: 30, status: 'completed', category: 'Meal' },
     ];
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     expect(screen.getByText('Plan 1')).toBeInTheDocument();
     expect(screen.getByText('Plan 2')).toBeInTheDocument();
     expect(screen.getAllByTestId('cell-campId')[0]).toHaveTextContent('Camp 1');
@@ -237,7 +248,7 @@ describe('PlanningPanel', () => {
 
   it('edits an existing plan', async () => {
     mockSavePlan.mockResolvedValueOnce({});
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => {
       expect(screen.getByText('Edit Plan')).toBeInTheDocument();
@@ -252,7 +263,7 @@ describe('PlanningPanel', () => {
 
   it('deletes a plan with confirmation', async () => {
     mockDeletePlan.mockResolvedValueOnce({});
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
       expect(screen.getByText('Delete Plan')).toBeInTheDocument();
@@ -266,7 +277,7 @@ describe('PlanningPanel', () => {
 
   it('shows error when delete fails', async () => {
     mockDeletePlan.mockRejectedValueOnce(new Error('Delete failed'));
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
       expect(screen.getByText('Delete Plan')).toBeInTheDocument();
@@ -278,7 +289,7 @@ describe('PlanningPanel', () => {
   });
 
   it('cancels delete dialog', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
       expect(screen.getByText('Delete Plan')).toBeInTheDocument();
@@ -290,7 +301,7 @@ describe('PlanningPanel', () => {
   });
 
   it('closes add plan form', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Plan')[0]);
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
@@ -302,7 +313,7 @@ describe('PlanningPanel', () => {
   });
 
   it('switches back to list view', async () => {
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Calendar'));
     await waitFor(() => {
       expect(screen.getByText(/Prev/)).toBeInTheDocument();
@@ -315,7 +326,7 @@ describe('PlanningPanel', () => {
 
   it('fills all plan form fields', async () => {
     mockSavePlan.mockResolvedValueOnce({});
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getAllByText('Add Plan')[0]);
     await waitFor(() => {
       expect(screen.getByText('Add New Plan')).toBeInTheDocument();
@@ -354,7 +365,7 @@ describe('PlanningPanel', () => {
       { id: 'p2', campId: 'c1', name: 'Plan B', description: '', date: dateStr, time: '11:00', capacity: 30, status: 'ongoing', category: 'Meal' },
       { id: 'p3', campId: 'c1', name: 'Plan C', description: '', date: dateStr, time: '12:00', capacity: 40, status: 'cancelled', category: 'Meeting' },
     ];
-    render(<PlanningPanel campIds={['c1']} camps={camps} />);
+    renderPanel();
     fireEvent.click(screen.getByText('Calendar'));
     await waitFor(() => {
       expect(screen.getByText('Plan A')).toBeInTheDocument();

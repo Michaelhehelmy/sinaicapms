@@ -1,8 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { verifyToken, verifyPassword, generateToken } from '../../middleware/sharedAuth.js';
+import { verifyToken, verifyPassword, generateToken, rehashIfNeeded } from '../../middleware/sharedAuth.js';
+import { requireAuth } from '../../middleware/requireAuth.js';
 import { jsonResponse, errorResponse } from '../../utils/response.js';
+import { parsePagination, paginationEnvelope } from '../../utils/pagination.js';
 import { validationError } from '../../utils/errors.js';
+import { withSunset } from '../../utils/deprecation.js';
 
 const pos = new Hono();
 
@@ -24,6 +27,41 @@ const posOrderSchema = z.object({
   amountCard: z.number({ message: 'Card amount must be a number' }).min(0, 'Card amount cannot be negative').optional(),
   idempotencyKey: z.string({ message: 'Idempotency key must be text' }).max(64, 'Idempotency key is too long').optional(),
 }).strip();
+
+const posRefreshSchema = z.object({
+  refreshToken: z.string().min(1, 'Refresh token is required').optional(),
+}).strip();
+
+// Shared by login + refresh: resolve organization_id → tenant_id via the
+// mapping table (fallback to String(organization_id) keeps legacy behavior).
+async function resolveOrgTenantId(env, organizationId) {
+  try {
+    const { results } = await env.DB.prepare(
+      "SELECT tenant_id FROM tenant_org_mapping WHERE organization_id = ?"
+    ).bind(organizationId).all();
+    if (results.length > 0) {
+      return results[0].tenant_id;
+    }
+    return String(organizationId);
+  } catch (e) {
+    console.warn('[POS AUTH] tenant_org_mapping lookup failed, using organization_id:', e.message);
+    return String(organizationId);
+  }
+}
+
+// Shared by login + refresh: expose the org tax rate so terminals render
+// server-driven tax. Falls back to null → client uses 0.1.
+async function getOrgTaxRate(env, organizationId) {
+  try {
+    const { results } = await env.DB.prepare(
+      "SELECT tax_rate FROM pos_organizations WHERE id = ?"
+    ).bind(organizationId).all();
+    if (results.length > 0 && results[0].tax_rate != null) {
+      return parseFloat(results[0].tax_rate);
+    }
+  } catch { /* taxRate stays null */ }
+  return null;
+}
 
 // ─── POS Auth Middleware ────────────────────────────────────
 async function posAuth(c, next) {
@@ -49,10 +87,11 @@ async function posAuth(c, next) {
 }
 
 // ─── POST /login ───────────────────────────────────────────
-pos.post('/auth/login', async (c) => {
-  const env = c.env;
+// Phase 9: the handler is shared by the legacy POS path (deprecated, Sunset)
+// and the consolidated canonical mount POST /api/auth/pos-login in index.js.
+export async function handlePosLoginRequest(request, env) {
   try {
-    const { identifier, password } = await c.req.json();
+    const { identifier, password } = await request.json();
     if (!identifier || !password) {
       return errorResponse('Identifier and password required', 400);
     }
@@ -78,44 +117,31 @@ pos.post('/auth/login', async (c) => {
       return errorResponse('Invalid credentials', 401);
     }
 
+    // Phase 5 session-lifecycle parity: legacy $sha256$ hashes in pos_users
+    // are upgraded to bcrypt on successful login (same as admin login).
+    await rehashIfNeeded(user.id, password, user.password_hash, env, { table: 'pos_users' });
+
     // Resolve organization_id → tenant_id via mapping table
-    let tenantId = String(user.organization_id);
-    try {
-      const { results: mapping } = await env.DB.prepare(
-        "SELECT tenant_id FROM tenant_org_mapping WHERE organization_id = ?"
-      ).bind(user.organization_id).all();
-      if (mapping.length > 0) {
-        tenantId = mapping[0].tenant_id;
-      }
-    } catch (e) {
-      // Fallback to organization_id as string if mapping table doesn't exist
-      console.warn('[POS AUTH] tenant_org_mapping lookup failed, using organization_id:', e.message);
-    }
+    const tenantId = await resolveOrgTenantId(env, user.organization_id);
 
     // Expose the org tax rate so the POS terminal renders server-driven tax
-    // instead of a client-side hardcoded rate. Falls back to null → client uses 0.1.
-    let taxRate = null;
-    try {
-      const { results: orgRows } = await env.DB.prepare(
-        "SELECT tax_rate FROM pos_organizations WHERE id = ?"
-      ).bind(user.organization_id).all();
-      if (orgRows.length > 0 && orgRows[0].tax_rate != null) {
-        taxRate = parseFloat(orgRows[0].tax_rate);
-      }
-    } catch { /* taxRate stays null */ }
+    // instead of a client-side hardcoded rate.
+    const taxRate = await getOrgTaxRate(env, user.organization_id);
 
-    const token = await generateToken(
-      {
-        sub: String(user.id),
-        userId: String(user.id),
-        tenantId,
-        organizationId: user.organization_id,
-        storeId: user.store_id,
-        role: user.role,
-        posType: 'pos',
-      },
-      env.JWT_SECRET
-    );
+    // Token contract v2 + legacy tag both emitted; access TTL honours
+    // POS_ACCESS_TTL_SECONDS when configured (env passed as 4th arg).
+    const claims = {
+      sub: String(user.id),
+      userId: String(user.id),
+      tenantId,
+      organizationId: user.organization_id,
+      storeId: user.store_id,
+      role: user.role,
+      posType: 'pos',
+      userType: 'org',
+    };
+    const token = await generateToken({ ...claims }, env.JWT_SECRET, 'access', env);
+    const refreshToken = await generateToken(claims, env.JWT_SECRET, 'refresh');
 
     await env.DB.prepare(
       `UPDATE pos_users SET last_login_at = datetime('now') WHERE id = ?`
@@ -124,6 +150,7 @@ pos.post('/auth/login', async (c) => {
     return jsonResponse({
       success: true,
       token,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -139,8 +166,115 @@ pos.post('/auth/login', async (c) => {
   } catch (e) {
     return errorResponse('Login failed', 500);
   }
+}
+
+// Legacy surface: still served during the Phase 9 transition, marked
+// deprecated (Deprecation + Sunset). Canonical path is POST /api/auth/pos-login.
+pos.post('/auth/login', async (c) => withSunset(await handlePosLoginRequest(c.req.raw, c.env)));
+
+// ─── POST /auth/refresh (Phase 5: POS session-lifecycle parity) ───
+// Gated by requireAuth({realm:'pos'}) — the ONE auth gate (plan §7.2).
+// Accepts the refresh token issued by /auth/login as `Authorization:
+// Bearer <refresh>` OR `{ refreshToken }` in the body; header wins when both
+// are present. The gate enforces signature → realm → is_active ∧ deleted_at
+// on every call, so deactivated/deleted cashiers can never refresh.
+//
+// Rotation here is stateless RE-ISSUE (same design as POST /api/auth/refresh):
+// each call returns a NEW refresh token while previously issued ones remain
+// valid until their own 7d expiry — there is no revocation table yet.
+// Cryptographic invalidation of superseded tokens lands with the D1-backed
+// refresh_tokens table (backend/REFRESH_TOKENS_DESIGN.md, post-plan build).
+const posRefreshGate = requireAuth({
+  realm: 'pos',
+  requireTenant: false,
+  // An admin/platform refresh token presented to the POS realm is a type
+  // error, not an authorization hierarchy statement.
+  realmMismatch: { status: 401, message: 'Invalid token type' },
 });
 
+pos.post('/auth/refresh', async (c) => {
+  const env = c.env;
+  try {
+    let rawBody = {};
+    try { rawBody = await c.req.json(); } catch { /* empty body → header-only */ }
+    const parsed = posRefreshSchema.safeParse(rawBody ?? {});
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+
+    const bearerHeader = c.req.header('Authorization') || '';
+    const hasBearer = bearerHeader.startsWith('Bearer ');
+    const bodyToken = typeof parsed.data.refreshToken === 'string' ? parsed.data.refreshToken.trim() : '';
+    if (!hasBearer && !bodyToken) {
+      return errorResponse('Missing or invalid Authorization header or refreshToken body field', 401);
+    }
+
+    // requireAuth reads the Bearer header — feed it whichever source won.
+    const probeRequest = hasBearer
+      ? c.req.raw
+      : new Request(c.req.url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${bodyToken}` },
+        });
+
+    const auth = await posRefreshGate(probeRequest, env);
+    if (auth instanceof Response) return auth;
+
+    // Access tokens must never be replayed as refresh material
+    // (admin-refresh parity: "Invalid token type").
+    if (auth.user.type !== 'refresh') {
+      return errorResponse('Invalid token type', 401);
+    }
+
+    const userId = auth.user.userId || auth.user.sub;
+    const { results } = await env.DB.prepare(
+      `SELECT id, organization_id, store_id, username, email, first_name, last_name, role
+       FROM pos_users WHERE id = ? AND deleted_at IS NULL`
+    ).bind(userId).all();
+    if (results.length === 0) {
+      return errorResponse('Invalid or expired refresh token', 401);
+    }
+    const user = results[0];
+
+    const tenantId = await resolveOrgTenantId(env, user.organization_id);
+    const taxRate = await getOrgTaxRate(env, user.organization_id);
+
+    // Token contract v2 + legacy tag both emitted; access TTL honours
+    // POS_ACCESS_TTL_SECONDS when configured (env passed as 4th arg).
+    const claims = {
+      sub: String(user.id),
+      userId: String(user.id),
+      tenantId,
+      organizationId: user.organization_id,
+      storeId: user.store_id,
+      role: user.role,
+      posType: 'pos',
+      userType: 'org',
+    };
+    const token = await generateToken(claims, env.JWT_SECRET, 'access', env);
+    const refreshToken = await generateToken({ ...claims }, env.JWT_SECRET, 'refresh');
+
+    return jsonResponse({
+      success: true,
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+        organizationId: user.organization_id,
+        storeId: user.store_id,
+        taxRate,
+      },
+    });
+  } catch (e) {
+    console.error('[POS REFRESH ERROR]', e.message);
+    return errorResponse('Failed to process refresh', 500);
+  }
+});
 // ── All routes below require POS auth ──────────────────────
 pos.use('/*', posAuth);
 
@@ -468,6 +602,14 @@ pos.get('/orders', async (c) => {
   const posUser = c.get('posUser');
   const tenantId = posUser.tenantId;
   try {
+    // Phase 3 contract normalization: paginated envelope by default;
+    // `?raw=1` still serves the legacy bare array while consumers migrate.
+    const url = new URL(c.req.url);
+    const raw = url.searchParams.get('raw') === '1';
+    const { page, pageSize, offset } = parsePagination(url, { defaultPageSize: 100 });
+    const { results: countResult } = await env.DB.prepare(
+      'SELECT COUNT(*) AS total FROM pos_transactions WHERE tenant_id = ?'
+    ).bind(tenantId).all();
     const { results } = await env.DB.prepare(
       `SELECT t.id, t.order_number, t.status, t.subtotal, t.tax_amount, t.total_amount,
               t.payment_method, t.payment_status, t.created_at,
@@ -476,9 +618,10 @@ pos.get('/orders', async (c) => {
        LEFT JOIN pos_users u ON u.id = t.cashier_id
        WHERE t.tenant_id = ?
        ORDER BY t.created_at DESC
-       LIMIT 100`
-    ).bind(tenantId).all();
-    return jsonResponse(results);
+       LIMIT ? OFFSET ?`
+    ).bind(tenantId, pageSize, offset).all();
+    if (raw) return jsonResponse(results);
+    return jsonResponse(paginationEnvelope(results, countResult?.[0]?.total || 0, page, pageSize));
   } catch (e) {
     console.error('[POS ORDERS ERROR]', e.message);
     return errorResponse('Failed to fetch orders', 500);
@@ -701,7 +844,7 @@ pos.post('/shifts/close', async (c) => {
 
     // Find the active shift
     const { results: shifts } = await env.DB.prepare(
-      `SELECT id, opening_cash FROM pos_shifts
+      `SELECT id, opening_cash, opening_time FROM pos_shifts
        WHERE tenant_id = ? AND cashier_id = ? AND status = 'open'
        ORDER BY opening_time DESC LIMIT 1`
     ).bind(tenantId, cashierId).all();

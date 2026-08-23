@@ -134,16 +134,24 @@ const jsonLd = sanitizeForJsonLd({
   <meta name="twitter:description" content={sanitizeForHtml(metaDescription)} />
   {ogImage && <meta name="twitter:image" content={sanitizeForHtml(ogImage)} />}
 
-  <link rel="icon" type="image/png" href={faviconUrl} />
+  <link rel="icon" type="image/x-icon" href={faviconUrl} />
   {heroPreloadUrl && <link rel="preload" as="image" href={heroPreloadUrl} />}
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
+    rel="preload"
+    as="style"
+    onload="this.onload=null;this.rel='stylesheet'"
   />
   <link
     href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
+    rel="preload"
+    as="style"
+    onload="this.onload=null;this.rel='stylesheet'"
   />
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </noscript>
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)}></script>
 
   <!-- Pre-set React Fast Refresh preamble globals to prevent detection error on Vite 6 -->

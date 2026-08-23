@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleLeadsRoute } from '../src/api/leads.js';
+import leadsRoutes from '../src/api/leads.js';
+import { mountRouter } from './helpers/routerHarness.js';
 
 function mockDb(firstResult = null, allResults = [], runResult = {}) {
   return {
@@ -13,43 +14,43 @@ function mockDb(firstResult = null, allResults = [], runResult = {}) {
   };
 }
 
-function makeReq(url, method = 'GET', body = null) {
-  return {
-    url,
-    method,
-    headers: { get: () => null },
-    json: () => Promise.resolve(body),
-  };
-}
-
 const tenantId = 'tenant_1';
 
-describe('handleLeadsRoute', () => {
+describe('leadsRoutes', () => {
+  let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
+
+  beforeEach(() => {
+    env = {};
+    app = mountRouter(leadsRoutes, { tenantId, basePath: '/api/leads' });
+  });
+
   describe('GET /api/leads', () => {
     it('returns leads with pagination', async () => {
       const leads = [{ id: 'lead_1', name: 'John' }];
-      const db = mockDb(null, leads);
-      const countDb = {
+      // Override: first call returns leads, second call returns count
+      let callIdx = 0;
+      const db = {
         prepare: vi.fn(() => ({
           bind: vi.fn(() => ({
-            all: vi.fn().mockResolvedValue({ results: [{ total: 1 }] }),
+            all: vi.fn().mockImplementation(() => {
+              callIdx++;
+              if (callIdx === 1) return Promise.resolve({ results: leads });
+              return Promise.resolve({ results: [{ total: 1 }] });
+            }),
+            run: vi.fn().mockResolvedValue({}),
           })),
         })),
       };
-      // Override: first call returns leads, second call returns count
-      let callIdx = 0;
-      db.prepare = vi.fn(() => ({
-        bind: vi.fn(() => ({
-          all: vi.fn().mockImplementation(() => {
-            callIdx++;
-            if (callIdx === 1) return Promise.resolve({ results: leads });
-            return Promise.resolve({ results: [{ total: 1 }] });
-          }),
-          run: vi.fn().mockResolvedValue({}),
-        })),
-      }));
+      env.DB = db;
 
-      const res = await handleLeadsRoute(makeReq('http://localhost/api/leads'), { DB: db }, tenantId);
+      const res = await request('GET', 'http://localhost/api/leads');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.data).toEqual(leads);
@@ -69,9 +70,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads?status=new'), { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('GET', 'http://localhost/api/leads?status=new');
       expect(res.status).toBe(200);
     });
 
@@ -83,7 +83,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(makeReq('http://localhost/api/leads'), { DB: db }, tenantId);
+      env.DB = db;
+      const res = await request('GET', 'http://localhost/api/leads');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to fetch leads');
@@ -93,10 +94,8 @@ describe('handleLeadsRoute', () => {
   describe('POST /api/leads', () => {
     it('creates a lead successfully', async () => {
       const db = mockDb(null, [], {});
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads', 'POST', { name: 'Jane', email: 'jane@test.com', message: 'Hi' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('POST', 'http://localhost/api/leads', { name: 'Jane', email: 'jane@test.com', message: 'Hi' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -105,10 +104,8 @@ describe('handleLeadsRoute', () => {
 
     it('returns 400 for invalid input (missing name)', async () => {
       const db = mockDb();
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads', 'POST', { email: 'jane@test.com' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('POST', 'http://localhost/api/leads', { email: 'jane@test.com' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toBeTruthy();
@@ -116,10 +113,8 @@ describe('handleLeadsRoute', () => {
 
     it('returns 400 for invalid email', async () => {
       const db = mockDb();
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads', 'POST', { name: 'Jane', email: 'not-an-email' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('POST', 'http://localhost/api/leads', { name: 'Jane', email: 'not-an-email' });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
@@ -132,10 +127,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads', 'POST', { name: 'Jane', email: 'jane@test.com' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('POST', 'http://localhost/api/leads', { name: 'Jane', email: 'jane@test.com' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to submit lead');
@@ -151,10 +144,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads/lead_1', 'PUT', { status: 'contacted' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('PUT', 'http://localhost/api/leads/lead_1', { status: 'contacted' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -168,20 +159,16 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads/lead_999', 'PUT', { status: 'new' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('PUT', 'http://localhost/api/leads/lead_999', { status: 'new' });
       const data = await res.json();
       expect(res.status).toBe(404);
     });
 
     it('returns 400 for invalid status', async () => {
       const db = mockDb();
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads/lead_1', 'PUT', { status: 'invalid' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('PUT', 'http://localhost/api/leads/lead_1', { status: 'invalid' });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
@@ -194,10 +181,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads/lead_1', 'PUT', { status: 'new' }),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('PUT', 'http://localhost/api/leads/lead_1', { status: 'new' });
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to update lead');
@@ -213,10 +198,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads/lead_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('DELETE', 'http://localhost/api/leads/lead_1');
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -230,10 +213,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads/lead_999', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('DELETE', 'http://localhost/api/leads/lead_999');
       const data = await res.json();
       expect(res.status).toBe(404);
     });
@@ -246,10 +227,8 @@ describe('handleLeadsRoute', () => {
           })),
         })),
       };
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads/lead_1', 'DELETE'),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('DELETE', 'http://localhost/api/leads/lead_1');
       const data = await res.json();
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to delete lead');
@@ -259,10 +238,8 @@ describe('handleLeadsRoute', () => {
   describe('fallback', () => {
     it('returns 404 for unsupported methods', async () => {
       const db = mockDb();
-      const res = await handleLeadsRoute(
-        makeReq('http://localhost/api/leads', 'PATCH'),
-        { DB: db }, tenantId
-      );
+      env.DB = db;
+      const res = await request('PATCH', 'http://localhost/api/leads');
       const data = await res.json();
       expect(res.status).toBe(404);
       expect(data.error).toContain('Leads endpoint not found');

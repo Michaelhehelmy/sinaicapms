@@ -87,6 +87,23 @@ export function errorResponse(message, status = 400, errors = undefined) {
   return jsonResponse({ success: false, error: message, ...(errors ? { errors } : {}) }, status);
 }
 
+/**
+ * Success envelope: the data payload itself (Phase 3 contract normalization).
+ * Thin wrapper over jsonResponse — exists so success call sites read distinctly
+ * from raw `jsonResponse` and can be grepped/audited as one family.
+ */
+export function ok(data, status = 200) {
+  return jsonResponse(data, status);
+}
+
+/**
+ * Created envelope: { success: true, id } with HTTP 201.
+ * Standard shape for POST-create endpoints.
+ */
+export function created(id, status = 201) {
+  return jsonResponse({ success: true, id }, status);
+}
+
 export function escHtml(str) {
   if (!str || typeof str !== 'string') return str;
   return str

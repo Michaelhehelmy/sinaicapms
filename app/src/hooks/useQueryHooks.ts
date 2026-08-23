@@ -47,27 +47,29 @@ import type {
 // ─── Query Key Factories ──────────────────────────────────────────────
 
 export const queryKeys = {
-  camps: ['camps'] as const,
-  camp: (id: string) => ['camps', id] as const,
-  products: ['products'] as const,
-  rooms: ['rooms'] as const,
-  orders: (params?: Record<string, string>) => ['orders', params] as const,
-  order: (id: string) => ['orders', id] as const,
-  ratePlans: ['ratePlans'] as const,
-  plans: ['plans'] as const,
-  meals: ['meals'] as const,
-  categories: ['categories'] as const,
-  mealCategories: ['mealCategories'] as const,
-  mealSchedules: (params?: Record<string, string>) => ['mealSchedules', params] as const,
-  settings: ['settings'] as const,
-  lowStock: ['inventory', 'low-stock'] as const,
-  adminStats: ['adminStats'] as const,
-  tenants: ['tenants'] as const,
-  admins: ['admins'] as const,
-  availability: (params: Record<string, string>) => ['availability', params] as const,
-  priceOverrides: (params: Record<string, string>) => ['price-overrides', params] as const,
-  inbox: (params?: Record<string, string>) => ['inbox', params] as const,
-  inboxUnread: ['inbox', 'unread'] as const,
+  // All admin-zone concerns are namespaced under ['admin', ...] so they can
+  // never collide with other zones' caches (e.g. POS lives under ['pos', ...]).
+  camps: ['admin', 'camps'] as const,
+  camp: (id: string) => ['admin', 'camps', id] as const,
+  products: ['admin', 'products'] as const,
+  rooms: ['admin', 'rooms'] as const,
+  orders: (params?: Record<string, string>) => ['admin', 'orders', params] as const,
+  order: (id: string) => ['admin', 'orders', id] as const,
+  ratePlans: ['admin', 'ratePlans'] as const,
+  plans: ['admin', 'plans'] as const,
+  meals: ['admin', 'meals'] as const,
+  categories: ['admin', 'categories'] as const,
+  mealCategories: ['admin', 'mealCategories'] as const,
+  mealSchedules: (params?: Record<string, string>) => ['admin', 'mealSchedules', params] as const,
+  settings: ['admin', 'settings'] as const,
+  lowStock: ['admin', 'inventory', 'low-stock'] as const,
+  adminStats: ['admin', 'stats'] as const,
+  tenants: ['admin', 'tenants'] as const,
+  admins: ['admin', 'admins'] as const,
+  availability: (params: Record<string, string>) => ['admin', 'availability', params] as const,
+  priceOverrides: (params: Record<string, string>) => ['admin', 'price-overrides', params] as const,
+  inbox: (params?: Record<string, string>) => ['admin', 'inbox', params] as const,
+  inboxUnread: ['admin', 'inbox', 'unread'] as const,
 } as const;
 
 // ─── Error Toast Helper ───────────────────────────────────────────────
@@ -419,9 +421,11 @@ export function useSaveRoomMutation(editId?: string | number) {
       }
       toastError('Failed to save room', _err);
     },
+    onSuccess: () => {
+      showToast(editId ? 'Room updated' : 'Room created', 'success');
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.rooms });
-      showToast(editId ? 'Room updated' : 'Room created', 'success');
     },
   });
 }
@@ -735,8 +739,8 @@ export function useSetPriceOverrideMutation() {
   return useMutation({
     mutationFn: (data: Schemas['PriceOverridePutRequest']) => api.setPriceOverrides(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availability'] });
-      queryClient.invalidateQueries({ queryKey: ['price-overrides'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'availability'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'price-overrides'] });
       showToast('Price override saved', 'success');
     },
     onError: (err) => toastError('Failed to save price override', err),
@@ -753,8 +757,8 @@ export function useDeletePriceOverrideMutation() {
     mutationFn: ({ productId, date }: { productId: string; date: string }) =>
       api.deletePriceOverride(productId, date),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availability'] });
-      queryClient.invalidateQueries({ queryKey: ['price-overrides'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'availability'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'price-overrides'] });
       showToast('Price override cleared', 'success');
     },
     onError: (err) => toastError('Failed to clear price override', err),
@@ -810,8 +814,8 @@ export function useMarkInboxReadMutation() {
     mutationFn: ({ kind, id }: { kind: 'lead' | 'booking'; id: string }) =>
       api.markInboxRead(kind, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inbox'] });
-      queryClient.invalidateQueries({ queryKey: ['inbox', 'unread'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox', 'unread'] });
       showToast('Marked as read', 'success');
     },
     onError: (err) => toastError('Failed to mark as read', err),
@@ -827,8 +831,8 @@ export function useDeleteInboxLeadMutation() {
   return useMutation({
     mutationFn: (id: string) => api.deleteInboxLead(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inbox'] });
-      queryClient.invalidateQueries({ queryKey: ['inbox', 'unread'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'inbox', 'unread'] });
       showToast('Lead deleted', 'success');
     },
     onError: (err) => toastError('Failed to delete lead', err),

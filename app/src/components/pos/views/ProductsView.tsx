@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import * as apiClient from '@/lib/api';
+import { useState } from 'react';
+import { usePosProducts } from '@/hooks/usePosQueries';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -8,17 +8,9 @@ import type { PosProduct, CartItem } from '../types';
 
 // ─── Products View (with cart) ─────────────────────────────
 export default function ProductsView({ cart, setCart }: { cart: CartItem[]; setCart: React.Dispatch<React.SetStateAction<CartItem[]>> }) {
-  const [products, setProducts] = useState<PosProduct[]>([]);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    apiClient.posGetProducts()
-      .then((data) => setProducts((Array.isArray(data) ? data : []) as PosProduct[]))
-      .catch((e) => setError(e.message || 'Failed to load products'))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: rawProducts, isLoading, error } = usePosProducts();
+  const products = (Array.isArray(rawProducts) ? rawProducts : []) as PosProduct[];
 
   function addToCart(product: PosProduct) {
     setCart((prev) => {
@@ -35,8 +27,8 @@ export default function ProductsView({ cart, setCart }: { cart: CartItem[]; setC
     return p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || String(p.categoryId ?? '').includes(q);
   });
 
-  if (loading) return <div className="p-6"><ProductGridSkeleton count={8} /></div>;
-  if (error) return <div className="p-8 text-red-500">{error}</div>;
+  if (isLoading) return <div className="p-6"><ProductGridSkeleton count={8} /></div>;
+  if (error) return <div className="p-8 text-red-500">{error.message || 'Failed to load products'}</div>;
 
   return (
     <div className="flex flex-1 overflow-hidden" data-testid="pos-products">

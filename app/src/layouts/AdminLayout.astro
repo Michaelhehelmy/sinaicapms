@@ -1,17 +1,7 @@
 ---
 import '@/styles/global.css';
-import { resolveDataDomain } from '@/lib/plausible';
 const { user } = Astro.props;
 const isLoggedIn = !!user;
-
-// Plausible analytics loader is production-only: skip localhost so dev/E2E
-// runs never fire dead analytics requests.
-const analyticsHostname = Astro.url.hostname;
-const isLocalAnalyticsHost =
-  analyticsHostname === 'localhost' ||
-  analyticsHostname === '127.0.0.1' ||
-  analyticsHostname.endsWith('.localhost') ||
-  analyticsHostname.endsWith('.127.0.0.1');
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -19,15 +9,23 @@ const isLocalAnalyticsHost =
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CampMaster Pro — Administration</title>
-  <link rel="icon" type="image/png" href="/favicon.ico" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
+    rel="preload"
+    as="style"
+    onload="this.onload=null;this.rel='stylesheet'"
   />
   <link
     href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
+    rel="preload"
+    as="style"
+    onload="this.onload=null;this.rel='stylesheet'"
   />
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </noscript>
   <style is:inline>
     @layer base {
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -49,12 +47,6 @@ const isLocalAnalyticsHost =
     window.$RefreshSig$ = function(type) { return type; };
     window.__vite_plugin_react_preamble_installed__ = true;
   </script>
-  <!-- Plausible analytics loader (production-only, skipped on localhost so
-       dev/E2E never fire dead analytics requests). data-domain resolves the
-       request hostname to the matching Plausible site. -->
-  {!isLocalAnalyticsHost && (
-    <script defer data-domain={resolveDataDomain(analyticsHostname)} src="https://plausible.io/js/script.tagged-events.js"></script>
-  )}
 </head>
 <body>
   <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-[9999] focus:bg-white focus:p-2 focus:text-blue-600">Skip to content</a>

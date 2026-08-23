@@ -6,15 +6,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // these modules, so fully replacing them would break the spec-definition
 // layer. Each handler mock below overrides the real export with identical
 // behavior to the previous full mocks.
+//
+// Phase 1 (requireAuth): the app no longer verifies tokens through
+// api/auth.js#verifyJWT — requireAuth calls sharedAuth#verifyToken directly,
+// so that is the seam mocked here.
 vi.mock('../src/api/auth.js', async (importOriginal) => ({
   ...(await importOriginal()),
   handleAuthRoute: vi.fn().mockResolvedValue(new Response('auth', { status: 200 })),
-  verifyJWT: vi.fn(),
+}));
+vi.mock('../src/middleware/sharedAuth.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  verifyToken: vi.fn(),
 }));
 vi.mock('../src/api/tenants.js', async (importOriginal) => ({
   ...(await importOriginal()),
   handleTenants: vi.fn().mockResolvedValue(new Response('tenants', { status: 200 })),
-  handleMe: vi.fn().mockResolvedValue(new Response('me', { status: 200 })),
 }));
 vi.mock('../src/api/admin.js', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -87,6 +93,7 @@ vi.mock('../src/middleware/tenant.js', () => ({
 }));
 vi.mock('../src/middleware/rateLimit.js', () => ({
   rateLimitMiddleware: vi.fn(() => async (c, next) => { await next(); }),
+  policyLimiter: vi.fn(() => async (c, next) => { await next(); }),
 }));
 
 import app from '../src/index.js';
@@ -158,10 +165,28 @@ describe('App entry (index.js)', () => {
   });
 
   describe('API catch-all dispatcher', () => {
-    it('routes /api/me to handleMe (public)', async () => {
-      const { handleMe } = await import('../src/api/tenants.js');
-      const res = await app.fetch(makeRequest('GET', '/api/me?tenant_id=t1'), env);
-      expect(handleMe).toHaveBeenCalled();
+    it('routes public GET /api/me without auth', async () => {
+      const res = await app.fetch(makeRequest('GET', '/api/me?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 't1', name: 'Acacia' }] }),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.id).toBe('t1');
+    });
+
+    it('returns graceful 200 for GET /api/me without tenant context', async () => {
+      const { getTenant } = await import('../src/middleware/tenant.js');
+      getTenant.mockResolvedValueOnce(null);
+      const res = await app.fetch(makeRequest('GET', '/api/me'), env);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.id).toBeNull();
     });
 
     it('returns 401 for non-public API paths without auth', async () => {
@@ -178,84 +203,177 @@ describe('App entry (index.js)', () => {
     });
 
     it('returns 404 for unknown API paths', async () => {
-      const { verifyJWT } = await import('../src/api/auth.js');
-      verifyJWT.mockResolvedValueOnce({ sub: 'admin1', userId: 'admin1', role: 'admin', tenantId: 'tenant_1' });
-      const res = await app.fetch(makeRequest('GET', '/api/unknown-endpoint?tenant_id=t1', null, {
-        Authorization: 'Bearer fake-token',
-      }), {
-        ...env,
-        DB: {
-          prepare: vi.fn(() => ({
-            bind: vi.fn().mockReturnThis(),
-            all: vi.fn().mockResolvedValue({ results: [{ is_active: 1 }] }),
-            first: vi.fn().mockResolvedValue(null),
-            run: vi.fn().mockResolvedValue({}),
-          })),
-        },
-      });
+      // Phase 4 complete: unmatched /api/* paths hit the terminal fallback
+      // directly — no tenant resolution, no auth probe, plain 404.
+      const res = await app.fetch(makeRequest('GET', '/api/unknown-endpoint?tenant_id=t1'), env);
       const body = await res.json();
       expect(res.status).toBe(404);
       expect(body.error).toContain('API endpoint not found');
     });
 
     it('routes public GET /api/camps without auth', async () => {
-      const { handleCampsRoute } = await import('../src/api/camps.js');
-      const res = await app.fetch(makeRequest('GET', '/api/camps?tenant_id=t1'), env);
-      expect(handleCampsRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/camps?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'row1' }] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
     });
 
     it('routes public GET /api/products without auth', async () => {
-      const { handleProductsRoute } = await import('../src/api/camps.js');
-      const res = await app.fetch(makeRequest('GET', '/api/products?tenant_id=t1'), env);
-      expect(handleProductsRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/products?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'row1' }] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
     });
 
     it('routes public GET /api/rooms without auth', async () => {
-      const { handleRoomsRoute } = await import('../src/api/camps.js');
-      const res = await app.fetch(makeRequest('GET', '/api/rooms?tenant_id=t1'), env);
-      expect(handleRoomsRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/rooms?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'row1' }] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
     });
 
     it('routes public GET /api/rateplans without auth', async () => {
-      const { handleRatePlansRoute } = await import('../src/api/camps.js');
-      const res = await app.fetch(makeRequest('GET', '/api/rateplans?tenant_id=t1'), env);
-      expect(handleRatePlansRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/rateplans?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'row1' }] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
     });
 
     it('routes public GET /api/meals without auth', async () => {
-      const { handleMealsRoute } = await import('../src/api/meals.js');
-      const res = await app.fetch(makeRequest('GET', '/api/meals?tenant_id=t1'), env);
-      expect(handleMealsRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/meals?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'meal_1' }] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
     });
 
     it('routes public GET /api/categories without auth', async () => {
-      const { handleCategoriesRoute } = await import('../src/api/categories.js');
-      const res = await app.fetch(makeRequest('GET', '/api/categories?tenant_id=t1'), env);
-      expect(handleCategoriesRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/categories?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'cat_1' }] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
     });
 
     it('routes public GET /api/meal-categories without auth', async () => {
-      const { handleMealCategoriesRoute } = await import('../src/api/meal-categories.js');
-      const res = await app.fetch(makeRequest('GET', '/api/meal-categories?tenant_id=t1'), env);
-      expect(handleMealCategoriesRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/meal-categories?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'mcat_1' }] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
     });
 
     it('routes public GET /api/availability without auth', async () => {
-      const { handleAvailability } = await import('../src/api/orders.js');
-      const res = await app.fetch(makeRequest('GET', '/api/availability?tenant_id=t1&checkIn=2026-08-01&checkOut=2026-08-05'), env);
-      expect(handleAvailability).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/availability?tenant_id=t1&checkIn=2026-08-01&checkOut=2026-08-05'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body.availability)).toBe(true);
     });
 
     it('routes public POST /api/orders without auth', async () => {
-      const { handleOrdersRoute } = await import('../src/api/orders.js');
+      // Empty body → the orders router's create handler rejects with its
+      // legacy catch-all message, proving the request reached the mounted
+      // sub-router through the public scope without any auth headers.
       const res = await app.fetch(makeRequest('POST', '/api/orders?tenant_id=t1'), env);
-      expect(handleOrdersRoute).toHaveBeenCalled();
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Failed to create order');
     });
 
     it('routes public POST /api/leads without auth', async () => {
-      const { handleLeadsRoute } = await import('../src/api/leads.js');
-      const res = await app.fetch(makeRequest('POST', '/api/leads?tenant_id=t1'), env);
-      expect(handleLeadsRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('POST', '/api/leads?tenant_id=t1', {
+        name: 'Jane', email: 'jane@test.com',
+      }), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
     });
 
     it('returns 401 for POST /api/upload without auth (tenant-admin only)', async () => {
@@ -263,10 +381,11 @@ describe('App entry (index.js)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('routes POST /api/upload to handleUploadRoute when authenticated', async () => {
-      const { verifyJWT } = await import('../src/api/auth.js');
-      const { handleUploadRoute } = await import('../src/api/upload.js');
-      verifyJWT.mockResolvedValueOnce({ sub: 'admin1', userId: 'admin1', role: 'admin', tenantId: 'tenant_1' });
+    it('routes POST /api/upload to the upload router when authenticated', async () => {
+      const { verifyToken } = await import('../src/middleware/sharedAuth.js');
+      verifyToken.mockResolvedValueOnce({ sub: 'admin1', userId: 'admin1', role: 'admin', tenantId: 'tenant_1' });
+      // No MEDIA_BUCKET binding → the upload router's own 503 guard proves
+      // the request reached it through the admin scope.
       const res = await app.fetch(makeRequest('POST', '/api/upload?tenant_id=t1', null, {
         Authorization: 'Bearer fake-token',
       }), {
@@ -280,20 +399,54 @@ describe('App entry (index.js)', () => {
           })),
         },
       });
-      expect(handleUploadRoute).toHaveBeenCalled();
+      expect(res.status).toBe(503);
+      const body = await res.json();
+      expect(body.error).toBe('Media storage is not configured');
     });
 
     it('routes public GET /api/media/* without auth', async () => {
-      const { handleMediaRoute } = await import('../src/api/upload.js');
-      const res = await app.fetch(makeRequest('GET', '/api/media/tenant_1/uuid-123.jpg'), env);
-      expect(handleMediaRoute).toHaveBeenCalled();
+      // Key outside the allowlisted media/{tenant}/{uuid}.{ext} shape → the
+      // media router's sanitized 404, proving the request reached it through
+      // the public scope.
+      const res = await app.fetch(makeRequest('GET', '/api/media/foo.jpg'), env);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toBe('Not found');
+    });
+
+    it('streams a valid media object publicly with immutable cache headers', async () => {
+      const res = await app.fetch(
+        makeRequest('GET', '/api/media/media/tenant_1/00000000-0000-4000-8000-000000000000.jpg'),
+        {
+          ...env,
+          MEDIA_BUCKET: {
+            get: vi.fn().mockResolvedValue({
+              body: new Response('imgbytes').body,
+              httpMetadata: { contentType: 'image/jpeg' },
+            }),
+          },
+        }
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/jpeg');
+      expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     });
 
     it('routes /api/meals with GET to public handler', async () => {
-      const { handleMealsRoute } = await import('../src/api/meals.js');
-      handleMealsRoute.mockClear();
-      const res = await app.fetch(makeRequest('GET', '/api/meals/meal_1?tenant_id=t1'), env);
-      expect(handleMealsRoute).toHaveBeenCalled();
+      const res = await app.fetch(makeRequest('GET', '/api/meals/meal_1?tenant_id=t1'), {
+        ...env,
+        DB: {
+          prepare: vi.fn(() => ({
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'meal_1' }] }),
+            first: vi.fn().mockResolvedValue({ id: 'meal_1', name: 'Breakfast' }),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.id).toBe('meal_1');
     });
 
     it('returns 401 for /api/inventory/low-stock without auth', async () => {
@@ -301,10 +454,9 @@ describe('App entry (index.js)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('routes authenticated GET /api/inventory/low-stock to handleInventoryRoute', async () => {
-      const { verifyJWT } = await import('../src/api/auth.js');
-      const { handleInventoryRoute } = await import('../src/api/inventory.js');
-      verifyJWT.mockResolvedValueOnce({ sub: 'admin1', userId: 'admin1', role: 'admin', tenantId: 'tenant_1' });
+    it('serves authenticated GET /api/inventory/low-stock through the sub-router', async () => {
+      const { verifyToken } = await import('../src/middleware/sharedAuth.js');
+      verifyToken.mockResolvedValueOnce({ sub: 'admin1', userId: 'admin1', role: 'admin', tenantId: 'tenant_1' });
       const res = await app.fetch(makeRequest('GET', '/api/inventory/low-stock?tenant_id=t1', null, {
         Authorization: 'Bearer fake-token',
       }), {
@@ -318,12 +470,14 @@ describe('App entry (index.js)', () => {
           })),
         },
       });
-      expect(handleInventoryRoute).toHaveBeenCalled();
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body).toHaveProperty('hasMore');
     });
 
     it('rejects POS sessions for /api/inventory/low-stock with 403', async () => {
-      const { verifyJWT } = await import('../src/api/auth.js');
-      verifyJWT.mockResolvedValueOnce({ sub: 'pos1', userId: 'pos1', role: 'cashier', posType: 'pos', tenantId: 'tenant_1' });
+      const { verifyToken } = await import('../src/middleware/sharedAuth.js');
+      verifyToken.mockResolvedValueOnce({ sub: 'pos1', userId: 'pos1', role: 'cashier', posType: 'pos', tenantId: 'tenant_1' });
       const res = await app.fetch(makeRequest('GET', '/api/inventory/low-stock?tenant_id=t1', null, {
         Authorization: 'Bearer fake-token',
       }), {
@@ -401,8 +555,10 @@ describe('App entry (index.js)', () => {
   describe('Global error handler', () => {
     it('returns 500 on unhandled errors', async () => {
       const { getTenant } = await import('../src/middleware/tenant.js');
+      // Admin-scoped mounted routes resolve the tenant hint outside any
+      // try/catch, so a throwing getTenant propagates to app.onError.
       getTenant.mockRejectedValueOnce(new Error('Unexpected'));
-      const res = await app.fetch(makeRequest('GET', '/api/unknown?tenant_id=t1'), env);
+      const res = await app.fetch(makeRequest('GET', '/api/inventory/low-stock?tenant_id=t1'), env);
       expect(res.status).toBe(500);
     });
   });

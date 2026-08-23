@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { jsonResponse, cachedJsonResponse, errorResponse, escHtml } from '../src/utils/response.js';
+import { jsonResponse, cachedJsonResponse, errorResponse, escHtml, ok, created } from '../src/utils/response.js';
 
 describe('response utils', () => {
   describe('jsonResponse', () => {
@@ -115,6 +115,39 @@ describe('response utils', () => {
       const res = errorResponse('Something went wrong');
       const body = await res.json();
       expect(body).toEqual({ success: false, error: 'Something went wrong' });
+    });
+  });
+
+  describe('ok / created (Phase 3 contract normalization)', () => {
+    it('ok returns the data payload with status 200 by default', async () => {
+      const res = ok({ items: [1, 2] });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({ items: [1, 2] });
+    });
+
+    it('ok accepts a custom status', async () => {
+      const res = ok({ done: true }, 202);
+      expect(res.status).toBe(202);
+    });
+
+    it('ok emits camelCase keys like jsonResponse', async () => {
+      const res = ok({ tenant_id: 't1', total_price: 5 });
+      const body = await res.json();
+      expect(body).toEqual({ tenantId: 't1', totalPrice: 5 });
+    });
+
+    it('created returns { success: true, id } with status 201', async () => {
+      const res = created('ord_123');
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body).toEqual({ success: true, id: 'ord_123' });
+    });
+
+    it('created sets JSON content type and security headers', () => {
+      const res = created('x');
+      expect(res.headers.get('Content-Type')).toBe('application/json');
+      expect(res.headers.get('Cache-Control')).toBe('no-store');
     });
   });
 

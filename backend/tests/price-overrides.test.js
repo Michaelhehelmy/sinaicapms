@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { handlePriceOverridesRoute } from '../src/api/priceOverrides.js';
-import { handleOrdersRoute } from '../src/api/orders.js';
+import priceOverridesRoutes from '../src/api/priceOverrides.js';
+import ordersRoutes from '../src/api/orders.js';
+import { mountRouter } from './helpers/routerHarness.js';
 
 const MIGRATION_SQL = readFileSync(
   join(import.meta.dirname, '../migrations/0048_price_overrides.sql'),
@@ -90,6 +91,7 @@ describe('Migration 0048 — price_overrides table', () => {
 
 describe('calculatePriceOnServer — price-override precedence', () => {
   const TENANT = 't1';
+  const ordersApp = mountRouter(ordersRoutes, { tenantId: TENANT, basePath: '/api/orders' });
 
   function chainMock(fns) {
     let idx = 0;
@@ -134,35 +136,35 @@ describe('calculatePriceOnServer — price-override precedence', () => {
 
   it('uses the override price instead of the rate plan for the overridden night', async () => {
     const db = calcWith({ rates: [SUMMER_RATE], overrides: [{ date: '2026-08-02', price: 500 }] });
-    const res = await handleOrdersRoute(makeRequest('GET', calcUrl), { DB: db }, TENANT);
+    const res = await ordersApp.request(new URL(calcUrl).pathname + new URL(calcUrl).search, { method: 'GET' }, { DB: db });
     const body = await res.json();
     expect(body.totalPrice).toBe(650); // night 1 rate 150 + night 2 override 500
   });
 
   it('ignores overrides outside the stay range', async () => {
     const db = calcWith({ rates: [SUMMER_RATE], overrides: [{ date: '2026-08-05', price: 500 }] });
-    const res = await handleOrdersRoute(makeRequest('GET', calcUrl), { DB: db }, TENANT);
+    const res = await ordersApp.request(new URL(calcUrl).pathname + new URL(calcUrl).search, { method: 'GET' }, { DB: db });
     const body = await res.json();
     expect(body.totalPrice).toBe(300); // both nights fall back to rate 150
   });
 
   it('ignores an override on the (exclusive) checkout day', async () => {
     const db = calcWith({ rates: [SUMMER_RATE], overrides: [{ date: '2026-08-03', price: 500 }] });
-    const res = await handleOrdersRoute(makeRequest('GET', calcUrl), { DB: db }, TENANT);
+    const res = await ordersApp.request(new URL(calcUrl).pathname + new URL(calcUrl).search, { method: 'GET' }, { DB: db });
     const body = await res.json();
     expect(body.totalPrice).toBe(300);
   });
 
   it('mixes override and base price when no rate plan matches', async () => {
     const db = calcWith({ rates: [], overrides: [{ date: '2026-08-01', price: 500 }] });
-    const res = await handleOrdersRoute(makeRequest('GET', calcUrl), { DB: db }, TENANT);
+    const res = await ordersApp.request(new URL(calcUrl).pathname + new URL(calcUrl).search, { method: 'GET' }, { DB: db });
     const body = await res.json();
     expect(body.totalPrice).toBe(600); // night 1 override 500 + night 2 base 100
   });
 
   it('falls back to base price for nights with no override and no rate plan', async () => {
     const db = calcWith({ rates: [], overrides: [{ date: '2026-08-05', price: 500 }] });
-    const res = await handleOrdersRoute(makeRequest('GET', calcUrl), { DB: db }, TENANT);
+    const res = await ordersApp.request(new URL(calcUrl).pathname + new URL(calcUrl).search, { method: 'GET' }, { DB: db });
     const body = await res.json();
     expect(body.totalPrice).toBe(200); // both nights base 100
   });
@@ -171,19 +173,27 @@ describe('calculatePriceOnServer — price-override precedence', () => {
 describe('handlePriceOverridesRoute — CRUD', () => {
   let db;
   let env;
+  let app;
+
+  const request = (method, url, body = null) => {
+    const opts = { method };
+    if (body) opts.body = JSON.stringify(body);
+    return app.request(url, opts, env);
+  };
 
   beforeAll(() => {
     db = createTestDb();
     env = { DB: makeD1(db) };
+    app = mountRouter(priceOverridesRoutes, { tenantId: 't1', basePath: '/api/price-overrides' });
   });
 
   const PUT_URL = 'https://x.com/api/price-overrides';
 
   describe('PUT (bulk upsert)', () => {
     it('inserts new overrides and returns them in camelCase', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-01', price: 500 }, { date: '2026-08-02', price: 450 }] }),
-        env, 't1'
+      const res = await request(
+        'PUT', PUT_URL,
+        { productId: 'p1', overrides: [{ date: '2026-08-01', price: 500 }, { date: '2026-08-02', price: 450 }] }
       );
       const body = await res.json();
       expect(res.status).toBe(200);
@@ -199,10 +209,7 @@ describe('handlePriceOverridesRoute — CRUD', () => {
     });
 
     it('updates an existing date in place (no duplicate row)', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-01', price: 600 }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-01', price: 600 }] });
       expect(res.status).toBe(200);
       const rows = db.prepare('SELECT date, price FROM price_overrides WHERE product_id = ? AND date = ?').all('p1', '2026-08-01');
       expect(rows).toHaveLength(1);
@@ -210,10 +217,7 @@ describe('handlePriceOverridesRoute — CRUD', () => {
     });
 
     it('deletes a date when price is null', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-01', price: null }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-01', price: null }] });
       expect(res.status).toBe(200);
       const rows = db.prepare('SELECT date FROM price_overrides WHERE product_id = ? AND date = ?').all('p1', '2026-08-01');
       expect(rows).toHaveLength(0);
@@ -221,72 +225,48 @@ describe('handlePriceOverridesRoute — CRUD', () => {
 
     it('deletes a date when price is omitted', async () => {
       db.prepare('INSERT INTO price_overrides (product_id, date, price) VALUES (?, ?, ?)').run('p1', '2026-08-09', 300);
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-09' }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-09' }] });
       expect(res.status).toBe(200);
       const rows = db.prepare('SELECT date FROM price_overrides WHERE product_id = ? AND date = ?').all('p1', '2026-08-09');
       expect(rows).toHaveLength(0);
     });
 
     it('rejects a malformed date', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-1', price: 500 }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-1', price: 500 }] });
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.success).toBe(false);
     });
 
     it('rejects an impossible calendar date (2026-13-01)', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-13-01', price: 500 }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-13-01', price: 500 }] });
       expect(res.status).toBe(400);
     });
 
     it('rejects a negative price', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-05', price: -10 }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-05', price: -10 }] });
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error).toContain('price');
     });
 
     it('rejects a non-integer price', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-05', price: 10.5 }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: [{ date: '2026-08-05', price: 10.5 }] });
       expect(res.status).toBe(400);
     });
 
     it('rejects missing productId', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { overrides: [{ date: '2026-08-05', price: 500 }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { overrides: [{ date: '2026-08-05', price: 500 }] });
       expect(res.status).toBe(400);
     });
 
     it('rejects overrides that is not an array', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p1', overrides: 'nope' }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p1', overrides: 'nope' });
       expect(res.status).toBe(400);
     });
 
     it('rejects a product owned by another tenant (404)', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('PUT', PUT_URL, { productId: 'p2', overrides: [{ date: '2026-08-05', price: 500 }] }),
-        env, 't1'
-      );
+      const res = await request('PUT', PUT_URL, { productId: 'p2', overrides: [{ date: '2026-08-05', price: 500 }] });
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body.error).toContain('Product not found');
@@ -298,17 +278,14 @@ describe('handlePriceOverridesRoute — CRUD', () => {
 
   describe('GET (tenant-scoped list)', () => {
     it('requires productId', async () => {
-      const res = await handlePriceOverridesRoute(makeRequest('GET', 'https://x.com/api/price-overrides'), env, 't1');
+      const res = await request('GET', 'https://x.com/api/price-overrides');
       expect(res.status).toBe(400);
     });
 
     it('returns only this tenant\'s overrides with camelCase keys', async () => {
       db.prepare('INSERT INTO price_overrides (product_id, date, price) VALUES (?, ?, ?)').run('p1', '2026-08-20', 700);
       db.prepare('INSERT INTO price_overrides (product_id, date, price) VALUES (?, ?, ?)').run('p2', '2026-08-20', 999);
-      const res = await handlePriceOverridesRoute(
-        makeRequest('GET', 'https://x.com/api/price-overrides?productId=p1'),
-        env, 't1'
-      );
+      const res = await request('GET', 'https://x.com/api/price-overrides?productId=p1');
       expect(res.status).toBe(200);
       const body = await res.json();
       // p1 has overrides from earlier PUT tests (08-02) plus this 08-20 row;
@@ -323,10 +300,7 @@ describe('handlePriceOverridesRoute — CRUD', () => {
     });
 
     it('respects from/to date filters', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('GET', 'https://x.com/api/price-overrides?productId=p1&from=2026-08-02&to=2026-08-19'),
-        env, 't1'
-      );
+      const res = await request('GET', 'https://x.com/api/price-overrides?productId=p1&from=2026-08-02&to=2026-08-19');
       expect(res.status).toBe(200);
       const body = await res.json();
       // p1 has overrides on 08-02 (450) and 08-20 (700); 08-02 is inside the window.
@@ -334,18 +308,12 @@ describe('handlePriceOverridesRoute — CRUD', () => {
     });
 
     it('rejects an invalid from/to date', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('GET', 'https://x.com/api/price-overrides?productId=p1&from=bad'),
-        env, 't1'
-      );
+      const res = await request('GET', 'https://x.com/api/price-overrides?productId=p1&from=bad');
       expect(res.status).toBe(400);
     });
 
     it('returns an empty list for a product not owned by the tenant', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('GET', 'https://x.com/api/price-overrides?productId=p2'),
-        env, 't1'
-      );
+      const res = await request('GET', 'https://x.com/api/price-overrides?productId=p2');
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.overrides).toEqual([]);
@@ -355,10 +323,7 @@ describe('handlePriceOverridesRoute — CRUD', () => {
   describe('DELETE (single override)', () => {
     it('deletes an existing override', async () => {
       db.prepare('INSERT INTO price_overrides (product_id, date, price) VALUES (?, ?, ?)').run('p1', '2026-08-25', 888);
-      const res = await handlePriceOverridesRoute(
-        makeRequest('DELETE', 'https://x.com/api/price-overrides?productId=p1&date=2026-08-25'),
-        env, 't1'
-      );
+      const res = await request('DELETE', 'https://x.com/api/price-overrides?productId=p1&date=2026-08-25');
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
@@ -367,32 +332,26 @@ describe('handlePriceOverridesRoute — CRUD', () => {
     });
 
     it('requires productId and date', async () => {
-      const res1 = await handlePriceOverridesRoute(makeRequest('DELETE', 'https://x.com/api/price-overrides?date=2026-08-25'), env, 't1');
+      const res1 = await request('DELETE', 'https://x.com/api/price-overrides?date=2026-08-25');
       expect(res1.status).toBe(400);
-      const res2 = await handlePriceOverridesRoute(makeRequest('DELETE', 'https://x.com/api/price-overrides?productId=p1'), env, 't1');
+      const res2 = await request('DELETE', 'https://x.com/api/price-overrides?productId=p1');
       expect(res2.status).toBe(400);
     });
 
     it('rejects an invalid date', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('DELETE', 'https://x.com/api/price-overrides?productId=p1&date=2026-08-25x'),
-        env, 't1'
-      );
+      const res = await request('DELETE', 'https://x.com/api/price-overrides?productId=p1&date=2026-08-25x');
       expect(res.status).toBe(400);
     });
 
     it('rejects a product owned by another tenant (404)', async () => {
-      const res = await handlePriceOverridesRoute(
-        makeRequest('DELETE', 'https://x.com/api/price-overrides?productId=p2&date=2026-08-25'),
-        env, 't1'
-      );
+      const res = await request('DELETE', 'https://x.com/api/price-overrides?productId=p2&date=2026-08-25');
       expect(res.status).toBe(404);
     });
   });
 
   describe('Method not allowed', () => {
     it('returns 405 for POST', async () => {
-      const res = await handlePriceOverridesRoute(makeRequest('POST', 'https://x.com/api/price-overrides', {}), env, 't1');
+      const res = await request('POST', 'https://x.com/api/price-overrides', {});
       expect(res.status).toBe(405);
     });
   });

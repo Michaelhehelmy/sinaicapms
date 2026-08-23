@@ -1,10 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  handleCampsRoute,
-  handleProductsRoute,
-  handleRoomsRoute,
-  handleRatePlansRoute,
-} from '../src/api/camps.js';
+// Signature-compatible shims: legacy handlers took (Request, env, tenantId).
+// They now execute against the Hono sub-routers mounted by index.js. Apps are
+// cached per (basePath, tenantId) because tests mix tenant and marketplace
+// scopes; mountRouter's stub scope middleware is stateless so caching is safe.
+import campsRoutes, { productsRoutes, roomsRoutes, ratePlansRoutes } from '../src/api/camps.js';
+import { mountRouter } from './helpers/routerHarness.js';
+
+const appCache = new Map();
+function appFor(routes, basePath, tenant) {
+  const key = basePath + ':' + String(tenant);
+  if (!appCache.has(key)) {
+    appCache.set(key, mountRouter(routes, { tenantId: tenant ?? null, basePath }));
+  }
+  return appCache.get(key);
+}
+
+async function dispatch(routes, basePath, req, env = {}, _tenant = null) {
+  const url = new URL(req.url);
+  // Normalize legacy prefixes (e.g. /api/rate-plans) onto the router base.
+  const rest = '/' + url.pathname.split('/').slice(3).join('/');
+  let body;
+  if (!['GET', 'HEAD', 'DELETE'].includes(req.method)) {
+    try {
+      body = JSON.stringify(await req.json());
+    } catch {
+      body = undefined;
+    }
+  }
+  const target = rest === '/' ? basePath : basePath + rest;
+  return appFor(routes, basePath, _tenant).request(target + url.search, {
+    method: req.method,
+    headers: req.headers,
+    ...(body ? { body } : {}),
+  }, env);
+}
+
+async function handleCampsRoute(req, env = {}, _tenant = null) {
+  return dispatch(campsRoutes, '/api/camps', req, env, _tenant);
+}
+async function handleProductsRoute(req, env = {}, _tenant = null) {
+  return dispatch(productsRoutes, '/api/products', req, env, _tenant);
+}
+async function handleRoomsRoute(req, env = {}, _tenant = null) {
+  return dispatch(roomsRoutes, '/api/rooms', req, env, _tenant);
+}
+async function handleRatePlansRoute(req, env = {}, _tenant = null) {
+  return dispatch(ratePlansRoutes, '/api/rateplans', req, env, _tenant);
+}
 
 function makeDbMock() {
   const chain = {
@@ -569,6 +611,24 @@ describe('handleProductsRoute', () => {
       const res = await handleProductsRoute(req, { DB: db }, T);
       const body = await res.json();
       expect(body.success).toBe(true);
+    });
+
+    it('cascades price_overrides when deleting a product (Phase 3)', async () => {
+      const { db } = makeDbMock();
+      const sqls = [];
+      db.prepare.mockImplementation((sql) => {
+        sqls.push(sql);
+        return {
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockResolvedValue({ results: [] }),
+          first: vi.fn(),
+          run: vi.fn(),
+        };
+      });
+      const req = makeRequest('DELETE', 'https://x.com/api/products/p1');
+      const res = await handleProductsRoute(req, { DB: db }, T);
+      expect(res.status).toBe(200);
+      expect(sqls.some((s) => s.includes('DELETE FROM price_overrides WHERE product_id'))).toBe(true);
     });
 
     it('returns 400 when product linked to rooms', async () => {

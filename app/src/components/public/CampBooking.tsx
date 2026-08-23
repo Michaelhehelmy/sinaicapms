@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { cn, INK, readableTextOn, normalizeAssetUrl } from '@/lib/utils';
+import { hexToRgba } from '@/lib/theme';
 
 interface RoomType {
   id: string;
@@ -243,7 +244,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
                   </Badge>
                 </div>
               ) : (
-                <div className="relative h-36 flex items-center justify-center sm:h-44" style={{ background: `${primaryColor}08` }}>
+                <div className="relative h-36 flex items-center justify-center sm:h-44" style={{ background: hexToRgba(primaryColor, 0.03) }}>
                   <TentIcon size={44} className="opacity-60" />
                   <Badge
                     className="absolute bottom-3 right-3 !bg-white/80 !text-gray-600"

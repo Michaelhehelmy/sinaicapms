@@ -4,7 +4,7 @@ export class ProductsPage {
   constructor(private page: Page) {}
 
   async goto() {
-    await this.page.goto('/pos/#products');
+    await this.page.goto('/pos/products', { waitUntil: 'domcontentloaded' });
   }
 
   async search(query: string) {

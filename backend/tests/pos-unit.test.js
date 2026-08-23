@@ -4,13 +4,14 @@ vi.mock('../src/middleware/sharedAuth.js', () => ({
   verifyToken: vi.fn(),
   verifyPassword: vi.fn(),
   generateToken: vi.fn(),
+  rehashIfNeeded: vi.fn(),
 }));
 vi.mock('../src/utils/response.js', () => ({
   jsonResponse: (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }),
   errorResponse: (msg, status = 400) => new Response(JSON.stringify({ success: false, error: msg }), { status, headers: { 'Content-Type': 'application/json' } }),
 }));
 
-import { verifyToken, verifyPassword, generateToken } from '../src/middleware/sharedAuth.js';
+import { verifyToken, verifyPassword, generateToken, rehashIfNeeded } from '../src/middleware/sharedAuth.js';
 
 function chainDb(resultsOrFn) {
   const allFn = typeof resultsOrFn === 'function'
@@ -185,8 +186,9 @@ describe('POS Routes', () => {
       expect(res.status).toBe(200);
       expect(body.success).toBe(true);
       expect(body.token).toBe('pos-jwt-token');
+      expect(body.refreshToken).toBe('pos-jwt-token');
       expect(body.user.username).toBe('cashier1');
-      expect(generateToken).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't9', storeId: 1 }), 'secret');
+      expect(generateToken).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't9', storeId: 1 }), 'secret', 'access', expect.objectContaining({ JWT_SECRET: 'secret' }));
     });
 
     it('falls back to organization_id when tenant mapping lookup fails', async () => {
@@ -210,7 +212,7 @@ describe('POS Routes', () => {
       expect(res.status).toBe(200);
       expect(body.success).toBe(true);
       expect(warnSpy).toHaveBeenCalled();
-      expect(generateToken).toHaveBeenCalledWith(expect.objectContaining({ tenantId: '42', storeId: 1 }), 'secret');
+      expect(generateToken).toHaveBeenCalledWith(expect.objectContaining({ tenantId: '42', storeId: 1 }), 'secret', 'access', expect.objectContaining({ JWT_SECRET: 'secret' }));
       warnSpy.mockRestore();
     });
 
@@ -223,6 +225,188 @@ describe('POS Routes', () => {
       });
       const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
       expect(res.status).toBe(500);
+    });
+  });
+
+  // ─── Phase 5: session-lifecycle parity ──────────────────────
+  describe('POS login legacy-hash upgrade', () => {
+    it('upgrades $sha256$ hashes via rehashIfNeeded({ table: pos_users })', async () => {
+      verifyPassword.mockResolvedValue(true);
+      generateToken.mockResolvedValue('pos-jwt-token');
+      let callIdx = 0;
+      const db = makeDb(() => {
+        callIdx++;
+        if (callIdx <= 1) return chainDb([{ id: 'u1', organization_id: 't1', store_id: 1, username: 'cashier1', email: 'c@test.com', first_name: 'John', last_name: 'Doe', password_hash: '$sha256$legacyhash', role: 'cashier', is_active: 1 }]);
+        return chainDb([]);
+      });
+      const req = new Request('http://localhost/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'cashier1', password: 'pass' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      expect(res.status).toBe(200);
+      expect(rehashIfNeeded).toHaveBeenCalledWith('u1', 'pass', '$sha256$legacyhash', expect.objectContaining({ JWT_SECRET: 'secret' }), { table: 'pos_users' });
+    });
+  });
+
+  describe('POST /auth/refresh (Phase 5)', () => {
+    // Full column set incl. is_active — requireAuth's activity probe
+    // (`SELECT is_active FROM pos_users ...`) runs BEFORE the handler reload.
+    const refreshUser = { id: 'u1', organization_id: 't1', store_id: 1, username: 'cashier1', email: 'c@test.com', first_name: 'John', last_name: 'Doe', role: 'cashier', is_active: 1 };
+
+    function refreshDb() {
+      return makeDb((sql) => {
+        if (sql.includes('FROM pos_users WHERE id')) return chainDb([refreshUser]);
+        return chainDb([]);
+      });
+    }
+
+    beforeEach(() => {
+      generateToken
+        .mockResolvedValueOnce('new-access-token')
+        .mockResolvedValueOnce('new-refresh-token');
+    });
+
+    it('returns a fresh pair for a valid POS refresh token (header transport)', async () => {
+      verifyToken.mockResolvedValue({
+        sub: 'u1', userId: 'u1', posType: 'pos', userType: 'org',
+        type: 'refresh', tenantId: 't9', role: 'cashier',
+      });
+      const db = refreshDb();
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer refresh-rt' },
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.token).toBe('new-access-token');
+      expect(body.refreshToken).toBe('new-refresh-token');
+      expect(body.user.username).toBe('cashier1');
+    });
+
+    it('accepts the refresh token in the body when no header is present', async () => {
+      verifyToken.mockResolvedValue({
+        sub: 'u1', userId: 'u1', posType: 'pos', userType: 'org',
+        type: 'refresh', tenantId: 't9', role: 'cashier',
+      });
+      const db = refreshDb();
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: 'body-rt' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.refreshToken).toBe('new-refresh-token');
+    });
+
+    it('returns 401 when neither header nor body carries a token', async () => {
+      const db = refreshDb();
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects access tokens replayed as refresh material', async () => {
+      verifyToken.mockResolvedValue({
+        sub: 'u1', userId: 'u1', posType: 'pos', userType: 'org',
+        type: 'access', tenantId: 't9', role: 'cashier',
+      });
+      const db = refreshDb();
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer access-attempt' },
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(401);
+      expect(body.error).toBe('Invalid token type');
+    });
+
+    it('rejects admin/platform refresh tokens presented to the POS realm', async () => {
+      verifyToken.mockResolvedValue(null); // requireAuth realm check fails → null
+      const db = refreshDb();
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer admin-refresh-token' },
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 401 Account deactivated for a deactivated cashier', async () => {
+      verifyToken.mockResolvedValue({
+        sub: 'u1', userId: 'u1', posType: 'pos', userType: 'org',
+        type: 'refresh', tenantId: 't9', role: 'cashier',
+      });
+      const db = makeDb((sql) => {
+        if (sql.includes('SELECT is_active')) return chainDb([{ is_active: 0 }]);
+        return chainDb([]);
+      });
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer deactivated-rt' },
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(401);
+      expect(body.error).toBe('Account deactivated');
+    });
+
+    it('returns 401 when the cashier row vanished between probe and reload', async () => {
+      verifyToken.mockResolvedValue({
+        sub: 'u1', userId: 'u1', posType: 'pos', userType: 'org',
+        type: 'refresh', tenantId: 't9', role: 'cashier',
+      });
+      // Gate activity probe sees an active row, but the handler's own reload
+      // finds none (deleted in between) → defensive 401.
+      const db = makeDb((sql) => {
+        if (sql.includes('SELECT is_active')) return chainDb([{ is_active: 1 }]);
+        return chainDb([]);
+      });
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer orphan-rt' },
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(401);
+      expect(body.error).toBe('Invalid or expired refresh token');
+    });
+
+    it('resolves tenant mapping and tax rate on refresh like login does', async () => {
+      verifyToken.mockResolvedValue({
+        sub: 'u1', userId: 'u1', posType: 'pos', userType: 'org',
+        type: 'refresh', tenantId: 'old', role: 'cashier',
+      });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      let callIdx = 0;
+      const db = makeDb((sql) => {
+        if (sql.includes('pos_users WHERE id')) return chainDb([{ ...refreshUser, organization_id: '77' }]);
+        callIdx++;
+        if (callIdx === 1) throw new Error('no such table: tenant_org_mapping');
+        if (callIdx === 2) return chainDb([{ tax_rate: '0.08' }]);
+        return chainDb([]);
+      });
+      const req = new Request('http://localhost/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer rt' },
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(warnSpy).toHaveBeenCalled();
+      expect(generateToken).toHaveBeenCalledWith(expect.objectContaining({ tenantId: '77', organizationId: '77' }), 'secret', 'access', expect.objectContaining({ JWT_SECRET: 'secret' }));
+      expect(body.user.taxRate).toBe(0.08);
+      warnSpy.mockRestore();
     });
   });
 
@@ -296,34 +480,85 @@ describe('POS Routes', () => {
   });
 
   describe('GET /orders', () => {
-    it('returns orders for authenticated POS user', async () => {
-      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: 't1', role: 'cashier' });
-      const orders = [{ id: 'o1', order_number: 'ORD-1' }];
+    // Phase 3: prepare order = [active-check, COUNT, page SELECT]
+    const posToken = { userId: 'u1', posType: 'pos', tenantId: 't1', role: 'cashier' };
+
+    function makeOrdersDb({ count = [{ total: 2 }], rows = [{ id: 'o1', order_number: 'ORD-1' }] } = {}) {
+      let callIdx = 0;
+      return makeDb(() => {
+        callIdx++;
+        if (callIdx <= 1) return chainDb([{ is_active: 1 }]);
+        if (callIdx === 2) return chainDb(count);
+        return chainDb(rows);
+      });
+    }
+
+    function posRequest(path = '/orders') {
+      return new Request(`http://localhost${path}`, {
+        headers: { Authorization: 'Bearer pos-token' },
+      });
+    }
+
+    it('returns paginated orders envelope by default', async () => {
+      verifyToken.mockResolvedValue(posToken);
+      const res = await posApp.fetch(posRequest(), { DB: makeOrdersDb(), JWT_SECRET: 'secret' });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.total).toBe(2);
+      expect(body.page).toBe(1);
+      expect(body.pageSize).toBe(100);
+      expect(body.hasMore).toBe(false);
+      expect(body.data[0].order_number).toBe('ORD-1');
+    });
+
+    it('supports ?raw=1 legacy bare array during migration', async () => {
+      verifyToken.mockResolvedValue(posToken);
+      const res = await posApp.fetch(posRequest('/orders?raw=1'), { DB: makeOrdersDb(), JWT_SECRET: 'secret' });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
+      expect(body[0].order_number).toBe('ORD-1');
+      expect(body.total).toBeUndefined();
+    });
+
+    it('honors page/pageSize params (clamped to max 200)', async () => {
+      verifyToken.mockResolvedValue(posToken);
+      let boundArgs = null;
       let callIdx = 0;
       const db = makeDb(() => {
         callIdx++;
         if (callIdx <= 1) return chainDb([{ is_active: 1 }]);
-        return chainDb(orders);
+        if (callIdx === 2) return chainDb([{ total: 500 }]);
+        // Statement-level shape: prepare() -> bind(args) -> { all }
+        return {
+          bind: vi.fn((...args) => {
+            boundArgs = args;
+            return {
+              all: vi.fn().mockResolvedValue({ results: [] }),
+              first: vi.fn(),
+              run: vi.fn(),
+            };
+          }),
+        };
       });
-      const req = new Request('http://localhost/orders', {
-        headers: { Authorization: 'Bearer pos-token' },
-      });
-      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const res = await posApp.fetch(posRequest('/orders?page=3&pageSize=999'), { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
       expect(res.status).toBe(200);
+      expect(body.page).toBe(3);
+      expect(body.pageSize).toBe(200);
+      expect(boundArgs).toEqual(['t1', 200, 400]);
     });
 
     it('returns 500 when order list fails', async () => {
-      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: 't1', role: 'cashier' });
+      verifyToken.mockResolvedValue(posToken);
       let callIdx = 0;
       const db = makeDb(() => {
         callIdx++;
         if (callIdx <= 1) return chainDb([{ is_active: 1 }]);
         throw new Error('DB fail');
       });
-      const req = new Request('http://localhost/orders', {
-        headers: { Authorization: 'Bearer pos-token' },
-      });
-      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const res = await posApp.fetch(posRequest(), { DB: db, JWT_SECRET: 'secret' });
       expect(res.status).toBe(500);
     });
   });
