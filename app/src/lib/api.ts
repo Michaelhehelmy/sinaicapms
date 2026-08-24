@@ -769,6 +769,66 @@ export function posCloseShift(data: Schemas['PosShiftCloseRequest']) {
   });
 }
 
+// ─── Restaurant pillar (0069): floor tables + kitchen status ─────────
+// Wire contract: backend/openapi.json (PosTable*, TableStatusUpdateResponse,
+// KitchenStatusUpdateResponse). Like every sibling function in this module,
+// tenant scoping rides the x-tenant-id header apiFetch already sets — there is
+// no explicit orgId parameter.
+
+/** Kitchen fulfillment states (0069). NOTE the one-L spelling of 'canceled' —
+ *  it must match the 0069 column CHECK + KITCHEN_TRANSITIONS map exactly. */
+export type KitchenStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'canceled';
+
+/** Floor-table row as served on the camelCase wire (spec: PosTable). */
+export type PosTable = Schemas['PosTable'];
+
+/** POS: List restaurant floor tables grouped by section → { sections, total }.
+ *  Named sections come first alphabetically; the null section renders last. */
+export function getPosTables() {
+  return apiFetch<Schemas['PosTableList']>('/pos-tables');
+}
+
+/** Create a floor table (admin-tier role required server-side) → { success, id }. */
+export function createPosTable(data: { name: string; capacity?: number; section?: string }) {
+  return apiFetch<Schemas['PosTableCreated']>('/pos-tables', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/** Partial table update (COALESCE semantics — omitted fields keep their value). */
+export function updatePosTable(
+  id: string,
+  data: Partial<{ name: string; capacity: number; status: Schemas['PosTable']['status']; section: string }>,
+) {
+  return apiFetch<Schemas['SuccessResponse']>(`/pos-tables/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+/** Move a table through its service lifecycle: available ↔ occupied/reserved/cleaning. */
+export function updatePosTableStatus(id: string, status: Schemas['PosTable']['status']) {
+  return apiFetch<Schemas['TableStatusUpdateResponse']>(`/pos-tables/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function deletePosTable(id: string) {
+  return apiFetch<Schemas['SuccessResponse']>(`/pos-tables/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Advance a kitchen ticket along pending→confirmed→preparing→ready→served
+ *  (any pre-serve step may cancel). Body key is `status` — the single-key
+ *  pattern PATCH /orders/:id/status established; 409 on illegal transitions. */
+export function updateKitchenStatus(orderId: string, kitchenStatus: KitchenStatus) {
+  return apiFetch<Schemas['KitchenStatusUpdateResponse']>(`/orders/${encodeURIComponent(orderId)}/kitchen-status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: kitchenStatus }),
+  });
+}
+
 // ─── Inventory (tenant admin) ─────────────────────────────────────────
 /**
  * Low-stock inventory items for the tenant organization.

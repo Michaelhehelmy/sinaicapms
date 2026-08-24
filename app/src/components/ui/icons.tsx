@@ -238,3 +238,26 @@ export function IconShift(props: IconProps) {
     </IconBase>
   );
 }
+
+/** Tables — floor-plan grid of seats (0069 Restaurant pillar) */
+export function IconTables(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="4" width="8" height="7" rx="1.5" />
+      <rect x="13" y="4" width="8" height="7" rx="1.5" />
+      <rect x="3" y="13" width="8" height="7" rx="1.5" />
+      <circle cx="17" cy="16.5" r="3.5" />
+    </IconBase>
+  );
+}
+
+/** Kitchen — cooking pot with steam lines (0069 Restaurant pillar) */
+export function IconKitchen(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 11h16" />
+      <path d="M6 11v3.5A4.5 4.5 0 0010.5 19h3a4.5 4.5 0 004.5-4.5V11" />
+      <path d="M9 8V6M15 8V6M12 8V5" />
+    </IconBase>
+  );
+}

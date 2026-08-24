@@ -2,6 +2,7 @@ import { jsonResponse, cachedJsonResponse, errorResponse, toSnake } from '../uti
 import { validationError } from '../utils/errors';
 import { parsePagination, paginationEnvelope } from '../utils/pagination';
 import { getScope } from '../middleware/resolveScope.js';
+import { logAudit } from './audit.js';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
@@ -504,6 +505,81 @@ ordersRoutes.patch('/:id/status', async (c) => {
     return jsonResponse({ success: true, id: ordId, status });
   } catch (e) {
     return errorResponse('Failed to update order status');
+  }
+});
+
+// ─── PATCH /orders/:id/kitchen-status (0069 Restaurant pillar) ───
+// Kitchen fulfillment state machine, SEPARATE from the booking lifecycle
+// above. NOTE the spelling: kitchen states use 'canceled' (one L) per the
+// 0069 column CHECK — do not confuse with order_state_id's 'cancelled'.
+//   pending   → confirmed | canceled
+//   confirmed → preparing | canceled
+//   preparing → ready     | canceled
+//   ready     → served
+//   served    → (terminal)
+const KITCHEN_TRANSITIONS = {
+  pending: ['confirmed', 'canceled'],
+  confirmed: ['preparing', 'canceled'],
+  preparing: ['ready', 'canceled'],
+  ready: ['served'],
+  served: [],
+};
+
+export const kitchenStatusSchema = z.object({
+  // 'canceled' must stay listed even though nothing ever transitions INTO it:
+  // canceling a kitchen ticket is a legal client request at any pre-serve step.
+  status: z.enum(['pending', 'confirmed', 'preparing', 'ready', 'served', 'canceled'], {
+    message: 'Invalid kitchen status',
+  }),
+}).strip();
+
+ordersRoutes.patch('/:id/kitchen-status', async (c) => {
+  try {
+    const ordId = c.req.param('id');
+    const tenantId = getScope(c).tenantId;
+    const parsed = kitchenStatusSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+    const { status } = parsed.data;
+
+    // Tenant-scoped existence check (loads the current kitchen state)
+    const existing = await c.env.DB.prepare(
+      "SELECT id, kitchen_status FROM orders WHERE tenant_id = ? AND id = ?"
+    ).bind(tenantId, ordId).first();
+    if (!existing) return errorResponse('Order not found', 404);
+
+    // Reject illegal kitchen transitions before writing. Unknown current
+    // states are treated as terminal so corrupted rows can't be silently
+    // moved (same policy as PATCH /:id/status).
+    const currentStatus = existing.kitchen_status || 'pending';
+    const allowedFrom = KITCHEN_TRANSITIONS[currentStatus];
+    if (!allowedFrom || !allowedFrom.includes(status)) {
+      return errorResponse(
+        `Illegal kitchen status transition: '${currentStatus}' → '${status}'`,
+        409
+      );
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE orders SET kitchen_status = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
+    ).bind(status, tenantId, ordId).run();
+
+    // Best-effort audit trail — logAudit swallows its own errors, so a failed
+    // audit row can never break the transition response.
+    await logAudit(c.env.DB, {
+      tenantId,
+      userId: getScope(c).user?.id || 'system',
+      action: 'update',
+      entityType: 'order',
+      entityId: ordId,
+      oldValues: { kitchen_status: currentStatus },
+      newValues: { kitchen_status: status },
+    });
+
+    return jsonResponse({ success: true, id: ordId, status });
+  } catch (e) {
+    return errorResponse('Failed to update kitchen status');
   }
 });
 

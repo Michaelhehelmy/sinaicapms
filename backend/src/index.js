@@ -29,6 +29,7 @@ import inboxRoutes from './api/inbox';
 import { tenantMetaRoutes, projectMetaRoutes } from './api/meta';
 import tagsRoutes, { projectTagsRoutes } from './api/tags';
 import auditRoutes from './api/audit';
+import posTablesRoutes from './api/pos-tables';
 import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
 import { withSunset } from './utils/deprecation.js';
@@ -492,6 +493,15 @@ app.route('/api/projects/:projectId/tags', projectTagsRoutes);
 const auditAdminScope = resolveScope();
 app.use('/api/audit/*', auditAdminScope);
 app.route('/api/audit', auditRoutes);
+
+// ── Restaurant pillar: POS floor tables (0069). Admin-realm CRUD; the router
+// self-enforces "admin only" (role admin|super_admin) on mutations and groups
+// GET / by section for floor-plan rendering. Dine-in orders flip tables to
+// 'occupied' from POST /api/pos/orders (see routes/pos/index.js). ────
+const posTablesAdminScope = resolveScope();
+app.use('/api/pos-tables', posTablesAdminScope);
+app.use('/api/pos-tables/*', posTablesAdminScope);
+app.route('/api/pos-tables', posTablesRoutes);
 
 // ── API terminal fallback ─────────────────────────────────
 // Phase 4 complete: every Paradigm-B dispatcher module above this line has

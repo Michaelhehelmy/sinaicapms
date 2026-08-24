@@ -26,6 +26,10 @@ const posOrderSchema = z.object({
   amountCash: z.number({ message: 'Cash amount must be a number' }).min(0, 'Cash amount cannot be negative').optional(),
   amountCard: z.number({ message: 'Card amount must be a number' }).min(0, 'Card amount cannot be negative').optional(),
   idempotencyKey: z.string({ message: 'Idempotency key must be text' }).max(64, 'Idempotency key is too long').optional(),
+  // 0069 Restaurant pillar: optional dine-in table. Must belong to the
+  // cashier's tenant; the referenced table is flipped to 'occupied' in the
+  // commit batch below.
+  tableId: z.string({ message: 'Table ID must be text' }).max(64, 'Table ID is too long').optional(),
 }).strip();
 
 const posRefreshSchema = z.object({
@@ -311,11 +315,14 @@ pos.post('/orders', async (c) => {
     const { items, paymentMethod, notes, amountCash, amountCard } = parsed.data;
     const idempotencyKeyRaw = typeof parsed.data.idempotencyKey === 'string' ? parsed.data.idempotencyKey.trim() : '';
     const idempotencyKey = idempotencyKeyRaw.length > 0 && idempotencyKeyRaw.length <= 64 ? idempotencyKeyRaw : null;
+    // 0069: optional dine-in table — empty string normalizes to null.
+    const tableIdRaw = typeof parsed.data.tableId === 'string' ? parsed.data.tableId.trim() : '';
+    const tableId = tableIdRaw.length > 0 && tableIdRaw.length <= 64 ? tableIdRaw : null;
 
     const loadExistingOrder = async (key) => {
       const { results: existing } = await env.DB.prepare(
         `SELECT id, order_number, subtotal, tax_amount, total_amount, payment_method,
-                amount_cash, amount_card, status, created_at
+                amount_cash, amount_card, status, table_id, kitchen_status, created_at
          FROM pos_transactions
          WHERE idempotency_key = ? AND tenant_id = ?`
       ).bind(key, tenantId).all();
@@ -343,6 +350,8 @@ pos.post('/orders', async (c) => {
           amountCash: found.amount_cash,
           amountCard: found.amount_card,
           status: found.status,
+          tableId: found.table_id,
+          kitchenStatus: found.kitchen_status,
           items: existingItems.map((r) => ({
             id: r.id,
             productId: r.product_id,
@@ -400,6 +409,18 @@ pos.post('/orders', async (c) => {
         subtotal: lineTotal,
         totalAmount: lineTotal,
       });
+    }
+
+    // ── Validate dine-in table ownership (0069) ───────────
+    // Only queried when a tableId was supplied so takeout flows (and legacy
+    // clients) keep their exact DB call sequence.
+    if (tableId) {
+      const { results: tableRows } = await env.DB.prepare(
+        `SELECT id FROM pos_tables WHERE id = ? AND tenant_id = ?`
+      ).bind(tableId, tenantId).all();
+      if (tableRows.length === 0) {
+        return errorResponse(`Table ${tableId} not found`, 400);
+      }
     }
 
     // F10 fix: org tax rate lives in pos_organizations (tenants has no tax_rate column)
@@ -512,9 +533,9 @@ pos.post('/orders', async (c) => {
           (id, tenant_id, organization_id, store_id, order_number, cashier_id,
            status, subtotal, tax_amount, tax_rate, total_amount,
            paid_amount, payment_method, payment_status, notes,
-           amount_cash, amount_card, idempotency_key,
+           amount_cash, amount_card, idempotency_key, table_id, kitchen_status,
            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, datetime('now'), datetime('now'))`
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, 'confirmed', datetime('now'), datetime('now'))`
       ).bind(
         orderId, tenantId, organizationId, storeId, orderNumber,
         String(posUser.userId),
@@ -522,9 +543,22 @@ pos.post('/orders', async (c) => {
         totalAmount, method,
         notes || null,
         finalAmountCash, finalAmountCard,
-        idempotencyKey || null
+        idempotencyKey || null,
+        tableId
       )
     );
+
+    // 0069: a dine-in order occupies its table in the SAME commit batch —
+    // the sale and the floor state land together or not at all. Placed after
+    // every deduction statement so the deductionIndexes/compensation guard
+    // below is untouched.
+    if (tableId) {
+      statements.push(
+        env.DB.prepare(
+          `UPDATE pos_tables SET status = 'occupied' WHERE id = ? AND tenant_id = ?`
+        ).bind(tableId, tenantId)
+      );
+    }
 
     for (const row of itemRows) {
       statements.push(
@@ -637,6 +671,8 @@ pos.post('/orders', async (c) => {
         amountCash: finalAmountCash,
         amountCard: finalAmountCard,
         status: 'completed',
+        tableId,
+        kitchenStatus: 'confirmed',
         items: itemRows.map((r) => ({
           id: r.id,
           productId: r.productId,

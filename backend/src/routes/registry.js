@@ -50,7 +50,8 @@ import {
   resetPasswordSchema,
   changePasswordSchema,
 } from '../api/auth.js';
-import { orderStatusSchema } from '../api/orders.js'; // single-key { status } — wire-identical, reused as-is
+import { orderStatusSchema, kitchenStatusSchema } from '../api/orders.js'; // single-key { status } — wire-identical, reused as-is
+import { tablePostSchema, tablePutSchema, tableStatusSchema } from '../api/pos-tables.js'; // 0069 Restaurant pillar
 import { paymentIntentSchema, confirmPaymentSchema } from '../api/payments.js'; // already camelCase wire-identical (no toSnake in handler) — reused as-is
 
 // ─── Shared response schemas (camelCase wire contract) ───────────────────────
@@ -480,6 +481,12 @@ const orderStatusUpdateResponseSchema = z
   .object({ success: z.boolean(), id: z.string(), status: z.string() })
   .openapi('OrderStatusUpdateResponse');
 
+// 0069 Restaurant pillar — same wire shape as OrderStatusUpdateResponse but a
+// distinct component so consumers can type kitchen vs lifecycle transitions.
+const kitchenStatusUpdateResponseSchema = z
+  .object({ success: z.boolean(), id: z.string(), status: z.string() })
+  .openapi('KitchenStatusUpdateResponse');
+
 const bulkDeleteResponseSchema = z
   .object({ success: z.boolean(), deleted: z.array(z.string()) })
   .openapi('BulkDeleteResponse');
@@ -906,6 +913,24 @@ export const marketplaceRoutes = [
     responses: {
       200: { description: 'Status updated', content: { 'application/json': { schema: orderStatusUpdateResponseSchema } } },
       ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'patch',
+    path: '/api/orders/{id}/kitchen-status',
+    tags: ['orders'],
+    // 0069 Restaurant pillar — kitchen fulfillment state machine (separate
+    // from the booking order_state lifecycle). served is terminal.
+    summary: 'Advance the kitchen fulfillment state: pending→confirmed→preparing→ready→served (any pre-serve step may cancel; 409 on illegal transitions)',
+    request: {
+      params: z.object({ id: z.string() }),
+      body: { content: { 'application/json': { schema: kitchenStatusSchema } } },
+    },
+    responses: {
+      200: { description: 'Kitchen status updated', content: { 'application/json': { schema: kitchenStatusUpdateResponseSchema } } },
+      ...errorResponses({
+        409: { description: 'Illegal kitchen transition', content: { 'application/json': { schema: errorEnvelopeSchema } } },
+      }),
     },
   }),
   createRoute({
@@ -2705,6 +2730,104 @@ export const inventoryRoutes = [
   }),
 ];
 
+// ─── Tables (0069 Restaurant pillar): /api/pos-tables ─────────────────────────
+// Dine-in floor-plan CRUD for tenant admins (api/pos-tables.js). Response
+// schemas mirror the ACTUAL wire output: GET groups rows by section; POST
+// returns created() → { success, id }; PUT/DELETE return bare success;
+// PATCH /{id}/status echoes { success, id, status }.
+const posTableSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    capacity: z.number().int(),
+    status: z.enum(['available', 'occupied', 'reserved', 'cleaning']),
+    section: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('PosTable');
+
+const posTableSectionSchema = z
+  .object({ section: z.string().nullable(), tables: z.array(posTableSchema) })
+  .openapi('PosTableSection');
+
+const posTableListSchema = z
+  .object({ sections: z.array(posTableSectionSchema), total: z.number() })
+  .openapi('PosTableList');
+
+const posTableCreatedSchema = z
+  .object({ success: z.boolean(), id: z.string() })
+  .openapi('PosTableCreated');
+
+const tableStatusUpdateResponseSchema = z
+  .object({ success: z.boolean(), id: z.string(), status: z.string() })
+  .openapi('TableStatusUpdateResponse');
+
+export const posTablesRoutes = [
+  createRoute({
+    method: 'get',
+    path: '/api/pos-tables',
+    tags: ['tables'],
+    summary: 'List dine-in tables grouped by section, unassigned (null-section) tables last (auth + tenant scoped)',
+    responses: {
+      200: { description: 'Tables grouped by section', content: { 'application/json': { schema: posTableListSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/pos-tables',
+    tags: ['tables'],
+    summary: 'Create a table (admin|super_admin only; defaults capacity=2, status=available)',
+    request: { body: { content: { 'application/json': { schema: tablePostSchema } } } },
+    responses: {
+      201: { description: 'Created', content: { 'application/json': { schema: posTableCreatedSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'put',
+    path: '/api/pos-tables/{id}',
+    tags: ['tables'],
+    summary: 'Update a table — partial COALESCE semantics, 404 when nothing matched (admin|super_admin only)',
+    request: {
+      params: z.object({ id: z.string() }),
+      body: { content: { 'application/json': { schema: tablePutSchema } } },
+    },
+    responses: {
+      200: { description: 'Updated', content: { 'application/json': { schema: successResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'patch',
+    path: '/api/pos-tables/{id}/status',
+    tags: ['tables'],
+    // No state machine by design: staff may jump directly (occupied → cleaning);
+    // the column CHECK constraint is the validity boundary.
+    summary: 'Set table service status: available | occupied | reserved | cleaning (admin|super_admin only)',
+    request: {
+      params: z.object({ id: z.string() }),
+      body: { content: { 'application/json': { schema: tableStatusSchema } } },
+    },
+    responses: {
+      200: { description: 'Status updated', content: { 'application/json': { schema: tableStatusUpdateResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'delete',
+    path: '/api/pos-tables/{id}',
+    tags: ['tables'],
+    summary: 'Delete a table (referencing orders keep history via ON DELETE SET NULL; admin|super_admin only)',
+    request: { params: z.object({ id: z.string() }) },
+    responses: {
+      200: { description: 'Deleted', content: { 'application/json': { schema: successResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+];
+
 // All registered routes — T8-B tasks append their module arrays here.
 export const openApiRoutes = [
   ...authRoutes,
@@ -2719,6 +2842,7 @@ export const openApiRoutes = [
   ...posRoutes,
   ...mediaRoutes,
   ...inventoryRoutes,
+  ...posTablesRoutes,
   ...inboxRoutes,
 ];
 

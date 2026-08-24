@@ -7,7 +7,7 @@ import { posKeys, usePosActiveShift } from '@/hooks/usePosQueries';
 import { posUrl } from '@/lib/posUrl';
 import { push, replace, onNavigation } from '@/lib/navigation';
 import type { PosUser, Shift, CartItem } from './types';
-import { IconDashboard, IconOrders, IconProducts, IconShift } from '@/components/ui/icons';
+import { IconDashboard, IconOrders, IconProducts, IconShift, IconTables, IconKitchen } from '@/components/ui/icons';
 import { AppSidebar, type ShellNavItem } from '@/components/shell/AppSidebar';
 
 // ─── Lazy-loaded views (code-split per tab) ────────────────
@@ -18,6 +18,8 @@ const DashboardView = React.lazy(() => import('./views/DashboardView'));
 const ProductsView = React.lazy(() => import('./views/ProductsView'));
 const CartPanel = React.lazy(() => import('./views/CartPanel'));
 const OrdersView = React.lazy(() => import('./views/OrdersView'));
+const TableView = React.lazy(() => import('./views/TableView'));
+const KitchenView = React.lazy(() => import('./views/KitchenView'));
 const ShiftOverlay = React.lazy(() => import('./views/ShiftOverlay'));
 const ShiftDashboard = React.lazy(() => import('./views/ShiftDashboard'));
 
@@ -36,6 +38,8 @@ const POS_NAV: ShellNavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: IconDashboard },
   { id: 'products', label: 'Products', icon: IconProducts },
   { id: 'orders', label: 'Orders', icon: IconOrders },
+  { id: 'tables', label: 'Tables', icon: IconTables },
+  { id: 'kitchen', label: 'Kitchen', icon: IconKitchen },
   { id: 'shift', label: 'Shift', icon: IconShift },
 ];
 
@@ -117,6 +121,8 @@ function viewFromPath(pathname: string): string {
   if (pathname.includes('/login')) return 'login';
   if (pathname.includes('/products')) return 'products';
   if (pathname.includes('/orders')) return 'orders';
+  if (pathname.includes('/tables')) return 'tables';
+  if (pathname.includes('/kitchen')) return 'kitchen';
   if (pathname.includes('/shift')) return 'shift';
   return 'dashboard';
 }
@@ -234,6 +240,16 @@ function POSAppShell() {
           {view === 'orders' && (
             <Suspense fallback={<POSFallback />}>
               <OrdersView />
+            </Suspense>
+          )}
+          {view === 'tables' && (
+            <Suspense fallback={<POSFallback />}>
+              <TableView />
+            </Suspense>
+          )}
+          {view === 'kitchen' && (
+            <Suspense fallback={<POSFallback />}>
+              <KitchenView />
             </Suspense>
           )}
           {view === 'shift' && (

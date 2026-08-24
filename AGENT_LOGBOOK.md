@@ -98,6 +98,9 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 - **8-digit hex (#RRGGBBAA) inline styles break React 18 hydration (2026-08-03, ROOT CAUSE CONFIRMED)**: `style={{ background: \`${primaryColor}08\` }}` (CampBooking.tsx line 194) SSR-serializes as `background:#2e7d3208`; the browser normalizes it to `rgba(46,125,50,0.03)`. React 18 has no server-side 8-digit-hex→rgba normalization, so every camp page load throws hydration pageerrors `#425` + `#423`. In prod the messages are MINIFIED ("Minified React error #425..."), which defeats spec filters that match 'hydrat'/'Text content does not match'/'Suspense boundary'. Use `rgba()` literals (or 6-digit hex) in inline styles of SSR'd components; add `Minified React error` to benign JS-error filters.
 - **Camp page passes ALL products (meals included) as `roomTypes` (2026-08-03)**: `camp/[id]/index.astro` line 19 fetches `/products` with `x-tenant-id` (no `type` filter) and passes the result to CampBooking — meal products render as bookable "room" cards ("Grilled Chicken with Rice — Up to 1 guests" / price 18). If rooms-only is intended, filter `type='room'` (backend `handleRoomTypesRoute` already CRUDs against `pos_products WHERE type='room'`). Also note the section's `h2.text-2xl` "Accommodations" heading lives INSIDE `[data-testid="rooms-section"]`, so PO locators like `.text-2xl` collide with it.
 - **Prod `/camp/*` goto flake (2026-08-03, confirmed)**: the camp page pulls Google Maps iframe + Google Fonts + postimg images; under 4-worker parallel `page.goto(waitUntil:'load')` the `load` event intermittently exceeds 30s (reproduced 1/12 parallel loads) while warm single loads take ~3.4s. Tests recover on retry/targeted re-run. Bumping `use.navigationTimeout` to 60s in `playwright.prod.config.ts` is the mitigation if flaky counts matter.
+- **`audit_log.entity_type` CHECK is a silent landmine (2026-08-24)**: `logAudit()` swallows ALL its errors by design ("audit must never break the caller"), so when a new entityType value is introduced without extending the column's CHECK constraint, audit rows silently vanish — no error, no log line, nothing. Migration 0069 had to REBUILD `audit_log` (create-copy-drop-rename + recreate indexes) just to add `'order'` and `'pos_table'` to the CHECK. Rule: every new `entityType` in a `logAudit` call site needs a CHECK-constraint migration IN THE SAME change set.
+- **Kitchen vs booking cancel spelling (2026-08-24)**: kitchen fulfillment states use `'canceled'` (ONE L — 0069 column CHECK + transition map); booking lifecycle uses `'cancelled'` (TWO L). Also: the kitchen status REQUEST schema must list `'canceled'` even though no state transitions INTO it — canceling a ticket is a client-driven action from any pre-serve step. A schema enum that omits it turns every cancel request into a 400 (this exact bug shipped and was caught by tests).
+- **`jsonResponse` does NOT inject success flags (2026-08-24)**: it is literally `JSON.stringify(toCamel(data))`. List/read envelopes (`{sections,total}`, `{data,total,page,…}`) carry NO `success` key; only error envelopes carry `success:false`, and explicit mutation responses opt into `success:true` inline. OpenAPI response schemas and tests must mirror this — do not assume an implicit `success:true`.
 
 ---
 
@@ -7109,3 +7112,52 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 - **SQLite `DROP TABLE parent` runs an implicit `DELETE FROM` first**: child tables' `ON DELETE CASCADE` declarations then silently destroy child rows. Create-copy-drop table renames must re-point EVERY referencing FK before dropping (or use `ALTER TABLE ... RENAME`, which auto-updates REFERENCES clauses in other tables — the reason 0063's approach needs manual FK surgery at all).
 - **`deploy.sh` ordering hazard pattern**: migrations-before-worker-upload is only safe when the migration set is validated and backward-compatible with the RUNNING worker version; big renames need a lockstep plan (apply migrations + deploy atomically, or ship dual-compatible code first).
 - **better-sqlite3 `exec()` wraps each call in an implicit transaction**, resetting `PRAGMA defer_foreign_keys` between calls — it cannot faithfully mimic D1's migration-time FK semantics; don't trust local replay, verify against the actual database.
+
+## Task Log — 2026-08-24: Restaurant pillar backend (migration 0069 + /api/pos-tables + kitchen status)
+
+**Summary**: Implemented the dine-in/restaurant pillar end-to-end on the backend: floor-table CRUD, kitchen fulfillment state machine, and POS dine-in order binding — DB frozen except for additive 0069 columns (no existing column/table altered except the documented audit_log CHECK rebuild).
+
+#### Files Changed
+- `backend/migrations/0069_restaurant_tables.sql` — NEW. Verbatim task SQL (`pos_tables`, `orders.table_id/kitchen_status`) PLUS two documented deviations: (1) `ALTER TABLE pos_transactions ADD table_id … ON DELETE SET NULL` + `kitchen_status TEXT DEFAULT 'confirmed'` (the POS order flow writes pos_transactions, which lacked these); (2) `audit_log` REBUILD to extend `entity_type` CHECK with `'order'` and `'pos_table'` (logAudit silently no-ops otherwise — see learning).
+- `backend/src/api/pos-tables.js` — NEW router. GET `/` groups by section (null-section last, `{sections,total}`), POST `/` (201 `{success,id}` via `created()`), PUT `/:id` (COALESCE partial, 404 on 0 changes), PATCH `/:id/status` (`{success,id,status}`), DELETE `/:id`, catch-all 405. Mutations gated to admin|super_admin INSIDE the router (`assertAdminMutation` — manager/cashier → 403); all writes tenant-hard-scoped; best-effort `auditTableChange` (entityType `pos_table`).
+- `backend/src/api/orders.js` — `KITCHEN_TRANSITIONS` map (pending→confirmed/canceled → …→ ready→served; served terminal), exported `kitchenStatusSchema` (enum INCLUDES `canceled`), `PATCH /:id/kitchen-status`: 404 missing → 409 illegal transition (`Illegal kitchen status transition: 'x' → 'y'`; unknown current state treated as terminal) → UPDATE incl `updated_at` → best-effort logAudit(entityType `order`) → `{success,id,status}`.
+- `backend/src/index.js` — mount: `app.use('/api/pos-tables'[, '/*'], resolveScope())` + `app.route('/api/pos-tables', posTablesRoutes)` after the audit block.
+- `backend/src/routes/pos/index.js` — POS order flow: `tableId` in schema (max 64, trim→null); ownership SELECT **only when tableId supplied** (takeout keeps its exact legacy DB call sequence — ordered-step tests depend on it) → 400 `Table <id> not found`; INSERT carries `table_id` + hardcoded `kitchen_status='confirmed'`; occupy UPDATE (`UPDATE pos_tables SET status='occupied'`) pushed into the SAME atomic batch AFTER all deduction statements (deductionIndexes/compensation guard untouched); response gains `order.tableId` + `order.kitchenStatus`.
+- `backend/src/routes/registry.js` — registered 5 `/api/pos-tables` ops + `PATCH /api/orders/{id}/kitchen-status`; new components PosTable/PosTableSection/PosTableList/PosTableCreated/TableStatusUpdateResponse/KitchenStatusUpdateResponse; reused `tablePost/Put/StatusSchema` + `kitchenStatusSchema` from source modules.
+- `backend/openapi.json` — regenerated via `npm run gen:openapi` (75 paths, 128 schemas).
+- `backend/tests/pos-tables.test.js` — NEW, 37 tests: grouped listing/scope/defaults/validation/role gates/404s/405; full legal+illegal transition matrix (incl. cancel-window semantics and terminal `served`); audit-failure resilience; POS batch composition assertions (occupy UPDATE directly after transaction INSERT, before item INSERTs) + cross-tenant table rejection commits nothing + legacy sequence untouched.
+
+#### Results
+- Backend suite: **40 files / 1316 tests ✅** (baseline 39/1279 + this task's 37). OpenAPI contract tests green post-regen.
+- Bugs caught mid-task by own tests: (1) `kitchenStatusSchema` omitted `'canceled'` → every cancel request 400'd despite being a legal transition target-of-request (fixed in orders.js); (2) registry list envelope initially declared a `success` key the wire doesn't carry (spec corrected to mirror reality).
+
+#### Persistent Learnings (new)
+- See top-of-file additions: audit_log CHECK silent-drop landmine; `canceled`(kitchen) vs `cancelled`(booking) spelling split; jsonResponse injects no success flag.
+
+#### Notes
+- Migration NOT yet applied anywhere (local/prod apply is a deploy-time step per project convention). No frontend work in scope. tmp file n/a (executed in-session, not via spawned tmp agent).
+
+## Task Log — 2026-08-24: Restaurant pillar frontend (POS Tables + Kitchen views)
+
+**Summary**: Built the frontend half of the dine-in pillar on top of the 0069 backend: typed API functions, TanStack query/mutation hooks, and two new POS views — a floor-plan grid (TableView) and a kitchen fulfillment Kanban (KitchenView) — wired into the POS shell with lazy loading and new nav icons.
+
+#### Files Changed
+- `app/src/lib/api.ts` — NEW Restaurant-pillar block after `posCloseShift`: `getPosTables()`, `createPosTable(data)`, `updatePosTable(id, data)`, `updatePosTableStatus(id, status)`, `deletePosTable(id)`, `updateKitchenStatus(orderId, kitchenStatus)`; exports `KitchenStatus` + `PosTable` type aliases. All via `apiFetch<T>` against generated `Schemas[...]` types; tenant scoping rides the existing automatic `x-tenant-id` header (no orgId params).
+- `app/src/lib/api-types.ts` — regenerated (`npm run gen:types`) to pick up the 0069 schemas (additive +483 lines).
+- `app/src/hooks/usePosQueries.ts` — added `posKeys.orderDetail(id)`/`posKeys.tables()`; `useEnrichedOrders(enabled)` (orders list → per-order detail fan-out via `useQueries`, cap `KITCHEN_BOARD_LIMIT=50`, refresh `KITCHEN_REFRESH_MS=30s`; detail keys nest under `posKeys.orders()` so invalidation covers everything); `usePosTables()`; mutations for create/status/delete table and kitchen-status transitions.
+- `app/src/components/pos/views/TableView.tsx` — NEW. Sections grouped (unassigned last), status-colored cards (emerald/red/amber/blue), click-to-select quick actions (Seat→occupied, Clear→available, reserved/cleaning moves) hitting PATCH `/pos-tables/:id/status`; occupied selection hydrates the linked active ticket from the shared enriched-orders cache (enabled only while an occupied table is selected); Add Table form; legend; empty/error/loading states.
+- `app/src/components/pos/views/KitchenView.tsx` — NEW. 4-column Kanban (pending→confirmed→preparing→ready), tickets labeled by bound table name or "Takeout", items + ticking age, one-click advance per legal transition (Mark Served terminal), ≥20min pulse, auto-refresh note; served/canceled tickets never render.
+- `app/src/components/pos/POSApp.tsx` — lazy imports + nav items Tables/Kitchen (after Orders), `viewFromPath` cases `/tables` `/kitchen`, Suspense view blocks.
+- `app/src/components/ui/icons.tsx` — added `IconTables` (floor-plan rects+circle) and `IconKitchen` (cooking pot with steam), `IconBase` pattern.
+- `app/tests/unit/pos/RestaurantViews.test.tsx` — NEW, 17 tests: grouping/unassigned-last, empty/error states, seat/clear PATCH calls, occupied-ticket hydration panel, add-table happy+failure toast paths; kanban columns+counts, table-name vs Takeout labels, age display, all advance steps incl. terminal serve, illegal-transition error toast, served/canceled exclusion.
+
+#### Results
+- Frontend suite: **92 files / 1858 tests ✅** (+17). tsc: zero errors in touched files (237 pre-existing repo-wide; project gates on vitest).
+
+#### Persistent Learnings (new)
+- **Task-prompt API style vs reality**: this codebase has no `apiGet/apiPost(orgId)` — it's `apiFetch<T>(endpoint)` with OpenAPI-generated `Schemas[...]` types and automatic tenant headers. Always verify against `lib/api.ts` first.
+- **Backend list endpoints are thin**: `GET /pos/orders` omits `kitchen_status`/`table_id` (only the detail endpoint carries them) → frontend hydration fan-out pattern (list → N detail queries via `useQueries`). If this becomes hot, follow-up = widen the list SELECT instead.
+- **Realm-token gap (known follow-up)**: `/api/pos-tables` and `/api/orders/...` don't start with `/pos/`, so client `apiFetch` resolves them to admin-realm tokens while POS sessions hold POS tokens → runtime 401s likely until backend realm mapping is extended. Deliberately NOT hacked around in the client.
+
+#### Notes
+- No E2E specs added yet (POS flows need the auth-realm question settled first); unit coverage only in this task.
