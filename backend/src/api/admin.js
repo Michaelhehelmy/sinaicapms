@@ -52,6 +52,31 @@ export const adminUpdateSchema = z.object({
 // while an invalid token, a POS session, or a non-super_admin role all
 // collapse into the legacy combined-condition response
 // 403 "Unauthorized: Super Admin access required".
+// H2 fix: build the tenant cascade as prepared statements instead of running
+// them inline, so callers can hand the whole set to DB.batch and delete a
+// tenant atomically. Statement order is preserved exactly from the original
+// sequential implementation. The tenants row itself is NOT included — callers
+// append their own final tenants delete.
+function buildTenantCascadeStmts(env, tid) {
+  return [
+    env.DB.prepare("DELETE FROM orders WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tid),
+    env.DB.prepare("DELETE FROM price_overrides WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid),
+    env.DB.prepare("DELETE FROM product_camps WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid),
+    env.DB.prepare("DELETE FROM pos_products WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM rate_plans_new WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM plans_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tid),
+    env.DB.prepare("DELETE FROM projects WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tid),
+    env.DB.prepare("DELETE FROM meal_schedules WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid),
+    env.DB.prepare("DELETE FROM meal_lang WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid),
+    env.DB.prepare("DELETE FROM meals WHERE tenant_id = ?").bind(tid),
+  ];
+}
+
 const superAdminGate = requireAuth({
   realm: 'admin',
   roles: ['super_admin'],
@@ -133,25 +158,15 @@ export async function handleAdminRoute(request, env) {
             await env.DB.prepare(`UPDATE tenants SET status = 'active' WHERE id IN (${placeholders})`).bind(...ids).run();
             return jsonResponse({ success: true, activated: ids });
           } else if (action === 'delete') {
+            // H2 fix: same atomicity as the single DELETE — every child row
+            // for every id plus the tenants rows go in one transaction.
+            const stmts = [];
             for (const tid of ids) {
-              await env.DB.prepare("DELETE FROM orders WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tid).run();
-              await env.DB.prepare("DELETE FROM price_overrides WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid).run();
-              await env.DB.prepare("DELETE FROM product_camps WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tid).run();
-              await env.DB.prepare("DELETE FROM pos_products WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM rate_plans_new WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM plans_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tid).run();
-              await env.DB.prepare("DELETE FROM projects WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tid).run();
-              await env.DB.prepare("DELETE FROM meal_schedules WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid).run();
-              await env.DB.prepare("DELETE FROM meal_lang WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid).run();
-              await env.DB.prepare("DELETE FROM meals WHERE tenant_id = ?").bind(tid).run();
+              stmts.push(...buildTenantCascadeStmts(env, tid));
             }
             const placeholders = ids.map(() => '?').join(',');
-            await env.DB.prepare(`DELETE FROM tenants WHERE id IN (${placeholders})`).bind(...ids).run();
+            stmts.push(env.DB.prepare(`DELETE FROM tenants WHERE id IN (${placeholders})`).bind(...ids));
+            await env.DB.batch(stmts);
             return jsonResponse({ success: true, deleted: ids });
           }
           return errorResponse('Invalid bulk action', 400);
@@ -230,23 +245,13 @@ export async function handleAdminRoute(request, env) {
       }
     } else if (method === 'DELETE') {
       try {
-        // Cascade delete: orders → rooms → products → camps → admins → tenant
-        await env.DB.prepare("DELETE FROM orders WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM inbox_reads WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM rooms_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM price_overrides WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM product_camps WHERE product_id IN (SELECT id FROM pos_products WHERE tenant_id = ?)").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM pos_products WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM rate_plans_new WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM plans_new WHERE camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM projects WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM meal_schedules WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM meal_lang WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM meals WHERE tenant_id = ?").bind(tenantId).run();
-        await env.DB.prepare("DELETE FROM tenants WHERE id = ?").bind(tenantId).run();
+        // H2 fix: cascade delete in ONE DB.batch transaction. Previously these
+        // 16 statements ran sequentially — a mid-way failure left a
+        // half-deleted tenant (orphaned orders/rooms, or a tenant row whose
+        // children were already gone).
+        const stmts = buildTenantCascadeStmts(env, tenantId);
+        stmts.push(env.DB.prepare("DELETE FROM tenants WHERE id = ?").bind(tenantId));
+        await env.DB.batch(stmts);
         return jsonResponse({ success: true });
       } catch (e) {
         return errorResponse('Failed to delete tenant');

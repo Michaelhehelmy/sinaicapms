@@ -96,7 +96,8 @@ categoriesRoutes.post('/', async (c) => {
 // PUT /api/categories/:id
 categoriesRoutes.put('/:id', async (c) => {
   try {
-    const tenantId = getScope(c).tenantId;
+    const scope = getScope(c);
+    const tenantId = scope.tenantId;
     const catId = c.req.param('id');
     const parsed = categoryPutSchema.safeParse(toSnake(await c.req.json()));
     if (!parsed.success) {
@@ -106,9 +107,18 @@ categoriesRoutes.put('/:id', async (c) => {
 
     // Verify ownership — only modify own or global categories
     const { results: existing } = await c.env.DB.prepare(
-      "SELECT id FROM categories WHERE id = ? AND (tenant_id IS NULL OR tenant_id = ?)"
+      "SELECT id, tenant_id FROM categories WHERE id = ? AND (tenant_id IS NULL OR tenant_id = ?)"
     ).bind(catId, tenantId).all();
     if (existing.length === 0) return errorResponse('Category not found', 404);
+
+    // H4 fix: global (marketplace-level) categories are shared infrastructure.
+    // A tenant admin passing the `(tenant_id IS NULL OR ...)` match above must
+    // not be able to mutate or re-parent them. Strict `=== null` on purpose:
+    // D1 materializes NULL columns as explicit null, while a row object
+    // without the column selected at all is treated as tenant-owned.
+    if (existing[0].tenant_id === null && scope.user?.role !== 'super_admin') {
+      return errorResponse('Only super admins can edit global categories', 403);
+    }
 
     await c.env.DB.prepare(
       `UPDATE categories SET

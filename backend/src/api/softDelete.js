@@ -57,8 +57,9 @@ export async function softDeleteTenant(DB, tenantId) {
       .bind(tenantId),
   ]);
   // Tenant row is the authoritative signal; zero changes there means already
-  // deleted (or unknown id).
-  return (results?.[0]?.meta?.changes ?? 0) > 0;
+  // deleted (or unknown id). The tenants arm is statement index 1 in the
+  // batch above (projects arm runs first, index 0).
+  return (results?.[1]?.meta?.changes ?? 0) > 0;
 }
 
 // ─── Restore ───────────────────────────────────────────────────

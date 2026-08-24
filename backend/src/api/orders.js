@@ -375,6 +375,17 @@ ordersRoutes.post('/bulk-delete', async (c) => {
 });
 
 // T5: PATCH /orders/:id/status — status-only partial update (dedicated route)
+// H6 fix: enforce a strict order lifecycle state machine (QloApps-style).
+// Any transition not listed here is rejected with 409, and unknown current
+// states are treated as terminal so corrupted rows can't be silently moved.
+const LEGAL_TRANSITIONS = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['checked_in', 'cancelled'],
+  checked_in: ['checked_out', 'cancelled'],
+  checked_out: [],
+  cancelled: [],
+};
+
 ordersRoutes.patch('/:id/status', async (c) => {
   try {
     const ordId = c.req.param('id');
@@ -385,9 +396,9 @@ ordersRoutes.patch('/:id/status', async (c) => {
     }
     const { status } = parsed.data;
 
-    // S-H2 style: tenant-scoped existence check
+    // S-H2 style: tenant-scoped existence check (now also loads current state)
     const existing = await c.env.DB.prepare(
-      "SELECT id FROM orders WHERE tenant_id = ? AND id = ?"
+      "SELECT id, order_state_id FROM orders WHERE tenant_id = ? AND id = ?"
     ).bind(tenantId, ordId).first();
     if (!existing) return errorResponse('Order not found', 404);
 
@@ -395,6 +406,18 @@ ordersRoutes.patch('/:id/status', async (c) => {
       "SELECT id, paid FROM order_state WHERE id = ?"
     ).bind(status).first();
     if (!state) return errorResponse('Invalid order status', 400);
+
+    // H6 fix: reject illegal lifecycle transitions before writing.
+    // NOTE: this check must run AFTER the 404/400 checks above so that
+    // "order missing" and "unknown status" keep their original semantics.
+    const currentStatus = existing.order_state_id;
+    const allowedFrom = currentStatus ? LEGAL_TRANSITIONS[currentStatus] : undefined;
+    if (!allowedFrom || !allowedFrom.includes(status)) {
+      return errorResponse(
+        `Illegal status transition: '${currentStatus ?? 'unknown'}' → '${status}'`,
+        409
+      );
+    }
 
     await c.env.DB.prepare(
       "UPDATE orders SET order_state_id = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
@@ -486,10 +509,35 @@ ordersRoutes.post('/', async (c) => {
     const reference = generateReference();
     const customerId = await findOrCreateCustomer(c.env, tenantId, guest_name, guest_email, guest_phone);
 
-    await c.env.DB.prepare(
+    // H1 fix: race-safe booking. validateOrder above is only advisory — two
+    // concurrent requests can both pass it and double-book the room. The
+    // INSERT below re-checks availability *inside* the write itself via
+    // `WHERE NOT EXISTS` (mirroring validateOrder's exact overlap predicate),
+    // so at most one of the racing requests inserts a row. Executed through
+    // DB.batch for a single transactional unit; `meta.changes === 0` means
+    // the guard blocked the insert → 409.
+    // NOTE: a naive [SELECT COUNT, INSERT] batch would NOT be safe — D1 has no
+    // conditional abort between statements, so both statements would commit.
+    const insertStmt = c.env.DB.prepare(
       `INSERT INTO orders (id, tenant_id, camp_id, room_id, customer_id, order_state_id, check_in_date, check_out_date, number_of_people, total_amount, amount_paid, payment_method, payment_status, reference, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
-    ).bind(ordId, tenantId, camp_id, room_id, customerId, order_state_id || 'pending', check_in_date, check_out_date, number_of_people || 1, total_amount || 0, amount_paid || 0, payment_method || null, payment_status || null, reference, notes || null).run();
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+       WHERE NOT EXISTS (
+         SELECT 1 FROM orders
+          WHERE tenant_id = ? AND room_id = ?
+            AND (check_in_date < ? AND check_out_date > ?)
+            AND order_state_id != 'cancelled'
+       )`
+    ).bind(
+      ordId, tenantId, camp_id, room_id, customerId, order_state_id || 'pending',
+      check_in_date, check_out_date, number_of_people || 1,
+      total_amount || 0, amount_paid || 0, payment_method || null, payment_status || null,
+      reference, notes || null,
+      tenantId, room_id, check_out_date, check_in_date
+    );
+    const [insertResult] = await c.env.DB.batch([insertStmt]);
+    if (!insertResult?.meta || insertResult.meta.changes === 0) {
+      return errorResponse('Room no longer available', 409);
+    }
 
     if (order_state_id) {
       const { results: osResult } = await c.env.DB.prepare(

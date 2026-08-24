@@ -347,14 +347,22 @@ describe('App entry (index.js)', () => {
       expect(Array.isArray(body.availability)).toBe(true);
     });
 
-    it('routes public POST /api/orders without auth', async () => {
-      // Empty body → the orders router's create handler rejects with its
-      // legacy catch-all message, proving the request reached the mounted
-      // sub-router through the public scope without any auth headers.
+    it('returns 401 for POST /api/orders without auth (C1: admin-only)', async () => {
+      // C1 fix: order creation moved out of the public scope. Without an
+      // Authorization header the admin-scope requireAuth gate rejects before
+      // the sub-router is ever reached.
       const res = await app.fetch(makeRequest('POST', '/api/orders?tenant_id=t1'), env);
+      expect(res.status).toBe(401);
+    });
+
+    it('routes GET /api/orders/calculate-price without auth (still public)', async () => {
+      // Missing params → the calculate-price handler's own 400, proving the
+      // request reached the mounted sub-router through the public scope
+      // without any auth headers.
+      const res = await app.fetch(makeRequest('GET', '/api/orders/calculate-price?tenant_id=t1'), env);
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe('Failed to create order');
+      expect(body.error).toBe('roomId, checkIn, and checkOut are required');
     });
 
     it('routes public POST /api/leads without auth', async () => {

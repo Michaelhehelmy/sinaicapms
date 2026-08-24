@@ -111,17 +111,19 @@ describe('getTenant', () => {
     expect(tenantId).toBeNull();
   });
 
-  it('queries DB with exact match (id, subdomain, custom_domain)', async () => {
+  it('queries DB with exact match (id, subdomain, custom_domain) on active tenants', async () => {
     const { DB, _prepareMock, _bindMock } = createMockDb([{ id: 'tenant_exact' }]);
     const req = createRequest('tenant_exact.sinaicamps.com', { 'x-tenant-id': 'tenant_exact' });
 
     await getTenant(req, { DB });
 
-    // Verify the query uses exact match
+    // Verify the query uses exact match. H5 fix: the OR group is parenthesized
+    // and restricted to status='active', so suspended tenants never resolve.
     const query = _prepareMock.mock.calls[0][0];
-    expect(query).toContain('WHERE id = ?');
+    expect(query).toContain('WHERE (id = ?');
     expect(query).toContain('subdomain = ?');
     expect(query).toContain('custom_domain = ?');
+    expect(query).toContain("AND status = 'active'");
     expect(query).not.toContain('LIKE');
   });
 });

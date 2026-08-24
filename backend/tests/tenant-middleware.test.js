@@ -96,4 +96,34 @@ describe('getTenant', () => {
     const result = await getTenant(req, { DB: db });
     expect(result).toBe('from_header');
   });
+
+  it('H5: only matches ACTIVE tenants (status filter in SQL, binds unchanged)', async () => {
+    let sql = null;
+    let bindArgs = null;
+    const chain = {
+      bind: vi.fn((...args) => {
+        bindArgs = args;
+        return { all: vi.fn().mockResolvedValue({ results: [{ id: 't1' }] }) };
+      }),
+    };
+    const db = {
+      prepare: vi.fn((s) => {
+        sql = s;
+        return chain;
+      }),
+    };
+    const req = makeRequest('http://camp1.sinaicamps.com/api/camps');
+    const result = await getTenant(req, { DB: db });
+    expect(result).toBe('t1');
+    expect(sql).toContain("status = 'active'");
+    expect(sql).toMatch(/\(id = \? OR subdomain = \? OR custom_domain = \?\) AND status = 'active'/);
+    expect(bindArgs).toEqual(['camp1.sinaicamps.com', 'camp1.sinaicamps.com', 'camp1.sinaicamps.com']);
+  });
+
+  it('H5: returns null when the tenant is suspended (filtered out by status)', async () => {
+    const db = mockDb([]);
+    const req = makeRequest('http://suspended.sinaicamps.com/api/camps');
+    const result = await getTenant(req, { DB: db });
+    expect(result).toBeNull();
+  });
 });

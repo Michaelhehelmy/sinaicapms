@@ -44,7 +44,12 @@ function makeDbMock() {
     all: vi.fn().mockResolvedValue({ results: [] }),
     run: vi.fn().mockResolvedValue({ success: true }),
   };
-  const db = { prepare: vi.fn().mockReturnValue(chain) };
+  const db = {
+    prepare: vi.fn().mockReturnValue(chain),
+    // H1 fix: order creation runs the availability-guarded INSERT via DB.batch.
+    // Default resolves as "one row inserted"; conflict tests override this.
+    batch: vi.fn().mockResolvedValue([{ meta: { changes: 1 } }]),
+  };
   return { db, chain };
 }
 
@@ -485,8 +490,8 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
-        (ch) => { ch.run.mockResolvedValue({}); },
-        (ch) => { ch.run.mockResolvedValue({}); },
+        (ch) => { ch.run.mockResolvedValue({}); }, // customer insert
+        (ch) => {}, // H1 fix: guarded INSERT statement is prepared here but sent via db.batch
         (ch) => { ch.all.mockResolvedValue({ results: [{ paid: true }] }); },
         (ch) => { ch.run.mockResolvedValue({}); },
       ]);
@@ -499,6 +504,51 @@ describe('handleOrdersRoute', () => {
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       const body = await res.json();
       expect(body.success).toBe(true);
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      expect(db.batch.mock.calls[0][0]).toHaveLength(1);
+      // prepare order: roomInfo, overlap, customer insert, guarded INSERT
+      expect(db.prepare.mock.calls[3][0]).toContain('NOT EXISTS');
+    });
+
+    it('H1: returns 409 when the availability guard blocks the insert (lost race)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // advisory pre-check sees no conflict...
+      ]);
+      db.prepare.mockImplementation(fn);
+      // ...but the atomic guard inside the INSERT finds one (changes === 0)
+      db.batch.mockResolvedValue([{ meta: { changes: 0 } }]);
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error).toContain('Room no longer available');
+    });
+
+    it('H1: guard predicate mirrors validateOrder (tenant + room + dates + not-cancelled)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
+      });
+      await handleOrdersRoute(req, { DB: db }, TENANT);
+      const sql = db.prepare.mock.calls.map((c) => c[0]).find((s) => s.includes('INSERT INTO orders'));
+      expect(sql).toBeTruthy();
+      expect(sql).toContain('WHERE NOT EXISTS');
+      expect(sql).toContain("order_state_id != 'cancelled'");
+      // Guard bindings follow the 15 insert values in validateOrder's order
+      const insertStmt = db.batch.mock.calls[0][0][0];
+      const binds = insertStmt.bind.mock.calls[0];
+      expect(binds.slice(-4)).toEqual(['t1', 'r1', '2026-09-15', '2026-09-10']);
     });
 
     it('reuses existing customer by email on create', async () => {
@@ -725,7 +775,7 @@ describe('handleOrdersRoute', () => {
     it('updates order status successfully', async () => {
       const { db } = makeDbMock();
       const fn = chainMock([
-        (ch) => { ch.first.mockResolvedValue({ id: 'o1' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending' }); },
         (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 0 }); },
         (ch) => { ch.run.mockResolvedValue({ success: true }); },
       ]);
@@ -741,7 +791,7 @@ describe('handleOrdersRoute', () => {
     it('returns 400 for invalid order status', async () => {
       const { db } = makeDbMock();
       const fn = chainMock([
-        (ch) => { ch.first.mockResolvedValue({ id: 'o1' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending' }); },
         (ch) => { ch.first.mockResolvedValue(null); },
       ]);
       db.prepare.mockImplementation(fn);
@@ -765,20 +815,104 @@ describe('handleOrdersRoute', () => {
       expect(body.error).toContain('Order not found');
     });
 
-    it('syncs payment_status to paid when state has paid=true', async () => {
+    it('H6: syncs payment_status to paid when new state has paid=true', async () => {
+      // Rewritten for the H6 state machine: 'paid' is not a reachable state
+      // (seed states are pending/confirmed/checked_in/checked_out/cancelled),
+      // so the payment-sync path is exercised via pending → confirmed
+      // (order_state seed gives confirmed paid=1).
       const { db } = makeDbMock();
       const fn = chainMock([
-        (ch) => { ch.first.mockResolvedValue({ id: 'o1' }); },
-        (ch) => { ch.first.mockResolvedValue({ id: 'paid', paid: 1 }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 1 }); },
         (ch) => { ch.run.mockResolvedValue({ success: true }); },
         (ch) => { ch.run.mockResolvedValue({ success: true }); },
       ]);
       db.prepare.mockImplementation(fn);
-      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'paid' });
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'confirmed' });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(db.prepare).toHaveBeenCalledTimes(4);
+    });
+
+    it('H6: allows the legal pending → cancelled transition', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'cancelled', paid: 0 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'cancelled' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+    });
+
+    it('H6: allows confirmed → checked_in', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o2', order_state_id: 'confirmed' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'checked_in', paid: 0 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o2/status', { status: 'checked_in' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+    });
+
+    it('H6: rejects transitions out of terminal states (checked_out)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o3', order_state_id: 'checked_out' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'pending', paid: 0 }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o3/status', { status: 'pending' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error).toContain("Illegal status transition");
+    });
+
+    it('H6: rejects resurrecting a cancelled order', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o4', order_state_id: 'cancelled' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 0 }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o4/status', { status: 'confirmed' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(409);
+    });
+
+    it('H6: rejects skipping ahead in the lifecycle (pending → checked_in)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o5', order_state_id: 'pending' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'checked_in', paid: 0 }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o5/status', { status: 'checked_in' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(409);
+    });
+
+    it('H6: blocks orders with an unknown current status (fail closed)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o6', order_state_id: 'corrupted_state' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 0 }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o6/status', { status: 'confirmed' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error).toContain("'corrupted_state'");
     });
 
     it('returns 400 when status is missing', async () => {

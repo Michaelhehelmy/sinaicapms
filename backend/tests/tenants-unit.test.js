@@ -191,6 +191,35 @@ describe('handleTenants', () => {
       expect(bindArgs).toEqual(['acaciacamp.com', 'acaciacamp.com', 'acaciacamp.com']);
     });
 
+    it('H5: public lookup only matches ACTIVE tenants', async () => {
+      const tenant = { id: 't1', name: 'Camp A' };
+      let detailSql = null;
+      const db = {
+        prepare: vi.fn((sql) => {
+          if (sql.includes('FROM tenants WHERE')) detailSql = sql;
+          return {
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({ results: [tenant] }),
+          };
+        }),
+      };
+      const res = await handleTenants(makeReq('http://localhost/api/tenants/t1'), { DB: db });
+      expect(res.status).toBe(200);
+      expect(detailSql).toContain("status = 'active'");
+      // The OR group must be parenthesized or the AND would only bind to the
+      // last condition (subdomain/custom_domain lookups would bypass it)
+      expect(detailSql).toMatch(/\(id = \? OR subdomain = \? OR custom_domain = \?\) AND status = 'active'/);
+    });
+
+    it('H5: suspended tenants do not resolve for non-super-admin callers', async () => {
+      // Simulates the DB filtering the row out (WHERE status = 'active')
+      const db = mockDb({ _all: [] });
+      const res = await handleTenants(makeReq('http://localhost/api/tenants/suspended-camp'), { DB: db });
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toContain('Tenant not found');
+    });
+
     it('returns tenant by subdomain for super_admin', async () => {
       verifyJWT.mockResolvedValue({ role: 'super_admin', sub: 'sa1' });
       const tenant = { id: 't1', name: 'Camp A', subdomain: 'camp-a' };

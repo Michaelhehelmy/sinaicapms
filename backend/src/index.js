@@ -417,17 +417,16 @@ app.use('/api/rateplans', ratePlansScope);
 app.use('/api/rateplans/*', ratePlansScope);
 app.route('/api/rateplans', ratePlansRoutes);
 
-// ── Orders (Phase 4 T1). Mixed visibility by path+method: public are
-// POST /api/orders (booking form), GET /api/orders/status/:ref and
-// GET /api/orders/calculate-price (price preview widget); everything
-// else (list/detail/update/delete/bulk) is admin-scoped.
+// ── Orders. Mixed visibility by path+method: public are GET /api/orders/status/:ref
+// and GET /api/orders/calculate-price (price preview widget); everything else,
+// INCLUDING POST /api/orders order creation, is admin-scoped (C1: an unauthenticated
+// POST previously allowed arbitrary booking/order rows into any tenant).
 const ordersPublicScope = resolveScope({ public: true });
 const ordersAdminScope = resolveScope();
 const isOrdersPublic = (c) =>
-  (c.req.method === 'POST' && c.req.path === '/api/orders') ||
-  (c.req.method === 'GET' &&
+  c.req.method === 'GET' &&
     (c.req.path.startsWith('/api/orders/status/') ||
-      c.req.path === '/api/orders/calculate-price'));
+      c.req.path === '/api/orders/calculate-price');
 const ordersScope = async (c, next) =>
   isOrdersPublic(c) ? ordersPublicScope(c, next) : ordersAdminScope(c, next);
 app.use('/api/orders', ordersScope);

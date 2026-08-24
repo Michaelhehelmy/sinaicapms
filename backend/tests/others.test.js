@@ -159,6 +159,59 @@ describe('plansRoutes', () => {
       expect(data.success).toBe(true);
     });
 
+    it('H3: returns 404 when re-parenting a plan to another tenant\'s camp', async () => {
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            // Camp ownership lookup misses (camp belongs to another tenant)
+            all: vi.fn().mockResolvedValue({ results: [] }),
+          })),
+        })),
+      };
+      env = makeEnv(db);
+      const res = await request('PUT', 'http://localhost/api/plans/pln_1', { camp_id: 'foreign_camp' });
+      const data = await res.json();
+      expect(res.status).toBe(404);
+      expect(data.error).toContain('Camp not found for this tenant');
+    });
+
+    it('H3: allows moving a plan to a camp owned by this tenant', async () => {
+      let updateSql = null;
+      const db = {
+        prepare: vi.fn((sql) => {
+          if (sql.includes('UPDATE plans_new')) updateSql = sql;
+          return {
+            bind: vi.fn(() => ({
+              all: vi.fn().mockResolvedValue({ results: [{ id: 'camp_1' }] }),
+              run: vi.fn().mockResolvedValue({}),
+            })),
+          };
+        }),
+      };
+      env = makeEnv(db);
+      const res = await request('PUT', 'http://localhost/api/plans/pln_1', { camp_id: 'camp_1' });
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(updateSql).toBeTruthy();
+    });
+
+    it('H3: skips the camp ownership check when camp_id is not provided', async () => {
+      const allSpy = vi.fn().mockResolvedValue({ results: [{ id: 'camp_1' }] });
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            all: allSpy,
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        })),
+      };
+      env = makeEnv(db);
+      const res = await request('PUT', 'http://localhost/api/plans/pln_1', { name: 'Just rename' });
+      expect(res.status).toBe(200);
+      expect(allSpy).not.toHaveBeenCalled();
+    });
+
     it('returns 400 for invalid input', async () => {
       const db = {
         prepare: vi.fn(() => ({

@@ -17,7 +17,11 @@ function makeDbMock() {
     all: vi.fn().mockResolvedValue({ results: [] }),
     run: vi.fn().mockResolvedValue({ success: true }),
   };
-  const db = { prepare: vi.fn().mockReturnValue(chain) };
+  const db = {
+    prepare: vi.fn().mockReturnValue(chain),
+    // H1 fix: POST /orders sends its availability-guarded INSERT via DB.batch
+    batch: vi.fn().mockResolvedValue([{ meta: { changes: 1 } }]),
+  };
   return { db, chain };
 }
 

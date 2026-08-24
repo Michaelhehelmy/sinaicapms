@@ -155,7 +155,11 @@ export async function handleTenants(request, env) {
           GROUP BY tenants.id
         `;
       } else {
-        query = `SELECT ${selectFieldsPublic()} FROM tenants WHERE id = ? OR subdomain = ? OR custom_domain = ?`;
+        // H5 fix: suspended/pending tenants must not resolve for public or
+        // tenant-scoped callers. Status is an inline literal (fixed enum, not
+        // user input) so the lookup stays 3 binds — callers/tests rely on the
+        // exact [key, key, key] bind signature.
+        query = `SELECT ${selectFieldsPublic()} FROM tenants WHERE (id = ? OR subdomain = ? OR custom_domain = ?) AND status = 'active'`;
       }
       const { results } = await env.DB.prepare(query).bind(lookupKey, lookupKey, lookupKey).all();
       if (results.length === 0) return errorResponse('Tenant not found', 404);

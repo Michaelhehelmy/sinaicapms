@@ -11,7 +11,11 @@ function makeDbMock() {
     all: vi.fn().mockResolvedValue({ results: [] }),
     run: vi.fn().mockResolvedValue({ success: true }),
   };
-  const db = { prepare: vi.fn().mockReturnValue(chain) };
+  const db = {
+    prepare: vi.fn().mockReturnValue(chain),
+    // H2 fix: tenant cascade deletes run through DB.batch (single transaction)
+    batch: vi.fn().mockResolvedValue([]),
+  };
   return { db, chain };
 }
 
@@ -378,6 +382,18 @@ describe('handleAdminRoute', () => {
         expect(body.success).toBe(true);
       });
 
+      it('H2: runs the full cascade (15 children + tenants row) in one DB.batch transaction', async () => {
+        const { db } = makeDbMock();
+        withActiveAdmin(db);
+        const req = makeRequest('DELETE', 'https://x.com/api/admin/tenants/t1', null, superAdminHeaders(superAdminToken));
+        await handleAdminRoute(req, { DB: db, JWT_SECRET });
+        expect(db.batch).toHaveBeenCalledTimes(1);
+        const stmts = db.batch.mock.calls[0][0];
+        expect(stmts).toHaveLength(16);
+        // Last statement removes the tenant row itself
+        expect(stmts[15].bind.mock.calls[0][0]).toBe('t1');
+      });
+
       it('returns error on DB failure', async () => {
         const { db } = makeDbMock();
         withActiveAdminThenThrow(db);
@@ -424,6 +440,21 @@ describe('handleAdminRoute', () => {
         const body = await res.json();
         expect(body.success).toBe(true);
         expect(body.deleted).toEqual(['t1']);
+      });
+
+      it('H2: bulk delete batches every cascade + the tenants delete atomically', async () => {
+        const { db } = makeDbMock();
+        withActiveAdmin(db);
+        const req = makeRequest(
+          'POST',
+          'https://x.com/api/admin/tenants/bulk/delete',
+          { ids: ['t1', 't2', 't3'] },
+          superAdminHeaders(superAdminToken)
+        );
+        await handleAdminRoute(req, { DB: db, JWT_SECRET });
+        expect(db.batch).toHaveBeenCalledTimes(1);
+        // 15 cascade statements per tenant + one final tenants IN(...) delete
+        expect(db.batch.mock.calls[0][0]).toHaveLength(3 * 15 + 1);
       });
 
       it('returns 400 for invalid bulk action', async () => {

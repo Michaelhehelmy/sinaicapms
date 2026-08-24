@@ -91,6 +91,18 @@ plansRoutes.put('/:id', async (c) => {
       return validationError(parsed);
     }
     const { name, description, camp_id, date, time, capacity, status, category } = parsed.data;
+
+    // H3 fix: when moving a plan to a different camp, verify the NEW camp
+    // belongs to this tenant. The UPDATE below only scopes on the OLD
+    // camp_id, so without this check a tenant could re-parent its plan onto
+    // another tenant's camp via COALESCE(camp_id).
+    if (camp_id) {
+      const { results: campCheck } = await c.env.DB.prepare(
+        "SELECT id FROM projects WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL"
+      ).bind(camp_id, tenantId).all();
+      if (campCheck.length === 0) return errorResponse('Camp not found for this tenant', 404);
+    }
+
     await c.env.DB.prepare(
       `UPDATE plans_new SET
         name = COALESCE(?, name),

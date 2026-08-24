@@ -208,6 +208,72 @@ describe('categoriesRoutes', () => {
       expect(res.status).toBe(400);
       expect(data.error).toContain('Failed to update category');
     });
+
+    it('H4: returns 403 when a tenant admin edits a global category', async () => {
+      const scopedApp = mountRouter(categoriesRoutes, {
+        tenantId, user: { id: 'u1', role: 'admin' }, basePath: '/api/categories',
+      });
+      // Global category: tenant_id is explicitly NULL (as D1 materializes it)
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'cat_g', tenant_id: null }] }),
+          })),
+        })),
+      };
+      const res = await scopedApp.request(
+        '/api/categories/cat_g',
+        { method: 'PUT', body: JSON.stringify({ name: 'Hijack' }) },
+        { DB: db }
+      );
+      expect(res.status).toBe(403);
+      const data = await res.json();
+      expect(data.error).toContain('Only super admins can edit global categories');
+    });
+
+    it('H4: allows a super_admin to edit a global category', async () => {
+      const scopedApp = mountRouter(categoriesRoutes, {
+        tenantId, user: { id: 'sa1', role: 'super_admin' }, basePath: '/api/categories',
+      });
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'cat_g', tenant_id: null }] }),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        })),
+      };
+      const res = await scopedApp.request(
+        '/api/categories/cat_g',
+        { method: 'PUT', body: JSON.stringify({ name: 'Renamed' }) },
+        { DB: db }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+    });
+
+    it('H4: tenant admins can still edit their own categories', async () => {
+      const scopedApp = mountRouter(categoriesRoutes, {
+        tenantId, user: { id: 'u1', role: 'admin' }, basePath: '/api/categories',
+      });
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            all: vi.fn().mockResolvedValue({ results: [{ id: 'cat_1', tenant_id: 'tenant_1' }] }),
+            run: vi.fn().mockResolvedValue({}),
+          })),
+        })),
+      };
+      const res = await scopedApp.request(
+        '/api/categories/cat_1',
+        { method: 'PUT', body: JSON.stringify({ name: 'Mine' }) },
+        { DB: db }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+    });
   });
 
   describe('DELETE /api/categories/:id', () => {
