@@ -2,7 +2,10 @@
 --
 -- This migration moves ONLY custom/display-only fields from camps to project_meta:
 --   - notes: Free-text notes about the camp
---   - activities: Comma-separated list of activities
+--
+-- NOTE: The original plan also copied an `activities` column, but this schema
+-- lineage never had camps.activities (see migrations ledger through 0060), so
+-- that step is intentionally absent.
 --
 -- Fields that STAY in core columns (queryable):
 --   - name, location, start_date, end_date, capacity, status
@@ -23,18 +26,6 @@ SELECT
   0 AS sort_order
 FROM camps
 WHERE notes IS NOT NULL AND notes != '';
-
--- ============================================
--- STEP 2: Copy activities to project_meta
--- ============================================
-INSERT INTO project_meta (project_id, meta_key, meta_value, sort_order)
-SELECT
-  id AS project_id,
-  'activities' AS meta_key,
-  activities AS meta_value,
-  1 AS sort_order
-FROM camps
-WHERE activities IS NOT NULL AND activities != '';
 
 -- ============================================
 -- NOTE: Column drops happen in Phase 6b (after rename)

@@ -144,6 +144,12 @@ CREATE INDEX IF NOT EXISTS idx_orders_state ON orders(order_state_id);
 CREATE INDEX IF NOT EXISTS idx_orders_dates ON orders(check_in_date, check_out_date);
 CREATE INDEX IF NOT EXISTS idx_orders_reference ON orders(reference);
 CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
+-- Composite availability-query indexes that existed on the old table
+-- (pre-0060 migrations). The DROP TABLE above removed them — recreate.
+CREATE INDEX IF NOT EXISTS idx_orders_tenant_room_dates
+  ON orders(tenant_id, room_id, check_in_date, check_out_date);
+CREATE INDEX IF NOT EXISTS idx_orders_tenant_state
+  ON orders(tenant_id, order_state_id);
 
 -- ============================================
 -- STEP 2c: Rebuild plans_new with FK → projects

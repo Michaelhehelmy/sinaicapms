@@ -13,6 +13,9 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 
 *This section lists persistent lessons, structural details, and API quirks discovered by agents during development. Update this list as you find new gotchas.*
 
+- **D1 rejects TEMP tables in migrations (2026-08-24)**: wrangler `d1 migrations apply` fails with `not authorized: SQLITE_AUTH` on `CREATE [TEMPORARY] TABLE` — the D1 authorizer blocks temp tables both locally AND in production workerd. Dead-code temp-table blocks in migration files are landmines; delete them.
+- **Migrations must match the real lineage (2026-08-24)**: 0061–0066 were committed against an imagined schema (columns/tables that don't exist per the actual ledger) and could never apply anywhere. Before writing a migration: check `npx wrangler d1 migrations list --local` (and `--remote`) + `pragma_table_info` on BOTH environments — local and prod can diverge silently. A trigger referencing a nonexistent column (e.g. old `trg_camps_updated_at` → `camps.updated_at`) doesn't break creation but fails EVERY subsequent UPDATE at runtime. Table-rebuild migrations must recreate ALL pre-existing indexes or they vanish (0066 initially dropped the orders availability composites).
+
 - **Initial Setup**: Universal OpenCode workspace successfully configured and bootstrapped.
 - **Backend Merge**: Main backend and POS backend merged into a single Hono-based Cloudflare Worker at `backend/src/index.js`. POS routes inlined under `/api/pos/*` — no more `fetch()` proxy.
 - **User Unification**: All user auth unified into `pos_users` table via migration `0019_unify_users.sql`. Dual hash support (bcrypt + SHA-256 with `$sha256$` prefix for legacy).
@@ -71,6 +74,7 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 - **Gate helpers need `requireTenant:false` when called without request context (2026-08-23)**: gates like `posUsersGate(c.req.raw, env)` that default to `requireTenant:true` 403 EVERY tenant-admin call ("Forbidden: Access denied to this tenant partition") because no `ctx.tenantId` exists outside a Hono context. When a handler scopes rows itself via `scopeTenant`, pass `{ requireTenant:false }` explicitly. This one bug aborted E2E globalSetup's `createTestPosUser`, cascading into every POS-login-dependent test — check gate flags first whenever globalSetup seeding fails with 403.
 - **Pre-existing E2E failure allowlist (2026-08-23, uncommitted Phase 4 tree)**: exactly 16 specs fail on HEAD+uncommitted work INDEPENDENT of later phases; do not chase them from unrelated tasks: (a) ~14 cross-cutting API tests expecting retired/moved endpoints — `/api/settings`, `/api/reservations`, `/api/product-categories`, `/api/rate-plans`, payments create-intent/config, `/api/products/:tenantId` — now answered 404 by the plain catch-all (post-Phase-4 shape); specs predate the restructure. (b) `tenant/camp-menu.spec.ts:51` expects "WhatsApp order button OR 'Menu not available yet'" but TenantMenu renders WhatsApp only with a non-empty cart and implements no empty-state string — spec/product drift. Fixing these belongs to whoever owns the API restructure/menu UX, not navigation work.
 - **Long Playwright runs must be fully detached from the tool shell (2026-08-23)**: `nohup cmd &` alone still dies when the bash tool times out and kills its process group. Use `setsid env CI=true npx playwright test > log 2>&1 < /dev/null & disown`. Also beware mid-run hot-reload: astro dev picks up edits while a run is executing, so runs spanning a fix have mixed results — always do a clean final run after the last code change.
+- **makeStepDb/chainMock count EVERY `env.DB.prepare()` as a queue step — including batch-statement-building prepares (2026-08-24, POS stock fix)**: deduction UPDATEs and INSERT statements are prepared through the same mocked `prepare`, so ADDING one prepared statement to a handler shifts every later mock step by one and silently corrupts downstream assertions (symptom: idempotency-recovery tests read the wrong fixture row, e.g. order id came back as an item id `'ti1'`). When adding any prepare to POS/camp handlers, audit every stepDb test of that handler and insert matching filler `chainDb([])` entries BEFORE the recovery-read fixtures.
 
 ### E2E Testing (Tenant + Marketplace)
 - **Gallery lightbox**: Functions defined inside an IIFE are not accessible to Playwright. Must expose on `window` with `is:inline` on the `<script>` tag. Also, `define:vars` passes a JSON string not an array — must `JSON.parse()` it.
@@ -98,6 +102,53 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 ---
 
 ## Task Logs
+
+### [2026-08-24] 0068 trigger fix + Promotions Engine + POS low-stock alerts — tmp agent
+
+**Task**: (1) fix `trg_tenants_updated_at` prod bug, (2) promotions engine (`/api/promotions` CRUD + POST /apply), (3) best-effort low-stock inbox alerts after POS order commit.
+
+**Discovery — work was mostly already done**: all three artifacts existed uncommitted from an interrupted prior session (migration `0068_fix_triggers_and_promotions.sql`, `src/api/promotions.js`, index.js mount, POS alert block in `routes/pos/index.js`, plus `promotions.test.js` + `triggers-0068.test.js`). This session audited it against the real lineage and shipped the missing pieces:
+
+- **Verified no schema conflict**: nothing in 0059–0067 adds `tenants.updated_at` → 0068's `ALTER TABLE tenants ADD COLUMN updated_at DATETIME` applies cleanly; migration 0049 creates only `inbox_reads`, so the new `inbox` alerts table is purely additive. Applied to local D1 ledger by the prior session; live `UPDATE tenants SET name=name WHERE id=(...)` now succeeds locally (was "no such column: updated_at" — the exact prod breakage flagged in the 0067 session entry).
+- **Fixed a real scoping bug in the uncommitted mount** (`src/index.js`): `POST /api/promotions/apply` was routed through the admin scope, but resolveScope's admin realm rejects posType tokens with **403** — the endpoint could never serve the POS terminals it was built for (both file comments said public scope). Apply is pure computation (no row mutations), so it now rides the public scope via an `isPromotionsPublic(c)` path+method predicate (same pattern as ordersScope): GET ∨ POST `/api/promotions/apply`. Create/PUT/DELETE stay admin-only.
+- **Added mount-level regression tests** (`index-unit.test.js > Promotions routes`): unauth POST create → 401; unauth POST /apply → 200 with priced totals; POS-bearer POST /apply → 200; PUT /:id unauth → 401. Gotcha: `jsonResponse` runs `toCamel()` on payloads — assert `totalDiscount`/`finalPrice`, not snake_case.
+
+**Results**: backend **1279/1279 ✓ (39 files)** · root integration **156/156 ✓** · local D1: 0068 applied, UPDATE-tenants smoke ✅. Prod still needs `deploy.sh` to run 0068 remotely (ledger stops at 0067 there).
+
+### [2026-08-24] Room status lifecycle + order line items (0067) & migration-chain repair 0061–0067 — tmp agent
+
+**Task**: migration 0067 (rooms_new.room_status, order_items table, projects min/max stay), room-status transitions in orders.js, min/max-stay validation, camps.js room_status exposure, backend suite green.
+
+**Discovery — work was already done**: a concurrent agent had landed the full 0067 implementation uncommitted (`orders.js` items schema + server-side total recompute + two-phase batch write + ROOM_STATUS_BY_ORDER_STATUS transitions in PATCH /:id/status + bulk/single DELETE syncing room_status; `orders-unit.test.js` coverage; 0067 migration file). This session verified it, aligned the one spec deviation (`orderItemSchema.type` enum→`z.string().min(1)`, DB column is free TEXT), fixed the dependent test payload, and unblocked the prerequisite chain.
+
+**Migration chain repair (the bulk of this session)**: local AND prod D1 ledgers both stop at 0060; committed migrations 0061–0066 were written against an imagined schema and could never apply anywhere:
+- `0061`: dead `CREATE TEMPORARY TABLE` block → D1 authorizer rejects TEMP tables (`SQLITE_AUTH`) even locally (removed); giant slug UPDATE was truncated (`LOWER(` never closed, one nested REPLACE missing its 3rd arg); every UPDATE would fire broken `trg_camps_updated_at` (sets `camps.updated_at`, column doesn't exist) → added `DROP TRIGGER IF EXISTS trg_camps_updated_at` at top.
+- `0062`: copied nonexistent `camps.activities` (step removed).
+- `0063`: INSERT…SELECT included `created_at, updated_at` from camps (removed; new table supplies defaults).
+- `0066`: orders rebuild silently dropped live composite indexes `idx_orders_tenant_room_dates` / `idx_orders_tenant_state` (both recreated).
+- Verified via dry-run harness (sqlite backup API copy — plain file-copy misses WAL content! — then per-file `executescript`, which parses trigger bodies correctly unlike naive splitters), then applied 0061→0067 through wrangler ledger: all ✅, final schema = projects(+min_stay/max_stay), rooms_new.room_status, order_items, FK check clean, no index loss.
+
+**Test fix**: `sse-unit.test.js` "fires the broadcast" failed 400 — PRE-EXISTING (flagged by the POS-agent entry below): uncommitted findOrCreateCustomer added a customer-by-phone lookup, so the flow makes FIVE `.all()` calls but the committed mock configured four; call #5 hit an unconfigured vi.fn() → undefined destructure → swallowed by the catch-all as "Failed to create order". Added the missing phone-lookup mock entry.
+
+**Results**: migrations 0061–0067 applied locally ✅ · backend **1235/1235 ✓ (37 files)**.
+
+**⚠️ OPEN PROD BUG (out of scope, needs its own fix)**: `trg_tenants_updated_at` sets `tenants.updated_at` but tenants has NO such column → ANY runtime `UPDATE tenants` fails ("no such column"). Affected today: admin suspend/activate (admin.js ~154/158), tenant PATCH (~193), softDelete restore paths. Fix = tiny migration dropping/recreating the trigger (or adding the column). Also note prod has NEVER run 0061+; next deploy.sh applies them remotely.
+
+### [2026-08-24] POS product self-stock deduction (supermarket bug) — tmp agent
+
+**Bug**: `POST /api/pos/orders` deducted recipe INGREDIENTS but never the sold PRODUCT's own `stock_quantity` — selling 100 Cokes left Coke stock untouched.
+
+**Fix** (`backend/src/routes/pos/index.js`, +25 lines):
+1. New `productStockDeductions` loop after the recipe read-check loop: one `{ id: productId, deduct: quantity }` per cart line.
+2. Batch statements now built from `allDeductions = [...productStockDeductions, ...stockDeductions]` — product self-deductions FIRST, then ingredient deductions — each using the same atomic guarded UPDATE (`... AND stock_quantity >= ?`).
+3. **Required deviation from the task sketch**: the compensation loop previously bound add-backs from `stockDeductions[i]`; with mixed deduction sources that misaligns indexes (a shorted PRODUCT deduction would roll back an INGREDIENT's stock). Compensation now binds from the same combined `allDeductions`. Race-path error message reworded `'Insufficient stock for an item in your order …'` (still contains `'Insufficient stock'`).
+4. Task-sketch dead code dropped: its `itemRows.find(i => i.productId === row.productId)` guard is always-true; plain iteration is behaviorally identical.
+
+**Tests** (`backend/tests/pos-unit.test.js`): counts updated for the new statement shape (3 updates / 5 statements in the recipe test); cross-tenant test now asserts the ONLY update binds `[2,'p1',1,2]`; compensation race test models 5 batch results and asserts add-back binds `[[2,'p1'],[2,'i1']]` (regression guard for the alignment fix); unique-constraint race queue gained 3 filler steps (see learning); NEW test 'deducts the sold product itself from master stock (supermarket fix)'.
+
+**Results**: backend **1234/1235 ✓ (37 files)** — sole failure `sse-unit > fires the broadcast from POST /orders` is PRE-EXISTING from a concurrent agent's uncommitted orders.js/camps.js 0067 work (verified: fails with this fix stashed). pos-unit **81/81 ✓**, root integration **156/156 ✓**.
+
+**Semantics note for Michael**: every sold product is now stock-guarded. Products default to `stock_quantity = 0` (`camps.js` INSERT omits it) and the vestigial `is_trackable` flag is NOT honored — so any newly created / never-restocked product becomes unsellable via POS until topped up (400 + rollback). Intended for supermarket retail; flag if room-type rows ever get sold via POS terminals.
 
 ### [2026-08-24] High-Priority Business Logic Fixes H1–H6 — tmp agent
 

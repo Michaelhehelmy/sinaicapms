@@ -462,6 +462,17 @@ pos.post('/orders', async (c) => {
       }
     }
 
+    // ── Deduct sold products from master stock ─────────────
+    // Recipe deductions above handle INGREDIENTS; this handles the product ITSELF.
+    // Critical for supermarkets: selling 100 Cokes must reduce Coke stock by 100.
+    const productStockDeductions = [];
+    for (const row of itemRows) {
+      productStockDeductions.push({
+        id: row.productId,
+        deduct: row.quantity,
+      });
+    }
+
     // ── Resolve the order's store ─────────────────────────
     // Store id 1 was the pre-0051 seed store; on a fresh DB it does not exist
     // and inserting a transaction against it fails the store_id FK, so when
@@ -475,10 +486,15 @@ pos.post('/orders', async (c) => {
     }
 
     // ── Commit all mutations atomically in one batch ──────
+    // Product self-deductions go FIRST, then recipe ingredient deductions. Both
+    // share the atomic conditional pattern below AND the deductionIndexes /
+    // compensation guard, so `allDeductions` must be the single source of truth
+    // for both statement generation and rollback bookkeeping.
+    const allDeductions = [...productStockDeductions, ...stockDeductions];
     const statements = [];
     const deductionIndexes = [];
 
-    for (const deduction of stockDeductions) {
+    for (const deduction of allDeductions) {
       deductionIndexes.push(statements.length);
       // Atomic conditional deduction: affects 0 rows if stock ran out between the
       // read check above and commit (concurrent terminal) — stock never goes negative.
@@ -535,7 +551,8 @@ pos.post('/orders', async (c) => {
     // under a concurrent terminal), compensate — undo the stock already applied and
     // remove the orphan order so the ledger stays consistent. The read check above
     // catches the common case; this closes the remaining race window. D1 batch()
-    // resolves one result per statement, in order.
+    // resolves one result per statement, in order. Indexes refer into allDeductions
+    // (product self-deductions + recipe ingredient deductions).
     if (
       deductionIndexes.length > 0 &&
       Array.isArray(batchResults) &&
@@ -549,7 +566,7 @@ pos.post('/orders', async (c) => {
             compensate.push(
               env.DB.prepare(
                 `UPDATE pos_products SET stock_quantity = stock_quantity + ? WHERE id = ?`
-              ).bind(stockDeductions[i].deduct, stockDeductions[i].id)
+              ).bind(allDeductions[i].deduct, allDeductions[i].id)
             );
           }
         }
@@ -563,10 +580,49 @@ pos.post('/orders', async (c) => {
           await env.DB.batch(compensate).catch(() => {});
         }
         return errorResponse(
-          'Insufficient stock for an ingredient (stock changed under concurrent checkout). Please retry.',
+          'Insufficient stock for an item in your order (stock changed under concurrent checkout). Please retry.',
           400
         );
       }
+    }
+
+    // ── Low-stock inbox alerts (best-effort) ─────────────────────────────
+    // After a committed sale, flag any sold product now sitting at/below its
+    // reorder threshold (but not fully out of stock). Best-effort by design:
+    // any failure here must never fail the order response.
+    try {
+      const soldIds = [...new Set(itemRows.map((r) => r.productId))];
+      if (soldIds.length > 0) {
+        const stockPlaceholders = soldIds.map(() => '?').join(',');
+        const { results: stockRows } = await env.DB.prepare(
+          `SELECT id, name, stock_quantity, min_stock_level FROM pos_products
+           WHERE id IN (${stockPlaceholders}) AND organization_id = ?`
+        ).bind(...soldIds, organizationId).all();
+
+        const alertStmts = [];
+        for (const product of stockRows) {
+          const qty = parseFloat(product.stock_quantity) || 0;
+          const minLevel = product.min_stock_level == null ? 0 : (parseFloat(product.min_stock_level) || 0);
+          if (qty > 0 && qty <= minLevel) {
+            alertStmts.push(
+              env.DB.prepare(
+                `INSERT INTO inbox (id, tenant_id, title, message, severity, is_read, created_at)
+                 VALUES (?, ?, ?, ?, 'warning', 0, datetime('now'))`
+              ).bind(
+                `lowstock_${product.id}_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`,
+                tenantId,
+                `Low Stock: ${product.name}`,
+                `Only ${qty} units remaining. Reorder suggested.`
+              )
+            );
+          }
+        }
+        if (alertStmts.length > 0) {
+          await env.DB.batch(alertStmts).catch(() => {});
+        }
+      }
+    } catch {
+      // Alerting is advisory — swallow and continue to the success response.
     }
 
     return jsonResponse({

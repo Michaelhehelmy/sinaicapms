@@ -5,6 +5,16 @@ import { getScope } from '../middleware/resolveScope.js';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
+// 0067: optional line items / add-ons attached to the order at creation.
+// Keys are snake_case after toSnake() normalization (clients may send either
+// case). When items are present the server recomputes total_amount from them.
+export const orderItemSchema = z.object({
+  type: z.string().min(1), // e.g. 'addon'; extend freely — DB column is TEXT
+  name: z.string().min(1),
+  quantity: z.number().int().min(1),
+  unit_price: z.number().min(0),
+});
+
 export const orderPostSchema = z.object({
   id: z.string().optional(),
   guest_name: z.string().min(1, 'Guest name is required').optional(),
@@ -21,6 +31,7 @@ export const orderPostSchema = z.object({
   payment_status: z.string().optional(),
   order_state_id: z.string().optional(),
   notes: z.string().optional(),
+  items: z.array(orderItemSchema).optional(),
 }).strip(); // S-M1 fix: strip unknown fields instead of passthrough
 
 export const orderPutSchema = z.object({
@@ -210,6 +221,26 @@ async function validateOrder(env, tenantId, editId, data) {
     return 'This room is already booked for the selected dates.';
   }
 
+  // 0067: project-level min/max stay limits. Runs after the overlap check so
+  // a conflicting-booking response keeps its original semantics. min_stay
+  // defaults to 1 in the schema, which can never reject here because the
+  // check-out > check-in guard above guarantees nights >= 1.
+  const { results: projectRows } = await env.DB.prepare(
+    "SELECT min_stay, max_stay FROM projects WHERE id = ? AND deleted_at IS NULL"
+  ).bind(camp_id).all();
+
+  if (projectRows.length > 0) {
+    const project = projectRows[0];
+    const nights = Math.ceil((new Date(check_out_date) - new Date(check_in_date)) / (1000 * 60 * 60 * 24));
+
+    if (project.min_stay && nights < project.min_stay) {
+      return `Minimum stay is ${project.min_stay} nights. You selected ${nights} nights.`;
+    }
+    if (project.max_stay && nights > project.max_stay) {
+      return `Maximum stay is ${project.max_stay} nights. You selected ${nights} nights.`;
+    }
+  }
+
   return null;
 }
 
@@ -357,9 +388,11 @@ ordersRoutes.post('/bulk-delete', async (c) => {
     if (roomIds.length > 0) {
       const roomPh = roomIds.map(() => '?').join(',');
       const orderPh = ids.map(() => '?').join(',');
-      // Update rooms to available only if they have no remaining orders
+      // Update rooms to available only if they have no remaining orders.
+      // 0067: keep BOTH the legacy `status` flag and the operational
+      // `room_status` lifecycle column in sync when freeing rooms.
       await c.env.DB.prepare(
-        `UPDATE rooms_new SET status = 'available', updated_at = datetime('now')
+        `UPDATE rooms_new SET status = 'available', room_status = 'available', updated_at = datetime('now')
          WHERE id IN (${roomPh})
          AND id NOT IN (
            SELECT DISTINCT room_id FROM orders
@@ -386,6 +419,17 @@ const LEGAL_TRANSITIONS = {
   cancelled: [],
 };
 
+// 0067: room lifecycle driven by the order lifecycle. When an order moves to
+// one of these states, its room's operational `room_status` follows:
+//   confirmed → reserved, checked_in → occupied, checked_out → cleaning,
+//   cancelled → available (guarded — see below).
+// States without an entry here (pending) leave the room untouched.
+const ROOM_STATUS_BY_ORDER_STATUS = {
+  confirmed: 'reserved',
+  checked_in: 'occupied',
+  checked_out: 'cleaning',
+};
+
 ordersRoutes.patch('/:id/status', async (c) => {
   try {
     const ordId = c.req.param('id');
@@ -396,9 +440,9 @@ ordersRoutes.patch('/:id/status', async (c) => {
     }
     const { status } = parsed.data;
 
-    // S-H2 style: tenant-scoped existence check (now also loads current state)
+    // S-H2 style: tenant-scoped existence check (loads current state + room)
     const existing = await c.env.DB.prepare(
-      "SELECT id, order_state_id FROM orders WHERE tenant_id = ? AND id = ?"
+      "SELECT id, order_state_id, room_id FROM orders WHERE tenant_id = ? AND id = ?"
     ).bind(tenantId, ordId).first();
     if (!existing) return errorResponse('Order not found', 404);
 
@@ -419,9 +463,39 @@ ordersRoutes.patch('/:id/status', async (c) => {
       );
     }
 
-    await c.env.DB.prepare(
-      "UPDATE orders SET order_state_id = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
-    ).bind(status, tenantId, ordId).run();
+    // 0067: order transition and its room side-effect commit atomically via
+    // one DB.batch (D1 has no conditional abort between statements, but both
+    // writes landing or neither is still guaranteed for a single batch unit).
+    const stmts = [
+      c.env.DB.prepare(
+        "UPDATE orders SET order_state_id = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
+      ).bind(status, tenantId, ordId),
+    ];
+
+    const roomStatus = ROOM_STATUS_BY_ORDER_STATUS[status];
+    if (roomStatus && existing.room_id) {
+      stmts.push(
+        c.env.DB.prepare(
+          "UPDATE rooms_new SET room_status = ?, updated_at = datetime('now') WHERE id = ?"
+        ).bind(roomStatus, existing.room_id)
+      );
+    } else if (status === 'cancelled' && existing.room_id) {
+      // Cancelling frees the room — but only when no OTHER active booking
+      // still holds it (same guard as the delete paths), and the legacy
+      // `status` flag is synced so it can never disagree with room_status.
+      stmts.push(
+        c.env.DB.prepare(
+          `UPDATE rooms_new SET status = 'available', room_status = 'available', updated_at = datetime('now')
+           WHERE id = ?
+             AND id NOT IN (
+               SELECT DISTINCT room_id FROM orders
+               WHERE tenant_id = ? AND room_id = ? AND id != ? AND order_state_id != 'cancelled'
+             )`
+        ).bind(existing.room_id, tenantId, existing.room_id, ordId)
+      );
+    }
+
+    await c.env.DB.batch(stmts);
 
     if (state.paid) {
       await c.env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
@@ -472,6 +546,27 @@ ordersRoutes.get('/', async (c) => {
   return jsonResponse(paginationEnvelope(results, total, page, pageSize));
 });
 
+// 0067: line items / add-ons attached to an order (meals, rentals, extra
+// nights…). Tenant-scoped: an unknown or foreign order id is a 404.
+ordersRoutes.get('/:id/items', async (c) => {
+  try {
+    const ordId = c.req.param('id');
+    const tenantId = getScope(c).tenantId;
+
+    const { results: existing } = await c.env.DB.prepare(
+      "SELECT id FROM orders WHERE tenant_id = ? AND id = ?"
+    ).bind(tenantId, ordId).all();
+    if (existing.length === 0) return errorResponse('Order not found', 404);
+
+    const { results } = await c.env.DB.prepare(
+      "SELECT * FROM order_items WHERE order_id = ? ORDER BY created_at ASC, id ASC"
+    ).bind(ordId).all();
+    return jsonResponse(results);
+  } catch (e) {
+    return errorResponse('Failed to fetch order items');
+  }
+});
+
 ordersRoutes.get('/:id', async (c) => {
   const ordId = c.req.param('id');
   const { results } = await c.env.DB.prepare(
@@ -500,10 +595,22 @@ ordersRoutes.post('/', async (c) => {
       return validationError(parsed);
     }
     const data = parsed.data;
-    const { id, camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes } = data;
+    const { id, camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes, items } = data;
 
     const validationError = await validateOrder(c.env, tenantId, null, data);
     if (validationError) return errorResponse(validationError, 400);
+
+    // 0067: when an items array is supplied, the order total is recomputed
+    // server-side from the line items (Σ quantity × unit_price) and the
+    // client-supplied total_amount is ignored — the backend stays
+    // authoritative over pricing. Without items, total_amount passes through.
+    const orderItems = Array.isArray(items) ? items : [];
+    let effectiveTotal = total_amount || 0;
+    if (orderItems.length > 0) {
+      effectiveTotal = Math.round(
+        orderItems.reduce((sum, it) => sum + it.quantity * it.unit_price, 0) * 100
+      ) / 100;
+    }
 
     const ordId = id || 'ord_' + crypto.randomUUID().slice(0, 12); // L1 fix
     const reference = generateReference();
@@ -530,13 +637,33 @@ ordersRoutes.post('/', async (c) => {
     ).bind(
       ordId, tenantId, camp_id, room_id, customerId, order_state_id || 'pending',
       check_in_date, check_out_date, number_of_people || 1,
-      total_amount || 0, amount_paid || 0, payment_method || null, payment_status || null,
+      effectiveTotal, amount_paid || 0, payment_method || null, payment_status || null,
       reference, notes || null,
       tenantId, room_id, check_out_date, check_in_date
     );
     const [insertResult] = await c.env.DB.batch([insertStmt]);
     if (!insertResult?.meta || insertResult.meta.changes === 0) {
       return errorResponse('Room no longer available', 409);
+    }
+
+    // 0067: persist line items only AFTER the guarded order INSERT succeeds —
+    // a second DB.batch (not the same one) because D1 has no conditional abort
+    // between batch statements: a lost-race 409 must not leave orphaned items.
+    if (orderItems.length > 0) {
+      const itemStmts = orderItems.map((it) => c.env.DB.prepare(
+        `INSERT INTO order_items (id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      ).bind(
+        'oi_' + crypto.randomUUID().slice(0, 12), // L1 fix
+        ordId,
+        it.type,
+        null, // reference_id reserved for future product/meal linkage
+        it.name,
+        it.quantity,
+        it.unit_price,
+        Math.round(it.quantity * it.unit_price * 100) / 100
+      ));
+      await c.env.DB.batch(itemStmts);
     }
 
     if (order_state_id) {
@@ -629,8 +756,9 @@ ordersRoutes.delete('/:id', async (c) => {
     if (order) {
       const { results: others } = await c.env.DB.prepare("SELECT id FROM orders WHERE tenant_id = ? AND id != ? AND room_id = ? AND order_state_id != 'cancelled'").bind(tenantId, ordId, order.room_id).all();
       if (others.length === 0) {
-        // Only set available if no other active orders exist (exclude cancelled)
-        await c.env.DB.prepare("UPDATE rooms_new SET status = 'available', updated_at = datetime('now') WHERE id = ?").bind(order.room_id).run();
+        // Only set available if no other active orders exist (exclude cancelled).
+        // 0067: keep BOTH the legacy `status` flag and `room_status` in sync.
+        await c.env.DB.prepare("UPDATE rooms_new SET status = 'available', room_status = 'available', updated_at = datetime('now') WHERE id = ?").bind(order.room_id).run();
       }
     }
 

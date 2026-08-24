@@ -296,6 +296,29 @@ describe('App entry (index.js)', () => {
       expect(Array.isArray(body)).toBe(true);
     });
 
+    it('routes public GET /api/promotions without auth and gates mutations to admin realm', async () => {
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockResolvedValue({ results: [{ id: 'promo_1' }] }),
+          first: vi.fn().mockResolvedValue(null),
+          run: vi.fn().mockResolvedValue({}),
+        })),
+      };
+      // GET rides the public scope (active-only listing)
+      const res = await app.fetch(makeRequest('GET', '/api/promotions?tenant_id=t1'), { ...env, DB: db });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body)).toBe(true);
+
+      // Mutations require the admin realm — unauthenticated POST is rejected
+      const post = await app.fetch(
+        makeRequest('POST', '/api/promotions?tenant_id=t1', { name: 'X', type: 'fixed', value: 5 }),
+        { ...env, DB: db }
+      );
+      expect(post.status).toBe(401);
+    });
+
     it('routes public GET /api/categories without auth', async () => {
       const res = await app.fetch(makeRequest('GET', '/api/categories?tenant_id=t1'), {
         ...env,
@@ -500,6 +523,54 @@ describe('App entry (index.js)', () => {
         },
       });
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Promotions routes', () => {
+    it('returns 401 for POST /api/promotions without auth (admin-only CRUD)', async () => {
+      // Create/update/delete ride the admin scope; no Authorization header →
+      // requireAuth rejects before the sub-router is reached.
+      const res = await app.fetch(
+        makeRequest('POST', '/api/promotions?tenant_id=t1', { name: 'Summer', type: 'percentage', value: 10 }),
+        env
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it('routes POST /api/promotions/apply without auth (public cart pricing)', async () => {
+      // Apply is pure computation (no row mutations), so it rides the public
+      // scope like GET: an anonymous request with a valid body reaches the
+      // router and gets priced totals back — 401 here would regress POS carts.
+      const res = await app.fetch(
+        makeRequest('POST', '/api/promotions/apply?tenant_id=t1', {
+          items: [{ productId: 'p1', quantity: 2, unitPrice: 10 }],
+        }),
+        env
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.subtotal).toBe(20);
+      expect(body.items[0].finalPrice).toBe(20);
+    });
+
+    it('serves POST /api/promotions/apply for pos-realm tokens (POS carts)', async () => {
+      // The admin realm gate rejects posType tokens with 403 — apply must
+      // bypass that gate entirely, which is why it is public-scoped.
+      const res = await app.fetch(
+        makeRequest('POST', '/api/promotions/apply?tenant_id=t1',
+          { items: [{ product_id: 'p1', quantity: 1, unit_price: 5 }] },
+          { Authorization: 'Bearer pos-token' }
+        ),
+        env
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.totalDiscount).toBe(0);
+    });
+
+    it('keeps PUT /api/promotions/:id admin-only', async () => {
+      const res = await app.fetch(makeRequest('PUT', '/api/promotions/promo_1?tenant_id=t1', { value: 20 }), env);
+      expect(res.status).toBe(401);
     });
   });
 

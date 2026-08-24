@@ -16,59 +16,25 @@
 
 PRAGMA defer_foreign_keys = true;
 
+-- Drop the camps timestamp trigger BEFORE any UPDATE below runs.
+-- Migration 0060 created it as `UPDATE camps SET updated_at = ...`, but this
+-- schema lineage has NO camps.updated_at column, so every UPDATE on camps
+-- fails at runtime with "no such table/column" while the trigger exists.
+-- The trigger dies anyway when 0063 drops the camps table; dropping it here
+-- keeps THIS migration's own backfill UPDATEs executable.
+DROP TRIGGER IF EXISTS trg_camps_updated_at;
+
 -- ============================================
 -- STEP 1: Generate slugs from names
 -- ============================================
 
--- Create temporary table with generated slugs
-CREATE TEMPORARY TABLE camp_slugs AS
-SELECT
-  id,
-  tenant_id,
-  name,
-  -- Generate base slug: lowercase, replace spaces with hyphens, remove special chars
-  REPLACE(
-    REPLACE(
-      LOWER(name),
-      ' ', '-'
-    ),
-    -- Remove characters that aren't alphanumeric, hyphens, or spaces
-    REPLACE(
-      REPLACE(
-        REPLACE(
-          REPLACE(
-            REPLACE(
-              REPLACE(
-                REPLACE(
-                  REPLACE(
-                    REPLACE(
-                      REPLACE(name, 'a', ''),
-                      'b', ''
-                    ),
-                    'c', ''
-                  ),
-                  'd', ''
-                ),
-                'e', ''
-              ),
-              'f', ''
-            ),
-            'g', ''
-          ),
-          'h', ''
-        ),
-        'i', ''
-      ),
-      'j', ''
-    ),
-    -- Simplified: just use a regex-like approach via multiple replaces
-    -- For production, we'd use a proper slugify function
-    '', ''
-  ) AS base_slug
-FROM camps;
-
--- Better approach: Use a simpler slug generation
--- SQLite doesn't have REGEXP, so we use multiple REPLACE calls
+-- NOTE (D1 compatibility): this migration previously opened with
+-- `CREATE TEMPORARY TABLE camp_slugs AS SELECT ...` as a scratch computation.
+-- D1's SQL authorizer rejects temporary tables (locally in Miniflare AND in
+-- production workerd) with `not authorized: SQLITE_AUTH`, which made the whole
+-- migrations chain unapplyable from a fresh ledger. The table was also DEAD
+-- CODE — no statement below ever read it (the real slug generation is the
+-- direct UPDATEs that follow) — so it is simply removed.
 
 -- Step 1a: Create slugs with simple replacement
 UPDATE camps SET slug = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
@@ -77,12 +43,12 @@ UPDATE camps SET slug = LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(RE
   '.', ''),
   ',', ''),
   '(', ''),
-  ')'),
+  ')', ''),
   '&', 'and'),
   '@', ''),
   '#', ''),
   '%', ''),
-  '!', '');
+  '!', ''));
 
 -- Step 1b: Remove consecutive hyphens
 UPDATE camps SET slug = REPLACE(slug, '--', '-') WHERE slug LIKE '%--%';
@@ -133,9 +99,6 @@ UPDATE camps
 SET latitude = CAST(SUBSTR(location, INSTR(location, '?ll=') + 4, INSTR(SUBSTR(location, INSTR(location, '?ll=') + 4), ',') - 4) AS REAL),
     longitude = CAST(SUBSTR(location, INSTR(location, '?ll=') + INSTR(SUBSTR(location, INSTR(location, '?ll=') + 4), ',') + 4 - INSTR(location, '?ll=') - 4, INSTR(SUBSTR(location, INSTR(location, '?ll=') + INSTR(SUBSTR(location, INSTR(location, '?ll=') + 4), ',') + 4 - INSTR(location, '?ll=') - 4), '&') - 1) AS REAL)
 WHERE location LIKE '%?ll=%,%&%';
-
--- Clean up temporary table
-DROP TABLE IF EXISTS camp_slugs;
 
 PRAGMA defer_foreign_keys = false;
 

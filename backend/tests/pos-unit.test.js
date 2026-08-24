@@ -1029,14 +1029,58 @@ describe('POS Routes', () => {
       const updateSqls = db.prepare.mock.calls.filter(([sql]) => String(sql).includes('UPDATE pos_products SET stock_quantity'));
       const txnSqls = db.prepare.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO pos_transactions'));
       const itemSqls = db.prepare.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO pos_transaction_items'));
-      expect(updateSqls).toHaveLength(2);
+      // 2 recipe ingredient deductions (i1, i2) + 1 product self-deduction (p1)
+      expect(updateSqls).toHaveLength(3);
       expect(txnSqls).toHaveLength(1);
       expect(itemSqls).toHaveLength(1);
 
       expect(db.batch).toHaveBeenCalledTimes(1);
       const statements = db.batch.mock.calls[0][0];
-      expect(statements).toHaveLength(4);
+      expect(statements).toHaveLength(5);
       expect(statements.every((s) => s && typeof s.run === 'function')).toBe(true);
+
+      // The product's OWN deduction comes first in the batch, before ingredients
+      const firstUpdateIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('UPDATE pos_products SET stock_quantity'));
+      expect(db.prepare.mock.results[firstUpdateIdx].value.bind.mock.calls[0]).toEqual([2, 'p1', 1, 2]);
+    });
+
+    it('deducts the sold product itself from master stock (supermarket fix)', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, role: 'cashier' });
+      // Recipe-less retail product: ONLY its own stock must be decremented.
+      // Before this fix, selling 100 Cokes left Coke stock untouched.
+      const db = makeStepDb([
+        chainDb([{ is_active: 1 }]),
+        chainDb([{ id: 'coke', selling_price: '2', name: 'Coke' }]),
+        chainDb([{ tax_rate: '0.1' }]),
+        chainDb([]), // no recipe rows for coke
+        chainDb([]), // store lookup (cashier token has no storeId)
+      ]);
+      db.batch.mockResolvedValueOnce([
+        { meta: { changes: 1 } },  // coke self-deduction
+        { meta: { changes: 1 } },  // INSERT pos_transactions
+        { meta: { changes: 1 } },  // INSERT pos_transaction_items
+      ]);
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ items: [{ productId: 'coke', quantity: 100 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+
+      // Exactly one stock deduction statement, bound to the sold product itself
+      const updIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('UPDATE pos_products SET stock_quantity'));
+      expect(updIdx).toBeGreaterThan(-1);
+      expect(db.prepare.mock.results[updIdx].value.bind.mock.calls[0]).toEqual([100, 'coke', 1, 100]);
+
+      // Batch = [product deduction, transaction insert, item insert] and the
+      // deduction runs BEFORE the transaction insert inside the same batch
+      const stmts = db.batch.mock.calls[0][0];
+      expect(stmts).toHaveLength(3);
+      const txnIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('INSERT INTO pos_transactions'));
+      expect(updIdx).toBeLessThan(txnIdx);
     });
 
     it('creates an order with cash payment and recipe stock deduction', async () => {
@@ -1088,8 +1132,12 @@ describe('POS Routes', () => {
       expect(body.success).toBe(true);
       expect(body.order.totalAmount).toBe(23);
 
-      const updateCalls = db.prepare.mock.calls.filter(([sql]) => String(sql).includes('UPDATE pos_products SET stock_quantity'));
-      expect(updateCalls).toHaveLength(0);
+      // Cross-tenant ingredient i1 is never deducted — but p1 ITSELF is (self-stock)
+      const updateBinds = db.prepare.mock.calls
+        .map((call, idx) => ({ sql: String(call[0]), idx }))
+        .filter(({ sql }) => sql.includes('UPDATE pos_products SET stock_quantity'))
+        .map(({ idx }) => db.prepare.mock.results[idx].value.bind.mock.calls[0]);
+      expect(updateBinds).toEqual([[2, 'p1', 1, 2]]);
 
       const recipeIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('FROM pos_recipe_ingredients'));
       expect(recipeIdx).toBeGreaterThan(-1);
@@ -1271,14 +1319,16 @@ describe('POS Routes', () => {
         chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
         chainDb([{ id: 'i2', name: 'Sugar', stock_quantity: '50' }]),
       ]);
-      // First batch call: order creation — second deduction (i2) affected 0 rows
+      // First batch call: order creation — recipe ingredient i2 affected 0 rows.
+      // Statement order: [p1 self-deduct, i1, i2, INSERT txn, INSERT items]
       db.batch.mockResolvedValueOnce([
+        { meta: { changes: 1 } },  // p1 product self-deduction succeeded
         { meta: { changes: 1 } },  // i1 deduction succeeded
         { meta: { changes: 0 } },  // i2 deduction raced to zero
         { meta: { changes: 1 } },  // INSERT pos_transactions
         { meta: { changes: 1 } },  // INSERT pos_transaction_items
       ]);
-      // Second batch call: compensation (add back i1 stock, delete items, delete order)
+      // Second batch call: compensation (add back p1 + i1 stock, delete items, delete order)
       db.batch.mockResolvedValueOnce([]);
 
       const req = new Request('http://localhost/orders', {
@@ -1292,9 +1342,15 @@ describe('POS Routes', () => {
       expect(body.error).toContain('Insufficient stock');
       // Batch called twice: once for the order, once for compensation
       expect(db.batch).toHaveBeenCalledTimes(2);
-      // Compensation batch contains: stock add-back for i1, delete items, delete order
+      // Compensation batch contains: add-backs for p1 AND i1, delete items, delete order
       const compStatements = db.batch.mock.calls[1][0];
-      expect(compStatements.length).toBe(3);
+      expect(compStatements.length).toBe(4);
+      // Add-backs must be index-aligned with allDeductions: p1 (self) then i1
+      const addBackBinds = db.prepare.mock.calls
+        .map((call, idx) => ({ sql: String(call[0]), idx }))
+        .filter(({ sql }) => sql.includes('stock_quantity = stock_quantity + ?'))
+        .map(({ idx }) => db.prepare.mock.results[idx].value.bind.mock.calls[0]);
+      expect(addBackBinds).toEqual([[2, 'p1'], [2, 'i1']]);
       // Verify the compensation prepare calls include stock add-back and order cleanup
       const allSqls = db.prepare.mock.calls.map(([sql]) => String(sql));
       expect(allSqls.some((sql) => sql.includes('stock_quantity = stock_quantity + ?'))).toBe(true);
@@ -1314,7 +1370,8 @@ describe('POS Routes', () => {
         chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
       ]);
       db.batch.mockResolvedValueOnce([
-        { meta: { changes: 0 } },  // deduction raced to zero
+        { meta: { changes: 1 } },  // p1 product self-deduction succeeded
+        { meta: { changes: 0 } },  // i1 deduction raced to zero
         { meta: { changes: 1 } },  // INSERT pos_transactions
         { meta: { changes: 1 } },  // INSERT pos_transaction_items
       ]);
@@ -1346,9 +1403,10 @@ describe('POS Routes', () => {
       expect(res.status).toBe(500);
     });
 
-    it('proceeds to success when batch results are valid but no deductions were made (empty deductionIndexes)', async () => {
+    it('proceeds to success when batch results are valid and only the product self-deduction exists (no recipe deductions)', async () => {
       verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, storeId: 1, role: 'cashier' });
-      // Product has no recipe ingredients → stockDeductions is empty → deductionIndexes is empty
+      // Product has no recipe ingredients → stockDeductions (ingredients) is empty;
+      // the product's OWN self-deduction still guards the batch via deductionIndexes
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
@@ -1451,8 +1509,9 @@ describe('POS Routes', () => {
         chainDb([]),
         chainDb([]),
         chainDb([]), // store lookup (cashier token has no storeId -> org's first store)
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // product self-stock deduction statement (supermarket fix)
+        chainDb([]), // pos_transactions INSERT statement
+        chainDb([]), // pos_transaction_items INSERT statement
         chainDb([existingRow]),
         chainDb([{ id: 'ti1', product_id: 'p1', quantity: 1, unit_price: 10, total_amount: 10, product_name: 'Coffee', sku: 'COF' }]),
       ]);
@@ -1470,6 +1529,108 @@ describe('POS Routes', () => {
       expect(body.success).toBe(true);
       expect(body.deduplicated).toBe(true);
       expect(body.order.id).toBe('ord_A');
+    });
+
+    // Step alignment for POST /orders with a cashier token (no storeId), one
+    // item, no recipes: auth probe, product fetch, tax rate, recipe lookup,
+    // store lookup, product self-deduction UPDATE, tx INSERT, item INSERT,
+    // THEN the post-commit low-stock SELECT.
+    const orderFlowSteps = () => [
+      chainDb([{ is_active: 1 }]),
+      chainDb([{ id: 'coke', selling_price: '5', name: 'Coke' }]),
+      chainDb([]),
+      chainDb([]),
+      chainDb([]),
+      chainDb([]),
+      chainDb([]),
+      chainDb([]),
+    ];
+
+    it('inserts a low-stock inbox alert when the sold product hits its reorder level', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, role: 'cashier' });
+      const capturedBinds = [];
+      const db = makeStepDb([
+        ...orderFlowSteps(),
+        // Low-stock re-check after commit: 2 left, min level 5 → alert
+        chainDb([{ id: 'coke', name: 'Coke', stock_quantity: '2', min_stock_level: '5' }]),
+        // Alert INSERT statement — record its binds for assertions
+        () => ({ bind: (...args) => { capturedBinds.push(args); return {}; } }),
+      ]);
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'coke', quantity: 3 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+
+      // Batch #1 = order statements, Batch #2 = inbox alerts
+      expect(db.batch).toHaveBeenCalledTimes(2);
+      const alertStmts = db.batch.mock.calls[1][0];
+      expect(alertStmts).toHaveLength(1);
+      expect(capturedBinds).toHaveLength(1);
+      const binds = capturedBinds[0];
+      expect(binds[0]).toMatch(/^lowstock_coke_/);
+      expect(binds[1]).toBe('1'); // tenant scoping
+      expect(binds[2]).toBe('Low Stock: Coke');
+      expect(binds[3]).toBe('Only 2 units remaining. Reorder suggested.');
+    });
+
+    it('does not alert when stock remains above the reorder level', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, role: 'cashier' });
+      const db = makeStepDb([
+        ...orderFlowSteps(),
+        chainDb([{ id: 'coke', name: 'Coke', stock_quantity: '50', min_stock_level: '5' }]),
+      ]);
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'coke', quantity: 1 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(db.batch).toHaveBeenCalledTimes(1); // only the order batch
+    });
+
+    it('does not alert for fully out-of-stock products (handled separately)', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, role: 'cashier' });
+      const db = makeStepDb([
+        ...orderFlowSteps(),
+        chainDb([{ id: 'coke', name: 'Coke', stock_quantity: '0', min_stock_level: '5' }]),
+      ]);
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'coke', quantity: 1 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+
+      expect(res.status).toBe(200);
+      expect(db.batch).toHaveBeenCalledTimes(1);
+    });
+
+    it('still completes the order when the low-stock check fails (best-effort)', async () => {
+      verifyToken.mockResolvedValue({ userId: 'u1', posType: 'pos', tenantId: '1', organizationId: 1, role: 'cashier' });
+      const db = makeStepDb([
+        ...orderFlowSteps(),
+        () => { throw new Error('DB fail during low-stock probe'); },
+      ]);
+      const req = new Request('http://localhost/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer pos-token' },
+        body: JSON.stringify({ items: [{ productId: 'coke', quantity: 1 }], paymentMethod: 'cash' }),
+      });
+      const res = await posApp.fetch(req, { DB: db, JWT_SECRET: 'secret' });
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.success).toBe(true);
     });
   });
 

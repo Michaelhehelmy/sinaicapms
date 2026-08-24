@@ -437,8 +437,9 @@ describe('broadcastNewBooking (orders.js hook)', () => {
       (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
       (ch) => { ch.all.mockResolvedValue({ results: [] }); },
       (ch) => { ch.all.mockResolvedValue({ results: [] }); },
-      (ch) => { ch.all.mockResolvedValue({ results: [] }); },
-      (ch) => { ch.run.mockResolvedValue({}); },
+      (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // customer by email
+      (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // customer by phone
+      (ch) => { ch.run.mockResolvedValue({}); }, // customer insert
       (ch) => { ch.run.mockResolvedValue({}); },
     ]);
     db.prepare.mockImplementation(fn);

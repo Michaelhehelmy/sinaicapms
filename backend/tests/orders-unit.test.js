@@ -140,6 +140,53 @@ describe('handleOrdersRoute', () => {
     });
   });
 
+  describe('GET /orders/:id/items (0067 line items)', () => {
+    it('returns camelCase line items for an existing order', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'o1' }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [
+          { id: 'oi_a', order_id: 'o1', unit_price: 150, total_price: 300 },
+          { id: 'oi_b', order_id: 'o1', unit_price: 500, total_price: 500 },
+        ] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('GET', 'https://x.com/api/orders/o1/items');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body).toHaveLength(2);
+      // jsonResponse applies toCamel — snake_case columns surface as camelCase
+      expect(body[0].unitPrice).toBe(150);
+      expect(body[0].totalPrice).toBe(300);
+    });
+
+    it('returns 404 for an unknown order (tenant-scoped)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('GET', 'https://x.com/api/orders/unknown/items');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toContain('Order not found');
+    });
+
+    it('returns an empty array for an order without items', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'o1' }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('GET', 'https://x.com/api/orders/o1/items');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body).toEqual([]);
+    });
+  });
+
   describe('GET /orders/calculate-price', () => {
     it('returns 400 when params are missing', async () => {
       const { db } = makeDbMock();
@@ -487,9 +534,11 @@ describe('handleOrdersRoute', () => {
 
     it('sets payment_status to paid when order_state has paid=true', async () => {
       const { db } = makeDbMock();
+      // 0067: chain now includes the project stay-limits lookup (validateOrder)
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
-        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // overlap
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.run.mockResolvedValue({}); }, // customer insert
         (ch) => {}, // H1 fix: guarded INSERT statement is prepared here but sent via db.batch
         (ch) => { ch.all.mockResolvedValue({ results: [{ paid: true }] }); },
@@ -506,8 +555,8 @@ describe('handleOrdersRoute', () => {
       expect(body.success).toBe(true);
       expect(db.batch).toHaveBeenCalledTimes(1);
       expect(db.batch.mock.calls[0][0]).toHaveLength(1);
-      // prepare order: roomInfo, overlap, customer insert, guarded INSERT
-      expect(db.prepare.mock.calls[3][0]).toContain('NOT EXISTS');
+      // prepare order: roomInfo, overlap, stay limits, customer insert, guarded INSERT
+      expect(db.prepare.mock.calls[4][0]).toContain('NOT EXISTS');
     });
 
     it('H1: returns 409 when the availability guard blocks the insert (lost race)', async () => {
@@ -515,6 +564,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // advisory pre-check sees no conflict...
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
       ]);
       db.prepare.mockImplementation(fn);
       // ...but the atomic guard inside the INSERT finds one (changes === 0)
@@ -534,6 +584,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
       ]);
       db.prepare.mockImplementation(fn);
       const req = makeRequest('POST', 'https://x.com/api/orders', {
@@ -556,6 +607,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'cust1' }] }); },
         (ch) => { ch.run.mockResolvedValue({}); },
         (ch) => { ch.run.mockResolvedValue({}); },
@@ -577,7 +629,9 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'cust2' }] }); },
+        (ch) => { ch.run.mockResolvedValue({}); },
         (ch) => { ch.run.mockResolvedValue({}); },
       ]);
       db.prepare.mockImplementation(fn);
@@ -602,6 +656,172 @@ describe('handleOrdersRoute', () => {
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(400);
     });
+
+    // --- 0067: project min/max stay validation ---
+
+    it('0067: rejects stays shorter than the project min_stay', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // no overlap
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: 3, max_stay: null }] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      // 2030-08-01 → 2030-08-03 = 2 nights < min 3
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-03'
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('Minimum stay is 3 nights');
+    });
+
+    it('0067: rejects stays longer than the project max_stay', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: 1, max_stay: 2 }] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      // 2030-08-01 → 2030-08-05 = 4 nights > max 2
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05'
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('Maximum stay is 2 nights');
+    });
+
+    it('0067: allows stays within the min/max bounds', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: 2, max_stay: 10 }] }); },
+        (ch) => { ch.run.mockResolvedValue({}); }, // customer insert
+        (ch) => {}, // guarded INSERT via batch
+      ]);
+      db.prepare.mockImplementation(fn);
+      // 4 nights — inside [2, 10]
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05'
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+    });
+
+    it('0067: never rejects when the project has no stay limits (defaults)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        // DEFAULT 1/NULL columns surface as null through the mock
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: null, max_stay: null }] }); },
+        (ch) => { ch.run.mockResolvedValue({}); },
+        (ch) => {},
+      ]);
+      db.prepare.mockImplementation(fn);
+      // single night (min_stay default of 1 must not falsely reject)
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-02'
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+    });
+
+    // --- 0067: order line items / add-ons ---
+
+    it('0067: recomputes the total server-side from line items', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: null, max_stay: null }] }); },
+        (ch) => { ch.run.mockResolvedValue({}); }, // customer insert
+        (ch) => {}, // guarded INSERT via batch
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05',
+        total_amount: 99999, // ignored when items are present
+        items: [
+          { type: 'addon', name: 'BBQ dinner', quantity: 2, unit_price: 150 },
+          { type: 'addon', name: 'Desert tour', quantity: 1, unit_price: 500 }
+        ]
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      // Σ(2×150 + 1×500) = 800 — bound at index 9 of the guarded INSERT
+      const insertStmt = db.batch.mock.calls[0][0][0];
+      expect(insertStmt.bind.mock.calls[0][9]).toBe(800);
+    });
+
+    it('0067: persists line items in a second batch after the INSERT succeeds', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: null, max_stay: null }] }); },
+        (ch) => { ch.run.mockResolvedValue({}); },
+        (ch) => {},
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05',
+        items: [
+          { type: 'addon', name: 'BBQ dinner', quantity: 2, unit_price: 150.5 },
+          { type: 'addon', name: 'Desert tour', quantity: 1, unit_price: 500 }
+        ]
+      });
+      await handleOrdersRoute(req, { DB: db }, TENANT);
+      // two-phase write: guarded order INSERT first…
+      expect(db.batch).toHaveBeenCalledTimes(2);
+      const itemStmts = db.batch.mock.calls[1][0];
+      expect(itemStmts).toHaveLength(2);
+      // …then the order_items INSERTs
+      expect(db.prepare.mock.calls.some(([sql]) => sql.includes('INSERT INTO order_items'))).toBe(true);
+      const [id, ordId, type, refId, name, qty, price, total] = itemStmts[0].bind.mock.calls[0];
+      expect(id).toMatch(/^oi_/);
+      expect(ordId).toMatch(/^ord_/);
+      expect(type).toBe('addon');
+      expect(refId).toBeNull(); // reference_id reserved for future linkage
+      expect(name).toBe('BBQ dinner');
+      expect(qty).toBe(2);
+      expect(price).toBe(150.5);
+      expect(total).toBe(301); // rounded per-line total
+    });
+
+    it('0067: does NOT touch order_items when no items are supplied', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: null, max_stay: null }] }); },
+        (ch) => { ch.run.mockResolvedValue({}); },
+        (ch) => {},
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05'
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(db.batch).toHaveBeenCalledTimes(1); // only the guarded INSERT
+    });
   });
 
   describe('PUT /orders/:id (update)', () => {
@@ -617,6 +837,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [{ room_id: 'r1', customer_id: 'cust1' }] }); },
         (ch) => { ch.run.mockResolvedValue({ success: true }); },
         (ch) => { ch.run.mockResolvedValue({ success: true }); },
@@ -637,6 +858,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
         (ch) => { ch.run.mockResolvedValue({}); },
@@ -658,6 +880,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'cust7' }] }); },
         (ch) => { ch.run.mockResolvedValue({}); },
@@ -678,6 +901,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'cust9' }] }); },
         (ch) => { ch.run.mockResolvedValue({}); },
@@ -698,6 +922,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
         (ch) => { ch.run.mockResolvedValue({}); },
       ]);
@@ -716,6 +941,7 @@ describe('handleOrdersRoute', () => {
       const fn = chainMock([
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
         (ch) => { ch.all.mockResolvedValue({ results: [{ room_id: 'r1', customer_id: 'cust1' }] }); },
         (ch) => { ch.run.mockResolvedValue({}); },
         (ch) => { ch.run.mockResolvedValue({}); },
@@ -920,6 +1146,74 @@ describe('handleOrdersRoute', () => {
       const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', {});
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(400);
+    });
+
+    // --- 0067: room_status lifecycle driven by order transitions ---
+
+    it.each([
+      ['confirmed', 'reserved'],
+      ['checked_in', 'occupied'],
+      ['checked_out', 'cleaning'],
+    ])('0067: %s maps the room to %s inside the same batch', async (status, roomStatus) => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: status === 'confirmed' ? 'pending' : status === 'checked_in' ? 'confirmed' : 'checked_in', room_id: 'r1' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: status, paid: 0 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); }, // order UPDATE (batch)
+        (ch) => { ch.run.mockResolvedValue({ success: true }); }, // room UPDATE (batch)
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      // ONE atomic batch containing BOTH the order transition and its room side-effect
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      const stmts = db.batch.mock.calls[0][0];
+      expect(stmts).toHaveLength(2);
+      // prepare order: orders lookup, state lookup, order UPDATE, room UPDATE
+      expect(db.prepare.mock.calls[3][0]).toContain('UPDATE rooms_new');
+      expect(stmts[1].bind.mock.calls[0]).toEqual([roomStatus, 'r1']);
+    });
+
+    it('0067: cancelled frees the room only via the guarded NOT EXISTS update', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending', room_id: 'r1' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'cancelled', paid: 0 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'cancelled' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      const stmts = db.batch.mock.calls[0][0];
+      expect(stmts).toHaveLength(2);
+      // guard + legacy/new column sync in one statement (prepare index 3)
+      const roomSql = db.prepare.mock.calls[3][0];
+      expect(roomSql).toContain("room_status = 'available'");
+      expect(roomSql).toContain("status = 'available'");
+      expect(roomSql).toContain('NOT IN');
+      expect(roomSql).toContain('SELECT DISTINCT room_id FROM orders');
+      expect(stmts[1].bind.mock.calls[0]).toEqual(['r1', 't1', 'r1', 'o1']);
+    });
+
+    it('0067: roomless orders skip the room side-effect entirely', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending' }); }, // no room_id
+        (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 0 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'confirmed' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      expect(db.batch.mock.calls[0][0]).toHaveLength(1); // order UPDATE only
+      expect(db.prepare.mock.calls.some(([sql]) => sql.includes('rooms_new'))).toBe(false);
     });
   });
 

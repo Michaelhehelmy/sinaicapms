@@ -605,6 +605,8 @@ roomsRoutes.get('/', async (c) => {
   const floor = c.req.query('floor');
   const campId = c.req.query('campId');
 
+  // r.* intentionally includes every rooms_new column — migration 0067's
+  // operational `room_status` lifecycle column rides along automatically.
   let query = "SELECT r.* FROM rooms_new r JOIN projects c2 ON r.camp_id = c2.id WHERE c2.tenant_id = ? AND c2.deleted_at IS NULL";
   let bindings = [tenantId];
 

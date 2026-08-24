@@ -22,6 +22,7 @@ import plansRoutes from './api/others';
 import mealCategoriesRoutes from './api/meal-categories';
 import categoriesRoutes from './api/categories';
 import mealsRoutes from './api/meals';
+import promotionsRoutes from './api/promotions';
 import { resolveScope } from './middleware/resolveScope.js';
 import leadsRoutes, { createLead } from './api/leads';
 import inboxRoutes from './api/inbox';
@@ -343,6 +344,24 @@ const mealsScope = async (c, next) =>
 app.use('/api/meals', mealsScope);
 app.use('/api/meals/*', mealsScope);
 app.route('/api/meals', mealsRoutes);
+
+// ── Promotions (discount engine). Mixed visibility by path+method: GET is
+// public (active-only for visitors; ?includeInactive=1 honored when authed)
+// and POST /api/promotions/apply ALSO rides the public scope so POS carts
+// (pos-realm tokens — rejected outright by the admin realm gate) and
+// anonymous checkout widgets can price a cart without an admin session;
+// apply is pure computation and never mutates rows. All remaining mutations
+// (POST create, PUT /:id, DELETE /:id) stay admin-scoped.
+const promotionsPublicScope = resolveScope({ public: true });
+const promotionsAdminScope = resolveScope();
+const isPromotionsPublic = (c) =>
+  c.req.method === 'GET' ||
+  (c.req.method === 'POST' && c.req.path === '/api/promotions/apply');
+const promotionsScope = async (c, next) =>
+  isPromotionsPublic(c) ? promotionsPublicScope(c, next) : promotionsAdminScope(c, next);
+app.use('/api/promotions', promotionsScope);
+app.use('/api/promotions/*', promotionsScope);
+app.route('/api/promotions', promotionsRoutes);
 
 // ── Unified inbox (Phase 4): auth + tenant scoped like leads/admin — NOT public.
 const inboxAdminScope = resolveScope();

@@ -51,15 +51,16 @@ CREATE TABLE IF NOT EXISTS projects (
 INSERT INTO projects (
   id, tenant_id, name, slug, project_type, status, location,
   latitude, longitude, start_date, end_date, capacity,
-  description, gallery_images, meta_version, deleted_at,
-  created_at, updated_at
+  description, gallery_images, meta_version, deleted_at
 )
 SELECT
   id, tenant_id, name, slug, project_type, status, location,
   latitude, longitude, start_date, end_date, capacity,
-  description, gallery_images, meta_version, deleted_at,
-  created_at, updated_at
+  description, gallery_images, meta_version, deleted_at
 FROM camps;
+-- NOTE: created_at/updated_at are intentionally NOT copied — this schema
+-- lineage's camps table has neither column (ledger stops at 0060). The new
+-- projects table supplies its own defaults (CURRENT_TIMESTAMP / NULL).
 
 -- ============================================
 -- STEP 3: Update project_meta foreign keys
