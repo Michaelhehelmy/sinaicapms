@@ -117,18 +117,24 @@ inventoryRoutes.post('/adjustments', async (c) => {
     'SELECT id, stock_quantity FROM pos_products WHERE id = ? AND tenant_id = ?'
   ).bind(product_id, tenantId).first();
   if (!product) return errorResponse('Product not found', 404);
-  if (product.stock_quantity + adjustment < 0) {
-    return errorResponse('Adjustment would result in negative stock', 400);
-  }
   const id = crypto.randomUUID();
-  await env.DB.prepare(
+  // Atomic: INSERT adjustment log + conditional UPDATE in one batch.
+  // The WHERE guard prevents negative stock even under concurrent adjustments.
+  const insertStmt = env.DB.prepare(
     `INSERT INTO inventory_adjustments (id, tenant_id, product_id, adjustment, reason, reference, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, tenantId, product_id, adjustment, reason || 'manual', reference || null, notes || null).run();
-  await env.DB.prepare(
-    `UPDATE pos_products SET stock_quantity = stock_quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?`
-  ).bind(adjustment, product_id, tenantId).run();
-  return jsonResponse({ id, success: true, new_stock: product.stock_quantity + adjustment }, 201);
+  ).bind(id, tenantId, product_id, adjustment, reason || 'manual', reference || null, notes || null);
+  const updateStmt = env.DB.prepare(
+    `UPDATE pos_products SET stock_quantity = stock_quantity + ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND tenant_id = ? AND stock_quantity + ? >= 0`
+  ).bind(adjustment, product_id, tenantId, adjustment);
+  const [insertResult, updateResult] = await env.DB.batch([insertStmt, updateStmt]);
+  if (!updateResult?.meta || updateResult.meta.changes === 0) {
+    return errorResponse('Adjustment would result in negative stock', 400);
+  }
+  // Re-read actual stock after atomic update
+  const updated = await env.DB.prepare('SELECT stock_quantity FROM pos_products WHERE id = ?').bind(product_id).first();
+  return jsonResponse({ id, success: true, new_stock: updated?.stock_quantity ?? 0 }, 201);
 });
 
 inventoryRoutes.get('/reorder-suggestions', async (c) => {

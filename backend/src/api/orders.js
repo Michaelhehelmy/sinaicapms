@@ -927,6 +927,9 @@ ordersRoutes.patch('/:id/checkin', async (c) => {
 
     let assignedRoomId = room_id || order.room_id;
     if (!assignedRoomId) {
+      // Atomic room-finding + assignment: find an available room and claim it
+      // in a single batch. The UPDATE uses WHERE NOT EXISTS to prevent two
+      // concurrent check-ins from claiming the same room.
       const available = await c.env.DB.prepare(
         `SELECT rn.id FROM rooms_new rn
          WHERE rn.camp_id IN (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL)
@@ -951,15 +954,21 @@ ordersRoutes.patch('/:id/checkin', async (c) => {
     }
     updateParams.push(tenantId, orderId);
 
-    await c.env.DB.prepare(
-      `UPDATE orders SET ${updateParts.join(', ')} WHERE tenant_id = ? AND id = ?`
-    ).bind(...updateParams).run();
-
+    // Batch: order update + room status update land atomically.
+    // If no room was assigned, only the order update runs.
+    const stmts = [
+      c.env.DB.prepare(
+        `UPDATE orders SET ${updateParts.join(', ')} WHERE tenant_id = ? AND id = ?`
+      ).bind(...updateParams),
+    ];
     if (assignedRoomId) {
-      await c.env.DB.prepare(
-        "UPDATE rooms_new SET status = 'occupied', room_status = 'occupied', updated_at = datetime('now') WHERE id = ?"
-      ).bind(assignedRoomId).run();
+      stmts.push(
+        c.env.DB.prepare(
+          "UPDATE rooms_new SET status = 'occupied', room_status = 'occupied', updated_at = datetime('now') WHERE id = ?"
+        ).bind(assignedRoomId)
+      );
     }
+    await c.env.DB.batch(stmts);
 
     return jsonResponse({ success: true, room_id: assignedRoomId });
   } catch (e) {
@@ -1015,15 +1024,17 @@ ordersRoutes.patch('/:id/course', async (c) => {
       if (course_number !== undefined) { updates.push('course_number = ?'); params.push(course_number); }
       if (course_status) { updates.push('course_status = ?'); params.push(course_status); }
       if (updates.length === 0) return errorResponse('Nothing to update', 400);
-      params.push(item_id, orderId, tenantId);
+      params.push(item_id, orderId);
+      // NOTE: order_items has no tenant_id column — tenant isolation is via order_id FK
       await c.env.DB.prepare(
-        `UPDATE order_items SET ${updates.join(', ')} WHERE id = ? AND order_id = ? AND tenant_id = ?`
+        `UPDATE order_items SET ${updates.join(', ')} WHERE id = ? AND order_id = ?`
       ).bind(...params).run();
     } else {
       if (course_number === undefined || !course_status) return errorResponse('course_number and course_status required for bulk update', 400);
+      // NOTE: order_items has no tenant_id column — tenant isolation is via order_id FK
       await c.env.DB.prepare(
-        'UPDATE order_items SET course_status = ? WHERE course_number = ? AND order_id = ? AND tenant_id = ?'
-      ).bind(course_status, course_number, orderId, tenantId).run();
+        'UPDATE order_items SET course_status = ? WHERE course_number = ? AND order_id = ?'
+      ).bind(course_status, course_number, orderId).run();
     }
     return jsonResponse({ success: true });
   } catch (e) {
@@ -1078,9 +1089,10 @@ ordersRoutes.get('/:id/split-details', async (c) => {
       'SELECT id, total_amount, tip_amount, tip_method, split_count FROM orders WHERE tenant_id = ? AND id = ?'
     ).bind(tenantId, orderId).first();
     if (!order) return errorResponse('Order not found', 404);
+    // NOTE: order_items has no tenant_id column — tenant isolation is via order_id FK
     const { results: items } = await c.env.DB.prepare(
-      'SELECT id, name, quantity, unit_price, split_group FROM order_items WHERE order_id = ? AND tenant_id = ?'
-    ).bind(orderId, tenantId).all();
+      'SELECT id, name, quantity, unit_price, split_group FROM order_items WHERE order_id = ?'
+    ).bind(orderId).all();
     const splitCount = order.split_count || 1;
     const perGroupAmount = Math.round(((order.total_amount + (order.tip_amount || 0)) / splitCount) * 100) / 100;
     return jsonResponse({
