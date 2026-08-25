@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency } from '@/lib/utils';
 
-type Tab = 'overview' | 'products' | 'kitchen' | 'inventory';
+type Tab = 'overview' | 'products' | 'kitchen' | 'inventory' | 'revenue' | 'customers';
 
 const PERIOD_OPTIONS = [
   { value: '7', label: 'Last 7 days' },
@@ -90,16 +90,22 @@ export default function AnalyticsPanel() {
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [kitchen, setKitchen] = useState<{ by_status: KitchenStatusCount[]; daily_trend: KitchenTrend[] } | null>(null);
   const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<{ by_product_type: Array<{ type: string; revenue: number; order_count: number }>; by_payment_method: Array<{ method: string; revenue: number; count: number }>; accommodation: { revenue: number; order_count: number } } | null>(null);
+  const [customerMetrics, setCustomerMetrics] = useState<{ total_customers: number; new_customers: number; repeat_customers: number; avg_order_value: number; avg_collected: number } | null>(null);
+  const [seasonal, setSeasonal] = useState<{ accommodation_monthly: Array<{ month: string; revenue: number; order_count: number }>; pos_monthly: Array<{ month: string; revenue: number; tx_count: number }> } | null>(null);
 
   const loadData = useCallback(async () => {
     const days = parseInt(period);
     try {
-      const [rev, occ, tp, ks, ls] = await Promise.allSettled([
+      const [rev, occ, tp, ks, ls, rb, cm, sc] = await Promise.allSettled([
         api.getRevenueReport({ days }),
         api.getOccupancyReport(),
         api.getTopProducts(days, 10),
         api.getKitchenPerformance(Math.min(days, 30)),
         api.getAnalyticsLowStock(),
+        api.getRevenueBreakdown(days),
+        api.getCustomerMetrics(days),
+        api.getSeasonalComparison(),
       ]);
       if (rev.status === 'fulfilled') setRevenue(rev.value as RevenueReport);
       if (occ.status === 'fulfilled') setOccupancy(occ.value as OccupancyReport);
@@ -109,6 +115,9 @@ export default function AnalyticsPanel() {
         setKitchen(kv);
       }
       if (ls.status === 'fulfilled') setLowStock((ls.value as { low_stock: LowStockItem[] }).low_stock);
+      if (rb.status === 'fulfilled') setRevenueBreakdown(rb.value as { by_product_type: Array<{ type: string; revenue: number; order_count: number }>; by_payment_method: Array<{ method: string; revenue: number; count: number }>; accommodation: { revenue: number; order_count: number } });
+      if (cm.status === 'fulfilled') setCustomerMetrics(cm.value as { total_customers: number; new_customers: number; repeat_customers: number; avg_order_value: number; avg_collected: number });
+      if (sc.status === 'fulfilled') setSeasonal(sc.value as { accommodation_monthly: Array<{ month: string; revenue: number; order_count: number }>; pos_monthly: Array<{ month: string; revenue: number; tx_count: number }> });
     } catch (err) {
       showToast('Failed to load analytics: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
@@ -150,14 +159,14 @@ export default function AnalyticsPanel() {
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-gray-200">
-        {(['overview', 'products', 'kitchen', 'inventory'] as Tab[]).map((t) => (
+        {(['overview', 'products', 'kitchen', 'inventory', 'revenue', 'customers'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             data-testid={`analytics-tab-${t}`}
           >
-            {t === 'overview' ? 'Overview' : t === 'products' ? 'Top Products' : t === 'kitchen' ? 'Kitchen' : 'Inventory'}
+            {t === 'overview' ? 'Overview' : t === 'products' ? 'Top Products' : t === 'kitchen' ? 'Kitchen' : t === 'inventory' ? 'Inventory' : t === 'revenue' ? 'Revenue' : 'Customers'}
           </button>
         ))}
       </div>
@@ -223,6 +232,37 @@ export default function AnalyticsPanel() {
               </div>
             ) : (
               <EmptyState title="No kitchen data" />
+            )}
+          </Card>
+
+          {/* Monthly Revenue Trend (Seasonal) */}
+          <Card>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Monthly Revenue Trend</h3>
+            {seasonal?.accommodation_monthly?.length ? (
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Accommodation Revenue</p>
+                <HorizontalBarChart
+                  items={seasonal.accommodation_monthly.map((m) => ({ label: m.month, revenue: m.revenue }))}
+                  labelKey="label"
+                  valueKey="revenue"
+                  maxValue={Math.max(...seasonal.accommodation_monthly.map((m) => m.revenue))}
+                  color="bg-teal-500"
+                />
+                {seasonal.pos_monthly?.length ? (
+                  <>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mt-6 mb-2">POS Revenue</p>
+                    <HorizontalBarChart
+                      items={seasonal.pos_monthly.map((m) => ({ label: m.month, revenue: m.revenue }))}
+                      labelKey="label"
+                      valueKey="revenue"
+                      maxValue={Math.max(...seasonal.pos_monthly.map((m) => m.revenue))}
+                      color="bg-violet-500"
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <EmptyState title="No seasonal data yet" description="Monthly trends will appear as data accumulates." />
             )}
           </Card>
         </div>
@@ -369,6 +409,98 @@ export default function AnalyticsPanel() {
               </div>
             ) : (
               <EmptyState title="All products are well-stocked" description="No items are at or below their minimum stock level." />
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ── Revenue Breakdown Tab ─────────────────────── */}
+      {tab === 'revenue' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard label="Accommodation Revenue" value={revenueBreakdown ? formatCurrency(revenueBreakdown.accommodation.revenue) : '-'} sub={`${revenueBreakdown?.accommodation.order_count ?? 0} orders`} color="text-teal-600" />
+            <StatCard label="POS Revenue" value={revenueBreakdown ? formatCurrency(revenueBreakdown.by_product_type.reduce((s, t) => s + t.revenue, 0)) : '-'} sub={`${revenueBreakdown?.by_product_type.reduce((s, t) => s + t.order_count, 0) ?? 0} orders`} color="text-violet-600" />
+            <StatCard label="Payment Methods" value={revenueBreakdown?.by_payment_method.length ?? '-'} sub="active methods" />
+          </div>
+
+          <Card>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Revenue by Product Type</h3>
+            {revenueBreakdown?.by_product_type?.length ? (
+              <HorizontalBarChart
+                items={revenueBreakdown.by_product_type.map((t) => ({ type: t.type, revenue: t.revenue }))}
+                labelKey="type"
+                valueKey="revenue"
+                maxValue={Math.max(...revenueBreakdown.by_product_type.map((t) => t.revenue))}
+                color="bg-emerald-500"
+              />
+            ) : (
+              <EmptyState title="No product type data" />
+            )}
+          </Card>
+
+          <Card>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Revenue by Payment Method</h3>
+            {revenueBreakdown?.by_payment_method?.length ? (
+              <HorizontalBarChart
+                items={revenueBreakdown.by_payment_method.map((m) => ({ method: m.method, revenue: m.revenue }))}
+                labelKey="method"
+                valueKey="revenue"
+                maxValue={Math.max(...revenueBreakdown.by_payment_method.map((m) => m.revenue))}
+                color="bg-amber-500"
+              />
+            ) : (
+              <EmptyState title="No payment method data" />
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ── Customer Metrics Tab ──────────────────────── */}
+      {tab === 'customers' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard label="Total Customers" value={customerMetrics?.total_customers ?? '-'} />
+            <StatCard label="New Customers" value={customerMetrics?.new_customers ?? '-'} color="text-emerald-600" sub={customerMetrics ? `${Math.round((customerMetrics.new_customers / Math.max(customerMetrics.total_customers, 1)) * 100)}% of total` : undefined} />
+            <StatCard label="Repeat Customers" value={customerMetrics?.repeat_customers ?? '-'} color="text-blue-600" sub={customerMetrics ? `${Math.round((customerMetrics.repeat_customers / Math.max(customerMetrics.total_customers, 1)) * 100)}% of total` : undefined} />
+            <StatCard label="Avg Order Value" value={customerMetrics ? formatCurrency(customerMetrics.avg_order_value) : '-'} color="text-violet-600" sub={customerMetrics ? `Avg collected: ${formatCurrency(customerMetrics.avg_collected)}` : undefined} />
+          </div>
+
+          <Card>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Customer Composition</h3>
+            {customerMetrics ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-700 w-28 shrink-0">New</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                      style={{ width: `${customerMetrics.total_customers > 0 ? (customerMetrics.new_customers / customerMetrics.total_customers) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-800 w-20 text-right shrink-0">
+                    {customerMetrics.total_customers > 0 ? Math.round((customerMetrics.new_customers / customerMetrics.total_customers) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-700 w-28 shrink-0">Repeat</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                      style={{ width: `${customerMetrics.total_customers > 0 ? (customerMetrics.repeat_customers / customerMetrics.total_customers) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-800 w-20 text-right shrink-0">
+                    {customerMetrics.total_customers > 0 ? Math.round((customerMetrics.repeat_customers / customerMetrics.total_customers) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="pt-3 border-t border-gray-100 flex gap-6 text-xs text-gray-500">
+                  <span>Total: {customerMetrics.total_customers}</span>
+                  <span>New: {customerMetrics.new_customers}</span>
+                  <span>Repeat: {customerMetrics.repeat_customers}</span>
+                </div>
+              </div>
+            ) : (
+              <EmptyState title="No customer data yet" />
             )}
           </Card>
         </div>

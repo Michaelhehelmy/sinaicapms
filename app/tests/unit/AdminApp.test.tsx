@@ -108,6 +108,9 @@ vi.mock('@/components/admin/InboxPanel', () => ({
 vi.mock('@/components/admin/StaffPanel', () => ({
   default: () => <div data-testid="staff-panel">Staff</div>,
 }));
+vi.mock('@/components/admin/ServiceBookingsPanel', () => ({
+  default: () => <div data-testid="service-bookings-panel">ServiceBookings</div>,
+}));
 
 describe('AdminApp', () => {
   beforeEach(() => {
@@ -431,10 +434,10 @@ describe('AdminApp', () => {
     expect(sidebar.queryByText('Settings')).not.toBeInTheDocument();
   });
 
-  it('tenant admin sees all 19 tenant nav items (no super tabs)', async () => {
+  it('tenant admin sees all 20 tenant nav items (no super tabs)', async () => {
     render(<AdminApp />);
     const tabIds = screen.getAllByTestId(/^nav-tab-/).map((el) => el.getAttribute('data-testid')!.replace('nav-tab-', ''));
-    expect(tabIds).toHaveLength(19);
+    expect(tabIds).toHaveLength(20);
     expect(tabIds).toContain('dashboard');
     expect(tabIds).toContain('camps');
     expect(tabIds).toContain('rooms');
@@ -451,6 +454,7 @@ describe('AdminApp', () => {
     expect(tabIds).toContain('low-stock');
     expect(tabIds).toContain('promotions');
     expect(tabIds).toContain('services');
+    expect(tabIds).toContain('service-bookings');
     expect(tabIds).toContain('staff');
     expect(tabIds).toContain('settings');
     expect(screen.queryByText('Super Admin')).not.toBeInTheDocument();
