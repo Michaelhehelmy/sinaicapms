@@ -3546,6 +3546,12 @@
               "subtotal": {
                 "type": "number"
               },
+              "originalSubtotal": {
+                "type": "number"
+              },
+              "discountAmount": {
+                "type": "number"
+              },
               "taxAmount": {
                 "type": "number"
               },
@@ -3563,6 +3569,35 @@
               },
               "status": {
                 "type": "string"
+              },
+              "tableId": {
+                "type": "string",
+                "nullable": true
+              },
+              "kitchenStatus": {
+                "type": "string"
+              },
+              "appliedPromotions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "promotionId": {
+                      "type": "string"
+                    },
+                    "promotionName": {
+                      "type": "string"
+                    },
+                    "discountAmount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "promotionId",
+                    "promotionName",
+                    "discountAmount"
+                  ]
+                }
               },
               "items": {
                 "type": "array",

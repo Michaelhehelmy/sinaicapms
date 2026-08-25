@@ -8998,12 +8998,21 @@ export interface components {
                 id: string;
                 orderNumber: string;
                 subtotal: number;
+                originalSubtotal?: number;
+                discountAmount?: number;
                 taxAmount: number;
                 totalAmount: number;
                 paymentMethod: string;
                 amountCash: number;
                 amountCard: number;
                 status: string;
+                tableId?: string | null;
+                kitchenStatus?: string;
+                appliedPromotions?: {
+                    promotionId: string;
+                    promotionName: string;
+                    discountAmount: number;
+                }[];
                 items: components["schemas"]["PosOrderItemResponse"][];
             };
         };

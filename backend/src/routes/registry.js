@@ -2365,12 +2365,25 @@ const posOrderCreateResponseSchema = z
       id: z.string(),
       orderNumber: z.string(),
       subtotal: z.number(),
+      originalSubtotal: z.number().optional(),
+      discountAmount: z.number().optional(),
       taxAmount: z.number(),
       totalAmount: z.number(),
       paymentMethod: z.string(),
       amountCash: z.number(),
       amountCard: z.number(),
       status: z.string(),
+      tableId: z.string().nullable().optional(),
+      kitchenStatus: z.string().optional(),
+      appliedPromotions: z
+        .array(
+          z.object({
+            promotionId: z.string(),
+            promotionName: z.string(),
+            discountAmount: z.number(),
+          }),
+        )
+        .optional(),
       items: z.array(posOrderItemResponseSchema),
     }),
   })
