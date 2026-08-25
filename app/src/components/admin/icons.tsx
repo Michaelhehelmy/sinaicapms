@@ -24,6 +24,7 @@ export {
   IconRatePlans,
   IconReports,
   IconRooms,
+  IconServices,
   IconSettings,
   IconShift,
   IconStaff,

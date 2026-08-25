@@ -1064,3 +1064,104 @@ export function applyPromotions(data: PromotionApplyRequest) {
     body: JSON.stringify(data),
   });
 }
+
+// ─── Dynamic Service Module ─────────────────────────────────────────────
+export interface ServiceDefinition {
+  id: string;
+  tenant_id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  fields_schema: unknown;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceItem {
+  id: string;
+  tenant_id: string;
+  service_definition_id: string;
+  project_id: string | null;
+  name: string;
+  description: string | null;
+  base_price: number;
+  meta_data: Record<string, unknown>;
+  status: string;
+  definition_name?: string;
+  definition_slug?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceBooking {
+  id: string;
+  tenant_id: string;
+  service_item_id: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  scheduled_date: string | null;
+  status: string;
+  notes: string | null;
+  item_name?: string;
+  definition_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Definitions
+export function getServiceDefinitions() {
+  return apiFetch<ServiceDefinition[]>('/services/definitions');
+}
+
+export function saveServiceDefinition(data: Partial<ServiceDefinition>, editId?: string) {
+  return apiFetch<{ id: string; success: boolean }>(editId ? `/services/definitions/${editId}` : '/services/definitions', {
+    method: editId ? 'PUT' : 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteServiceDefinition(id: string) {
+  return apiFetch<{ success: boolean }>(`/services/definitions/${id}`, { method: 'DELETE' });
+}
+
+// Items
+export function getServiceItems() {
+  return apiFetch<ServiceItem[]>('/services/items');
+}
+
+export function saveServiceItem(data: Partial<ServiceItem>, editId?: string) {
+  return apiFetch<{ id: string; success: boolean }>(editId ? `/services/items/${editId}` : '/services/items', {
+    method: editId ? 'PUT' : 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteServiceItem(id: string) {
+  return apiFetch<{ success: boolean }>(`/services/items/${id}`, { method: 'DELETE' });
+}
+
+// Bookings
+export function getServiceBookings(status?: string) {
+  const qs = status ? `?status=${status}` : '';
+  return apiFetch<ServiceBooking[]>(`/services/bookings${qs}`);
+}
+
+export function createServiceBooking(data: { service_item_id: string; customer_name?: string; customer_phone?: string; scheduled_date?: string; notes?: string }) {
+  return apiFetch<{ id: string; success: boolean; status: string }>('/services/bookings', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateBookingStatus(id: string, status: string) {
+  return apiFetch<{ id: string; status: string; success: boolean }>(`/services/bookings/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+// Public catalog
+export function getPublicServiceCatalog(slug: string) {
+  return apiFetch<{ tenant: { id: string; name: string }; definitions: ServiceDefinition[] }>(`/services/public/${slug}`);
+}

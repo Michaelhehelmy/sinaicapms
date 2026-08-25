@@ -30,6 +30,7 @@ import { tenantMetaRoutes, projectMetaRoutes } from './api/meta';
 import tagsRoutes, { projectTagsRoutes } from './api/tags';
 import auditRoutes from './api/audit';
 import posTablesRoutes from './api/pos-tables';
+import servicesRoutes from './api/services';
 import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
 import { withSunset } from './utils/deprecation.js';
@@ -363,6 +364,17 @@ const promotionsScope = async (c, next) =>
 app.use('/api/promotions', promotionsScope);
 app.use('/api/promotions/*', promotionsScope);
 app.route('/api/promotions', promotionsRoutes);
+
+// ── Dynamic Service Module. GET /public/:slug is public; everything else is admin-scoped.
+const servicesPublicScope = resolveScope({ public: true });
+const servicesAdminScope = resolveScope();
+const isServicesPublic = (c) =>
+  c.req.method === 'GET' && c.req.path.startsWith('/api/services/public/');
+const servicesScope = async (c, next) =>
+  isServicesPublic(c) ? servicesPublicScope(c, next) : servicesAdminScope(c, next);
+app.use('/api/services', servicesScope);
+app.use('/api/services/*', servicesScope);
+app.route('/api/services', servicesRoutes);
 
 // ── Unified inbox (Phase 4): auth + tenant scoped like leads/admin — NOT public.
 const inboxAdminScope = resolveScope();
