@@ -20,6 +20,7 @@ export {
   IconPlanning,
   IconPos,
   IconProducts,
+  IconPromotions,
   IconRatePlans,
   IconReports,
   IconRooms,

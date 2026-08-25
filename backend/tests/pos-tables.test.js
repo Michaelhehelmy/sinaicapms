@@ -480,6 +480,7 @@ describe('POS order flow — dine-in table integration', () => {
     const steps = [
       chainDb([{ is_active: 1 }]), // shift active check
       chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]), // product lookup
+      chainDb([]), // promotions (none active)
     ];
     if (tableRow !== undefined) steps.push(tableRow); // conditional ownership check
     steps.push(chainDb([{ tax_rate: '0.15' }])); // org tax rate

@@ -949,6 +949,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([{ ingredient_id: 'i1', quantity: 10 }]),
         chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '5' }]),
@@ -986,6 +987,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([{ ingredient_id: 'i1', quantity: 1 }]),
         chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
@@ -1000,7 +1002,7 @@ describe('POS Routes', () => {
       expect(db.batch).not.toHaveBeenCalled();
       const updateCalls = db.prepare.mock.calls.filter(([sql]) => String(sql).includes('UPDATE pos_products SET stock_quantity'));
       expect(updateCalls).toHaveLength(0);
-      expect(db.prepare).toHaveBeenCalledTimes(3);
+      expect(db.prepare).toHaveBeenCalledTimes(4);
     });
 
     it('commits stock deduction, transaction, and items in a single atomic batch', async () => {
@@ -1008,6 +1010,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([
           { ingredient_id: 'i1', quantity: 1 },
@@ -1051,6 +1054,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'coke', selling_price: '2', name: 'Coke' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.1' }]),
         chainDb([]), // no recipe rows for coke
         chainDb([]), // store lookup (cashier token has no storeId)
@@ -1088,6 +1092,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([
           { ingredient_id: 'i1', quantity: 1 },
@@ -1117,6 +1122,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([{ ingredient_id: 'i1', quantity: 1 }]),
         chainDb([]),
@@ -1155,8 +1161,9 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
-        chainDb([]),
+        chainDb([]), // no recipe
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1181,10 +1188,10 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
-        chainDb([]),
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax rate
+        chainDb([]), // recipe
+        chainDb([]), // store lookup
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1203,10 +1210,10 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
-        chainDb([]),
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax rate
+        chainDb([]), // recipe
+        chainDb([]), // store lookup
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1226,8 +1233,9 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax rate
+        chainDb([]), // recipe
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1249,8 +1257,9 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax rate
+        chainDb([]), // recipe
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1273,8 +1282,9 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax rate
+        chainDb([]), // recipe
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1294,7 +1304,8 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax_rate
         () => { throw new Error('DB fail'); },
       ]);
       const req = new Request('http://localhost/orders', {
@@ -1311,6 +1322,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([
           { ingredient_id: 'i1', quantity: 1 },
@@ -1363,6 +1375,7 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([
           { ingredient_id: 'i1', quantity: 1 },
@@ -1410,8 +1423,9 @@ describe('POS Routes', () => {
       const db = makeStepDb([
         chainDb([{ is_active: 1 }]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
+        chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
-        chainDb([]),
+        chainDb([]), // no recipe
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1434,8 +1448,9 @@ describe('POS Routes', () => {
         chainDb([{ is_active: 1 }]),
         chainDb([]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax rate
+        chainDb([]), // recipe
       ]);
       const req1 = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1480,8 +1495,9 @@ describe('POS Routes', () => {
           chainDb([{ is_active: 1 }]),
           chainDb([]),
           chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-          chainDb([]),
-          chainDb([]),
+          chainDb([]), // promotions (none active)
+          chainDb([]), // tax rate
+          chainDb([]), // recipe
         ]);
         const req = new Request('http://localhost/orders', {
           method: 'POST',
@@ -1506,8 +1522,9 @@ describe('POS Routes', () => {
         chainDb([{ is_active: 1 }]),
         chainDb([]),
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
-        chainDb([]),
-        chainDb([]),
+        chainDb([]), // promotions (none active)
+        chainDb([]), // tax rate
+        chainDb([]), // recipe lookup
         chainDb([]), // store lookup (cashier token has no storeId -> org's first store)
         chainDb([]), // product self-stock deduction statement (supermarket fix)
         chainDb([]), // pos_transactions INSERT statement
@@ -1532,18 +1549,19 @@ describe('POS Routes', () => {
     });
 
     // Step alignment for POST /orders with a cashier token (no storeId), one
-    // item, no recipes: auth probe, product fetch, tax rate, recipe lookup,
-    // store lookup, product self-deduction UPDATE, tx INSERT, item INSERT,
-    // THEN the post-commit low-stock SELECT.
+    // item, no recipes: auth probe, product fetch, promotions,
+    // tax rate, recipe lookup, store lookup, product self-deduction UPDATE, tx INSERT,
+    // item INSERT, THEN the post-commit low-stock SELECT.
     const orderFlowSteps = () => [
       chainDb([{ is_active: 1 }]),
       chainDb([{ id: 'coke', selling_price: '5', name: 'Coke' }]),
-      chainDb([]),
-      chainDb([]),
-      chainDb([]),
-      chainDb([]),
-      chainDb([]),
-      chainDb([]),
+      chainDb([]), // promotions (none active)
+      chainDb([]), // tax rate
+      chainDb([]), // recipe
+      chainDb([]), // store lookup
+      chainDb([]), // product self-deduction UPDATE
+      chainDb([]), // pos_transactions INSERT
+      chainDb([]), // pos_transaction_items INSERT
     ];
 
     it('inserts a low-stock inbox alert when the sold product hits its reorder level', async () => {

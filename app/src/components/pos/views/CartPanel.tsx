@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import * as apiClient from '@/lib/api';
+import type { PromotionApplyResult } from '@/lib/api';
 import { posUrl } from '@/lib/posUrl';
 import { push } from '@/lib/navigation';
 import ReceiptModal from './ReceiptModal';
@@ -14,7 +15,35 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
   const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'split'>('cash');
   const [splitCash, setSplitCash] = useState('');
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
+  const [promoResult, setPromoResult] = useState<PromotionApplyResult | null>(null);
   const { showToast } = useToast();
+
+  // Debounce timer for promotion preview
+  const promoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fire promotion preview whenever cart changes
+  useEffect(() => {
+    if (promoTimer.current) clearTimeout(promoTimer.current);
+
+    if (cart.length === 0) {
+      setPromoResult(null);
+      return;
+    }
+
+    promoTimer.current = setTimeout(async () => {
+      try {
+        const res = (await apiClient.applyPromotions({
+          items: cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
+        })) as PromotionApplyResult;
+        setPromoResult(res);
+      } catch {
+        // Non-critical: promo preview failed, checkout still handles it server-side
+        setPromoResult(null);
+      }
+    }, 300);
+
+    return () => { if (promoTimer.current) clearTimeout(promoTimer.current); };
+  }, [cart]);
 
   function updateQty(productId: string, delta: number) {
     setCart((prev) =>
@@ -27,8 +56,10 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
   const subtotal = cart.reduce((sum, i) => sum + i.product.sellingPrice * i.quantity, 0);
   // Server-driven tax: org tax_rate from the POS login response; fall back to 10%.
   const taxRate = typeof user.taxRate === 'number' && user.taxRate >= 0 ? user.taxRate : 0.1;
-  const tax = subtotal * taxRate;
-  const total = subtotal + tax;
+  const discount = promoResult?.total_discount ?? 0;
+  const discountedSubtotal = Math.max(0, subtotal - discount);
+  const tax = Math.round(discountedSubtotal * taxRate * 100) / 100;
+  const total = Math.round((discountedSubtotal + tax) * 100) / 100;
 
   const splitCashAmt = payMethod === 'split' ? (parseFloat(splitCash) || 0) : 0;
   const splitCardAmt = Math.round((total - splitCashAmt) * 100) / 100;
@@ -109,6 +140,20 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
       </div>
       <div className="px-5 py-4 border-t border-gray-200 space-y-2 bg-gray-50">
         <div className="flex justify-between text-sm text-gray-600" data-testid="cart-subtotal"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
+        {discount > 0 && (
+          <div className="flex justify-between text-sm text-emerald-600 font-medium" data-testid="cart-discount">
+            <span className="flex items-center gap-1">
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><circle cx="7" cy="7" r="1.5" /></svg>
+              Discount
+              {promoResult?.items?.some((i) => i.promotion_name) && (
+                <span className="text-xs text-gray-400 font-normal ml-1">
+                  ({[...new Set(promoResult.items.filter((i) => i.promotion_name).map((i) => i.promotion_name))].join(', ')})
+                </span>
+              )}
+            </span>
+            <span>-${discount.toFixed(2)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sm text-gray-600" data-testid="cart-tax"><span>Tax ({Math.round(taxRate * 100)}%)</span><span>${tax.toFixed(2)}</span></div>
         <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t border-gray-300" data-testid="cart-total"><span>Total</span><span>${total.toFixed(2)}</span></div>
 

@@ -1006,3 +1006,61 @@ export async function getAuditLog(
   const qs = search.toString();
   return apiFetch(`/audit${qs ? `?${qs}` : ''}`);
 }
+
+// ─── Promotions ───────────────────────────────────────────────────────
+export interface Promotion {
+  id: string;
+  name: string;
+  type: 'percentage' | 'fixed' | 'bogo';
+  value: number;
+  applies_to: 'all' | 'category' | 'product';
+  applies_to_id: string | null;
+  min_purchase: number;
+  day_of_week: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: number;
+  created_at: string;
+}
+
+export interface PromotionApplyRequest {
+  items: Array<{ productId: string; quantity: number }>;
+}
+
+export interface PromotionApplyResult {
+  items: Array<{
+    product_id: string;
+    quantity: number;
+    unit_price: number;
+    final_price: number;
+    discount: number;
+    promotion_id: string | null;
+    promotion_name: string | null;
+  }>;
+  subtotal: number;
+  total_discount: number;
+  total: number;
+}
+
+export function getPromotions(includeInactive?: boolean) {
+  const qs = includeInactive ? '?includeInactive=1' : '';
+  return apiFetch<Promotion[]>(`/promotions${qs}`);
+}
+
+export function savePromotion(data: Partial<Promotion>, editId?: string) {
+  return apiFetch<{ id: string; success: boolean }>(editId ? `/promotions/${editId}` : '/promotions', {
+    method: editId ? 'PUT' : 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deletePromotion(id: string) {
+  return apiFetch<{ success: boolean }>(`/promotions/${id}`, { method: 'DELETE' });
+}
+
+export function applyPromotions(data: PromotionApplyRequest) {
+  return apiFetch<PromotionApplyResult>('/promotions/apply', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}

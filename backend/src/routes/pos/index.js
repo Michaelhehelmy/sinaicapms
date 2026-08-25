@@ -378,7 +378,7 @@ pos.post('/orders', async (c) => {
     const productIds = items.map((i) => i.productId);
     const placeholders = productIds.map(() => '?').join(',');
     const { results: productRows } = await env.DB.prepare(
-      `SELECT id, selling_price, name FROM pos_products
+      `SELECT id, selling_price, name, category_id FROM pos_products
        WHERE id IN (${placeholders}) AND organization_id = ?`
     ).bind(...productIds, organizationId).all();
     const productMap = new Map(productRows.map((p) => [p.id, p]));
@@ -411,6 +411,82 @@ pos.post('/orders', async (c) => {
       });
     }
 
+    // ── Apply promotions (0071) ────────────────────────────
+    // Best promo per item wins; discounts are applied BEFORE tax.
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const categoryByProduct = new Map(productRows.map((p) => [p.id, p.category_id]));
+    let totalDiscount = 0;
+    const discountRows = [];
+
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const dow = new Date().getUTCDay();
+      const { results: promoRows } = await env.DB.prepare(
+        'SELECT * FROM promotions WHERE tenant_id = ? AND is_active = 1'
+      ).bind(tenantId).all();
+
+      const eligiblePromos = promoRows.filter((p) => {
+        if (p.day_of_week != null && p.day_of_week !== dow) return false;
+        if (p.start_date && today < p.start_date) return false;
+        if (p.end_date && today > p.end_date) return false;
+        if ((p.min_purchase || 0) > subtotal) return false;
+        return true;
+      });
+
+      if (eligiblePromos.length > 0) {
+        const matchesItem = (promo, productId) => {
+          if (promo.applies_to === 'product') return promo.applies_to_id === productId;
+          if (promo.applies_to === 'category') {
+            const catId = categoryByProduct.get(productId);
+            return catId != null && promo.applies_to_id === catId;
+          }
+          return true; // applies_to === 'all'
+        };
+
+        const discountFor = (promo, unitPrice, quantity) => {
+          if (promo.type === 'percentage') {
+            return round2(unitPrice * quantity * ((promo.value || 0) / 100));
+          }
+          if (promo.type === 'fixed') {
+            return round2(Math.min(promo.value || 0, unitPrice) * quantity);
+          }
+          // bogo: every second unit free
+          return round2(Math.floor(quantity / 2) * unitPrice);
+        };
+
+        for (const row of itemRows) {
+          let best = null;
+          for (const promo of eligiblePromos) {
+            if (!matchesItem(promo, row.productId)) continue;
+            const discount = discountFor(promo, row.unitPrice, row.quantity);
+            if (discount > 0 && (!best || discount > best.discount)) {
+              best = { discount, promotionId: promo.id, promotionName: promo.name, type: promo.type, value: promo.value };
+            }
+          }
+          if (best) {
+            totalDiscount += best.discount;
+            discountRows.push({
+              id: 'disc_' + crypto.randomUUID().slice(0, 12),
+              tenantId,
+              orderId,
+              transactionItemId: row.id,
+              promotionId: best.promotionId,
+              promotionName: best.promotionName,
+              discountType: best.type,
+              discountValue: best.value,
+              discountAmount: best.discount,
+            });
+            // Adjust item total to reflect discount
+            row.totalAmount = round2(row.totalAmount - best.discount);
+            row.subtotal = row.totalAmount;
+          }
+        }
+        totalDiscount = round2(totalDiscount);
+      }
+    } catch {
+      // Promotion lookup is best-effort — never fail the order.
+    }
+
     // ── Validate dine-in table ownership (0069) ───────────
     // Only queried when a tableId was supplied so takeout flows (and legacy
     // clients) keep their exact DB call sequence.
@@ -434,8 +510,10 @@ pos.post('/orders', async (c) => {
       }
     } catch { /* use default */ }
 
-    const taxAmount = subtotal * taxRate;
-    const totalAmount = subtotal + taxAmount;
+    // Tax is calculated on the discounted subtotal (promotions applied before tax)
+    const discountedSubtotal = Math.max(0, round2(subtotal - totalDiscount));
+    const taxAmount = round2(discountedSubtotal * taxRate);
+    const totalAmount = round2(discountedSubtotal + taxAmount);
 
     // ── Split payment amounts ─────────────────────────────
     let finalAmountCash = 0;
@@ -539,7 +617,7 @@ pos.post('/orders', async (c) => {
       ).bind(
         orderId, tenantId, organizationId, storeId, orderNumber,
         String(posUser.userId),
-        subtotal, taxAmount, taxRate, totalAmount,
+        discountedSubtotal, taxAmount, taxRate, totalAmount,
         totalAmount, method,
         notes || null,
         finalAmountCash, finalAmountCard,
@@ -567,6 +645,22 @@ pos.post('/orders', async (c) => {
             (id, tenant_id, order_id, product_id, quantity, unit_price, subtotal, tax_amount, total_amount, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))`
         ).bind(row.id, row.tenantId, row.orderId, row.productId, row.quantity, row.unitPrice, row.subtotal, row.totalAmount)
+      );
+    }
+
+    // ── Order discount records (0071) ──────────────────────
+    for (const disc of discountRows) {
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO order_discounts
+            (id, tenant_id, order_id, transaction_item_id, promotion_id, promotion_name,
+             discount_type, discount_value, discount_amount, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+        ).bind(
+          disc.id, disc.tenantId, disc.orderId, disc.transactionItemId,
+          disc.promotionId, disc.promotionName, disc.discountType,
+          disc.discountValue, disc.discountAmount
+        )
       );
     }
 
@@ -664,7 +758,9 @@ pos.post('/orders', async (c) => {
       order: {
         id: orderId,
         orderNumber,
-        subtotal,
+        subtotal: discountedSubtotal,
+        originalSubtotal: subtotal,
+        discountAmount: totalDiscount,
         taxAmount,
         totalAmount,
         paymentMethod: method,
@@ -673,6 +769,11 @@ pos.post('/orders', async (c) => {
         status: 'completed',
         tableId,
         kitchenStatus: 'confirmed',
+        appliedPromotions: discountRows.map((d) => ({
+          promotionId: d.promotionId,
+          promotionName: d.promotionName,
+          discountAmount: d.discountAmount,
+        })),
         items: itemRows.map((r) => ({
           id: r.id,
           productId: r.productId,

@@ -19,6 +19,7 @@ import {
   IconMenu,
   IconOrders,
   IconPlanning,
+  IconPromotions,
   IconRatePlans,
   IconReports,
   IconRooms,
@@ -62,6 +63,7 @@ const MenuPlannerPanel = React.lazy(() => import('./MenuPlannerPanel'));
 const LowStockPanel = React.lazy(() => import('./LowStockPanel'));
 const StaffPanel = React.lazy(() => import('./StaffPanel'));
 const InboxPanel = React.lazy(() => import('./InboxPanel'));
+const PromotionsPanel = React.lazy(() => import('./PromotionsPanel'));
 const SuperTenantsPanel = React.lazy(() => import('./SuperTenantsPanel'));
 const SuperDashboardPanel = React.lazy(() => import('./SuperDashboardPanel'));
 const SuperOrdersPanel = React.lazy(() => import('./SuperOrdersPanel'));
@@ -88,6 +90,7 @@ const TENANT_NAV: NavItem[] = [
   { id: 'planning', label: 'Planning', icon: IconPlanning },
   { id: 'reports', label: 'Reports', icon: IconReports },
   { id: 'low-stock', label: 'Low Stock', icon: IconLowStock },
+  { id: 'promotions', label: 'Promotions', icon: IconPromotions },
   { id: 'staff', label: 'Staff', icon: IconStaff },
   { id: 'settings', label: 'Settings', icon: IconSettings },
 ];
@@ -280,6 +283,8 @@ function AdminAppInner() {
         return <ReportsPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'low-stock':
         return <LowStockPanel />;
+      case 'promotions':
+        return <PromotionsPanel />;
       case 'staff':
         return <StaffPanel />;
       case 'settings':
