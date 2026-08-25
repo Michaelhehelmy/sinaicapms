@@ -463,5 +463,72 @@ export async function handleAuthRoute(request, env) {
     }
   }
 
+  // ───── POST /api/auth/auto-login ─────
+  // C1.1: Token-based auto-login after onboarding signup. The onboarding
+  // completion endpoint generates a short-lived token; this endpoint
+  // exchanges it for a full JWT pair (same shape as POST /login).
+  if (subRoute === 'auto-login' && method === 'POST') {
+    try {
+      const body = await request.json();
+      const { token } = body;
+      if (!token) return errorResponse('Token is required', 400);
+
+      const admin = await env.DB.prepare(
+        `SELECT id, email, password_hash, role, tenant_id, first_name, last_name, is_active
+         FROM admins WHERE auto_login_token = ? AND is_active = 1`
+      ).bind(token).first();
+
+      if (!admin) return errorResponse('Invalid or expired auto-login token', 401);
+
+      // Check token expiry (24 hours)
+      const adminFull = await env.DB.prepare(
+        'SELECT auto_login_expires_at FROM admins WHERE id = ?'
+      ).bind(admin.id).first();
+      if (adminFull?.auto_login_expires_at) {
+        const expiresAt = new Date(adminFull.auto_login_expires_at);
+        if (expiresAt < new Date()) {
+          return errorResponse('Auto-login token has expired', 401);
+        }
+      }
+
+      const secret = getJwtSecret(env);
+
+      // Clear the auto-login token (single use)
+      await env.DB.prepare(
+        'UPDATE admins SET auto_login_token = NULL, auto_login_expires_at = NULL, last_login = datetime(\'now\') WHERE id = ?'
+      ).bind(admin.id).run();
+
+      // Generate JWT tokens (same as regular login)
+      const accessToken = await generateToken(
+        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id, email: admin.email, role: admin.role, userType: 'platform' },
+        secret,
+        'access'
+      );
+
+      const refreshToken = await generateToken(
+        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id, userType: 'platform' },
+        secret,
+        'refresh'
+      );
+
+      const displayName = [admin.first_name, admin.last_name].filter(Boolean).join(' ') || admin.email;
+
+      return jsonResponse({
+        success: true,
+        token: accessToken,
+        refreshToken,
+        user: {
+          id: admin.id,
+          name: displayName,
+          email: admin.email,
+          role: admin.role,
+          tenantId: admin.tenant_id,
+        },
+      });
+    } catch (e) {
+      return errorResponse('Auto-login failed');
+    }
+  }
+
   return errorResponse('Auth endpoint not found', 404);
 }

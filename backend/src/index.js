@@ -32,6 +32,7 @@ import tagsRoutes, { projectTagsRoutes } from './api/tags';
 import auditRoutes from './api/audit';
 import posTablesRoutes from './api/pos-tables';
 import servicesRoutes from './api/services';
+import marketplaceRoutes from './api/marketplace';
 import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
 import { withSunset } from './utils/deprecation.js';
@@ -116,6 +117,50 @@ app.get('/', (c) => c.html(`<!DOCTYPE html>
   <h1>SinaiCamps API</h1>
   <p>Serverless API worker is running.</p>
 </body></html>`));
+
+// ── Health check endpoint (E1.2) — returns DB connectivity + version ──
+app.get('/healthz', async (c) => {
+  const startTime = Date.now();
+  const checks = {};
+  let healthy = true;
+
+  // 1. Database connectivity
+  try {
+    await c.env.DB.prepare('SELECT 1').first();
+    checks.database = { status: 'ok', latency_ms: Date.now() - startTime };
+  } catch (e) {
+    checks.database = { status: 'error', message: e.message };
+    healthy = false;
+  }
+
+  // 2. KV binding availability (may be empty on free plan)
+  try {
+    if (c.env.KV_CACHE) {
+      await c.env.KV_CACHE.get('__healthcheck');
+      checks.kv = { status: 'ok' };
+    } else {
+      checks.kv = { status: 'skipped', reason: 'KV_CACHE not bound' };
+    }
+  } catch (e) {
+    checks.kv = { status: 'error', message: e.message };
+    // KV failure is non-critical (rate limiter falls back to memory)
+  }
+
+  // 3. R2 binding availability
+  try {
+    checks.r2 = c.env.MEDIA_BUCKET ? { status: 'ok' } : { status: 'skipped', reason: 'MEDIA_BUCKET not bound' };
+  } catch {
+    checks.r2 = { status: 'skipped' };
+  }
+
+  return jsonResponse({
+    status: healthy ? 'healthy' : 'degraded',
+    version: '3.0.0',
+    timestamp: new Date().toISOString(),
+    uptime_ms: Date.now() - startTime,
+    checks,
+  });
+});
 
 // ── Auth routes (rate-limited by policy table: /api/auth/* 30/min) ────────
 // Phase 9: consolidated POS login — canonical path, shared handler with the
@@ -376,6 +421,13 @@ const servicesScope = async (c, next) =>
 app.use('/api/services', servicesScope);
 app.use('/api/services/*', servicesScope);
 app.route('/api/services', servicesRoutes);
+
+// ── Public Marketplace (C3). All endpoints are public (no auth required).
+// Directory, search, categories, reviews — the public-facing discovery surface.
+const marketplacePublicScope = resolveScope({ public: true });
+app.use('/api/marketplace', marketplacePublicScope);
+app.use('/api/marketplace/*', marketplacePublicScope);
+app.route('/api/marketplace', marketplaceRoutes);
 
 // ── Self-service onboarding. All endpoints are public (no auth required).
 const onboardingPublicScope = resolveScope({ public: true });

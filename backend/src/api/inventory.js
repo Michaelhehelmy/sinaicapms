@@ -19,7 +19,7 @@ const inventoryRoutes = new Hono();
 
 // Legacy fallthrough guard: method check ran before path parsing.
 inventoryRoutes.use('*', async (c, next) => {
-  if (c.req.method !== 'GET') {
+  if (!['GET', 'POST', 'PUT'].includes(c.req.method)) {
     return errorResponse('Method not allowed', 405);
   }
   await next();
@@ -90,6 +90,59 @@ inventoryRoutes.get('/low-stock', async (c) => {
   } catch (e) {
     return errorResponse('Failed to load low-stock inventory', 500);
   }
+});
+
+inventoryRoutes.get('/adjustments', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  const { results } = await env.DB.prepare(
+    `SELECT ia.*, p.name as product_name
+     FROM inventory_adjustments ia
+     JOIN pos_products p ON ia.product_id = p.id
+     WHERE ia.tenant_id = ?
+     ORDER BY ia.created_at DESC LIMIT 100`
+  ).bind(tenantId).all();
+  return jsonResponse(results);
+});
+
+inventoryRoutes.post('/adjustments', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  const body = await c.req.json();
+  const { product_id, adjustment, reason, reference, notes } = body;
+  if (!product_id || typeof adjustment !== 'number') {
+    return errorResponse('product_id and adjustment (number) are required', 400);
+  }
+  const product = await env.DB.prepare(
+    'SELECT id, stock_quantity FROM pos_products WHERE id = ? AND tenant_id = ?'
+  ).bind(product_id, tenantId).first();
+  if (!product) return errorResponse('Product not found', 404);
+  if (product.stock_quantity + adjustment < 0) {
+    return errorResponse('Adjustment would result in negative stock', 400);
+  }
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO inventory_adjustments (id, tenant_id, product_id, adjustment, reason, reference, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id, tenantId, product_id, adjustment, reason || 'manual', reference || null, notes || null).run();
+  await env.DB.prepare(
+    `UPDATE pos_products SET stock_quantity = stock_quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?`
+  ).bind(adjustment, product_id, tenantId).run();
+  return jsonResponse({ id, success: true, new_stock: product.stock_quantity + adjustment }, 201);
+});
+
+inventoryRoutes.get('/reorder-suggestions', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  const { results } = await env.DB.prepare(
+    `SELECT p.id, p.name, p.stock_quantity, p.reorder_point, p.min_stock_level, p.supplier_name,
+            (p.reorder_point - p.stock_quantity) as suggested_order_qty
+     FROM pos_products p
+     WHERE p.tenant_id = ? AND p.is_active = 1 AND p.deleted_at IS NULL
+       AND p.stock_quantity <= p.reorder_point
+     ORDER BY (p.stock_quantity * 1.0 / NULLIF(p.reorder_point, 0)) ASC`
+  ).bind(tenantId).all();
+  return jsonResponse({ suggestions: results });
 });
 
 // Legacy fallthrough: every other inventory path keeps the dispatcher message.

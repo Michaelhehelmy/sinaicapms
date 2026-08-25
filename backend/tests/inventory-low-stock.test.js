@@ -174,8 +174,8 @@ describe('GET /api/inventory/low-stock', () => {
     expect(body.pageSize).toBe(200);
   });
 
-  it('returns 405 for non-GET methods', async () => {
-    const res = await request(URL, 'POST', {});
+  it('returns 405 for unsupported methods (DELETE)', async () => {
+    const res = await request(URL, 'DELETE');
     expect(res.status).toBe(405);
     const body = await res.json();
     expect(body.success).toBe(false);

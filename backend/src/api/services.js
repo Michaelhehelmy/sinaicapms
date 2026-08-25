@@ -281,6 +281,147 @@ router.patch('/bookings/:id/status', async (c) => {
   return jsonResponse(c, { id, status, success: true });
 });
 
+// PATCH /bookings/:id/assign — Assign a worker to a booking
+router.patch('/bookings/:id/assign', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const { id } = c.req.param();
+  const raw = await c.req.json();
+  const { assigned_worker_id } = raw;
+  if (!assigned_worker_id) return errorResponse(c, 'assigned_worker_id is required', 400);
+  const booking = await c.env.DB.prepare(
+    'SELECT id FROM service_bookings WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!booking) return errorResponse(c, 'Booking not found', 404);
+  await c.env.DB.prepare(
+    'UPDATE service_bookings SET assigned_worker_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?'
+  ).bind(assigned_worker_id, id, tenantId).run();
+  return jsonResponse(c, { id, assigned_worker_id, success: true });
+});
+
+// GET /items/:id/availability — Get availability calendar for an item (next 30 days)
+router.get('/items/:id/availability', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const { id } = c.req.param();
+  const item = await c.env.DB.prepare(
+    'SELECT id FROM service_items WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!item) return errorResponse(c, 'Service item not found', 404);
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM service_availability
+     WHERE service_item_id = ? AND available_date >= date('now')
+     ORDER BY available_date, available_from`
+  ).bind(id).all();
+  return jsonResponse(c, results.map(toCamel));
+});
+
+// POST /items/:id/availability — Create availability slot
+router.post('/items/:id/availability', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const { id } = c.req.param();
+  const item = await c.env.DB.prepare(
+    'SELECT id FROM service_items WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!item) return errorResponse(c, 'Service item not found', 404);
+  const raw = await c.req.json();
+  const { available_date, available_from, available_to, worker_id, is_available } = raw;
+  if (!available_date) return errorResponse(c, 'available_date is required', 400);
+  const slotId = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO service_availability (id, tenant_id, service_item_id, available_date, available_from, available_to, worker_id, is_available)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(slotId, tenantId, id, available_date, available_from || null, available_to || null, worker_id || null, is_available !== false ? 1 : 0).run();
+  return jsonResponse(c, { id: slotId, success: true }, 201);
+});
+
+// DELETE /availability/:id — Delete an availability slot
+router.delete('/availability/:id', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const { id } = c.req.param();
+  const slot = await c.env.DB.prepare(
+    'SELECT id FROM service_availability WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!slot) return errorResponse(c, 'Availability slot not found', 404);
+  await c.env.DB.prepare(
+    'DELETE FROM service_availability WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).run();
+  return jsonResponse(c, { success: true });
+});
+
+// GET /bookings/:id/reviews — Get reviews for a booking's service item
+router.get('/bookings/:id/reviews', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const { id } = c.req.param();
+  const booking = await c.env.DB.prepare(
+    'SELECT service_item_id FROM service_bookings WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!booking) return errorResponse(c, 'Booking not found', 404);
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM service_reviews WHERE service_item_id = ? ORDER BY created_at DESC'
+  ).bind(booking.service_item_id).all();
+  return jsonResponse(c, results.map(toCamel));
+});
+
+// POST /reviews — Create a review
+router.post('/reviews', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const raw = await c.req.json();
+  const { service_item_id, booking_id, customer_name, rating, comment } = raw;
+  if (!service_item_id) return errorResponse(c, 'service_item_id is required', 400);
+  if (typeof rating !== 'number' || rating < 1 || rating > 5) {
+    return errorResponse(c, 'rating must be a number between 1 and 5', 400);
+  }
+  const item = await c.env.DB.prepare(
+    'SELECT id FROM service_items WHERE id = ? AND tenant_id = ?'
+  ).bind(service_item_id, tenantId).first();
+  if (!item) return errorResponse(c, 'Service item not found', 404);
+  const reviewId = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO service_reviews (id, tenant_id, service_item_id, booking_id, customer_name, rating, comment)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).bind(reviewId, tenantId, service_item_id, booking_id || null, customer_name || null, rating, comment || null).run();
+  return jsonResponse(c, { id: reviewId, success: true }, 201);
+});
+
+// GET /reviews — List all reviews for tenant
+router.get('/reviews', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const { results } = await c.env.DB.prepare(
+    `SELECT sr.*, si.name as item_name
+     FROM service_reviews sr
+     JOIN service_items si ON sr.service_item_id = si.id
+     WHERE sr.tenant_id = ?
+     ORDER BY sr.created_at DESC`
+  ).bind(tenantId).all();
+  return jsonResponse(c, results.map(toCamel));
+});
+
+// PUT /items/:id/pricing — Update pricing tier for an item
+router.put('/items/:id/pricing', async (c) => {
+  const tenantId = getTenantId(c);
+  if (!tenantId) return errorResponse(c, 'Tenant ID required', 400);
+  const { id } = c.req.param();
+  const raw = await c.req.json();
+  const { price_tier, price_premium } = raw;
+  if (!price_tier || !['standard', 'premium', 'luxury'].includes(price_tier)) {
+    return errorResponse(c, "price_tier must be 'standard', 'premium', or 'luxury'", 400);
+  }
+  const item = await c.env.DB.prepare(
+    'SELECT id FROM service_items WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!item) return errorResponse(c, 'Service item not found', 404);
+  await c.env.DB.prepare(
+    `UPDATE service_items SET price_tier = ?, price_premium = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?`
+  ).bind(price_tier, price_premium || 0, id, tenantId).run();
+  return jsonResponse(c, { id, success: true });
+});
+
 // GET /public/:slug — public catalog for a tenant (no auth required)
 router.get('/public/:slug', async (c) => {
   const { slug } = c.req.param();

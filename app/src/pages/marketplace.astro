@@ -1,0 +1,15 @@
+---
+// Public marketplace directory page (/marketplace). Displays a searchable,
+// filterable, paginated directory of all registered camps via the
+// MarketplaceDirectory React island.
+import PublicLayout from '../layouts/PublicLayout.astro';
+import MarketplaceDirectory from '../components/public/MarketplaceDirectory';
+---
+
+<PublicLayout
+  title="Discover Camps — SinaiCamps Marketplace"
+  description="Discover premium adventure camps near Sinai. Browse camp accommodations, check availability, and connect with camp directors."
+  activePage="camps"
+>
+  <MarketplaceDirectory client:load />
+</PublicLayout>

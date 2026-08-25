@@ -162,17 +162,16 @@ reportsRoutes.get('/top-products', async (c) => {
       `SELECT p.id, p.name, SUM(oi.quantity) as total_qty,
               SUM(oi.quantity * oi.unit_price) as total_revenue,
               COUNT(DISTINCT o.id) as order_count
-       FROM pos_order_items oi
-       JOIN pos_products p ON p.id = oi.product_id AND p.organization_id = oi.organization_id
-       JOIN pos_transactions o ON o.id = oi.transaction_id AND o.tenant_id = oi.organization_id
-       WHERE oi.organization_id = ?
-         AND o.tenant_id = ?
+       FROM pos_transaction_items oi
+       JOIN pos_products p ON p.id = oi.product_id AND p.tenant_id = oi.tenant_id
+       JOIN pos_transactions o ON o.id = oi.transaction_id AND o.tenant_id = oi.tenant_id
+       WHERE oi.tenant_id = ?
          AND o.created_at >= ?
          AND o.status != 'voided'
        GROUP BY p.id, p.name
        ORDER BY total_qty DESC
        LIMIT ?`
-    ).bind(tenantId, tenantId, cutoffStr, limit).all();
+    ).bind(tenantId, cutoffStr, limit).all();
 
     return jsonResponse({ days, top_products: results });
   } catch (e) {
@@ -248,9 +247,138 @@ reportsRoutes.get('/low-stock', async (c) => {
   }
 });
 
+// ── Revenue Breakdown: revenue by product type, payment method ──────────
+reportsRoutes.get('/revenue-breakdown', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  try {
+    const days = parseInt(c.req.query('days') || '30');
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+    // POS revenue by product type
+    const { results: byProductType } = await env.DB.prepare(
+      `SELECT p.type, SUM(ti.quantity * ti.unit_price) as revenue, COUNT(DISTINCT o.id) as order_count
+       FROM pos_transaction_items ti
+       JOIN pos_products p ON p.id = ti.product_id AND p.tenant_id = ti.tenant_id
+       JOIN pos_transactions o ON o.id = ti.transaction_id AND o.tenant_id = ti.tenant_id
+       WHERE ti.tenant_id = ? AND o.created_at >= ? AND o.status != 'voided'
+       GROUP BY p.type ORDER BY revenue DESC`
+    ).bind(tenantId, cutoffStr).all();
+
+    // POS revenue by payment method
+    const { results: byPayment } = await env.DB.prepare(
+      `SELECT COALESCE(payment_method, 'unknown') as method, SUM(total_amount) as revenue, COUNT(*) as count
+       FROM pos_transactions
+       WHERE tenant_id = ? AND created_at >= ? AND status != 'voided'
+       GROUP BY payment_method ORDER BY revenue DESC`
+    ).bind(tenantId, cutoffStr).all();
+
+    // Accommodation revenue
+    const { results: accommodation } = await env.DB.prepare(
+      `SELECT SUM(total_amount) as revenue, COUNT(*) as order_count
+       FROM orders WHERE tenant_id = ? AND created_at >= ? AND order_state_id != 'cancelled'`
+    ).bind(tenantId, cutoffStr).all();
+
+    return jsonResponse({
+      days,
+      by_product_type: byProductType,
+      by_payment_method: byPayment,
+      accommodation: accommodation[0] || { revenue: 0, order_count: 0 },
+    });
+  } catch (e) {
+    return errorResponse('Failed to load revenue breakdown');
+  }
+});
+
+// ── Customer Metrics: customer statistics ────────────────────────────────
+reportsRoutes.get('/customer-metrics', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  try {
+    const days = parseInt(c.req.query('days') || '30');
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+    // Total customers
+    const { results: totalRes } = await env.DB.prepare(
+      'SELECT COUNT(*) as count FROM customers WHERE tenant_id = ?'
+    ).bind(tenantId).all();
+
+    // New customers in period
+    const { results: newRes } = await env.DB.prepare(
+      "SELECT COUNT(*) as count FROM customers WHERE tenant_id = ? AND created_at >= ?"
+    ).bind(tenantId, cutoffStr).all();
+
+    // Repeat customers (ordered more than once)
+    const { results: repeatRes } = await env.DB.prepare(
+      `SELECT COUNT(*) as count FROM (
+        SELECT customer_id FROM orders
+        WHERE tenant_id = ? AND customer_id IS NOT NULL AND created_at >= ?
+        GROUP BY customer_id HAVING COUNT(*) > 1
+      )`
+    ).bind(tenantId, cutoffStr).all();
+
+    // Average order value
+    const { results: aovRes } = await env.DB.prepare(
+      `SELECT AVG(total_amount) as avg_order_value, AVG(amount_paid) as avg_collected
+       FROM orders WHERE tenant_id = ? AND created_at >= ? AND order_state_id != 'cancelled'`
+    ).bind(tenantId, cutoffStr).all();
+
+    return jsonResponse({
+      days,
+      total_customers: totalRes[0]?.count || 0,
+      new_customers: newRes[0]?.count || 0,
+      repeat_customers: repeatRes[0]?.count || 0,
+      avg_order_value: aovRes[0]?.avg_order_value || 0,
+      avg_collected: aovRes[0]?.avg_collected || 0,
+    });
+  } catch (e) {
+    return errorResponse('Failed to load customer metrics');
+  }
+});
+
+// ── Seasonal: monthly comparison for last 12 months ─────────────────────
+reportsRoutes.get('/seasonal', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  try {
+    // Last 12 months of revenue
+    const { results: monthly } = await env.DB.prepare(
+      `SELECT strftime('%Y-%m', created_at) as month,
+              SUM(total_amount) as revenue,
+              COUNT(*) as order_count
+       FROM orders
+       WHERE tenant_id = ? AND created_at >= date('now', '-12 months') AND order_state_id != 'cancelled'
+       GROUP BY strftime('%Y-%m', created_at)
+       ORDER BY month ASC`
+    ).bind(tenantId).all();
+
+    // POS revenue by month
+    const { results: posMonthly } = await env.DB.prepare(
+      `SELECT strftime('%Y-%m', created_at) as month,
+              SUM(total_amount) as revenue,
+              COUNT(*) as tx_count
+       FROM pos_transactions
+       WHERE tenant_id = ? AND created_at >= date('now', '-12 months') AND status != 'voided'
+       GROUP BY strftime('%Y-%m', created_at)
+       ORDER BY month ASC`
+    ).bind(tenantId).all();
+
+    return jsonResponse({
+      accommodation_monthly: monthly,
+      pos_monthly: posMonthly,
+    });
+  } catch (e) {
+    return errorResponse('Failed to load seasonal data');
+  }
+});
+
 // Legacy fallthrough: unknown report types keep the exact dispatcher message.
 reportsRoutes.all('*', () =>
-  errorResponse('Report type not found. Available: occupancy, revenue, bookings, top-products, kitchen-performance, low-stock', 404)
+  errorResponse('Report type not found. Available: occupancy, revenue, bookings, top-products, kitchen-performance, low-stock, revenue-breakdown, customer-metrics, seasonal', 404)
 );
 
 export default reportsRoutes;

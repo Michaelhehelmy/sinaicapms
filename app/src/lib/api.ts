@@ -1247,6 +1247,7 @@ export interface OnboardingSetupResult {
   tenant_id: string;
   message: string;
   site_url: string;
+  auto_login_token?: string;
 }
 
 export function signupTenant(data: {
@@ -1292,4 +1293,253 @@ export function updateOnboardingTenant(data: {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+// ─── Auto-Login (C1.1) ───────────────────────────────────────────────────
+export function autoLogin(token: string) {
+  return apiFetch<{
+    success: boolean;
+    token: string;
+    refreshToken: string;
+    user: { id: string; name: string; email: string; role: string; tenantId: string };
+  }>('/auth/auto-login', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+// ─── Marketplace (C3) ────────────────────────────────────────────────────
+export interface MarketplaceListing {
+  tenantId: string;
+  tenantName: string;
+  subdomain: string;
+  tenantDescription: string | null;
+  primaryColor: string | null;
+  location: string | null;
+  projectId: string;
+  projectName: string;
+  projectDescription: string | null;
+  projectType: string | null;
+  capacity: number | null;
+  slug: string | null;
+  reviewCount: number;
+  avgRating: number;
+}
+
+export interface MarketplaceCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  icon: string | null;
+  sortOrder: number;
+  projectCount: number;
+}
+
+export interface MarketplaceTenantProfile {
+  tenant: {
+    id: string;
+    name: string;
+    subdomain: string;
+    description: string | null;
+    primaryColor: string | null;
+    location: string | null;
+    phone: string | null;
+    capacity: number | null;
+    currency: string | null;
+  };
+  projects: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    type: string | null;
+    capacity: number | null;
+    slug: string | null;
+  }>;
+  reviews: Array<{
+    id: string;
+    reviewerName: string;
+    rating: number;
+    comment: string | null;
+    createdAt: string;
+    projectName: string;
+  }>;
+  categories: Array<{ name: string; slug: string }>;
+}
+
+export interface MarketplaceReview {
+  id: string;
+  reviewerName: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+export function getMarketplaceListings(params?: { search?: string; category?: string; page?: number; pageSize?: number }) {
+  const searchParams = new URLSearchParams();
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.category) searchParams.set('category', params.category);
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  const qs = searchParams.toString();
+  return apiFetch<{ data: MarketplaceListing[]; total: number; page: number; pageSize: number; hasMore: boolean }>(
+    `/marketplace${qs ? `?${qs}` : ''}`
+  );
+}
+
+export function getMarketplaceCategories() {
+  return apiFetch<MarketplaceCategory[]>('/marketplace/categories');
+}
+
+export function getMarketplaceTenantProfile(slug: string) {
+  return apiFetch<MarketplaceTenantProfile>(`/marketplace/${encodeURIComponent(slug)}`);
+}
+
+export function submitMarketplaceReview(data: { project_id: string; reviewer_name?: string; rating: number; comment?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/marketplace/reviews', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function getMarketplaceReviews(projectId: string) {
+  return apiFetch<MarketplaceReview[]>(`/marketplace/reviews/${encodeURIComponent(projectId)}`);
+}
+
+// ─── Inventory Adjustments (B2.2) ───────────────────────────────────────
+export interface InventoryAdjustment {
+  id: string;
+  tenantId: string;
+  productId: string;
+  adjustment: number;
+  reason: string;
+  reference: string | null;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  productName?: string;
+}
+
+export function getInventoryAdjustments() {
+  return apiFetch<InventoryAdjustment[]>('/inventory/adjustments');
+}
+
+export function createInventoryAdjustment(data: {
+  product_id: string;
+  adjustment: number;
+  reason?: string;
+  reference?: string;
+  notes?: string;
+}) {
+  return apiFetch<{ id: string; success: boolean; new_stock: number }>('/inventory/adjustments', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function getReorderSuggestions() {
+  return apiFetch<{ suggestions: Array<{
+    id: string;
+    name: string;
+    stock_quantity: number;
+    reorder_point: number;
+    min_stock_level: number;
+    supplier_name: string | null;
+    suggested_order_qty: number;
+  }> }>('/inventory/reorder-suggestions');
+}
+
+// ─── Service Enhancements (B4) ──────────────────────────────────────────
+export function assignServiceWorker(bookingId: string, workerId: string) {
+  return apiFetch<{ id: string; assigned_worker_id: string; success: boolean }>(
+    `/services/bookings/${encodeURIComponent(bookingId)}/assign`,
+    { method: 'PATCH', body: JSON.stringify({ assigned_worker_id: workerId }) }
+  );
+}
+
+export function getServiceAvailability(itemId: string) {
+  return apiFetch<Array<{
+    id: string;
+    service_item_id: string;
+    worker_id: string | null;
+    available_date: string;
+    available_from: string;
+    available_to: string;
+    is_available: number;
+  }>>(`/services/items/${encodeURIComponent(itemId)}/availability`);
+}
+
+export function createServiceAvailabilitySlot(itemId: string, data: {
+  available_date: string;
+  available_from: string;
+  available_to: string;
+  worker_id?: string;
+  is_available?: number;
+}) {
+  return apiFetch<{ id: string; success: boolean }>(
+    `/services/items/${encodeURIComponent(itemId)}/availability`,
+    { method: 'POST', body: JSON.stringify(data) }
+  );
+}
+
+export function getServiceReviews() {
+  return apiFetch<Array<{
+    id: string;
+    service_item_id: string;
+    customer_name: string | null;
+    rating: number;
+    comment: string | null;
+    created_at: string;
+    item_name?: string;
+  }>>('/services/reviews');
+}
+
+export function submitServiceReview(data: {
+  service_item_id: string;
+  booking_id?: string;
+  customer_name?: string;
+  rating: number;
+  comment?: string;
+}) {
+  return apiFetch<{ id: string; success: boolean }>('/services/reviews', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateServicePricing(itemId: string, data: { price_tier: string; price_premium?: number }) {
+  return apiFetch<{ id: string; success: boolean }>(
+    `/services/items/${encodeURIComponent(itemId)}/pricing`,
+    { method: 'PUT', body: JSON.stringify(data) }
+  );
+}
+
+// ─── Analytics Enhancements (C2) ─────────────────────────────────────────
+export function getRevenueBreakdown(days?: number) {
+  const qs = days ? `?days=${days}` : '';
+  return apiFetch<{
+    days: number;
+    by_product_type: Array<{ type: string; revenue: number; order_count: number }>;
+    by_payment_method: Array<{ method: string; revenue: number; count: number }>;
+    accommodation: { revenue: number; order_count: number };
+  }>(`/reports/revenue-breakdown${qs}`);
+}
+
+export function getCustomerMetrics(days?: number) {
+  const qs = days ? `?days=${days}` : '';
+  return apiFetch<{
+    days: number;
+    total_customers: number;
+    new_customers: number;
+    repeat_customers: number;
+    avg_order_value: number;
+    avg_collected: number;
+  }>(`/reports/customer-metrics${qs}`);
+}
+
+export function getSeasonalComparison() {
+  return apiFetch<{
+    accommodation_monthly: Array<{ month: string; revenue: number; order_count: number }>;
+    pos_monthly: Array<{ month: string; revenue: number; tx_count: number }>;
+  }>('/reports/seasonal');
 }

@@ -18,7 +18,7 @@ import { IconStaff } from './icons';
 
 type Schemas = components['schemas'];
 type PosUser = Schemas['PosUser'];
-type PosRole = 'cashier' | 'manager' | 'admin';
+type PosRole = 'cashier' | 'manager' | 'admin' | 'viewer';
 
 const PAGE_SIZE = 10;
 
@@ -64,6 +64,7 @@ function RoleBadge({ role, label }: { role: string; label: string }) {
     admin: 'bg-purple-100 text-purple-700',
     manager: 'bg-blue-100 text-blue-700',
     cashier: 'bg-emerald-100 text-emerald-700',
+    viewer: 'bg-gray-100 text-gray-600',
   };
   return (
     <span
@@ -210,6 +211,7 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
     { value: 'cashier', label: 'Cashier' },
     { value: 'manager', label: 'Manager' },
     { value: 'admin', label: 'Admin' },
+    { value: 'viewer', label: 'Viewer (Read-Only)' },
   ];
 
   const statusOptions = [
@@ -221,6 +223,7 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
     cashier: 'Cashier',
     manager: 'Manager',
     admin: 'Admin',
+    viewer: 'Viewer',
   };
 
   const tenantOptions = useMemo(
@@ -303,7 +306,7 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
       email: u.email || '',
       username: u.username || '',
       password: '',
-      role: (['cashier', 'manager', 'admin'].includes(u.role) ? u.role : 'cashier') as PosRole,
+      role: (['cashier', 'manager', 'admin', 'viewer'].includes(u.role) ? u.role : 'cashier') as PosRole,
       phone: u.phone || '',
       department: u.department || '',
       employeeId: u.employeeId || '',

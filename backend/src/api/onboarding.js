@@ -193,6 +193,13 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
       `UPDATE tenants SET onboarding_status = 'completed', status = 'active', updated_at = datetime('now') WHERE id = ?`
     ).bind(tenant.id).run();
 
+    // C1.1: Generate auto-login token (24-hour expiry) for the tenant's admin
+    const autoLoginToken = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await env.DB.prepare(
+      `UPDATE admins SET auto_login_token = ?, auto_login_expires_at = datetime(?) WHERE tenant_id = ? AND role = 'admin'`
+    ).bind(autoLoginToken, expiresAt, tenant.id).run();
+
     // Build subdomain URL for the tenant
     const subdomainUrl = `https://${tenant.id}.sinaicamps.com`;
 
@@ -201,6 +208,7 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
       tenant_id: tenant.id,
       message: 'Onboarding complete! Your site is now live.',
       site_url: subdomainUrl,
+      auto_login_token: autoLoginToken,
     });
   } catch (e) {
     return errorResponse('Onboarding setup failed');
