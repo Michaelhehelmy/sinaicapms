@@ -5,7 +5,7 @@
  * Replaces the ad-hoc getTenant + requireAuth + scope-setting preamble that
  * every catch-all branch in index.js used to repeat.
  *
- * Two modes:
+ * Three modes:
  *  - { public: true }        → best-effort tenant resolution, never auths.
  *                              Sets scope = { tenantId | null, user: null }.
  *  - default (admin realm)   → resolves the tenant hint first; a protected
@@ -13,18 +13,22 @@
  *                              legacy 401 message; then runs requireAuth
  *                              (realm 'admin') with the hint for token-scope
  *                              enforcement, and stores the effective scope.
+ *  - { dualRealm: true }     → accepts BOTH admin and POS tokens. Resolves
+ *                              tenant from header/query (admin) or from
+ *                              organization_id mapping (POS). Sets scope.user
+ *                              with the decoded token regardless of realm.
  *
  * Effective tenantId:
  *  - super_admin may override the request hint via ?tenantId= query param
  *    (cross-tenant administration).
  *  - admin/manager are hard-scoped by requireAuth ('equals' check) to their
  *    own tenant — a mismatched claim yields requireAuth's 403.
- *  - POS tokens never reach here (realm 'admin' rejects them with 403);
- *    the POS sub-router keeps its own posAuth middleware which trusts
- *    organization_id ↔ tenant_id via tenant_org_mapping.
+ *  - POS tokens in dualRealm mode: tenantId is resolved from the token's
+ *    organization_id via tenant_org_mapping (same as posAuth middleware).
  */
 import { getTenant } from './tenant';
 import { requireAuth } from './requireAuth.js';
+import { verifyToken } from './sharedAuth.js';
 import { errorResponse } from '../utils/response.js';
 
 /**
@@ -82,6 +86,7 @@ export function resolveScope(options = {}) {
     public: isPublicRoute = false,
     auth: authOptions = {},
     requireTenantHint = true,
+    dualRealm = false,
   } = options;
 
   // Mount sites register both '/api/x' and '/api/x/*'; Hono matches BOTH
@@ -105,6 +110,76 @@ export function resolveScope(options = {}) {
         tenantId = null;
       }
       c.set('scope', { tenantId: tenantId || null, user: null });
+      await next();
+    });
+  }
+
+  // ── Dual-realm mode: accept both admin and POS tokens ──────
+  // Used by shared routes (/api/pos-tables, kitchen-status) that both
+  // admin dashboards and POS terminals need to access.
+  if (dualRealm) {
+    return once(async (c, next) => {
+      // Extract token from Authorization header
+      const authHeader = c.req.raw.headers.get('Authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return errorResponse('Missing or invalid Authorization header', 401);
+      }
+      const token = authHeader.substring(7);
+      const decoded = await verifyToken(token, c.env.JWT_SECRET);
+      if (!decoded) {
+        return errorResponse('Session expired or invalid signature', 401);
+      }
+
+      // Check activity (both admin and POS users)
+      const isPos = decoded.posType === 'pos' || decoded.userType === 'org';
+      let isActive = false;
+      if (isPos) {
+        const { results } = await c.env.DB.prepare(
+          'SELECT is_active FROM pos_users WHERE id = ? AND deleted_at IS NULL'
+        ).bind(decoded.userId || decoded.sub).all();
+        isActive = results.length > 0 && !!results[0].is_active;
+      } else {
+        const { results } = await c.env.DB.prepare(
+          'SELECT is_active FROM admins WHERE id = ?'
+        ).bind(decoded.userId || decoded.sub).all();
+        isActive = results.length > 0 && results[0].is_active !== 0;
+      }
+      if (!isActive) {
+        return errorResponse('Account deactivated', 401);
+      }
+
+      // Resolve tenant: admin uses header/query, POS uses org mapping
+      let tenantId;
+      if (isPos) {
+        // POS: resolve organization_id → tenant_id via mapping
+        const organizationId = decoded.organizationId || decoded.orgId;
+        if (organizationId) {
+          const { results } = await c.env.DB.prepare(
+            'SELECT tenant_id FROM tenant_org_mapping WHERE organization_id = ?'
+          ).bind(String(organizationId)).all();
+          tenantId = results.length > 0 ? results[0].tenant_id : String(organizationId);
+        } else {
+          tenantId = null;
+        }
+      } else {
+        // Admin: resolve from header/query, then require tenant context
+        tenantId = await getTenant(c.req.raw, c.env);
+        if (!tenantId) {
+          return errorResponse('Unauthorized: missing tenant context', 401);
+        }
+        // Super admin can override via query param
+        if (decoded.role === 'super_admin') {
+          const queryTenant = c.req.query('tenantId');
+          if (queryTenant) tenantId = queryTenant;
+        }
+        // Scope check: admin must match tenant
+        if (decoded.tenantId && decoded.tenantId !== tenantId) {
+          return errorResponse('Forbidden: Access denied to this tenant partition', 403);
+        }
+      }
+
+      c.set('user', decoded);
+      c.set('scope', { tenantId, user: decoded });
       await next();
     });
   }

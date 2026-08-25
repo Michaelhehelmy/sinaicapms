@@ -438,17 +438,23 @@ app.use('/api/rateplans/*', ratePlansScope);
 app.route('/api/rateplans', ratePlansRoutes);
 
 // ── Orders. Mixed visibility by path+method: public are GET /api/orders/status/:ref
-// and GET /api/orders/calculate-price (price preview widget); everything else,
-// INCLUDING POST /api/orders order creation, is admin-scoped (C1: an unauthenticated
-// POST previously allowed arbitrary booking/order rows into any tenant).
+// and GET /api/orders/calculate-price (price preview widget); kitchen-status PATCH
+// accepts both admin and POS tokens (POS terminals advance kitchen workflow);
+// everything else is admin-scoped (C1 fix).
 const ordersPublicScope = resolveScope({ public: true });
 const ordersAdminScope = resolveScope();
+const ordersDualScope = resolveScope({ dualRealm: true });
 const isOrdersPublic = (c) =>
   c.req.method === 'GET' &&
     (c.req.path.startsWith('/api/orders/status/') ||
       c.req.path === '/api/orders/calculate-price');
-const ordersScope = async (c, next) =>
-  isOrdersPublic(c) ? ordersPublicScope(c, next) : ordersAdminScope(c, next);
+const isOrdersKitchenStatus = (c) =>
+  c.req.method === 'PATCH' && c.req.path.match(/\/api\/orders\/[^/]+\/kitchen-status/);
+const ordersScope = async (c, next) => {
+  if (isOrdersPublic(c)) return ordersPublicScope(c, next);
+  if (isOrdersKitchenStatus(c)) return ordersDualScope(c, next);
+  return ordersAdminScope(c, next);
+};
 app.use('/api/orders', ordersScope);
 app.use('/api/orders/*', ordersScope);
 app.route('/api/orders', ordersRoutes);
@@ -494,13 +500,12 @@ const auditAdminScope = resolveScope();
 app.use('/api/audit/*', auditAdminScope);
 app.route('/api/audit', auditRoutes);
 
-// ── Restaurant pillar: POS floor tables (0069). Admin-realm CRUD; the router
-// self-enforces "admin only" (role admin|super_admin) on mutations and groups
-// GET / by section for floor-plan rendering. Dine-in orders flip tables to
-// 'occupied' from POST /api/pos/orders (see routes/pos/index.js). ────
-const posTablesAdminScope = resolveScope();
-app.use('/api/pos-tables', posTablesAdminScope);
-app.use('/api/pos-tables/*', posTablesAdminScope);
+// ── Restaurant pillar: POS floor tables (0069). Dual-realm scope: admin AND
+// POS tokens are accepted (POS terminals need to read table status for seat
+// operations). Mutations are still gated to admin role inside the router. ────
+const posTablesDualScope = resolveScope({ dualRealm: true });
+app.use('/api/pos-tables', posTablesDualScope);
+app.use('/api/pos-tables/*', posTablesDualScope);
 app.route('/api/pos-tables', posTablesRoutes);
 
 // ── API terminal fallback ─────────────────────────────────
