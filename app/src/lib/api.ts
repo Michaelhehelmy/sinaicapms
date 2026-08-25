@@ -1165,3 +1165,53 @@ export function updateBookingStatus(id: string, status: string) {
 export function getPublicServiceCatalog(slug: string) {
   return apiFetch<{ tenant: { id: string; name: string }; definitions: ServiceDefinition[] }>(`/services/public/${slug}`);
 }
+
+// ─── Analytics (supplementary) ─────────────────────────────────────────
+// getRevenueReport and getOccupancyReport already exist in the Reports section.
+// These add POS-specific analytics not covered by existing report functions.
+export interface TopProduct {
+  id: string;
+  name: string;
+  total_qty: number;
+  total_revenue: number;
+  order_count: number;
+}
+
+export interface KitchenStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface KitchenTrend {
+  date: string;
+  completed: number;
+  ready: number;
+  pending: number;
+  total: number;
+}
+
+export interface LowStockItem {
+  id: string;
+  name: string;
+  stock_quantity: number;
+  min_stock_level: number;
+  unit: string;
+  status: string;
+}
+
+export function getAnalyticsLowStock() {
+  return apiFetch<{ low_stock: LowStockItem[] }>('/reports/low-stock');
+}
+
+export function getTopProducts(days?: number, limit?: number) {
+  const params = new URLSearchParams();
+  if (days) params.set('days', String(days));
+  if (limit) params.set('limit', String(limit));
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<{ days: number; top_products: TopProduct[] }>(`/reports/top-products${qs}`);
+}
+
+export function getKitchenPerformance(days?: number) {
+  const qs = days ? `?days=${days}` : '';
+  return apiFetch<{ days: number; by_status: KitchenStatusCount[]; daily_trend: KitchenTrend[] }>(`/reports/kitchen-performance${qs}`);
+}

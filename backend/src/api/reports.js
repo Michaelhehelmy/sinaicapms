@@ -147,9 +147,110 @@ reportsRoutes.get('/bookings', async (c) => {
   }
 });
 
+// ── Top Products: aggregate POS order items by quantity sold ─────────────
+reportsRoutes.get('/top-products', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  try {
+    const days = parseInt(c.req.query('days') || '30');
+    const limit = parseInt(c.req.query('limit') || '10');
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+    const { results } = await env.DB.prepare(
+      `SELECT p.id, p.name, SUM(oi.quantity) as total_qty,
+              SUM(oi.quantity * oi.unit_price) as total_revenue,
+              COUNT(DISTINCT o.id) as order_count
+       FROM pos_order_items oi
+       JOIN pos_products p ON p.id = oi.product_id AND p.organization_id = oi.organization_id
+       JOIN pos_transactions o ON o.id = oi.transaction_id AND o.tenant_id = oi.organization_id
+       WHERE oi.organization_id = ?
+         AND o.tenant_id = ?
+         AND o.created_at >= ?
+         AND o.status != 'voided'
+       GROUP BY p.id, p.name
+       ORDER BY total_qty DESC
+       LIMIT ?`
+    ).bind(tenantId, tenantId, cutoffStr, limit).all();
+
+    return jsonResponse({ days, top_products: results });
+  } catch (e) {
+    return errorResponse('Failed to load top products');
+  }
+});
+
+// ── Kitchen Performance: aggregate kitchen_status from POS orders ────────
+reportsRoutes.get('/kitchen-performance', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  try {
+    const days = parseInt(c.req.query('days') || '7');
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+    const { results: byStatus } = await env.DB.prepare(
+      `SELECT COALESCE(kitchen_status, 'pending') as status, COUNT(*) as count
+       FROM pos_transactions
+       WHERE tenant_id = ?
+         AND created_at >= ?
+         AND status != 'voided'
+         AND type IN ('dine_in', 'takeaway', 'delivery')
+       GROUP BY COALESCE(kitchen_status, 'pending')
+       ORDER BY count DESC`
+    ).bind(tenantId, cutoffStr).all();
+
+    const { results: dailyTrend } = await env.DB.prepare(
+      `SELECT date(created_at) as date,
+              SUM(CASE WHEN kitchen_status = 'completed' THEN 1 ELSE 0 END) as completed,
+              SUM(CASE WHEN kitchen_status = 'ready' THEN 1 ELSE 0 END) as ready,
+              SUM(CASE WHEN kitchen_status IN ('pending', 'in_progress') THEN 1 ELSE 0 END) as pending,
+              COUNT(*) as total
+       FROM pos_transactions
+       WHERE tenant_id = ?
+         AND created_at >= ?
+         AND status != 'voided'
+         AND type IN ('dine_in', 'takeaway', 'delivery')
+       GROUP BY date(created_at)
+       ORDER BY date ASC`
+    ).bind(tenantId, cutoffStr).all();
+
+    return jsonResponse({ days, by_status: byStatus, daily_trend: dailyTrend });
+  } catch (e) {
+    return errorResponse('Failed to load kitchen performance');
+  }
+});
+
+// ── Low Stock: products at or below min_stock_level ─────────────────────
+reportsRoutes.get('/low-stock', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT p.id, p.name, p.stock_quantity, p.min_stock_level, p.unit,
+              CASE
+                WHEN p.stock_quantity <= 0 THEN 'out_of_stock'
+                WHEN p.stock_quantity <= p.min_stock_level THEN 'low'
+                ELSE 'ok'
+              END as status
+       FROM pos_products p
+       WHERE p.organization_id = ?
+         AND p.is_active = 1
+         AND p.deleted_at IS NULL
+         AND p.stock_quantity <= p.min_stock_level
+       ORDER BY (p.stock_quantity * 1.0 / NULLIF(p.min_stock_level, 0)) ASC`
+    ).bind(tenantId).all();
+
+    return jsonResponse({ low_stock: results });
+  } catch (e) {
+    return errorResponse('Failed to load low-stock inventory');
+  }
+});
+
 // Legacy fallthrough: unknown report types keep the exact dispatcher message.
 reportsRoutes.all('*', () =>
-  errorResponse('Report type not found. Available: occupancy, revenue, bookings', 404)
+  errorResponse('Report type not found. Available: occupancy, revenue, bookings, top-products, kitchen-performance, low-stock', 404)
 );
 
 export default reportsRoutes;

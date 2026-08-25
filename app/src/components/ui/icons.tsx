@@ -281,3 +281,14 @@ export function IconServices(props: IconProps) {
     </IconBase>
   );
 }
+
+/** Analytics — bar chart icon for dashboard */
+export function IconAnalytics(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M18 20V10" />
+      <path d="M12 20V4" />
+      <path d="M6 20v-6" />
+    </IconBase>
+  );
+}

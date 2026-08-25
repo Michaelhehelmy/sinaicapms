@@ -8,6 +8,7 @@
  */
 export type { IconProps } from '@/components/ui/icons';
 export {
+  IconAnalytics,
   IconCalendar,
   IconCamps,
   IconDashboard,
