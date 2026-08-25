@@ -7161,3 +7161,33 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 
 #### Notes
 - No E2E specs added yet (POS flows need the auth-realm question settled first); unit coverage only in this task.
+
+---
+
+## Task Log — 2026-08-25: Comprehensive QA/SRE Audit + Critical Bug Fixes
+
+**Summary**: Dispatched 6 parallel audit agents across backend, database, frontend, testing, business logic, and docs. Found 5 critical bugs and 8 high/medium issues. Fixed all critical bugs in commit 2324d10.
+
+#### Critical Bugs Fixed (commit 2324d10)
+1. **services.js broken signatures (SEV-0)**: Every endpoint passed Hono context `c` as first arg to `errorResponse()`/`jsonResponse()`/`validationError()`. ~30 calls fixed.
+2. **order_items tenant_id mismatch (SEV-0)**: B3 course/tip/split routes filtered `WHERE tenant_id = ?` on `order_items` which has no `tenant_id` column. Fixed by removing the filter (tenant isolation via order_id FK).
+3. **Inventory adjustment TOCTOU (SEV-1)**: SELECT-then-UPDATE race allowed concurrent adjustments to push stock negative. Fixed with atomic `DB.batch()` + `WHERE stock_quantity + ? >= 0` guard.
+4. **Check-in room assignment TOCTOU (SEV-1)**: Two non-batched statements for order+room update. Fixed with `DB.batch()`.
+5. **Service bookings double-booking (SEV-1)**: SELECT-then-INSERT race. Fixed with `INSERT ... SELECT WHERE NOT EXISTS`.
+
+#### Files Changed
+- `backend/src/api/services.js` — Fixed ~30 broken errorResponse/jsonResponse/validationError calls; atomic double-booking guard
+- `backend/src/api/orders.js` — Removed tenant_id from order_items queries; batched check-in room assignment
+- `backend/src/api/inventory.js` — Atomic stock adjustment with WHERE guard
+
+#### Audit Report
+- `AUDIT_REPORT.md` — Full audit report with scores, findings, and recommendations
+
+#### Results
+- All **3,351 tests passing** (1,326 backend + 1,869 frontend + 156 root)
+- Committed as 2324d10 (fixes) + c60918d (report)
+
+#### Persistent Learnings (new)
+- **services.js response signatures**: `jsonResponse(data, status)` and `errorResponse(message, status, errors)` — NEVER pass the Hono context `c` as first arg. This was a systematic error across all 20+ endpoints.
+- **order_items has no tenant_id**: The table only has: id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at, split_group, course_number, course_status. Tenant isolation is via `order_id` → `orders.tenant_id` FK.
+- **D1 atomic patterns**: Use `DB.batch()` for multi-statement atomicity. Use `WHERE col + ? >= 0` guards for stock/concurrency. Use `INSERT ... SELECT WHERE NOT EXISTS` for race-safe inserts. D1 has no conditional abort between batch statements.
