@@ -279,6 +279,43 @@ posTablesRoutes.delete('/:id', async (c) => {
   }
 });
 
+posTablesRoutes.patch('/:id/reserve', async (c) => {
+  try {
+    const access = assertAdminMutation(c);
+    if (access instanceof Response) return access;
+    const tenantId = getScope(c).tenantId;
+    const tableId = c.req.param('id');
+    const { reservation_name, reservation_time, reservation_date, party_size } = await c.req.json();
+    if (!reservation_name || !reservation_time) return errorResponse('reservation_name and reservation_time are required', 400);
+    const result = await c.env.DB.prepare(
+      `UPDATE pos_tables SET status = 'reserved', reservation_name = ?, reservation_time = ?, reservation_date = ?, party_size = ?
+       WHERE tenant_id = ? AND id = ?`
+    ).bind(reservation_name, reservation_time, reservation_date || null, party_size || 0, tenantId, tableId).run();
+    if ((result?.meta?.changes ?? 0) === 0) return errorResponse('Table not found', 404);
+    return jsonResponse({ success: true, id: tableId, status: 'reserved' });
+  } catch (e) {
+    return errorResponse('Failed to reserve table');
+  }
+});
+
+posTablesRoutes.patch('/:id/release', async (c) => {
+  try {
+    const access = assertAdminMutation(c);
+    if (access instanceof Response) return access;
+    const tenantId = getScope(c).tenantId;
+    const tableId = c.req.param('id');
+    const result = await c.env.DB.prepare(
+      `UPDATE pos_tables SET status = 'available', reservation_name = NULL, reservation_time = NULL,
+       reservation_date = NULL, party_size = 0
+       WHERE tenant_id = ? AND id = ? AND status = 'reserved'`
+    ).bind(tenantId, tableId).run();
+    if ((result?.meta?.changes ?? 0) === 0) return errorResponse('Table not found or not reserved', 404);
+    return jsonResponse({ success: true, id: tableId, status: 'available' });
+  } catch (e) {
+    return errorResponse('Failed to release table');
+  }
+});
+
 posTablesRoutes.all('*', () => errorResponse('Method not allowed', 405));
 
 export default posTablesRoutes;
