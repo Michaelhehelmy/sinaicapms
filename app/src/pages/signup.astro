@@ -1,0 +1,12 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+---
+<PublicLayout title="Get Started - SinaiCamps">
+  <div id="signup-root"></div>
+</PublicLayout>
+<script>
+  import { createRoot } from 'react-dom/client';
+  import { createElement } from 'react';
+  import SignupPage from '@/components/public/SignupPage';
+  createRoot(document.getElementById('signup-root')!).render(createElement(SignupPage));
+</script>

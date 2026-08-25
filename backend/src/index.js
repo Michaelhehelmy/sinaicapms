@@ -23,6 +23,7 @@ import mealCategoriesRoutes from './api/meal-categories';
 import categoriesRoutes from './api/categories';
 import mealsRoutes from './api/meals';
 import promotionsRoutes from './api/promotions';
+import onboardingRoutes from './api/onboarding';
 import { resolveScope } from './middleware/resolveScope.js';
 import leadsRoutes, { createLead } from './api/leads';
 import inboxRoutes from './api/inbox';
@@ -375,6 +376,14 @@ const servicesScope = async (c, next) =>
 app.use('/api/services', servicesScope);
 app.use('/api/services/*', servicesScope);
 app.route('/api/services', servicesRoutes);
+
+// ── Self-service onboarding. All endpoints are public (no auth required).
+const onboardingPublicScope = resolveScope({ public: true });
+app.use('/api/public', onboardingPublicScope);
+app.use('/api/public/*', onboardingPublicScope);
+app.use('/api/onboarding', onboardingPublicScope);
+app.use('/api/onboarding/*', onboardingPublicScope);
+app.route('/api', onboardingRoutes);
 
 // ── Unified inbox (Phase 4): auth + tenant scoped like leads/admin — NOT public.
 const inboxAdminScope = resolveScope();

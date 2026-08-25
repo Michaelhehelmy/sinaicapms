@@ -1,0 +1,12 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+---
+<PublicLayout title="Setup Your Site - SinaiCamps">
+  <div id="onboarding-root"></div>
+</PublicLayout>
+<script>
+  import { createRoot } from 'react-dom/client';
+  import { createElement } from 'react';
+  import OnboardingWizard from '@/components/public/OnboardingWizard';
+  createRoot(document.getElementById('onboarding-root')!).render(createElement(OnboardingWizard));
+</script>

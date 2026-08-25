@@ -1215,3 +1215,81 @@ export function getKitchenPerformance(days?: number) {
   const qs = days ? `?days=${days}` : '';
   return apiFetch<{ days: number; by_status: KitchenStatusCount[]; daily_trend: KitchenTrend[] }>(`/reports/kitchen-performance${qs}`);
 }
+
+// ─── Self-Service Onboarding ────────────────────────────────────────────
+export interface OnboardingSignupResult {
+  success: boolean;
+  tenant_id: string;
+  onboarding_token: string;
+  message: string;
+}
+
+export interface OnboardingStatus {
+  tenant_id: string;
+  name: string;
+  subdomain: string;
+  email: string;
+  status: string;
+  onboarding_status: string;
+  setup_complete: boolean;
+  profile: {
+    location: string | null;
+    phone: string | null;
+    description: string | null;
+    primary_color: string | null;
+    capacity: number | null;
+    currency: string | null;
+  };
+}
+
+export interface OnboardingSetupResult {
+  success: boolean;
+  tenant_id: string;
+  message: string;
+  site_url: string;
+}
+
+export function signupTenant(data: {
+  name: string;
+  subdomain: string;
+  business_type?: string;
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+}) {
+  return apiFetch<OnboardingSignupResult>('/public/signup', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function getOnboardingStatus(token: string) {
+  return apiFetch<OnboardingStatus>(`/onboarding/status/${token}`);
+}
+
+export function completeOnboarding(data: {
+  token: string;
+  location?: string;
+  phone?: string;
+  description?: string;
+  primary_color?: string;
+  capacity?: number;
+  currency?: string;
+  activities?: string;
+}) {
+  return apiFetch<OnboardingSetupResult>('/onboarding/setup', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateOnboardingTenant(data: {
+  token: string;
+  [key: string]: unknown;
+}) {
+  return apiFetch<{ success: boolean; tenant_id: string }>('/onboarding/tenant', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
