@@ -16,19 +16,25 @@ const marketplaceUrl = isMarketplace ? '/' : 'https://sinaicamps.com/';
 
 let tenant: Record<string, unknown> | null = null;
 let roomTypes: Record<string, unknown>[] = [];
+let projects: Record<string, unknown>[] = [];
 
 if (!forbidden) {
   try {
-    const [tenantRes, productsRes] = await Promise.all([
+    const [tenantRes, productsRes, projectsRes] = await Promise.all([
       ssrFetch(`/tenants/${id}`),
       ssrFetch(`/products`, { headers: { 'x-tenant-id': String(id) } }),
+      ssrFetch(`/projects`, { headers: { 'x-tenant-id': String(id) } }),
     ]);
     if (tenantRes.ok) tenant = (await tenantRes.json()) as Record<string, unknown>;
     if (productsRes.ok) roomTypes = await productsRes.json() as Record<string, unknown>[];
+    if (projectsRes.ok) projects = await projectsRes.json() as Record<string, unknown>[];
   } catch (e) {
     console.error('Error loading camp detail:', e);
   }
 }
+
+const mealPlanCategoryId = projects.length > 0 ? (projects[0].meal_plan_category_id as string) : null;
+const projectId = projects.length > 0 ? (projects[0].id as string) : null;
 
 const color = (tenant?.primaryColor as string) || '#4a7c4f';
 const tenantName = (tenant?.name as string) || 'Camp';
@@ -46,6 +52,8 @@ const tenantId = (tenant?.id as string) || id || '';
       tenantId={tenantId}
       zone="marketplace"
       marketplaceUrl={marketplaceUrl}
+      mealPlanCategoryId={mealPlanCategoryId}
+      projectId={projectId}
     />
   )
 }

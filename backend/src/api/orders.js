@@ -33,6 +33,10 @@ export const orderPostSchema = z.object({
   order_state_id: z.string().optional(),
   notes: z.string().optional(),
   items: z.array(orderItemSchema).optional(),
+  meal_plans: z.array(z.object({
+    product_id: z.string().min(1),
+    quantity: z.number().int().min(1),
+  })).optional(),
 }).strip(); // S-M1 fix: strip unknown fields instead of passthrough
 
 export const orderPutSchema = z.object({
@@ -671,7 +675,7 @@ ordersRoutes.post('/', async (c) => {
       return validationError(parsed);
     }
     const data = parsed.data;
-    const { id, camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes, items } = data;
+    const { id, camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes, items, meal_plans } = data;
 
     const validationError = await validateOrder(c.env, tenantId, null, data);
     if (validationError) return errorResponse(validationError, 400);
@@ -740,6 +744,68 @@ ordersRoutes.post('/', async (c) => {
         Math.round(it.quantity * it.unit_price * 100) / 100
       ));
       await c.env.DB.batch(itemStmts);
+    }
+
+    // ── Meal plans (0070): create order_items + POS transactions for kitchen ──
+    const mealPlanList = meal_plans || [];
+    if (mealPlanList.length > 0) {
+      const productIds = mealPlanList.map(mp => mp.product_id);
+      const placeholders = productIds.map(() => '?').join(',');
+      const { results: products } = await c.env.DB.prepare(
+        `SELECT id, name, selling_price FROM pos_products WHERE id IN (${placeholders})`
+      ).bind(...productIds).all();
+
+      const productMap = new Map(products.map(p => [p.id, p]));
+
+      const { results: orgMapping } = await c.env.DB.prepare(
+        'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
+      ).bind(tenantId).all();
+      const organizationId = orgMapping.length > 0 ? orgMapping[0].organization_id : null;
+
+      const itemStmts = [];
+      const posStmts = [];
+      let mealPlanTotal = 0;
+
+      for (const mp of mealPlanList) {
+        const product = productMap.get(mp.product_id);
+        if (!product) continue;
+        const unitPrice = parseFloat(product.selling_price || 0);
+        const lineTotal = unitPrice * mp.quantity;
+        mealPlanTotal += lineTotal;
+
+        itemStmts.push(c.env.DB.prepare(
+          `INSERT INTO order_items (id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at)
+           VALUES (?, ?, 'meal_plan', ?, ?, ?, ?, ?, datetime('now'))`
+        ).bind(
+          'oi_' + crypto.randomUUID().slice(0, 12), ordId, mp.product_id,
+          product.name, mp.quantity, unitPrice, lineTotal
+        ));
+
+        if (organizationId) {
+          const posOrderId = 'pot_' + crypto.randomUUID().slice(0, 12);
+          posStmts.push(c.env.DB.prepare(
+            `INSERT INTO pos_transactions
+             (id, tenant_id, organization_id, store_id, order_number, cashier_id,
+              status, subtotal, tax_amount, tax_rate, total_amount,
+              paid_amount, payment_method, payment_status, notes,
+              kitchen_status, created_at, updated_at)
+             VALUES (?, ?, ?, 1, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'))`
+          ).bind(
+            posOrderId, tenantId, organizationId,
+            'MP-' + reference, 'system', lineTotal, lineTotal,
+            `Meal plan for booking ${reference}: ${product.name}`
+          ));
+        }
+      }
+
+      if (mealPlanTotal > 0) {
+        itemStmts.push(c.env.DB.prepare(
+          `UPDATE orders SET total_amount = total_amount + ? WHERE id = ?`
+        ).bind(mealPlanTotal, ordId));
+      }
+
+      if (itemStmts.length > 0) await c.env.DB.batch(itemStmts);
+      if (posStmts.length > 0) await c.env.DB.batch(posStmts);
     }
 
     if (order_state_id) {

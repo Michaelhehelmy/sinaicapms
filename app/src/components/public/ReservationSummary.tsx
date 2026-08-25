@@ -14,6 +14,7 @@ interface ReservationItem {
   checkOut: string;
   nights: number;
   price: number;
+  mealPlans?: { productId: string; name: string; pricePerDay: number; quantity: number }[];
 }
 
 interface Props {
@@ -156,7 +157,14 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
 
   const buildMessage = useCallback(() => {
     const lines = items.map((item, i) => {
-      return `${i + 1}. ${escHtml(item.roomType.name)}\n   📅 ${item.checkIn} → ${item.checkOut}\n   ${item.guests} ${t.guest} | ${item.nights} nights\n   ${formatPrice(item.price)}`;
+      let line = `${i + 1}. ${escHtml(item.roomType.name)}\n   📅 ${item.checkIn} → ${item.checkOut}\n   ${item.guests} ${t.guest} | ${item.nights} nights\n   ${formatPrice(item.price)}`;
+      if (item.mealPlans && item.mealPlans.length > 0) {
+        const mpLines = item.mealPlans.map(mp =>
+          `   🍽️ ${mp.quantity}× ${mp.name}: ${formatPrice(mp.pricePerDay * mp.quantity * item.nights)}`
+        ).join('\n');
+        line += '\n' + mpLines;
+      }
+      return line;
     });
     return `🏕️ ${t.newBooking.replace('{name}', escHtml(tenantName))}\n\n👤 ${escHtml(guestName)}${guestPhone ? ' - ' + escHtml(guestPhone) : ''}\n\n${lines.join('\n\n')}\n\n💰 ${t.waTotal}: ${formatPrice(totalAmount)}`;
   }, [items, guestName, guestPhone, t, tenantName, totalAmount]);
@@ -272,6 +280,17 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
                         <span>{item.nights} nights</span>
                         <span>{item.checkIn} → {item.checkOut}</span>
                       </div>
+                      {item.mealPlans && item.mealPlans.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          <p className="text-xs font-semibold text-gray-600 mb-1">Meal Plans</p>
+                          {item.mealPlans.map((mp, i) => (
+                            <div key={i} className="flex justify-between text-xs text-gray-500">
+                              <span>{mp.quantity}× {mp.name} ({item.nights} days)</span>
+                              <span>{formatPrice(mp.pricePerDay * mp.quantity * item.nights)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <p className="font-bold text-base mt-2" style={{ color: primaryColor }}>
                         {formatPrice(item.price)}
                       </p>

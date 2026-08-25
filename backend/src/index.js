@@ -508,6 +508,45 @@ app.use('/api/pos-tables', posTablesDualScope);
 app.use('/api/pos-tables/*', posTablesDualScope);
 app.route('/api/pos-tables', posTablesRoutes);
 
+// ── Meal plans (0070): public read for project meal plan options ──────────
+// Registered as a direct endpoint (not app.route) to avoid the sub-router's
+// catch-all interfering with existing /api/projects/:projectId/* routes.
+const mealPlansPublicScope = resolveScope({ public: true });
+app.use('/api/projects/:id/meal-plans', mealPlansPublicScope);
+app.get('/api/projects/:id/meal-plans', async (c) => {
+  try {
+    const projectId = c.req.param('id');
+
+    const project = await c.env.DB.prepare(
+      'SELECT tenant_id, meal_plan_category_id FROM projects WHERE id = ? AND deleted_at IS NULL'
+    ).bind(projectId).first();
+
+    if (!project || !project.meal_plan_category_id) {
+      return jsonResponse({ meal_plans: [] });
+    }
+
+    const { results: orgMapping } = await c.env.DB.prepare(
+      'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
+    ).bind(project.tenant_id).all();
+
+    if (orgMapping.length === 0) {
+      return jsonResponse({ meal_plans: [] });
+    }
+
+    const organizationId = orgMapping[0].organization_id;
+
+    const { results: products } = await c.env.DB.prepare(
+      `SELECT id, name, selling_price, description, image_url
+       FROM pos_products
+       WHERE category_id = ? AND organization_id = ? AND is_active = 1`
+    ).bind(project.meal_plan_category_id, organizationId).all();
+
+    return jsonResponse({ meal_plans: products });
+  } catch (e) {
+    return errorResponse('Failed to fetch meal plans');
+  }
+});
+
 // ── API terminal fallback ─────────────────────────────────
 // Phase 4 complete: every Paradigm-B dispatcher module above this line has
 // been converted to a Hono sub-router with its own resolveScope mount. What

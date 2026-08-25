@@ -16,6 +16,14 @@ interface RoomType {
   imageUrl?: string;
 }
 
+interface MealPlan {
+  id: string;
+  name: string;
+  selling_price: number;
+  description?: string;
+  image_url?: string;
+}
+
 interface ReservationItem {
   roomType: RoomType;
   guests: number;
@@ -23,6 +31,7 @@ interface ReservationItem {
   checkOut: string;
   nights: number;
   price: number;
+  mealPlans?: { productId: string; name: string; pricePerDay: number; quantity: number }[];
 }
 
 interface Props {
@@ -30,11 +39,9 @@ interface Props {
   tenantName: string;
   primaryColor: string;
   roomTypes: RoomType[];
-  /**
-   * Reservation continuation URL. Defaults to the marketplace deep link
-   * `/camp/{tenantId}/book`; tenant-zone pages pass `/book`.
-   */
   bookUrl?: string;
+  mealPlanCategoryId?: string | null;
+  projectId?: string | null;
 }
 
 const STORAGE_KEY = 'sc_reservation';
@@ -91,13 +98,15 @@ function saveReservation(items: ReservationItem[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-export default function CampBooking({ tenantId, tenantName, primaryColor, roomTypes, bookUrl }: Props) {
+export default function CampBooking({ tenantId, tenantName, primaryColor, roomTypes, bookUrl, mealPlanCategoryId = null, projectId = null }: Props) {
   const [items, setItems] = useState<ReservationItem[]>([]);
   const [modalRoom, setModalRoom] = useState<RoomType | null>(null);
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [guests, setGuests] = useState(2);
   const [justAdded, setJustAdded] = useState(false);
+  const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
+  const [selectedMealPlans, setSelectedMealPlans] = useState<Record<string, number>>({});
   const addModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -108,6 +117,15 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
   useEffect(() => { setItems(loadReservation()); }, []);
 
   useEffect(() => { saveReservation(items); }, [items]);
+
+  useEffect(() => {
+    if (projectId && mealPlanCategoryId) {
+      fetch(`/api/projects/${projectId}/meal-plans`)
+        .then(res => res.json())
+        .then(data => setMealPlans(data.meal_plans || []))
+        .catch(() => {});
+    }
+  }, [projectId, mealPlanCategoryId]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -123,6 +141,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
     setCheckIn('');
     setCheckOut('');
     setJustAdded(false);
+    setSelectedMealPlans({});
   };
 
   const closeModal = useCallback(() => {
@@ -187,20 +206,32 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
     : 0;
 
   const lineTotal = modalRoom ? nights * (modalRoom.basePrice || 0) : 0;
+  const mealPlanTotal = mealPlans.reduce((sum, mp) => {
+    const qty = selectedMealPlans[mp.id] || 0;
+    return sum + qty * mp.selling_price * nights;
+  }, 0);
+  const totalWithMealPlans = lineTotal + mealPlanTotal;
 
   const addItem = useCallback(() => {
     if (!modalRoom || nights <= 0) return;
+    const selectedMp = Object.entries(selectedMealPlans)
+      .filter(([, qty]) => qty > 0)
+      .map(([productId, quantity]) => {
+        const mp = mealPlans.find(m => m.id === productId)!;
+        return { productId, name: mp.name, pricePerDay: mp.selling_price, quantity };
+      });
     setItems(prev => [...prev, {
       roomType: modalRoom,
       guests,
       checkIn,
       checkOut,
       nights,
-      price: lineTotal,
+      price: totalWithMealPlans,
+      mealPlans: selectedMp.length > 0 ? selectedMp : undefined,
     }]);
     setJustAdded(true);
     addModalTimerRef.current = setTimeout(() => { closeModal(); }, 800);
-  }, [modalRoom, guests, checkIn, checkOut, nights, lineTotal, closeModal]);
+  }, [modalRoom, guests, checkIn, checkOut, nights, totalWithMealPlans, selectedMealPlans, mealPlans, closeModal]);
 
   const clearAll = () => {
     setItems([]);
@@ -406,13 +437,52 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
                   </p>
                 </div>
 
+                {/* Meal Plans */}
+                {mealPlans.length > 0 && nights > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Add Meal Plans</label>
+                    <div className="space-y-2">
+                      {mealPlans.map(mp => (
+                        <div key={mp.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/50">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm truncate">{mp.name}</p>
+                            {mp.description && <p className="text-xs text-gray-500 truncate">{mp.description}</p>}
+                            <p className="text-xs text-gray-500 mt-0.5">{mp.selling_price} EGP/day × {nights} nights</p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-3">
+                            <button
+                              onClick={() => setSelectedMealPlans(prev => ({
+                                ...prev,
+                                [mp.id]: Math.max(0, (prev[mp.id] || 0) - 1)
+                              }))}
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600 active:scale-95"
+                            >
+                              −
+                            </button>
+                            <span className="w-6 text-center text-sm font-bold">{selectedMealPlans[mp.id] || 0}</span>
+                            <button
+                              onClick={() => setSelectedMealPlans(prev => ({
+                                ...prev,
+                                [mp.id]: Math.min(guests, (prev[mp.id] || 0) + 1)
+                              }))}
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600 active:scale-95"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Total + Add */}
                 {nights > 0 && (
                   <div className="pt-2">
                     <div className="flex items-center justify-between mb-3 px-1">
                       <span className="text-sm text-gray-500">{t.total}</span>
                       <span className="text-2xl font-black" style={{ color: primaryColor }}>
-                        {formatPrice(lineTotal)} <span className="text-sm font-semibold text-gray-500">EGP</span>
+                        {formatPrice(totalWithMealPlans)} <span className="text-sm font-semibold text-gray-500">EGP</span>
                       </span>
                     </div>
                     <Button

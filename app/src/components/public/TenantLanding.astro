@@ -20,9 +20,11 @@ interface Props {
   zone: 'marketplace' | 'tenant';
   /** Back-to-marketplace link; only rendered on the marketplace zone. */
   marketplaceUrl?: string | null;
+  mealPlanCategoryId?: string | null;
+  projectId?: string | null;
 }
 
-const { tenant, roomTypes, primaryColor, tenantName, tenantId, zone, marketplaceUrl = null } = Astro.props;
+const { tenant, roomTypes, primaryColor, tenantName, tenantId, zone, marketplaceUrl = null, mealPlanCategoryId = null, projectId = null } = Astro.props;
 
 // Unknown tenant on the tenant zone → branded 404 (never leak another camp).
 const tenantMissing = !tenant;
@@ -204,6 +206,8 @@ function sanitizeForJsonLd(obj: Record<string, unknown>): Record<string, unknown
               primaryColor={color}
               roomTypes={roomTypes as any}
               bookUrl={reservationUrl}
+              mealPlanCategoryId={mealPlanCategoryId}
+              projectId={projectId}
             />
           </section>
         </div>
