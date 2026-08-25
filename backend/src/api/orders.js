@@ -913,6 +913,190 @@ ordersRoutes.delete('/:id', async (c) => {
   }
 });
 
+ordersRoutes.patch('/:id/checkin', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const { early_checkin, adult_count, child_count, room_id } = await c.req.json();
+
+    const order = await c.env.DB.prepare(
+      'SELECT id, room_id, camp_id FROM orders WHERE tenant_id = ? AND id = ?'
+    ).bind(tenantId, orderId).first();
+    if (!order) return errorResponse('Order not found', 404);
+
+    let assignedRoomId = room_id || order.room_id;
+    if (!assignedRoomId) {
+      const available = await c.env.DB.prepare(
+        `SELECT rn.id FROM rooms_new rn
+         WHERE rn.camp_id IN (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL)
+         AND rn.status = 'available'
+         AND rn.id NOT IN (
+           SELECT room_id FROM orders
+           WHERE room_id IS NOT NULL
+           AND check_in_date < (SELECT check_out_date FROM orders WHERE id = ?)
+           AND check_out_date > (SELECT check_in_date FROM orders WHERE id = ?)
+           AND order_state_id != 'cancelled'
+         )
+         LIMIT 1`
+      ).bind(tenantId, orderId, orderId).first();
+      if (available) assignedRoomId = available.id;
+    }
+
+    const updateParts = ['early_checkin = ?', 'adult_count = ?', 'child_count = ?', 'updated_at = datetime(\'now\')'];
+    const updateParams = [early_checkin ? 1 : 0, adult_count || 1, child_count || 0];
+    if (assignedRoomId) {
+      updateParts.push('room_id = ?');
+      updateParams.push(assignedRoomId);
+    }
+    updateParams.push(tenantId, orderId);
+
+    await c.env.DB.prepare(
+      `UPDATE orders SET ${updateParts.join(', ')} WHERE tenant_id = ? AND id = ?`
+    ).bind(...updateParams).run();
+
+    if (assignedRoomId) {
+      await c.env.DB.prepare(
+        "UPDATE rooms_new SET status = 'occupied', room_status = 'occupied', updated_at = datetime('now') WHERE id = ?"
+      ).bind(assignedRoomId).run();
+    }
+
+    return jsonResponse({ success: true, room_id: assignedRoomId });
+  } catch (e) {
+    return errorResponse('Failed to check in');
+  }
+});
+
+ordersRoutes.patch('/:id/checkout', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const { late_checkout } = await c.req.json();
+
+    const order = await c.env.DB.prepare(
+      'SELECT id, room_id FROM orders WHERE tenant_id = ? AND id = ?'
+    ).bind(tenantId, orderId).first();
+    if (!order) return errorResponse('Order not found', 404);
+
+    let extraCharge = 0;
+    if (late_checkout) {
+      extraCharge = 25;
+      await c.env.DB.prepare(
+        'UPDATE orders SET late_checkout = 1, extra_guest_charge = extra_guest_charge + ? WHERE id = ?'
+      ).bind(extraCharge, orderId).run();
+    }
+
+    if (order.room_id) {
+      await c.env.DB.prepare(
+        "UPDATE rooms_new SET status = 'available', room_status = 'available', cleaning_status = 'dirty', updated_at = datetime('now') WHERE id = ?"
+      ).bind(order.room_id).run();
+    }
+
+    return jsonResponse({ success: true, late_checkout: !!late_checkout, extra_charge: extraCharge });
+  } catch (e) {
+    return errorResponse('Failed to check out');
+  }
+});
+
+ordersRoutes.patch('/:id/course', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const { item_id, course_number, course_status } = await c.req.json();
+    const validStatuses = ['pending', 'served', 'completed'];
+    const validCourses = [0, 1, 2, 3]; // 0=none, 1=appetizer, 2=main, 3=dessert
+    if (course_status && !validStatuses.includes(course_status)) return errorResponse('Invalid course status', 400);
+    if (course_number !== undefined && !validCourses.includes(course_number)) return errorResponse('Invalid course number', 400);
+    if (item_id) {
+      const updates = [];
+      const params = [];
+      if (course_number !== undefined) { updates.push('course_number = ?'); params.push(course_number); }
+      if (course_status) { updates.push('course_status = ?'); params.push(course_status); }
+      if (updates.length === 0) return errorResponse('Nothing to update', 400);
+      params.push(item_id, orderId, tenantId);
+      await c.env.DB.prepare(
+        `UPDATE order_items SET ${updates.join(', ')} WHERE id = ? AND order_id = ? AND tenant_id = ?`
+      ).bind(...params).run();
+    } else {
+      if (course_number === undefined || !course_status) return errorResponse('course_number and course_status required for bulk update', 400);
+      await c.env.DB.prepare(
+        'UPDATE order_items SET course_status = ? WHERE course_number = ? AND order_id = ? AND tenant_id = ?'
+      ).bind(course_status, course_number, orderId, tenantId).run();
+    }
+    return jsonResponse({ success: true });
+  } catch (e) {
+    return errorResponse('Failed to update course status');
+  }
+});
+
+ordersRoutes.patch('/:id/tip', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const { tip_amount, tip_method } = await c.req.json();
+    if (typeof tip_amount !== 'number' || tip_amount < 0) return errorResponse('Invalid tip amount', 400);
+    const result = await c.env.DB.prepare(
+      'UPDATE orders SET tip_amount = ?, tip_method = ?, updated_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
+    ).bind(tip_amount, tip_method || null, orderId, tenantId).run();
+    if ((result?.meta?.changes ?? 0) === 0) return errorResponse('Order not found', 404);
+    return jsonResponse({ success: true, tip_amount, tip_method });
+  } catch (e) {
+    return errorResponse('Failed to add tip');
+  }
+});
+
+ordersRoutes.patch('/:id/split', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const { split_count } = await c.req.json();
+    if (!split_count || split_count < 1 || split_count > 20) return errorResponse('split_count must be 1-20', 400);
+    const order = await c.env.DB.prepare(
+      'SELECT id, total_amount, tip_amount FROM orders WHERE tenant_id = ? AND id = ?'
+    ).bind(tenantId, orderId).first();
+    if (!order) return errorResponse('Order not found', 404);
+    await c.env.DB.prepare(
+      'UPDATE orders SET split_count = ?, updated_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
+    ).bind(split_count, orderId, tenantId).run();
+    const perGroupAmount = Math.round(((order.total_amount + (order.tip_amount || 0)) / split_count) * 100) / 100;
+    return jsonResponse({ success: true, split_count, per_group_amount: perGroupAmount });
+  } catch (e) {
+    return errorResponse('Failed to split bill');
+  }
+});
+
+ordersRoutes.get('/:id/split-details', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const order = await c.env.DB.prepare(
+      'SELECT id, total_amount, tip_amount, tip_method, split_count FROM orders WHERE tenant_id = ? AND id = ?'
+    ).bind(tenantId, orderId).first();
+    if (!order) return errorResponse('Order not found', 404);
+    const { results: items } = await c.env.DB.prepare(
+      'SELECT id, name, quantity, unit_price, split_group FROM order_items WHERE order_id = ? AND tenant_id = ?'
+    ).bind(orderId, tenantId).all();
+    const splitCount = order.split_count || 1;
+    const perGroupAmount = Math.round(((order.total_amount + (order.tip_amount || 0)) / splitCount) * 100) / 100;
+    return jsonResponse({
+      order_id: orderId,
+      total_amount: order.total_amount,
+      tip_amount: order.tip_amount || 0,
+      tip_method: order.tip_method,
+      split_count: splitCount,
+      per_group_amount: perGroupAmount,
+      items,
+    });
+  } catch (e) {
+    return errorResponse('Failed to get split details');
+  }
+});
+
 ordersRoutes.all('*', () => errorResponse('Method not allowed', 405));
 
 /**

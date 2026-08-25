@@ -744,6 +744,70 @@ roomsRoutes.delete('/:id', async (c) => {
   }
 });
 
+roomsRoutes.patch('/:id/cleaning', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const roomId = c.req.param('id');
+    const { cleaning_status } = await c.req.json();
+    const allowed = ['dirty', 'in_progress', 'clean', 'inspected'];
+    if (!allowed.includes(cleaning_status)) return errorResponse('Invalid cleaning status', 400);
+    const result = await c.env.DB.prepare(
+      'UPDATE rooms_new SET cleaning_status = ?, updated_at = datetime(\'now\') WHERE id = ? AND camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)'
+    ).bind(cleaning_status, roomId, tenantId).run();
+    if ((result?.meta?.changes ?? 0) === 0) return errorResponse('Room not found', 404);
+    return jsonResponse({ success: true, cleaning_status });
+  } catch (e) {
+    return errorResponse('Failed to update cleaning status');
+  }
+});
+
+roomsRoutes.get('/available', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const checkIn = c.req.query('check_in');
+    const checkOut = c.req.query('check_out');
+    let query = `SELECT rn.*, p.name as product_name, p.selling_price as base_price
+                 FROM rooms_new rn
+                 JOIN projects p ON rn.camp_id = p.id AND p.deleted_at IS NULL
+                 WHERE rn.camp_id IN (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL)
+                 AND rn.status = 'available'`;
+    const params = [tenantId];
+    if (checkIn && checkOut) {
+      query += ` AND rn.id NOT IN (
+        SELECT room_id FROM orders
+        WHERE check_in_date < ? AND check_out_date > ?
+        AND order_state_id != 'cancelled'
+      )`;
+      params.push(checkOut, checkIn);
+    }
+    query += ' ORDER BY rn.name';
+    const { results } = await c.env.DB.prepare(query).bind(...params).all();
+    return jsonResponse(results);
+  } catch (e) {
+    return errorResponse('Failed to fetch available rooms');
+  }
+});
+
+roomsRoutes.patch('/:id/status', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const roomId = c.req.param('id');
+    const { status } = await c.req.json();
+    const allowed = ['available', 'reserved', 'occupied', 'cleaning', 'out_of_service'];
+    if (!allowed.includes(status)) return errorResponse('Invalid status', 400);
+    const result = await c.env.DB.prepare(
+      'UPDATE rooms_new SET status = ?, room_status = ?, updated_at = datetime(\'now\') WHERE id = ? AND camp_id IN (SELECT id FROM projects WHERE tenant_id = ?)'
+    ).bind(status, status, roomId, tenantId).run();
+    if ((result?.meta?.changes ?? 0) === 0) return errorResponse('Room not found', 404);
+    return jsonResponse({ success: true, status });
+  } catch (e) {
+    return errorResponse('Failed to update room status');
+  }
+});
+
 roomsRoutes.all('*', () => errorResponse('Method not allowed', 405));
 
 // ─── Rate plans sub-router (Phase 4 T1) ────────────────────────
