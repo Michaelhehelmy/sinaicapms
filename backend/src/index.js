@@ -24,6 +24,7 @@ import categoriesRoutes from './api/categories';
 import mealsRoutes from './api/meals';
 import promotionsRoutes from './api/promotions';
 import onboardingRoutes from './api/onboarding';
+import { sanitizeInput } from './middleware/sanitize.js';
 import { resolveScope } from './middleware/resolveScope.js';
 import leadsRoutes, { createLead } from './api/leads';
 import inboxRoutes from './api/inbox';
@@ -110,6 +111,7 @@ app.use('*', cors({
 // scattered explicit rateLimitMiddleware mount. First matching entry wins;
 // SSE streams are exempted inside policyLimiter.
 app.use('/api/*', policyLimiter());
+app.use('/api/*', sanitizeInput());
 
 app.get('/', (c) => c.html(`<!DOCTYPE html>
 <html><head><title>SinaiCamps API</title></head>
