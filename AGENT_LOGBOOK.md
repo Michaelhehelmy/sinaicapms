@@ -7194,3 +7194,49 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 - **services.js response signatures**: `jsonResponse(data, status)` and `errorResponse(message, status, errors)` — NEVER pass the Hono context `c` as first arg. This was a systematic error across all 20+ endpoints.
 - **order_items has no tenant_id**: The table only has: id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at, split_group, course_number, course_status. Tenant isolation is via `order_id` → `orders.tenant_id` FK.
 - **D1 atomic patterns**: Use `DB.batch()` for multi-statement atomicity. Use `WHERE col + ? >= 0` guards for stock/concurrency. Use `INSERT ... SELECT WHERE NOT EXISTS` for race-safe inserts. D1 has no conditional abort between batch statements.
+
+---
+
+## Task Log — 2026-08-26: Audit Resolution — All 5 Tasks Complete
+
+**Summary**: Resolved all 5 remaining audit recommendations from the 2026-08-25 QA/SRE audit.
+
+### Task 1 — XSS Sanitization (commit 05fe866)
+- Created `backend/src/middleware/sanitize.js` — strips `<script>`, `on*` handlers, `javascript:` URLs from POST/PUT/PATCH bodies
+- Created `backend/tests/sanitize.test.js` — 13 tests (script tags, event handlers, nested payloads, safe passthrough)
+- Created `backend/migrations/0076_sanitize_user_data.sql` — sanitizes existing data in meta_value, description, notes, comment, review columns
+- Mounted middleware on `/api/*` in `backend/src/index.js`
+
+### Task 2 — E2E Coverage Expansion (commit caf12d7)
+- `tests/e2e/specs/admin/camp-flow.spec.ts` — 5 steps: load → rooms → rate plans → edit → reviews
+- `tests/e2e/specs/admin/supermarket-flow.spec.ts` — 5 steps: products → low stock → orders → promotions → reports
+- `tests/e2e/specs/admin/restaurant-flow.spec.ts` — 5 steps: services → bookings → meals → menu planner → promotions
+- `tests/e2e/specs/admin/service-flow.spec.ts` — 5 steps: definitions tab → add definition → add item → bookings → cross-panel nav
+- All specs use serial execution, data-testid selectors, and the existing admin dashboard page object pattern
+
+### Task 3 — Service Module Integration Tests (commit e943514)
+- Created `backend/tests/services-unit.test.js` — 25 tests covering:
+  - Definitions CRUD (6): list, create, update, toggle active
+  - Items CRUD (4): list by definition, create, update, toggle availability
+  - Bookings CRUD (7): create (with auto-create definition+item), list, status transitions, worker assignment, conflict detection
+  - Reviews (3): list by definition, create with rating
+  - Status transitions (5): pending→confirmed, confirmed→in_progress, in_progress→completed, completed, cancel
+- **Root cause fixes**: multiline SQL regex (`[\s\S]*`), raw array passing (no double-wrapping), `toCamel` key assertions
+- Uses `makeRoutingDb()` from `tests/helpers/routerHarness.js` with SQL-routing mock DB
+
+### Task 4 — CSRF Documentation (commit caf12d7)
+- Created `docs/security-guide.md` — covers auth, CSRF resistance (why Bearer tokens are inherently CSRF-safe), XSS prevention (4 layers), rate limiting, CORS, input sanitization, security recommendations
+- Updated `docs/README.md` — added Security Guide link to Developer Resources
+
+### Task 5 — npm Dependency Fix (commit f0e7f8f)
+- Added `@types/react` (^18.3.31) and `@types/react-dom` (^18.3.7) to `app/package.json` devDependencies
+
+### Final Results
+- **All 3,389 tests passing**: 1,364 backend (43 files) + 1,869 frontend (93 files) + 156 root (10 files)
+- All 5 audit recommendations resolved — `AUDIT_REPORT.md` updated with resolution status
+
+### Persistent Learnings (new)
+- **Mock DB regex gotcha**: Use `[\s\S]*` not `.*` in regex patterns for multiline SQL — JS `.` does NOT match `\n` characters.
+- **Mock DB auto-wrapping**: Pass raw arrays to `.on()`, not `{ results: [...] }` — the mock auto-wraps to `{ results: rawArray, meta }`. Double-wrapping causes assertion failures.
+- **Mock DB custom meta**: Use function callback for custom meta (avoids double-wrapping): `.on(/pattern/, () => ({ meta: { changes: 0 } }))`.
+- **toCamel wire format**: Backend auto-converts snake_case DB columns to camelCase on the wire — assert on camelCase keys (e.g., `itemName` not `item_name`) in test expectations.
