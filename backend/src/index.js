@@ -38,6 +38,12 @@ import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
 import { withSunset } from './utils/deprecation.js';
 import { Broadcaster } from './durable/broadcaster.js';
+import financialsRoutes from './api/financials.js';
+import hrRoutes from './api/hr.js';
+import supplyRoutes from './api/supply.js';
+import crmRoutes from './api/crm.js';
+import storefrontRoutes from './api/storefront.js';
+import aiRoutes from './api/ai.js';
 
 // Durable Object class export — required so `wrangler deploy` can register the
 // BROADCASTER binding (`class_name = "Broadcaster"`) from the entrypoint.
@@ -621,6 +627,48 @@ app.get('/api/projects/:id/meal-plans', async (c) => {
     return errorResponse('Failed to fetch meal plans');
   }
 });
+
+// ── Business OS Pillars (2026-08-26 Expansion) ──────────────────────────────
+// Financial Management — double-entry accounting, invoicing, payments, tax
+const financialsScope = resolveScope();
+app.use('/api/financials', financialsScope);
+app.use('/api/financials/*', financialsScope);
+app.route('/api/financials', financialsRoutes);
+
+// HR & Payroll — employees, leave, payroll, recruitment
+const hrScope = resolveScope();
+app.use('/api/hr', hrScope);
+app.use('/api/hr/*', hrScope);
+app.route('/api/hr', hrRoutes);
+
+// Supply Chain — warehouses, stock, transfers, POs, BOMs, manufacturing
+const supplyScope = resolveScope();
+app.use('/api/supply', supplyScope);
+app.use('/api/supply/*', supplyScope);
+app.route('/api/supply', supplyRoutes);
+
+// CRM & Projects — contacts, leads, opportunities, tasks, tickets
+const crmScope = resolveScope();
+app.use('/api/crm', crmScope);
+app.use('/api/crm/*', crmScope);
+app.route('/api/crm', crmRoutes);
+
+// Storefront — mixed visibility: public read (products, cart, pages, blog), admin mutations
+const storefrontPublicScope = resolveScope({ public: true });
+const storefrontAdminScope = resolveScope();
+const storefrontScope = async (c, next) => {
+  const isPublicRead = c.req.method === 'GET' && !c.req.path.startsWith('/api/storefront/admin');
+  return isPublicRead ? storefrontPublicScope(c, next) : storefrontAdminScope(c, next);
+};
+app.use('/api/storefront', storefrontScope);
+app.use('/api/storefront/*', storefrontScope);
+app.route('/api/storefront', storefrontRoutes);
+
+// AI & Intelligence — dynamic pricing, forecasting, anomalies, automation
+const aiScope = resolveScope();
+app.use('/api/ai', aiScope);
+app.use('/api/ai/*', aiScope);
+app.route('/api/ai', aiRoutes);
 
 // ── API terminal fallback ─────────────────────────────────
 // Phase 4 complete: every Paradigm-B dispatcher module above this line has

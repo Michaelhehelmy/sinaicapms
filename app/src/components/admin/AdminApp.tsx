@@ -73,6 +73,12 @@ const BillingPanel = React.lazy(() => import('./BillingPanel'));
 const SuperTenantsPanel = React.lazy(() => import('./SuperTenantsPanel'));
 const SuperDashboardPanel = React.lazy(() => import('./SuperDashboardPanel'));
 const SuperOrdersPanel = React.lazy(() => import('./SuperOrdersPanel'));
+const FinancialPanel = React.lazy(() => import('./FinancialPanel'));
+const HRPanel = React.lazy(() => import('./HRPanel'));
+const SupplyPanel = React.lazy(() => import('./SupplyPanel'));
+const CRMPanel = React.lazy(() => import('./CRMPanel'));
+const StorefrontPanel = React.lazy(() => import('./StorefrontPanel'));
+const AIPanel = React.lazy(() => import('./AIPanel'));
 
 type Tab = string;
 
@@ -101,6 +107,12 @@ const TENANT_NAV: NavItem[] = [
   { id: 'services', label: 'Services', icon: IconServices },
   { id: 'service-bookings', label: 'Service Bookings', icon: IconServices },
   { id: 'staff', label: 'Staff', icon: IconStaff },
+  { id: 'financials', label: 'Financials', icon: IconReports },
+  { id: 'hr', label: 'HR & Payroll', icon: IconStaff },
+  { id: 'supply', label: 'Supply Chain', icon: IconLowStock },
+  { id: 'crm', label: 'CRM', icon: IconInbox },
+  { id: 'storefront', label: 'Storefront', icon: IconCamps },
+  { id: 'ai', label: 'AI & Intelligence', icon: IconAnalytics },
   { id: 'billing', label: 'Billing', icon: IconSettings },
   { id: 'settings', label: 'Settings', icon: IconSettings },
 ];
@@ -303,6 +315,18 @@ function AdminAppInner() {
         return <ServiceBookingsPanel />;
       case 'staff':
         return <StaffPanel />;
+      case 'financials':
+        return <FinancialPanel />;
+      case 'hr':
+        return <HRPanel />;
+      case 'supply':
+        return <SupplyPanel />;
+      case 'crm':
+        return <CRMPanel />;
+      case 'storefront':
+        return <StorefrontPanel />;
+      case 'ai':
+        return <AIPanel />;
       case 'billing':
         return <BillingPanel />;
       case 'settings':

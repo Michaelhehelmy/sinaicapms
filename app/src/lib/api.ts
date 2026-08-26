@@ -1543,3 +1543,407 @@ export function getSeasonalComparison() {
     pos_monthly: Array<{ month: string; revenue: number; tx_count: number }>;
   }>('/reports/seasonal');
 }
+
+// ─── Financial Management (Agent F) ────────────────────────────────────────
+export function getFinancialAccounts() {
+  return apiFetch<Array<{ id: string; code: string; name: string; type: string; isActive: number }>>('/financials/accounts');
+}
+
+export function createFinancialAccount(data: { code: string; name: string; type: string; parentId?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/financials/accounts', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateFinancialAccount(id: string, data: { name?: string; type?: string; isActive?: number }) {
+  return apiFetch<{ success: boolean }>(`/financials/accounts/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function deleteFinancialAccount(id: string) {
+  return apiFetch<{ success: boolean }>(`/financials/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getFinancialJournals() {
+  return apiFetch<Array<{ id: string; name: string; type: string; isActive: number }>>('/financials/journals');
+}
+
+export function createFinancialJournal(data: { name: string; type: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/financials/journals', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getJournalEntries(params?: { journalId?: string; startDate?: string; endDate?: string }) {
+  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  return apiFetch<Array<{ id: string; journalId: string; date: string; description: string; posted: number }>>(`/financials/journal-entries${qs}`);
+}
+
+export function createJournalEntry(data: { journalId: string; date: string; description?: string; reference?: string; lines: Array<{ accountId: string; debit: number; credit: number }> }) {
+  return apiFetch<{ id: string; success: boolean }>('/financials/journal-entries', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function postJournalEntry(id: string) {
+  return apiFetch<{ success: boolean }>(`/financials/journal-entries/${encodeURIComponent(id)}/post`, { method: 'POST' });
+}
+
+export function getFinancialInvoices(params?: { status?: string; type?: string }) {
+  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  return apiFetch<Array<{ id: string; invoiceNumber: string; type: string; totalAmount: number; paidAmount: number; status: string }>>(`/financials/invoices${qs}`);
+}
+
+export function createFinancialInvoice(data: { type: string; contactId?: string; issueDate: string; dueDate?: string; currency?: string; notes?: string; lines: Array<{ description: string; quantity: number; unitPrice: number; taxRate?: number }> }) {
+  return apiFetch<{ id: string; invoiceNumber: string; success: boolean }>('/financials/invoices', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateInvoiceStatus(id: string, status: string) {
+  return apiFetch<{ success: boolean }>(`/financials/invoices/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+}
+
+export function createPayment(data: { invoiceId?: string; amount: number; paymentDate: string; method: string; reference?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/financials/payments', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getTaxRates() {
+  return apiFetch<Array<{ id: string; name: string; rate: number; jurisdiction: string | null; isDefault: number }>>('/financials/tax-rates');
+}
+
+export function createTaxRate(data: { name: string; rate: number; jurisdiction?: string; isDefault?: number }) {
+  return apiFetch<{ id: string; success: boolean }>('/financials/tax-rates', { method: 'POST', body: JSON.stringify(data) });
+}
+
+// ─── Payment Gateway (Stub) ─────────────────────────────────────────────────
+export function processPayment(data: { invoiceId?: string; amount: number; method: string; currency?: string; customerEmail?: string }) {
+  return apiFetch<{ id: string; paymentIntentId: string; clientSecret: string; amount: number; currency: string; status: string; message: string; success: boolean }>('/financials/process-payment', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function confirmFinancialPayment(paymentId: string) {
+  return apiFetch<{ success: boolean; status: string }>('/financials/confirm-payment', { method: 'POST', body: JSON.stringify({ paymentId }) });
+}
+
+// ─── HR & Payroll (Agent H) ────────────────────────────────────────────────
+export function getHrEmployees() {
+  return apiFetch<Array<{ id: string; firstName: string; lastName: string; email: string; department: string; position: string; status: string; salaryAmount: number }>>('/hr/employees');
+}
+
+export function createHrEmployee(data: { firstName: string; lastName: string; email: string; hireDate: string; department?: string; position?: string; salaryType?: string; salaryAmount: number }) {
+  return apiFetch<{ id: string; success: boolean }>('/hr/employees', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateHrEmployee(id: string, data: Record<string, unknown>) {
+  return apiFetch<{ success: boolean }>(`/hr/employees/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function deleteHrEmployee(id: string) {
+  return apiFetch<{ success: boolean }>(`/hr/employees/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getHrLeaveTypes() {
+  return apiFetch<Array<{ id: string; name: string; accrualRate: number; isPaid: number }>>('/hr/leave-types');
+}
+
+export function createHrLeaveType(data: { name: string; accrualRate: number; isPaid?: number }) {
+  return apiFetch<{ id: string; success: boolean }>('/hr/leave-types', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getHrLeaveRequests() {
+  return apiFetch<Array<{ id: string; employeeId: string; leaveTypeId: string; startDate: string; endDate: string; days: number; status: string }>>('/hr/leave-requests');
+}
+
+export function createHrLeaveRequest(data: { employeeId: string; leaveTypeId: string; startDate: string; endDate: string; days: number; notes?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/hr/leave-requests', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function approveHrLeaveRequest(id: string, status: string) {
+  return apiFetch<{ success: boolean }>(`/hr/leave-requests/${encodeURIComponent(id)}/approve`, { method: 'PATCH', body: JSON.stringify({ status }) });
+}
+
+export function getHrPayrollRuns() {
+  return apiFetch<Array<{ id: string; periodStart: string; periodEnd: string; status: string; totalGross: number; totalDeductions: number; totalNet: number }>>('/hr/payroll/runs');
+}
+
+export function createHrPayrollRun(data: { periodStart: string; periodEnd: string; runDate: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/hr/payroll/runs', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function postHrPayrollRun(id: string) {
+  return apiFetch<{ success: boolean }>(`/hr/payroll/runs/${encodeURIComponent(id)}/post`, { method: 'POST' });
+}
+
+export function getHrJobPosts() {
+  return apiFetch<Array<{ id: string; title: string; department: string; location: string; status: string }>>('/hr/job-posts');
+}
+
+export function createHrJobPost(data: { title: string; description?: string; department?: string; location?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/hr/job-posts', { method: 'POST', body: JSON.stringify(data) });
+}
+
+// ─── Supply Chain (Agent S) ────────────────────────────────────────────────
+export function getSupplyWarehouses() {
+  return apiFetch<Array<{ id: string; name: string; location: string; isActive: number }>>('/supply/warehouses');
+}
+
+export function createSupplyWarehouse(data: { name: string; location?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/supply/warehouses', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getSupplyStock(params?: { warehouseId?: string }) {
+  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  return apiFetch<Array<{ id: string; productId: string; warehouseId: string; quantity: number; reserved: number; productName?: string; warehouseName?: string }>>(`/supply/stock${qs}`);
+}
+
+export function adjustSupplyStock(data: { productId: string; warehouseId: string; quantity: number }) {
+  return apiFetch<{ id: string; success: boolean }>('/supply/stock', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getSupplyTransfers() {
+  return apiFetch<Array<{ id: string; fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: number; status: string }>>('/supply/stock-transfers');
+}
+
+export function createSupplyTransfer(data: { fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: number }) {
+  return apiFetch<{ id: string; success: boolean }>('/supply/stock-transfers', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function confirmSupplyTransfer(id: string) {
+  return apiFetch<{ success: boolean }>(`/supply/stock-transfers/${encodeURIComponent(id)}/confirm`, { method: 'PATCH' });
+}
+
+export function getSupplyPurchaseOrders() {
+  return apiFetch<Array<{ id: string; poNumber: string; vendorId: string | null; orderDate: string; status: string; totalAmount: number }>>('/supply/purchase-orders');
+}
+
+export function createSupplyPurchaseOrder(data: { poNumber: string; vendorId?: string; orderDate: string; expectedDelivery?: string; notes?: string; lines: Array<{ productId: string; quantity: number; unitPrice: number }> }) {
+  return apiFetch<{ id: string; success: boolean }>('/supply/purchase-orders', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function receiveSupplyPurchaseOrder(id: string) {
+  return apiFetch<{ success: boolean }>(`/supply/purchase-orders/${encodeURIComponent(id)}/receive`, { method: 'PATCH' });
+}
+
+export function getSupplyBoms() {
+  return apiFetch<Array<{ id: string; productId: string; name: string; version: number; isActive: number }>>('/supply/boms');
+}
+
+export function createSupplyBom(data: { productId: string; name: string; lines: Array<{ componentId: string; quantity: number; unit?: string }> }) {
+  return apiFetch<{ id: string; success: boolean }>('/supply/boms', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getSupplyManufacturingOrders() {
+  return apiFetch<Array<{ id: string; bomId: string; productId: string; quantity: number; status: string; producedQuantity: number }>>('/supply/manufacturing-orders');
+}
+
+export function createSupplyManufacturingOrder(data: { bomId: string; productId: string; quantity: number; startDate?: string; endDate?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/supply/manufacturing-orders', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function progressSupplyManufacturingOrder(id: string, producedQuantity: number) {
+  return apiFetch<{ success: boolean }>(`/supply/manufacturing-orders/${encodeURIComponent(id)}/progress`, { method: 'PATCH', body: JSON.stringify({ producedQuantity }) });
+}
+
+// ─── CRM & Projects (Agent C) ──────────────────────────────────────────────
+export function getCrmContacts(params?: { type?: string }) {
+  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  return apiFetch<Array<{ id: string; type: string; name: string; email: string | null; phone: string | null; isCustomer: number; isVendor: number; isLead: number }>>(`/crm/contacts${qs}`);
+}
+
+export function createCrmContact(data: { type: string; name: string; email?: string; phone?: string; address?: string; industry?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/crm/contacts', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateCrmContact(id: string, data: Record<string, unknown>) {
+  return apiFetch<{ success: boolean }>(`/crm/contacts/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function getCrmLeads() {
+  return apiFetch<Array<{ id: string; contactId: string; status: string; source: string | null; value: number | null; assignedTo: string | null }>>('/crm/leads');
+}
+
+export function createCrmLead(data: { contactId: string; source?: string; value?: number; notes?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/crm/leads', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateCrmLeadStatus(id: string, status: string) {
+  return apiFetch<{ success: boolean }>(`/crm/leads/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+}
+
+export function getCrmOpportunities() {
+  return apiFetch<Array<{ id: string; leadId: string | null; name: string; stage: string; amount: number; probability: number; expectedCloseDate: string | null; assignedTo: string | null }>>('/crm/opportunities');
+}
+
+export function createCrmOpportunity(data: { leadId?: string; name: string; amount?: number; probability?: number; expectedCloseDate?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/crm/opportunities', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateCrmOpportunityStage(id: string, stage: string) {
+  return apiFetch<{ success: boolean }>(`/crm/opportunities/${encodeURIComponent(id)}/stage`, { method: 'PATCH', body: JSON.stringify({ stage }) });
+}
+
+export function getCrmTasks(params?: { projectId?: string; assigneeId?: string; status?: string }) {
+  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  return apiFetch<Array<{ id: string; projectId: string | null; title: string; status: string; priority: string; assigneeId: string | null; dueDate: string | null }>>(`/crm/tasks${qs}`);
+}
+
+export function createCrmTask(data: { projectId?: string; title: string; description?: string; priority?: string; assigneeId?: string; dueDate?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/crm/tasks', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateCrmTaskStatus(id: string, status: string) {
+  return apiFetch<{ success: boolean }>(`/crm/tasks/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+}
+
+export function getCrmTickets() {
+  return apiFetch<Array<{ id: string; contactId: string | null; subject: string; status: string; priority: string; assignedTo: string | null }>>('/crm/tickets');
+}
+
+export function createCrmTicket(data: { contactId?: string; subject: string; description?: string; priority?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/crm/tickets', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function addCrmTicketComment(ticketId: string, content: string, internal?: boolean) {
+  return apiFetch<{ id: string; success: boolean }>(`/crm/tickets/${encodeURIComponent(ticketId)}/comments`, { method: 'POST', body: JSON.stringify({ content, internal }) });
+}
+
+export function getCrmKnowledgeArticles() {
+  return apiFetch<Array<{ id: string; title: string; category: string | null; isPublished: number }>>('/crm/knowledge-articles');
+}
+
+export function createCrmKnowledgeArticle(data: { title: string; content: string; category?: string; tags?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/crm/knowledge-articles', { method: 'POST', body: JSON.stringify(data) });
+}
+
+// ─── Storefront (Agent E) ──────────────────────────────────────────────────
+export function getStorefrontProducts(params?: { category?: string; search?: string }) {
+  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  return apiFetch<Array<{ id: string; name: string; sellingPrice: number; description: string; imageUrl: string | null }>>(`/storefront/products${qs}`);
+}
+
+export function getStorefrontProduct(id: string) {
+  return apiFetch<{ id: string; name: string; sellingPrice: number; description: string; imageUrl: string | null }>(`/storefront/products/${encodeURIComponent(id)}`);
+}
+
+export function getStorefrontCart(sessionId: string) {
+  return apiFetch<{ id: string; items: Array<{ id: string; productId: string; quantity: number; unitPrice: number; totalPrice: number; productName?: string }> }>(`/storefront/cart?sessionId=${encodeURIComponent(sessionId)}`);
+}
+
+export function addToStorefrontCart(data: { productId: string; quantity: number; sessionId: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/storefront/cart/items', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateStorefrontCartItem(id: string, quantity: number) {
+  return apiFetch<{ success: boolean }>(`/storefront/cart/items/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ quantity }) });
+}
+
+export function removeStorefrontCartItem(id: string) {
+  return apiFetch<{ success: boolean }>(`/storefront/cart/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function checkoutStorefront(data: { sessionId: string; customerEmail?: string; customerPhone?: string; shippingAddress?: string }) {
+  return apiFetch<{ orderId: string; orderNumber: string; success: boolean }>('/storefront/checkout', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getStorefrontOrders(sessionId: string) {
+  return apiFetch<Array<{ id: string; orderNumber: string; totalAmount: number; status: string; createdAt: string }>>(`/storefront/orders?sessionId=${encodeURIComponent(sessionId)}`);
+}
+
+export function getStorefrontPages() {
+  return apiFetch<Array<{ id: string; slug: string; title: string; isPublished: number }>>('/storefront/admin/pages');
+}
+
+export function createStorefrontPage(data: { slug: string; title: string; content?: string; metaTitle?: string; metaDescription?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/storefront/admin/pages', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateStorefrontPage(id: string, data: Record<string, unknown>) {
+  return apiFetch<{ success: boolean }>(`/storefront/admin/pages/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function deleteStorefrontPage(id: string) {
+  return apiFetch<{ success: boolean }>(`/storefront/admin/pages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getStorefrontBlogPosts() {
+  return apiFetch<Array<{ id: string; slug: string; title: string; category: string | null; isPublished: number }>>('/storefront/admin/blog');
+}
+
+export function createStorefrontBlogPost(data: { slug: string; title: string; content: string; excerpt?: string; category?: string; tags?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/storefront/admin/blog', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateStorefrontBlogPost(id: string, data: Record<string, unknown>) {
+  return apiFetch<{ success: boolean }>(`/storefront/admin/blog/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function deleteStorefrontBlogPost(id: string) {
+  return apiFetch<{ success: boolean }>(`/storefront/admin/blog/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ─── AI & Intelligence (Agent A) ───────────────────────────────────────────
+export function getAiPredictions(params?: { modelType?: string }) {
+  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  return apiFetch<Array<{ id: string; modelType: string; targetId: string | null; predictedValue: string; confidence: number; createdAt: string }>>(`/ai/predictions${qs}`);
+}
+
+export function createAiPrediction(data: { modelType: string; targetId?: string; predictedValue: string; inputFeatures?: string; confidence?: number }) {
+  return apiFetch<{ id: string; success: boolean }>('/ai/predictions', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getAiDynamicPrice(data: { productId: string; currentPrice: number; historicalSales?: number[]; competitorPrice?: number }) {
+  return apiFetch<{ suggestedPrice: number; confidence: number; factors: Record<string, unknown> }>('/ai/dynamic-price', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getAiForecast(data: { productId: string; periodDays: number }) {
+  return apiFetch<{ forecasts: Array<{ date: string; predictedDemand: number; confidence: number }> }>('/ai/forecast', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getAiAnomaly(data: { type: string; data: Record<string, unknown> }) {
+  return apiFetch<{ anomalies: Array<{ field: string; expected: number; actual: number; severity: string }> }>('/ai/anomaly', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getAiPriceRules() {
+  return apiFetch<Array<{ id: string; name: string; productId: string | null; ruleType: string; minPrice: number | null; maxPrice: number | null; adjustmentPercent: number; isActive: number }>>('/ai/price-rules');
+}
+
+export function createAiPriceRule(data: { name: string; productId?: string; ruleType: string; minPrice?: number; maxPrice?: number; adjustmentPercent?: number }) {
+  return apiFetch<{ id: string; success: boolean }>('/ai/price-rules', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function updateAiPriceRule(id: string, data: Record<string, unknown>) {
+  return apiFetch<{ success: boolean }>(`/ai/price-rules/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function deleteAiPriceRule(id: string) {
+  return apiFetch<{ success: boolean }>(`/ai/price-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getAiAutomationRules() {
+  return apiFetch<Array<{ id: string; name: string; triggerEvent: string; isActive: number; lastTriggeredAt: string | null; triggerCount: number }>>('/ai/automation-rules');
+}
+
+export function createAiAutomationRule(data: { name: string; triggerEvent: string; conditionJson?: string; actionJson?: string }) {
+  return apiFetch<{ id: string; success: boolean }>('/ai/automation-rules', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function toggleAiAutomationRule(id: string) {
+  return apiFetch<{ success: boolean; isActive: number }>(`/ai/automation-rules/${encodeURIComponent(id)}/activate`, { method: 'PATCH' });
+}
+
+export function getAiAutomationLogs() {
+  return apiFetch<Array<{ id: string; ruleId: string | null; triggerEvent: string; result: string; error: string | null; createdAt: string }>>('/ai/automation-logs');
+}
+
+// ─── Workers AI (Stub) ──────────────────────────────────────────────────────
+export function analyzeWithWorkersAI(data: { prompt: string; model?: string; maxTokens?: number }) {
+  return apiFetch<{ id: string; model: string; response: string; tokens_used: number; created_at: string; message: string; success: boolean }>('/ai/workers-ai/analyze', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function generateEmbeddings(data: { text: string; model?: string }) {
+  return apiFetch<{ id: string; model: string; embeddings: number[][]; dimensions: number; message: string; success: boolean }>('/ai/workers-ai/embeddings', { method: 'POST', body: JSON.stringify(data) });
+}
+
+// ─── Durable Objects State (Stub) ───────────────────────────────────────────
+export function getDurableStateSessions() {
+  return apiFetch<{ sessions: unknown[]; total: number; message: string; success: boolean }>('/ai/state/sessions');
+}
+
+export function syncDurableState(data: { key: string; value: unknown; ttl?: number }) {
+  return apiFetch<{ key: string; stored: boolean; ttl: number; message: string; success: boolean }>('/ai/state/sync', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function getDurableStateValue(key: string) {
+  return apiFetch<{ key: string; value: unknown; found: boolean; message: string; success: boolean }>(`/ai/state/sync/${encodeURIComponent(key)}`);
+}
