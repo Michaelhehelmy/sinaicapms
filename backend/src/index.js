@@ -253,6 +253,32 @@ for (const [prefix, handler] of [
   });
 }
 
+// ── Super Admin: Settings, Subscriptions, Health, Performance, Reports ──
+// Mounted BEFORE the legacy catch-all so /api/admin/settings etc. match first.
+for (const [prefix, handler] of [
+  ['/admin/settings', adminSettingsRoutes],
+  ['/admin/subscriptions', adminSubscriptionsRoutes],
+]) {
+  app.all(`/api${prefix}`, async (c) => {
+    const auth = await superAdminGate(c.req.raw, c.env);
+    if (auth instanceof Response) return auth;
+    return handler.fetch(c.req.raw, c.env);
+  });
+  app.all(`/api${prefix}/*`, async (c) => {
+    const auth = await superAdminGate(c.req.raw, c.env);
+    if (auth instanceof Response) return auth;
+    return handler.fetch(c.req.raw, c.env);
+  });
+}
+
+// Legacy handlers (own auth gate — wrap for Hono compatibility)
+app.all('/api/admin/health', async (c) => handleAdminHealthRoute(c.req.raw, c.env));
+app.all('/api/admin/health/*', async (c) => handleAdminHealthRoute(c.req.raw, c.env));
+app.all('/api/admin/performance', async (c) => handleAdminPerformanceRoute(c.req.raw, c.env));
+app.all('/api/admin/performance/*', async (c) => handleAdminPerformanceRoute(c.req.raw, c.env));
+app.all('/api/admin/reports', async (c) => handleAdminReportsRoute(c.req.raw, c.env));
+app.all('/api/admin/reports/*', async (c) => handleAdminReportsRoute(c.req.raw, c.env));
+
 // ── Tenant billing (admin-scoped, tenant-scoped — NOT super-admin) ────
 const tenantBillingScope = resolveScope();
 app.use('/api/tenant/billing', tenantBillingScope);
