@@ -18,7 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_order_items_split ON order_items(split_group);
 CREATE INDEX IF NOT EXISTS idx_pos_tx_tenant_date ON pos_transactions(tenant_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_pos_tx_status ON pos_transactions(status);
 CREATE INDEX IF NOT EXISTS idx_pos_tx_kitchen ON pos_transactions(kitchen_status);
-CREATE INDEX IF NOT EXISTS idx_pos_tx_type ON pos_transactions(type);
+CREATE INDEX IF NOT EXISTS idx_pos_tx_type ON pos_transactions(order_type);
 CREATE INDEX IF NOT EXISTS idx_pos_tx_staff ON pos_transactions(cashier_id);
 
 -- ── POS transaction items: product lookups + tenant scoping ────────
@@ -53,7 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_pos_tables_section ON pos_tables(section);
 
 -- ── Projects (camps): tenant scoping ───────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_projects_type ON projects(type);
+CREATE INDEX IF NOT EXISTS idx_projects_type ON projects(project_type);
 CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
 
 -- ── Rooms: camp lookups + status + floor ───────────────────────────
