@@ -24,6 +24,7 @@ Welcome to the SinaiCamps documentation. This guide covers everything from quick
 - [Testing](TESTING.md) — Unit, integration, and E2E test guides
 - [Developer Roadmap](DEVELOPER_ROADMAP.md) — Feature planning and roadmap
 - [Performance Baseline](PERF_BASELINE.md) — Performance metrics and benchmarks
+- [Security Guide](security-guide.md) — Auth, CSRF, XSS, rate limiting, CORS
 
 ---
 
