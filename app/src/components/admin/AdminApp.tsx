@@ -13,7 +13,11 @@ import {
   IconAnalytics,
   IconCalendar,
   IconCamps,
+  IconCRM,
   IconDashboard,
+  IconAI,
+  IconFinancials,
+  IconHR,
   IconInbox,
   IconLowStock,
   IconMeals,
@@ -27,6 +31,8 @@ import {
   IconServices,
   IconSettings,
   IconStaff,
+  IconStorefront,
+  IconSupply,
   type IconProps,
 } from './icons';
 import { LoginForm } from '@/components/shell/LoginForm';
@@ -79,6 +85,19 @@ const SupplyPanel = React.lazy(() => import('./SupplyPanel'));
 const CRMPanel = React.lazy(() => import('./CRMPanel'));
 const StorefrontPanel = React.lazy(() => import('./StorefrontPanel'));
 const AIPanel = React.lazy(() => import('./AIPanel'));
+const SuperFinancialsPanel = React.lazy(() => import('./SuperFinancialsPanel'));
+const SuperHRPanel = React.lazy(() => import('./SuperHRPanel'));
+const SuperSupplyPanel = React.lazy(() => import('./SuperSupplyPanel'));
+const SuperCRMPanel = React.lazy(() => import('./SuperCRMPanel'));
+const SuperStorefrontPanel = React.lazy(() => import('./SuperStorefrontPanel'));
+const SuperAIPanel = React.lazy(() => import('./SuperAIPanel'));
+const UsersPanel = React.lazy(() => import('./UsersPanel'));
+const SystemSettingsPanel = React.lazy(() => import('./SystemSettingsPanel'));
+const AuditLogPanel = React.lazy(() => import('./AuditLogPanel'));
+const SubscriptionsPanel = React.lazy(() => import('./SubscriptionsPanel'));
+const SuperReportsPanel = React.lazy(() => import('./SuperReportsPanel'));
+const SystemHealthPanel = React.lazy(() => import('./SystemHealthPanel'));
+const TenantPerformancePanel = React.lazy(() => import('./TenantPerformancePanel'));
 
 type Tab = string;
 
@@ -121,12 +140,25 @@ const TENANT_NAV: NavItem[] = [
 const MOBILE_NAV_IDS = ['dashboard', 'camps', 'rooms', 'reservations', 'calendar'];
 
 /** Super-admin mobile bottom nav — the 3 super panels fit comfortably. */
-const SUPER_MOBILE_NAV_IDS = ['super_dashboard', 'super_tenants', 'super_reservations'];
+const SUPER_MOBILE_NAV_IDS = ['super_dashboard', 'super_tenants', 'super_reservations', 'super_financials', 'super_settings'];
 
 const SUPER_NAV: NavItem[] = [
   { id: 'super_dashboard', label: 'Super Dashboard', icon: IconDashboard },
   { id: 'super_tenants', label: 'Tenants', icon: IconRooms },
   { id: 'super_reservations', label: 'All Orders', icon: IconOrders },
+  { id: 'super_users', label: 'Users', icon: IconStaff },
+  { id: 'super_settings', label: 'System Settings', icon: IconSettings },
+  { id: 'super_audit', label: 'Audit Log', icon: IconReports },
+  { id: 'super_subscriptions', label: 'Subscriptions', icon: IconSettings },
+  { id: 'super_financials', label: 'Financials', icon: IconFinancials },
+  { id: 'super_hr', label: 'HR', icon: IconHR },
+  { id: 'super_supply', label: 'Supply Chain', icon: IconSupply },
+  { id: 'super_crm', label: 'CRM', icon: IconCRM },
+  { id: 'super_storefront', label: 'Storefront', icon: IconStorefront },
+  { id: 'super_ai', label: 'AI & Insights', icon: IconAI },
+  { id: 'super_reports', label: 'Reports', icon: IconReports },
+  { id: 'super_health', label: 'System Health', icon: IconAnalytics },
+  { id: 'super_performance', label: 'Performance', icon: IconAnalytics },
 ];
 
 // ─── Phase 7 navigation: pushState tabs with legacy-hash fallback ────────
@@ -340,6 +372,45 @@ function AdminAppInner() {
         }
         if (tab === 'super_reservations') {
           return <SuperOrdersPanel />;
+        }
+        if (tab === 'super_financials') {
+          return <SuperFinancialsPanel />;
+        }
+        if (tab === 'super_hr') {
+          return <SuperHRPanel />;
+        }
+        if (tab === 'super_supply') {
+          return <SuperSupplyPanel />;
+        }
+        if (tab === 'super_crm') {
+          return <SuperCRMPanel />;
+        }
+        if (tab === 'super_storefront') {
+          return <SuperStorefrontPanel />;
+        }
+        if (tab === 'super_ai') {
+          return <SuperAIPanel />;
+        }
+        if (tab === 'super_users') {
+          return <UsersPanel />;
+        }
+        if (tab === 'super_settings') {
+          return <SystemSettingsPanel />;
+        }
+        if (tab === 'super_audit') {
+          return <AuditLogPanel />;
+        }
+        if (tab === 'super_subscriptions') {
+          return <SubscriptionsPanel />;
+        }
+        if (tab === 'super_reports') {
+          return <SuperReportsPanel />;
+        }
+        if (tab === 'super_health') {
+          return <SystemHealthPanel />;
+        }
+        if (tab === 'super_performance') {
+          return <TenantPerformancePanel />;
         }
         if (tab.startsWith('super_')) {
           return <SuperPlaceholder tab={tab} />;

@@ -208,7 +208,7 @@ function TableCard({
 
 // ─── Table Grid View ────────────────────────────────────────
 export default function TableView() {
-  const { data, isLoading, error } = usePosTables();
+  const { data, isLoading, error, refetch } = usePosTables();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const updateStatus = useUpdateTableStatusMutation();
@@ -243,7 +243,12 @@ export default function TableView() {
   }
 
   if (isLoading) return <div className="p-6"><TableSkeleton rows={4} columns={4} /></div>;
-  if (error) return <div className="p-8 text-red-500">{(error as Error).message || 'Failed to load tables'}</div>;
+  if (error) return (
+    <div className="p-8 text-center">
+      <div className="text-red-500 mb-3">{(error as Error).message || 'Failed to load tables'}</div>
+      <button onClick={() => refetch()} className="text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-md px-4 py-2 border-none cursor-pointer">Try Again</button>
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-4 overflow-y-auto" data-testid="pos-tables">

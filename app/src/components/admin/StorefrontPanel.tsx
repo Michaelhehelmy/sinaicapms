@@ -1,5 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import * as api from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -12,6 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
+import { queryKeys, useStorefrontPagesQuery, useStorefrontBlogPostsQuery, useStorefrontBlogCategoriesQuery, useStorefrontCartsQuery, useStorefrontOrdersQuery } from '@/hooks/useQueryHooks';
 
 type Tab = 'pages' | 'blog' | 'blogCategories' | 'carts' | 'orders';
 
@@ -61,15 +64,17 @@ const emptyCategoryForm: CategoryForm = { name: '', slug: '' };
 
 export default function StorefrontPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('pages');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [pages, setPages] = useState<PageItem[]>([]);
-  const [posts, setPosts] = useState<BlogPost[]>([]);
-  const [categories, setCategories] = useState<BlogCategory[]>([]);
-  const [carts, setCarts] = useState<CartOverview[]>([]);
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  // Data via TanStack Query
+  const { data: pages = [], isLoading: loadingPages } = useStorefrontPagesQuery();
+  const { data: posts = [], isLoading: loadingPosts } = useStorefrontBlogPostsQuery();
+  const { data: categories = [], isLoading: loadingCats } = useStorefrontBlogCategoriesQuery();
+  const { data: carts = [], isLoading: loadingCarts } = useStorefrontCartsQuery();
+  const { data: orders = [], isLoading: loadingOrders } = useStorefrontOrdersQuery();
+  const loading = loadingPages || loadingPosts || loadingCats || loadingCarts || loadingOrders;
 
   const [showPageForm, setShowPageForm] = useState(false);
   const [editPageId, setEditPageId] = useState<string | null>(null);
@@ -84,22 +89,9 @@ export default function StorefrontPanel() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; label: string } | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [p, b, c2, ca, o] = await Promise.all([
-        api.getStorefrontPages() as Promise<PageItem[]>,
-        api.getStorefrontBlogPosts() as Promise<BlogPost[]>,
-        api.getStorefrontBlogCategories() as Promise<BlogCategory[]>,
-        api.getStorefrontCarts() as Promise<CartOverview[]>,
-        api.getStorefrontOrders() as Promise<OrderItem[]>,
-      ]);
-      setPages(p); setPosts(b); setCategories(c2); setCarts(ca); setOrders(o);
-    } catch (err) {
-      showToast('Failed to load storefront data: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  const invalidateStorefront = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'storefront'] });
+  }, [queryClient]);
 
   const openAddPage = useCallback(() => { setEditPageId(null); setPageForm(emptyPageForm); setShowPageForm(true); }, []);
   const openEditPage = useCallback((p: PageItem) => {
@@ -123,11 +115,11 @@ export default function StorefrontPanel() {
       }, editPageId ?? undefined);
       showToast(editPageId ? 'Page updated.' : 'Page created.', 'success');
       setShowPageForm(false); setEditPageId(null); setPageForm(emptyPageForm);
-      await loadData();
+      invalidateStorefront();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [pageForm, editPageId, showToast, loadData]);
+  }, [pageForm, editPageId, showToast, invalidateStorefront]);
 
   const openAddBlog = useCallback(() => { setEditBlogId(null); setBlogForm(emptyBlogForm); setShowBlogForm(true); }, []);
   const openEditBlog = useCallback((p: BlogPost) => {
@@ -154,11 +146,11 @@ export default function StorefrontPanel() {
       }, editBlogId ?? undefined);
       showToast(editBlogId ? 'Blog post updated.' : 'Blog post created.', 'success');
       setShowBlogForm(false); setEditBlogId(null); setBlogForm(emptyBlogForm);
-      await loadData();
+      invalidateStorefront();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [blogForm, editBlogId, showToast, loadData]);
+  }, [blogForm, editBlogId, showToast, invalidateStorefront]);
 
   const openAddCat = useCallback(() => { setCatForm(emptyCategoryForm); setShowCatForm(true); }, []);
 
@@ -170,11 +162,11 @@ export default function StorefrontPanel() {
       await api.saveStorefrontBlogCategory({ name: catForm.name.trim(), slug: catForm.slug.trim() });
       showToast('Category created.', 'success');
       setShowCatForm(false); setCatForm(emptyCategoryForm);
-      await loadData();
+      invalidateStorefront();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [catForm, showToast, loadData]);
+  }, [catForm, showToast, invalidateStorefront]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -184,11 +176,11 @@ export default function StorefrontPanel() {
       else if (deleteTarget.type === 'category') await api.deleteStorefrontBlogCategory(deleteTarget.id);
       showToast('Deleted.', 'success');
       setDeleteTarget(null);
-      await loadData();
+      invalidateStorefront();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast, loadData]);
+  }, [deleteTarget, showToast, invalidateStorefront]);
 
   if (loading) return <LoadingSpinner text="Loading storefront..." />;
 

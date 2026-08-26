@@ -8,7 +8,10 @@ function escapeUrl(url: string | undefined | null): string {
   return url.replace(/['")\)]/g, '');
 }
 
-const { tenant, primaryColor, tenantName } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+const { tenant: rawTenant, primaryColor, tenantName } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+const tenant = rawTenant as (typeof rawTenant & Record<string, unknown>) | null;
+const missionText = (tenant as Record<string, unknown>)?.missionText as string | undefined;
+const featuresRaw = (tenant as Record<string, unknown>)?.features as string | { title: string; description: string }[] | undefined;
 
 const tenantParam = Astro.url.searchParams.get('tenant');
 const querySuffix = tenantParam ? `?tenant=${tenantParam}` : '';
@@ -70,42 +73,32 @@ const heroImage = normalizeAssetUrl(
             'Welcome to our camp! We have been hosting outdoor enthusiasts, families, and campers for over 15 years. We focus on outdoor exploration, survival skills, wilderness lodging, and fostering a deep respect for the natural environment.'
           )}
         </p>
-        <h3 class="mb-3 mt-8 font-bold">Our Core Mission</h3>
-        <p class="leading-relaxed text-[var(--text-muted)]">
-          We believe in the power of disconnection. In a highly connected digital world, our camps offer the physical and mental space to unplug, rediscover nature, and build meaningful relationships around the campfire.
-        </p>
+        {missionText && (
+          <>
+            <h3 class="mb-3 mt-8 font-bold">Our Core Mission</h3>
+            <p class="leading-relaxed text-[var(--text-muted)]">
+              {escHtml(missionText)}
+            </p>
+          </>
+        )}
       </div>
 
-      <!-- Feature Cards -->
-      <div class="flex flex-col gap-5">
-        <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
-          <svg class="mb-3 block h-5 w-5 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 3 3 20h18L12 3Z" />
-            <path d="m7 20 5-8 5 8" />
-          </svg>
-          <h4 class="mb-2 text-lg font-extrabold">Eco-Friendly Lodging</h4>
-          <p class="text-sm text-[var(--text-muted)]">Our cabins are constructed with minimal carbon footprint, utilizing local materials and solar power grids.</p>
-        </div>
-        <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
-          <svg class="mb-3 block h-5 w-5 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" />
-            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
-          </svg>
-          <h4 class="mb-2 text-lg font-extrabold">Expert Wilderness Guides</h4>
-          <p class="text-sm text-[var(--text-muted)]">All hiking, climbing, and water sports activities are supervised by certified local survival experts.</p>
-        </div>
-        <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
-          <svg class="mb-3 block h-5 w-5 text-[var(--primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="m11 17 2 2a1 1 0 1 0 3-3" />
-            <path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4" />
-            <path d="m21 3 1 11h-2" />
-            <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3" />
-            <path d="M3 4h8" />
-          </svg>
-          <h4 class="mb-2 text-lg font-extrabold">Community Vibe</h4>
-          <p class="text-sm text-[var(--text-muted)]">Enjoy communal dining lodges, shared bonfire stargazing, and group workshops during your stay.</p>
-        </div>
-      </div>
+      {/* Feature Cards — dynamic from tenant data */}
+      {featuresRaw && (() => {
+        let features: { title: string; description: string }[] = [];
+        try { features = typeof featuresRaw === 'string' ? JSON.parse(featuresRaw) : featuresRaw; } catch { /* ignore */ }
+        if (!Array.isArray(features) || features.length === 0) return null;
+        return (
+          <div class="flex flex-col gap-5">
+            {features.map((f) => (
+              <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
+                <h4 class="mb-2 text-lg font-extrabold">{escHtml(f.title)}</h4>
+                <p class="text-sm text-[var(--text-muted)]">{escHtml(f.description)}</p>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   </section>
 </PublicLayout>

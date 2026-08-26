@@ -7338,3 +7338,169 @@ Each agent created: SQL migration, Hono backend router, React admin panel, unit 
 - **Duplicate export naming**: Check for existing exports before adding new ones. `confirmPayment` already existed for POS — renamed new financial version to `confirmFinancialPayment`.
 - **Test status codes**: Payment creation returns 201 (Created), not 200. Always check the actual response code in the handler.
 - **Frontend nav count tests**: When adding nav items, update `AdminApp.test.tsx` to match new count (was 20, now 26).
+
+---
+
+## 2026-08-26 — Super Admin Command Center Transformation
+
+### Overview
+Transformed the Super Admin from a minimal 3-tab interface into a feature-rich 16-tab command center with charts, cross-tenant analytics, system management, and professional-grade UX.
+
+### What Changed
+
+#### Frontend (app/src/components/admin/)
+1. **Enhanced existing panels** — SuperDashboardPanel (Recharts charts, top tenants, recent orders, DateRangePicker), SuperTenantsPanel (search, filters, CSV export), SuperOrdersPanel (filters, export)
+2. **New system management panels** — UsersPanel (admin user CRUD), SystemSettingsPanel (4 tabs: Feature Flags, Email Templates, Defaults, Branding), AuditLogPanel (filters, expandable JSON diff, CSV export), SubscriptionsPanel (plan/status badges, usage bars, change plan modal)
+3. **New cross-tenant pillar views** — SuperFinancialsPanel, SuperHRPanel, SuperSupplyPanel, SuperCRMPanel, SuperStorefrontPanel, SuperAIPanel (all 6 pillars with TanStack Query, skeletons, error boundaries)
+4. **New analytics panels** — SuperReportsPanel (template listing, generate/schedule UI), SystemHealthPanel (real-time cards, 24h charts), TenantPerformancePanel (summary stats, top-5 rankings, sortable table, CSV export)
+
+#### Frontend (app/src/components/ui/)
+5. **New shared UI components** — DateRangePicker, ChartCard, BarChart, LineChart, PieChart, MetricCard (Recharts wrappers), ExportButton (multi-format export dropdown), BulkActions component
+
+#### Frontend (app/src/hooks/)
+6. **New hooks** — useFilterState (URL-synced filters), 12 new TanStack Query hooks in useQueryHooks.ts
+
+#### Frontend (app/src/lib/)
+7. **New icons** — 6 icons in icons.tsx (Financials, HR, Supply, CRM, Storefront, AI)
+8. **~120+ new API functions** in api.ts for admin endpoints
+
+#### Backend (backend/src/api/)
+9. **14 new admin modules** — admin-stats.js (enhanced), admin-users.js, admin-settings.js, admin-audit.js, admin-subscriptions.js, admin-financials.js, admin-hr.js, admin-supply.js, admin-crm.js, admin-storefront.js, admin-ai.js, admin-reports.js, admin-health.js, admin-performance.js
+
+#### Backend (backend/src/)
+10. **Route mounting** — All 14 admin modules mounted in index.js with superAdminGate before legacy catch-all
+
+#### Database
+11. **Migration 0084** — platform_settings and subscriptions tables
+
+#### Navigation
+12. **AdminApp.tsx** — SUPER_NAV expanded from 3 to 16 tabs, renderPanel switch updated, SUPER_MOBILE_NAV_IDS expanded to 5
+
+#### Tests
+13. **AdminApp.test.tsx** — Updated to mock all 16 super panels, 19 new useQueryHooks mocks, nav count assertion updated (9→16), mobile nav test updated (3→5 tabs), placeholder test updated to use unknown tab
+
+### Test Counts
+- Frontend: 1,869 ✅
+- Backend: 1,577 ✅
+- Root: 156 ✅
+- **Total: 3,602**
+
+### Files Modified
+- `app/src/components/admin/AdminApp.tsx` — Lazy imports, SUPER_NAV (3→16), renderPanel cases, SUPER_MOBILE_NAV_IDS (3→5)
+- `app/src/components/admin/SuperDashboardPanel.tsx` — Enhanced with Recharts charts
+- `app/src/components/admin/SuperTenantsPanel.tsx` — Search, filters, CSV export
+- `app/src/components/admin/SuperOrdersPanel.tsx` — Filters, export
+- `app/src/components/admin/UsersPanel.tsx` — New admin user CRUD
+- `app/src/components/admin/SystemSettingsPanel.tsx` — New 4-tab settings
+- `app/src/components/admin/AuditLogPanel.tsx` — New cross-tenant audit log
+- `app/src/components/admin/SubscriptionsPanel.tsx` — New subscription management
+- `app/src/components/admin/SuperFinancialsPanel.tsx` — New cross-tenant financials
+- `app/src/components/admin/SuperHRPanel.tsx` — New cross-tenant HR
+- `app/src/components/admin/SuperSupplyPanel.tsx` — New cross-tenant supply
+- `app/src/components/admin/SuperCRMPanel.tsx` — New cross-tenant CRM
+- `app/src/components/admin/SuperStorefrontPanel.tsx` — New cross-tenant storefront
+- `app/src/components/admin/SuperAIPanel.tsx` — New cross-tenant AI
+- `app/src/components/admin/SuperReportsPanel.tsx` — New report templates
+- `app/src/components/admin/SystemHealthPanel.tsx` — New health monitoring
+- `app/src/components/admin/TenantPerformancePanel.tsx` — New performance rankings
+- `app/src/components/admin/icons.tsx` — 6 new icons
+- `app/src/components/ui/DateRangePicker.tsx` — New shared component
+- `app/src/components/ui/ChartCard.tsx` — New chart wrapper
+- `app/src/components/ui/BarChart.tsx` — New Recharts wrapper
+- `app/src/components/ui/LineChart.tsx` — New Recharts wrapper
+- `app/src/components/ui/PieChart.tsx` — New Recharts wrapper
+- `app/src/components/ui/MetricCard.tsx` — New enhanced stat card
+- `app/src/components/ui/ExportButton.tsx` — New export dropdown
+- `app/src/hooks/useFilterState.ts` — New URL-synced filter hook
+- `app/src/hooks/useQueryHooks.ts` — 12 new query hooks
+- `app/src/lib/api.ts` — ~120+ new API functions
+- `backend/src/index.js` — 14 new admin module mounts
+- `backend/src/api/admin-stats.js` — Enhanced with charts data
+- `backend/src/api/admin-users.js` — New admin user management
+- `backend/src/api/admin-settings.js` — New platform settings CRUD
+- `backend/src/api/admin-audit.js` — New cross-tenant audit logs
+- `backend/src/api/admin-subscriptions.js` — New subscription management
+- `backend/src/api/admin-financials.js` — New cross-tenant financial aggregation
+- `backend/src/api/admin-hr.js` — New cross-tenant HR aggregation
+- `backend/src/api/admin-supply.js` — New cross-tenant supply aggregation
+- `backend/src/api/admin-crm.js` — New cross-tenant CRM aggregation
+- `backend/src/api/admin-storefront.js` — New cross-tenant storefront aggregation
+- `backend/src/api/admin-ai.js` — New cross-tenant AI aggregation
+- `backend/src/api/admin-reports.js` — New report generation
+- `backend/src/api/admin-health.js` — New health monitoring
+- `backend/src/api/admin-performance.js` — New tenant performance
+- `backend/migrations/0084_platform_settings_subscriptions.sql` — New tables
+- `app/tests/unit/AdminApp.test.tsx` — Updated mocks and assertions
+- `FRONTEND_INVENTORY_AND_GAP_ANALYSIS.md` — New analysis report
+- `IMPLEMENTATION_PLAN.md` — New implementation plan
+
+### Persistent Learnings (new)
+- **AdminApp test mocking**: When adding new lazy-loaded panels, must add `vi.mock()` stubs in AdminApp.test.tsx AND add the panel's useQueryHooks exports to the `vi.mock('@/hooks/useQueryHooks')` mock object — vitest errors with "No X export is defined on the mock" if missing.
+- **SUPER_NAV test assertions**: The `super admin sees ONLY the X super nav items` test hardcodes the full nav list — update the `toEqual([...])` array whenever adding/removing tabs.
+- **Unknown super tabs test**: Use a tab ID that doesn't exist in SUPER_NAV (e.g. `super_unknown_xyz`) — real panels crash in test because their hooks aren't mocked.
+
+---
+
+## 2026-08-26 — Frontend Completion Initiative
+
+### Overview
+Comprehensive audit and fix of all frontend domains to ensure 100% real-data-driven, production-ready experience. No mock data, no stubs, no placeholders.
+
+### What Changed
+
+#### Worker A — Tenant Admin Panel Fixes
+1. **BillingPanel.tsx** — Complete rewrite: removed all hardcoded PLANS/USAGE mock data, created `tenant-billing.js` backend endpoint, added `useTenantBillingQuery()` hook, shows real plan/price/status/usage
+2. **AnalyticsPanel.tsx** — Migrated from useState+useEffect to TanStack Query hooks (8 hooks)
+3. **ReportsPanel.tsx** — Migrated to TanStack Query (3 hooks + error toast)
+4. **RatePlansPanel.tsx** — Migrated to TanStack Query (2 hooks + 2 mutations)
+5. **StaffPanel.tsx** — Migrated to TanStack Query (2 hooks + pagination)
+6. **PromotionsPanel.tsx** — Migrated to TanStack Query (1 hook)
+7. **ServicesPanel.tsx** — Migrated to TanStack Query (3 hooks)
+8. **HRPanel.tsx** — Migrated to TanStack Query (5 hooks for employees, leave, payroll, recruitment)
+9. **FinancialPanel.tsx** — Migrated to TanStack Query (3 hooks for accounts, journals, reports)
+10. **SupplyPanel.tsx** — Migrated to TanStack Query (4 hooks for inventory, categories, movements, purchase orders)
+11. **AIPanel.tsx** — Migrated to TanStack Query (4 hooks for predictions, price rules, automation rules, automation logs)
+12. **CRMPanel.tsx** — Already using TanStack Query (no changes needed)
+13. **StorefrontPanel.tsx** — Already using TanStack Query (no changes needed)
+
+#### Worker C — Public Frontend Fixes
+1. **CampsSection.astro** — Dynamic filter dropdowns: locations and activities now extracted from tenant data instead of hardcoded
+2. **MarketplaceDirectory.tsx** — Fixed broken "Try Again" button (was no-op `setPage(p => p)`, now calls `refetch()`)
+3. **about.astro** — Replaced hardcoded feature cards and mission text with dynamic tenant data
+4. **MarketplaceHome.astro** — Added capacity input field to onboarding form (was hardcoded to 50)
+
+#### Worker D — POS Frontend Fixes
+1. **POSApp.tsx** — Cart persistence: saves/loads cart from localStorage, clears on checkout
+2. **CartPanel.tsx** — Tips/gratuity support (15%/18%/20%/Custom buttons), type safety (removed `any`), dead code cleanup
+3. **ShiftDashboard.tsx** — Type safety (replaced `any` with `PosShiftCloseResponse`)
+4. **ReceiptModal.tsx** — Type safety (replaced `any` with `OrderItem`), tip line display
+5. **DashboardView.tsx** — Added retry button on error state
+6. **OrdersView.tsx** — Added retry button on error state
+7. **KitchenView.tsx** — Added retry button on error state
+8. **TableView.tsx** — Added retry button on error state
+9. **pos-barcode.js** — New backend endpoint for barcode/SKU lookup
+
+#### Worker E — Integration Verification
+- All 120+ query hooks verified present in useQueryHooks.ts
+- All API functions wired correctly
+- No hardcoded/mock data remaining
+- All backend endpoints properly mounted
+- All public frontend fixes verified
+- All POS fixes verified
+
+### Backend Changes
+- `backend/src/api/tenant-billing.js` — New: tenant-scoped subscription/billing endpoint
+- `backend/src/api/pos-barcode.js` — New: POS barcode/SKU lookup endpoint
+- `backend/src/index.js` — Mounted both new endpoints
+
+### Test Counts
+- Frontend: 1,865 ✅
+- Backend: 1,580 ✅
+- Root: 156 ✅
+- **Total: 3,601**
+
+### Persistent Learnings (new)
+- **TanStack Query migration pattern**: When converting useState+useEffect panels, keep the existing UI rendering. Only replace the data source (useState data → query hook data, useEffect loadData → remove, error toast → keep). The query hooks handle loading/error/caching automatically.
+- **Cart persistence**: Use localStorage for POS cart state. Save on every change via useEffect, clear on successful checkout. Must handle JSON parse errors for corrupted localStorage data.
+- **Error state retry buttons**: All POS views use `retry: false` in QueryClient for immediate failure visibility. Add manual retry buttons that call `refetch()` or `queryClient.invalidateQueries()` to give users a recovery path.
+- **Type safety in POS**: Always use OpenAPI-generated types from `api-types.ts` instead of `any`. The types are generated from the backend OpenAPI spec and ensure contract compliance.

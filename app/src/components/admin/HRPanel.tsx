@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import * as api from '@/lib/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
@@ -12,6 +12,15 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useHrEmployeesQuery,
+  useHrLeaveTypesQuery,
+  useHrLeaveRequestsQuery,
+  useHrPayrollRunsQuery,
+  useHrJobPostsQuery,
+  queryKeys,
+} from '@/hooks/useQueryHooks';
 
 type Tab = 'employees' | 'leave-types' | 'leave-requests' | 'payroll' | 'recruitment';
 
@@ -108,16 +117,27 @@ const LEAVE_STATUS_MAP: Record<string, { text: string; variant: 'info' | 'succes
 
 export default function HRPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('employees');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Data
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
-  const [payrollRuns, setPayrollRuns] = useState<any[]>([]);
-  const [jobPosts, setJobPosts] = useState<any[]>([]);
+  // TanStack Query hooks
+  const employeesQuery = useHrEmployeesQuery();
+  const leaveTypesQuery = useHrLeaveTypesQuery();
+  const leaveRequestsQuery = useHrLeaveRequestsQuery();
+  const payrollRunsQuery = useHrPayrollRunsQuery();
+  const jobPostsQuery = useHrJobPostsQuery();
+
+  const employees = (employeesQuery.data as any[]) || [];
+  const leaveTypes = (leaveTypesQuery.data as any[]) || [];
+  const leaveRequests = (leaveRequestsQuery.data as any[]) || [];
+  const payrollRuns = (payrollRunsQuery.data as any[]) || [];
+  const jobPosts = (jobPostsQuery.data as any[]) || [];
+  const loading = employeesQuery.isLoading || leaveTypesQuery.isLoading || leaveRequestsQuery.isLoading || payrollRunsQuery.isLoading || jobPostsQuery.isLoading;
+
+  const invalidateHr = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'hr'] });
+  }, [queryClient]);
 
   // Modals
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
@@ -141,27 +161,6 @@ export default function HRPanel() {
   const [applicantForm, setApplicantForm] = useState<ApplicantForm>(emptyApplicantForm);
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; item: any } | null>(null);
-
-  const loadData = useCallback(async () => {
-    try {
-      const [e, lt, lr, pr, jp] = await Promise.all([
-        api.getHrEmployees() as Promise<any[]>,
-        api.getHrLeaveTypes() as Promise<any[]>,
-        api.getHrLeaveRequests() as Promise<any[]>,
-        api.getHrPayrollRuns() as Promise<any[]>,
-        api.getHrJobPosts() as Promise<any[]>,
-      ]);
-      setEmployees(e);
-      setLeaveTypes(lt);
-      setLeaveRequests(lr);
-      setPayrollRuns(pr);
-      setJobPosts(jp);
-    } catch (err) {
-      showToast('Failed to load HR data: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
 
   // ── Employee handlers ────────────────────────────────────────────────────
   const openAddEmployee = useCallback(() => { setEditingEmployeeId(null); setEmployeeForm(emptyEmployeeForm); setShowEmployeeForm(true); }, []);
@@ -213,11 +212,11 @@ export default function HRPanel() {
       setShowEmployeeForm(false);
       setEditingEmployeeId(null);
       setEmployeeForm(emptyEmployeeForm);
-      await loadData();
+      invalidateHr();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [employeeForm, editingEmployeeId, showToast, loadData]);
+  }, [employeeForm, editingEmployeeId, showToast, invalidateHr]);
 
   // ── Leave Type handlers ──────────────────────────────────────────────────
   const handleSaveLeaveType = useCallback(async () => {
@@ -232,11 +231,11 @@ export default function HRPanel() {
       showToast('Leave type created.', 'success');
       setShowLeaveTypeForm(false);
       setLeaveTypeForm(emptyLeaveTypeForm);
-      await loadData();
+      invalidateHr();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [leaveTypeForm, showToast, loadData]);
+  }, [leaveTypeForm, showToast, invalidateHr]);
 
   // ── Leave Request handlers ───────────────────────────────────────────────
   const handleSaveLeaveRequest = useCallback(async () => {
@@ -255,21 +254,21 @@ export default function HRPanel() {
       showToast('Leave request submitted.', 'success');
       setShowLeaveRequestForm(false);
       setLeaveRequestForm(emptyLeaveRequestForm);
-      await loadData();
+      invalidateHr();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [leaveRequestForm, showToast, loadData]);
+  }, [leaveRequestForm, showToast, invalidateHr]);
 
   const handleApproveReject = useCallback(async (id: string, status: 'approved' | 'rejected') => {
     try {
       await api.approveHrLeaveRequest(id, status);
       showToast(`Leave request ${status}.`, 'success');
-      await loadData();
+      invalidateHr();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [showToast, loadData]);
+  }, [showToast, invalidateHr]);
 
   // ── Payroll handlers ─────────────────────────────────────────────────────
   const handleCreatePayrollRun = useCallback(async () => {
@@ -281,11 +280,11 @@ export default function HRPanel() {
       setShowPayrollForm(false);
       setPayrollPeriodStart('');
       setPayrollPeriodEnd('');
-      await loadData();
+      invalidateHr();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [payrollPeriodStart, payrollPeriodEnd, showToast, loadData]);
+  }, [payrollPeriodStart, payrollPeriodEnd, showToast, invalidateHr]);
 
   // ── Payslip download ───────────────────────────────────────────────────
   const handleDownloadPayslip = useCallback((pr: any) => {
@@ -361,11 +360,11 @@ export default function HRPanel() {
       showToast('Job post created.', 'success');
       setShowJobPostForm(false);
       setJobPostForm(emptyJobPostForm);
-      await loadData();
+      invalidateHr();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [jobPostForm, showToast, loadData]);
+  }, [jobPostForm, showToast, invalidateHr]);
 
   // ── Applicant handlers ───────────────────────────────────────────────────
   const handleSaveApplicant = useCallback(async () => {
@@ -397,11 +396,11 @@ export default function HRPanel() {
       }
       showToast('Deleted.', 'success');
       setDeleteTarget(null);
-      await loadData();
+      invalidateHr();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast, loadData]);
+  }, [deleteTarget, showToast, invalidateHr]);
 
   if (loading) return <LoadingSpinner text="Loading HR data..." />;
 

@@ -25,6 +25,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/Toast';
 import * as api from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import type { Paginated } from '@/lib/api';
 // T8-C: spec-derived wire types — the typed api client is the contract source.
 import type { components } from '@/lib/api-types';
@@ -72,6 +73,45 @@ export const queryKeys = {
   inbox: (params?: Record<string, string>) => ['admin', 'inbox', params] as const,
   inboxUnread: ['admin', 'inbox', 'unread'] as const,
   projectMeta: (id: string) => ['admin', 'projects', id, 'meta'] as const,
+  tenantBilling: ['admin', 'tenantBilling'] as const,
+  // HR (tenant-level)
+  hrEmployees: ['admin', 'hr', 'employees'] as const,
+  hrLeaveTypes: ['admin', 'hr', 'leaveTypes'] as const,
+  hrLeaveRequests: ['admin', 'hr', 'leaveRequests'] as const,
+  hrPayrollRuns: ['admin', 'hr', 'payrollRuns'] as const,
+  hrJobPosts: ['admin', 'hr', 'jobPosts'] as const,
+  // Financial (tenant-level)
+  financialAccounts: ['admin', 'financials', 'accounts'] as const,
+  financialJournals: ['admin', 'financials', 'journals'] as const,
+  financialJournalEntries: ['admin', 'financials', 'journalEntries'] as const,
+  financialInvoices: ['admin', 'financials', 'invoices'] as const,
+  financialPayments: ['admin', 'financials', 'payments'] as const,
+  financialTaxRates: ['admin', 'financials', 'taxRates'] as const,
+  // Supply Chain (tenant-level)
+  supplyWarehouses: ['admin', 'supply', 'warehouses'] as const,
+  supplyStock: ['admin', 'supply', 'stock'] as const,
+  supplyTransfers: ['admin', 'supply', 'transfers'] as const,
+  supplyPurchaseOrders: ['admin', 'supply', 'purchaseOrders'] as const,
+  supplyBoms: ['admin', 'supply', 'boms'] as const,
+  supplyManufacturingOrders: ['admin', 'supply', 'manufacturingOrders'] as const,
+  // CRM (tenant-level)
+  crmContacts: ['admin', 'crm', 'contacts'] as const,
+  crmLeads: ['admin', 'crm', 'leads'] as const,
+  crmOpportunities: ['admin', 'crm', 'opportunities'] as const,
+  crmTasks: ['admin', 'crm', 'tasks'] as const,
+  crmTickets: ['admin', 'crm', 'tickets'] as const,
+  crmKnowledgeArticles: ['admin', 'crm', 'knowledgeArticles'] as const,
+  // Storefront (tenant-level)
+  storefrontPages: ['admin', 'storefront', 'pages'] as const,
+  storefrontBlogPosts: ['admin', 'storefront', 'blogPosts'] as const,
+  storefrontBlogCategories: ['admin', 'storefront', 'blogCategories'] as const,
+  storefrontCarts: ['admin', 'storefront', 'carts'] as const,
+  storefrontOrders: ['admin', 'storefront', 'orders'] as const,
+  // AI (tenant-level)
+  aiPredictions: ['admin', 'ai', 'predictions'] as const,
+  aiPriceRules: ['admin', 'ai', 'priceRules'] as const,
+  aiAutomationRules: ['admin', 'ai', 'automationRules'] as const,
+  aiAutomationLogs: ['admin', 'ai', 'automationLogs'] as const,
 } as const;
 
 // ─── Error Toast Helper ───────────────────────────────────────────────
@@ -887,6 +927,585 @@ export function useDeleteInboxLeadMutation() {
   });
 }
 
+// ─── Analytics Queries ─────────────────────────────────────────────────
+
+/** Fetch top products (by quantity) for a given period */
+export function useTopProductsQuery(days?: number, limit?: number) {
+  const toastError = useErrorToast();
+  return useQuery<{ days: number; top_products: api.TopProduct[] }>({
+    queryKey: ['reports', 'topProducts', days, limit] as const,
+    queryFn: () => api.getTopProducts(days, limit),
+    throwOnError: (err) => {
+      toastError('Failed to load top products', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch kitchen performance stats */
+export function useKitchenPerformanceQuery(days?: number) {
+  const toastError = useErrorToast();
+  return useQuery<{ days: number; by_status: api.KitchenStatusCount[]; daily_trend: api.KitchenTrend[] }>({
+    queryKey: ['reports', 'kitchenPerformance', days] as const,
+    queryFn: () => api.getKitchenPerformance(days),
+    throwOnError: (err) => {
+      toastError('Failed to load kitchen performance', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch analytics low-stock items */
+export function useAnalyticsLowStockQuery() {
+  const toastError = useErrorToast();
+  return useQuery<{ low_stock: api.LowStockItem[] }>({
+    queryKey: ['reports', 'analyticsLowStock'] as const,
+    queryFn: () => api.getAnalyticsLowStock(),
+    throwOnError: (err) => {
+      toastError('Failed to load low stock', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch revenue breakdown by product type and payment method */
+export function useRevenueBreakdownQuery(days?: number) {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: ['reports', 'revenueBreakdown', days] as const,
+    queryFn: () => api.getRevenueBreakdown(days),
+    throwOnError: (err) => {
+      toastError('Failed to load revenue breakdown', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch customer metrics for a given period */
+export function useCustomerMetricsQuery(days?: number) {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: ['reports', 'customerMetrics', days] as const,
+    queryFn: () => api.getCustomerMetrics(days),
+    throwOnError: (err) => {
+      toastError('Failed to load customer metrics', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch seasonal comparison data */
+export function useSeasonalComparisonQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: ['reports', 'seasonalComparison'] as const,
+    queryFn: () => api.getSeasonalComparison(),
+    throwOnError: (err) => {
+      toastError('Failed to load seasonal comparison', err);
+      return false;
+    },
+  });
+}
+
+// ─── Promotion Queries ────────────────────────────────────────────────
+
+/** Fetch all promotions */
+export function usePromotionsQuery(includeInactive?: boolean) {
+  const toastError = useErrorToast();
+  return useQuery<api.Promotion[]>({
+    queryKey: ['admin', 'promotions', includeInactive] as const,
+    queryFn: () => api.getPromotions(includeInactive),
+    throwOnError: (err) => {
+      toastError('Failed to load promotions', err);
+      return false;
+    },
+  });
+}
+
+// ─── Service Queries ──────────────────────────────────────────────────
+
+/** Fetch all service definitions */
+export function useServiceDefinitionsQuery() {
+  const toastError = useErrorToast();
+  return useQuery<api.ServiceDefinition[]>({
+    queryKey: ['admin', 'serviceDefinitions'] as const,
+    queryFn: () => api.getServiceDefinitions() as Promise<api.ServiceDefinition[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load service definitions', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all service items */
+export function useServiceItemsQuery() {
+  const toastError = useErrorToast();
+  return useQuery<api.ServiceItem[]>({
+    queryKey: ['admin', 'serviceItems'] as const,
+    queryFn: () => api.getServiceItems() as Promise<api.ServiceItem[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load service items', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch service bookings with optional status filter */
+export function useServiceBookingsQuery(status?: string) {
+  const toastError = useErrorToast();
+  return useQuery<api.ServiceBooking[]>({
+    queryKey: ['admin', 'serviceBookings', status] as const,
+    queryFn: () => api.getServiceBookings(status) as Promise<api.ServiceBooking[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load service bookings', err);
+      return false;
+    },
+  });
+}
+
+// ─── POS User Queries ────────────────────────────────────────────────
+
+/** Fetch POS users (staff) with pagination and optional filters */
+export function usePosUsersQuery(params?: { page?: number; pageSize?: number; search?: string; tenantId?: string }) {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: ['admin', 'posUsers', params] as const,
+    queryFn: () => api.getPosUsers(params),
+    throwOnError: (err) => {
+      toastError('Failed to load staff', err);
+      return false;
+    },
+  });
+}
+
+// ─── HR Queries ───────────────────────────────────────────────────────
+
+/** Fetch all HR employees */
+export function useHrEmployeesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.hrEmployees,
+    queryFn: () => api.getHrEmployees(),
+    throwOnError: (err) => {
+      toastError('Failed to load employees', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all HR leave types */
+export function useHrLeaveTypesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.hrLeaveTypes,
+    queryFn: () => api.getHrLeaveTypes(),
+    throwOnError: (err) => {
+      toastError('Failed to load leave types', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all HR leave requests */
+export function useHrLeaveRequestsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.hrLeaveRequests,
+    queryFn: () => api.getHrLeaveRequests(),
+    throwOnError: (err) => {
+      toastError('Failed to load leave requests', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all HR payroll runs */
+export function useHrPayrollRunsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.hrPayrollRuns,
+    queryFn: () => api.getHrPayrollRuns(),
+    throwOnError: (err) => {
+      toastError('Failed to load payroll runs', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all HR job posts */
+export function useHrJobPostsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.hrJobPosts,
+    queryFn: () => api.getHrJobPosts(),
+    throwOnError: (err) => {
+      toastError('Failed to load job posts', err);
+      return false;
+    },
+  });
+}
+
+// ─── Financial Queries ────────────────────────────────────────────────
+
+/** Fetch all financial accounts */
+export function useFinancialAccountsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.financialAccounts,
+    queryFn: () => api.getFinancialAccounts(),
+    throwOnError: (err) => {
+      toastError('Failed to load accounts', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all financial journals */
+export function useFinancialJournalsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.financialJournals,
+    queryFn: () => api.getFinancialJournals(),
+    throwOnError: (err) => {
+      toastError('Failed to load journals', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all financial journal entries */
+export function useFinancialJournalEntriesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.financialJournalEntries,
+    queryFn: () => api.getJournalEntries(),
+    throwOnError: (err) => {
+      toastError('Failed to load journal entries', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all financial invoices */
+export function useFinancialInvoicesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.financialInvoices,
+    queryFn: () => api.getFinancialInvoices(),
+    throwOnError: (err) => {
+      toastError('Failed to load invoices', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all financial payments */
+export function useFinancialPaymentsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.financialPayments,
+    queryFn: () => api.request('/financials/payments') as Promise<unknown[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load payments', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all financial tax rates */
+export function useFinancialTaxRatesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.financialTaxRates,
+    queryFn: () => api.getTaxRates(),
+    throwOnError: (err) => {
+      toastError('Failed to load tax rates', err);
+      return false;
+    },
+  });
+}
+
+// ─── Supply Chain Queries ─────────────────────────────────────────────
+
+/** Fetch all supply warehouses */
+export function useSupplyWarehousesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.supplyWarehouses,
+    queryFn: () => api.getSupplyWarehouses(),
+    throwOnError: (err) => {
+      toastError('Failed to load warehouses', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all supply stock records */
+export function useSupplyStockQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.supplyStock,
+    queryFn: () => api.getSupplyStock(),
+    throwOnError: (err) => {
+      toastError('Failed to load stock', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all supply stock transfers */
+export function useSupplyTransfersQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.supplyTransfers,
+    queryFn: () => api.getSupplyTransfers(),
+    throwOnError: (err) => {
+      toastError('Failed to load transfers', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all supply purchase orders */
+export function useSupplyPurchaseOrdersQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.supplyPurchaseOrders,
+    queryFn: () => api.getSupplyPurchaseOrders(),
+    throwOnError: (err) => {
+      toastError('Failed to load purchase orders', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all supply BOMs */
+export function useSupplyBomsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.supplyBoms,
+    queryFn: () => api.getSupplyBoms(),
+    throwOnError: (err) => {
+      toastError('Failed to load BOMs', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all supply manufacturing orders */
+export function useSupplyManufacturingOrdersQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.supplyManufacturingOrders,
+    queryFn: () => api.getSupplyManufacturingOrders(),
+    throwOnError: (err) => {
+      toastError('Failed to load manufacturing orders', err);
+      return false;
+    },
+  });
+}
+
+// ─── CRM Queries ──────────────────────────────────────────────────────
+
+/** Fetch all CRM contacts */
+export function useCrmContactsQuery() {
+  const toastError = useErrorToast();
+  return useQuery<Record<string, unknown>[]>({
+    queryKey: queryKeys.crmContacts,
+    queryFn: () => api.getCrmContacts() as Promise<Record<string, unknown>[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load contacts', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all CRM leads */
+export function useCrmLeadsQuery() {
+  const toastError = useErrorToast();
+  return useQuery<Record<string, unknown>[]>({
+    queryKey: queryKeys.crmLeads,
+    queryFn: () => api.getCrmLeads() as Promise<Record<string, unknown>[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load leads', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all CRM opportunities */
+export function useCrmOpportunitiesQuery() {
+  const toastError = useErrorToast();
+  return useQuery<Record<string, unknown>[]>({
+    queryKey: queryKeys.crmOpportunities,
+    queryFn: () => api.getCrmOpportunities() as Promise<Record<string, unknown>[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load opportunities', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all CRM tasks */
+export function useCrmTasksQuery() {
+  const toastError = useErrorToast();
+  return useQuery<Record<string, unknown>[]>({
+    queryKey: queryKeys.crmTasks,
+    queryFn: () => api.getCrmTasks() as Promise<Record<string, unknown>[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load tasks', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all CRM tickets */
+export function useCrmTicketsQuery() {
+  const toastError = useErrorToast();
+  return useQuery<Record<string, unknown>[]>({
+    queryKey: queryKeys.crmTickets,
+    queryFn: () => api.getCrmTickets() as Promise<Record<string, unknown>[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load tickets', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all CRM knowledge articles */
+export function useCrmKnowledgeArticlesQuery() {
+  const toastError = useErrorToast();
+  return useQuery<Record<string, unknown>[]>({
+    queryKey: queryKeys.crmKnowledgeArticles,
+    queryFn: () => api.getCrmKnowledgeArticles() as Promise<Record<string, unknown>[]>,
+    throwOnError: (err) => {
+      toastError('Failed to load knowledge articles', err);
+      return false;
+    },
+  });
+}
+
+// ─── Storefront Queries ───────────────────────────────────────────────
+
+/** Fetch all storefront CMS pages */
+export function useStorefrontPagesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.storefrontPages,
+    queryFn: () => api.getStorefrontPages(),
+    throwOnError: (err) => {
+      toastError('Failed to load storefront pages', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all storefront blog posts */
+export function useStorefrontBlogPostsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.storefrontBlogPosts,
+    queryFn: () => api.getStorefrontBlogPosts(),
+    throwOnError: (err) => {
+      toastError('Failed to load blog posts', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all storefront blog categories */
+export function useStorefrontBlogCategoriesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.storefrontBlogCategories,
+    queryFn: () => apiFetch<unknown[]>('/storefront/admin/blog/categories'),
+    throwOnError: (err) => {
+      toastError('Failed to load blog categories', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all storefront carts */
+export function useStorefrontCartsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.storefrontCarts,
+    queryFn: () => apiFetch<unknown[]>('/storefront/admin/carts'),
+    throwOnError: (err) => {
+      toastError('Failed to load carts', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all storefront admin orders */
+export function useStorefrontOrdersQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.storefrontOrders,
+    queryFn: () => apiFetch<unknown[]>('/storefront/admin/orders'),
+    throwOnError: (err) => {
+      toastError('Failed to load storefront orders', err);
+      return false;
+    },
+  });
+}
+
+// ─── AI Queries ───────────────────────────────────────────────────────
+
+/** Fetch all AI predictions */
+export function useAIPredictionsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.aiPredictions,
+    queryFn: () => api.getAiPredictions(),
+    throwOnError: (err) => {
+      toastError('Failed to load AI predictions', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all AI price rules */
+export function useAIPriceRulesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.aiPriceRules,
+    queryFn: () => api.getAiPriceRules(),
+    throwOnError: (err) => {
+      toastError('Failed to load AI price rules', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all AI automation rules */
+export function useAIAutomationRulesQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.aiAutomationRules,
+    queryFn: () => api.getAiAutomationRules(),
+    throwOnError: (err) => {
+      toastError('Failed to load AI automation rules', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch all AI automation logs */
+export function useAIAutomationLogsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.aiAutomationLogs,
+    queryFn: () => api.getAiAutomationLogs(),
+    throwOnError: (err) => {
+      toastError('Failed to load AI automation logs', err);
+      return false;
+    },
+  });
+}
+
 // ─── Backward-Compat Aliases ──────────────────────────────────────────
 // These allow gradual migration — components can switch from useCamps() to useCampsQuery()
 // without changing all call sites at once.
@@ -897,8 +1516,230 @@ export { useOrdersQuery as useOrdersRQ };
 export { useProductsQuery as useProductsRQ };
 export { useRatePlansQuery as useRatePlansRQ };
 export { usePlansQuery as usePlansRQ };
+
+// ─── Super Admin: Cross-Tenant Pillar Overview Hooks ─────────────────
+// Query key factories for paginated list queries
+const superKeys = {
+  financials: ['admin', 'financials'] as const,
+  financialsOverview: ['admin', 'financials', 'overview'] as const,
+  financialsInvoices: (page: number) => ['admin', 'financials', 'invoices', page] as const,
+  hr: ['admin', 'hr'] as const,
+  hrOverview: ['admin', 'hr', 'overview'] as const,
+  hrEmployees: (page: number) => ['admin', 'hr', 'employees', page] as const,
+  supply: ['admin', 'supply'] as const,
+  supplyOverview: ['admin', 'supply', 'overview'] as const,
+  supplyPurchaseOrders: (page: number) => ['admin', 'supply', 'purchase-orders', page] as const,
+  crm: ['admin', 'crm'] as const,
+  crmOverview: ['admin', 'crm', 'overview'] as const,
+  crmContacts: (page: number) => ['admin', 'crm', 'contacts', page] as const,
+  crmOpportunities: (page: number) => ['admin', 'crm', 'opportunities', page] as const,
+  storefront: ['admin', 'storefront'] as const,
+  storefrontOverview: ['admin', 'storefront', 'overview'] as const,
+  storefrontProducts: (page: number) => ['admin', 'storefront', 'products', page] as const,
+  ai: ['admin', 'ai'] as const,
+  aiOverview: ['admin', 'ai', 'overview'] as const,
+  aiPredictions: (page: number) => ['admin', 'ai', 'predictions', page] as const,
+};
+
+// ── Financials ───────────────────────────────────────────────────────
+export function useSuperFinancialsOverviewQuery() {
+  return useQuery({
+    queryKey: superKeys.financialsOverview,
+    queryFn: api.getSuperFinancialsOverview,
+  });
+}
+
+export function useSuperInvoicesQuery(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: superKeys.financialsInvoices(page),
+    queryFn: () => api.getSuperInvoices(page, limit),
+  });
+}
+
+// ── HR ───────────────────────────────────────────────────────────────
+export function useSuperHROverviewQuery() {
+  return useQuery({
+    queryKey: superKeys.hrOverview,
+    queryFn: api.getSuperHROverview,
+  });
+}
+
+export function useSuperEmployeesQuery(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: superKeys.hrEmployees(page),
+    queryFn: () => api.getSuperEmployees(page, limit),
+  });
+}
+
+// ── Supply Chain ─────────────────────────────────────────────────────
+export function useSuperSupplyOverviewQuery() {
+  return useQuery({
+    queryKey: superKeys.supplyOverview,
+    queryFn: api.getSuperSupplyOverview,
+  });
+}
+
+export function useSuperPurchaseOrdersQuery(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: superKeys.supplyPurchaseOrders(page),
+    queryFn: () => api.getSuperPurchaseOrders(page, limit),
+  });
+}
+
+// ── CRM ──────────────────────────────────────────────────────────────
+export function useSuperCRMOverviewQuery() {
+  return useQuery({
+    queryKey: superKeys.crmOverview,
+    queryFn: api.getSuperCRMOverview,
+  });
+}
+
+export function useSuperContactsQuery(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: superKeys.crmContacts(page),
+    queryFn: () => api.getSuperContacts(page, limit),
+  });
+}
+
+export function useSuperOpportunitiesQuery(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: superKeys.crmOpportunities(page),
+    queryFn: () => api.getSuperOpportunities(page, limit),
+  });
+}
+
+// ── Storefront ───────────────────────────────────────────────────────
+export function useSuperStorefrontOverviewQuery() {
+  return useQuery({
+    queryKey: superKeys.storefrontOverview,
+    queryFn: api.getSuperStorefrontOverview,
+  });
+}
+
+export function useSuperStorefrontProductsQuery(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: superKeys.storefrontProducts(page),
+    queryFn: () => api.getSuperStorefrontProducts(page, limit),
+  });
+}
+
+// ── AI & Insights ────────────────────────────────────────────────────
+export function useSuperAIOverviewQuery() {
+  return useQuery({
+    queryKey: superKeys.aiOverview,
+    queryFn: api.getSuperAIOverview,
+  });
+}
+
+export function useSuperPredictionsQuery(page = 1, limit = 20) {
+  return useQuery({
+    queryKey: superKeys.aiPredictions(page),
+    queryFn: () => api.getSuperPredictions(page, limit),
+  });
+}
 export { useMealsQuery as useMealsRQ };
 export { useCategoriesQuery as useCategoriesRQ };
 export { useMealCategoriesQuery as useMealCategoriesRQ };
 export { useMealSchedulesQuery as useMealSchedulesRQ };
 export { useSettingsQuery as useSettingsRQ };
+
+// ─── Tenant Billing ────────────────────────────────────────────────
+
+/** Fetch tenant billing info (subscription, usage, plans, billing history) */
+export function useTenantBillingQuery() {
+  const toastError = useErrorToast();
+  return useQuery<api.TenantBillingResponse>({
+    queryKey: queryKeys.tenantBilling,
+    queryFn: () => api.getTenantBilling(),
+    throwOnError: (err) => {
+      toastError('Failed to load billing info', err);
+      return false;
+    },
+  });
+}
+
+// ─── Admin Users (Super Admin) ─────────────────────────────
+
+/** Fetch all admin users for the platform */
+export function useAdminUsersQuery() {
+  return useQuery({
+    queryKey: queryKeys.admins,
+    queryFn: () => api.getAdmins(),
+  });
+}
+
+// ─── Admin Audit (Super Admin) ─────────────────────────────
+
+/** Fetch audit log entries */
+export function useAdminAuditQuery(params?: Record<string, string>) {
+  return useQuery({
+    queryKey: ['admin', 'audit', params],
+    queryFn: () => api.apiFetch('/admin/audit' + (params ? '?' + new URLSearchParams(params).toString() : '')),
+  });
+}
+
+// ─── Admin Health (Super Admin) ────────────────────────────
+
+/** Fetch system health status */
+export function useAdminHealthQuery() {
+  return useQuery({
+    queryKey: ['admin', 'health'],
+    queryFn: () => api.apiFetch('/admin/health'),
+  });
+}
+
+/** Fetch system health metrics */
+export function useAdminHealthMetricsQuery() {
+  return useQuery({
+    queryKey: ['admin', 'healthMetrics'],
+    queryFn: () => api.apiFetch('/admin/health/metrics'),
+  });
+}
+
+// ─── Admin Performance (Super Admin) ───────────────────────
+
+/** Fetch tenant performance data */
+export function useAdminPerformanceQuery() {
+  return useQuery({
+    queryKey: ['admin', 'performance'],
+    queryFn: () => api.apiFetch('/admin/performance'),
+  });
+}
+
+// ─── Admin Reports (Super Admin) ───────────────────────────
+
+/** Fetch report templates */
+export function useAdminReportsQuery() {
+  return useQuery({
+    queryKey: ['admin', 'reports'],
+    queryFn: () => api.apiFetch('/admin/reports'),
+  });
+}
+
+/** Fetch scheduled reports */
+export function useAdminScheduledReportsQuery() {
+  return useQuery({
+    queryKey: ['admin', 'scheduledReports'],
+    queryFn: () => api.apiFetch('/admin/reports/scheduled'),
+  });
+}
+
+// ─── Admin Settings (Super Admin) ──────────────────────────
+
+/** Fetch admin system settings */
+export function useAdminSettingsQuery() {
+  return useQuery({
+    queryKey: ['admin', 'settings'],
+    queryFn: () => api.getAdminSettings(),
+  });
+}
+
+// ─── Admin Subscriptions (Super Admin) ─────────────────────
+
+/** Fetch all tenant subscriptions */
+export function useAdminSubscriptionsQuery(params?: Record<string, string>) {
+  return useQuery({
+    queryKey: ['admin', 'subscriptions', params],
+    queryFn: () => api.apiFetch('/admin/subscriptions' + (params ? '?' + new URLSearchParams(params).toString() : '')),
+  });
+}

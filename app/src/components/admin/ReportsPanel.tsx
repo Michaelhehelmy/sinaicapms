@@ -1,37 +1,17 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import * as api from '@/lib/api';
+import React, { useState, useEffect } from 'react';
 import type { Camp } from '@/hooks/useAdminData';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useOccupancyReportQuery, useRevenueReportQuery, useBookingsReportQuery } from '@/hooks/useQueryHooks';
 import { useToast } from '@/components/ui/Toast';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Card, CardHeader, CardBody } from '@/components/ui/Card';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { Card } from '@/components/ui/Card';
+import { formatCurrency } from '@/lib/utils';
 
 interface ReportsPanelProps {
   campIds: string[];
   camps: Camp[];
-}
-
-interface OccupancyReport {
-  date: string;
-  totalRooms: number;
-  occupiedRooms: number;
-  occupancyRate: number;
-}
-
-interface RevenueReport {
-  period: string;
-  totalRevenue: number;
-  bookingCount: number;
-  averagePerBooking: number;
-}
-
-interface BookingReport {
-  status: string;
-  count: number;
-  totalAmount: number;
 }
 
 const reportTypeOptions = [
@@ -41,78 +21,71 @@ const reportTypeOptions = [
 ];
 
 export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
-  const [reportType, setReportType] = useState<'occupancy' | 'revenue' | 'bookings'>('occupancy');
-  const [occupancy, setOccupancy] = useState<OccupancyReport[]>([]);
-  const [revenue, setRevenue] = useState<RevenueReport[]>([]);
-  const [bookings, setBookings] = useState<BookingReport[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const { showToast } = useToast();
+  const [reportType, setReportType] = useState<'occupancy' | 'revenue' | 'bookings'>('occupancy');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
-  const fetchReport = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (reportType === 'occupancy') {
-        const data = await api.getOccupancyReport();
-        // API returns { totalRooms, occupiedRooms, occupancyRate }
-        if (data && typeof data === 'object' && 'totalRooms' in data) {
-          setOccupancy([{
-            date: 'Current',
-            totalRooms: data.totalRooms,
-            occupiedRooms: data.occupiedRooms,
-            occupancyRate: Math.round((data.occupancyRate || 0) * 10) / 10,
-          }]);
-        } else {
-          setOccupancy(Array.isArray(data) ? data : []);
-        }
-      } else if (reportType === 'revenue') {
-        const params: { days?: number; start?: string; end?: string } = {};
-        if (dateRange.start && dateRange.end) {
-          params.start = dateRange.start;
-          params.end = dateRange.end;
-        }
-        const data = await api.getRevenueReport(params);
-        // API returns { start, end, summary, details }
-        if (data && typeof data === 'object' && 'details' in data) {
-          const details = Array.isArray(data.details) ? data.details : [];
-          setRevenue(details.map((row: { date: string; total: number; count: number }) => ({
-            period: row.date,
-            totalRevenue: row.total || 0,
-            bookingCount: row.count || 0,
-            averagePerBooking: row.count > 0 ? Math.round((row.total || 0) / row.count) : 0,
-          })));
-        } else {
-          setRevenue(Array.isArray(data) ? data : []);
-        }
-      } else {
-        const params: { days?: number; start?: string; end?: string } = {};
-        if (dateRange.start && dateRange.end) {
-          params.start = dateRange.start;
-          params.end = dateRange.end;
-        }
-        const data = await api.getBookingsReport(params);
-        // API returns { start, end, byState, byCamp }
-        if (data && typeof data === 'object' && 'byState' in data) {
-          const states = Array.isArray(data.byState) ? data.byState : [];
-          setBookings(states.map((row: { state: string; count: number }) => ({
-            status: row.state,
-            count: row.count || 0,
-            totalAmount: 0,
-          })));
-        } else {
-          setBookings(Array.isArray(data) ? data : []);
-        }
-      }
-    } catch (err) {
-      showToast('Error loading report: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [reportType, dateRange, campIds, showToast]);
+  // Only fetch the active report type
+  const dateParams = dateRange.start && dateRange.end
+    ? { start: dateRange.start, end: dateRange.end }
+    : undefined;
+
+  const { data: occData, isLoading: occLoading, error: occError } = useOccupancyReportQuery();
+  const { data: revData, isLoading: revLoading, error: revError } = useRevenueReportQuery(dateParams);
+  const { data: bookData, isLoading: bookLoading, error: bookError } = useBookingsReportQuery(dateParams);
+
+  const loading = reportType === 'occupancy' ? occLoading : reportType === 'revenue' ? revLoading : bookLoading;
 
   useEffect(() => {
-    fetchReport();
-  }, [fetchReport]);
+    if (reportType === 'occupancy' && occError) {
+      showToast(`Error loading report: ${occError.message}`, 'error');
+    } else if (reportType === 'revenue' && revError) {
+      showToast(`Error loading report: ${revError.message}`, 'error');
+    } else if (reportType === 'bookings' && bookError) {
+      showToast(`Error loading report: ${bookError.message}`, 'error');
+    }
+  }, [reportType, occError, revError, bookError, showToast]);
+
+  // Transform API data into panel-local display shapes
+  const occupancy = React.useMemo(() => {
+    if (!occData) return [];
+    if (occData && typeof occData === 'object' && 'totalRooms' in occData) {
+      return [{
+        date: 'Current',
+        totalRooms: (occData as { totalRooms: number }).totalRooms,
+        occupiedRooms: (occData as { occupiedRooms: number }).occupiedRooms,
+        occupancyRate: Math.round(((occData as { occupancyRate?: number }).occupancyRate || 0) * 10) / 10,
+      }];
+    }
+    return Array.isArray(occData) ? occData : [];
+  }, [occData]);
+
+  const revenue = React.useMemo(() => {
+    if (!revData) return [];
+    if (revData && typeof revData === 'object' && 'details' in revData) {
+      const details = Array.isArray((revData as { details?: unknown[] }).details) ? (revData as { details: Array<{ date: string; total: number; count: number }> }).details : [];
+      return details.map((row) => ({
+        period: row.date,
+        totalRevenue: row.total || 0,
+        bookingCount: row.count || 0,
+        averagePerBooking: row.count > 0 ? Math.round((row.total || 0) / row.count) : 0,
+      }));
+    }
+    return Array.isArray(revData) ? revData : [];
+  }, [revData]);
+
+  const bookings = React.useMemo(() => {
+    if (!bookData) return [];
+    if (bookData && typeof bookData === 'object' && 'byState' in bookData) {
+      const states = Array.isArray((bookData as { byState?: unknown[] }).byState) ? (bookData as { byState: Array<{ state: string; count: number }> }).byState : [];
+      return states.map((row) => ({
+        status: row.state,
+        count: row.count || 0,
+        totalAmount: 0,
+      }));
+    }
+    return Array.isArray(bookData) ? bookData : [];
+  }, [bookData]);
 
   const occupancyRateColor = (rate: number) => {
     if (rate > 80) return 'text-green-600';

@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import * as api from '@/lib/api';
+import React, { useState, useCallback } from 'react';
 import type { Promotion } from '@/lib/api';
+import { usePromotionsQuery } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
 import { trackEvent } from '@/lib/plausible';
+import * as api from '@/lib/api';
 
 interface PromotionForm {
   name: string;
@@ -68,26 +69,12 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function PromotionsPanel() {
   const { showToast } = useToast();
-  const [promos, setPromos] = useState<Promotion[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: promos = [], isLoading: loading } = usePromotionsQuery(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PromotionForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Promotion | null>(null);
-
-  const loadPromos = useCallback(async () => {
-    try {
-      const data = (await api.getPromotions(true)) as Promotion[];
-      setPromos(data);
-    } catch (err) {
-      showToast('Failed to load promotions: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => {
-    loadPromos().finally(() => setLoading(false));
-  }, [loadPromos]);
 
   const openAdd = useCallback(() => {
     setEditingId(null);
@@ -134,7 +121,6 @@ export default function PromotionsPanel() {
       await api.savePromotion(payload, editingId ?? undefined);
       showToast(editingId ? 'Promotion updated.' : 'Promotion created.', 'success');
       trackEvent('Tenant: Promotion Updated', { promoId: editingId ?? 'new' });
-      await loadPromos();
       setShowForm(false);
       setEditingId(null);
       setForm(emptyForm);
@@ -143,7 +129,7 @@ export default function PromotionsPanel() {
     } finally {
       setSaving(false);
     }
-  }, [form, editingId, showToast, loadPromos]);
+  }, [form, editingId, showToast]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -151,11 +137,10 @@ export default function PromotionsPanel() {
       await api.deletePromotion(deleteTarget.id);
       showToast('Promotion deleted.', 'success');
       setDeleteTarget(null);
-      await loadPromos();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast, loadPromos]);
+  }, [deleteTarget, showToast]);
 
   const formatValue = useCallback((p: Promotion) => {
     if (p.type === 'percentage') return `${p.value}%`;

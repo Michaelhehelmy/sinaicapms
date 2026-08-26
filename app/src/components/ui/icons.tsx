@@ -292,3 +292,73 @@ export function IconAnalytics(props: IconProps) {
     </IconBase>
   );
 }
+
+/** Financials — dollar/currency icon */
+export function IconFinancials(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+    </IconBase>
+  );
+}
+
+/** HR — people/users icon */
+export function IconHR(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 00-3-3.87" />
+      <path d="M16 3.13a4 4 0 010 7.75" />
+    </IconBase>
+  );
+}
+
+/** Supply — package/box icon */
+export function IconSupply(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+    </IconBase>
+  );
+}
+
+/** CRM — contact/user-plus icon */
+export function IconCRM(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <circle cx="8.5" cy="7" r="4" />
+      <line x1="20" y1="8" x2="20" y2="14" />
+      <line x1="23" y1="11" x2="17" y2="11" />
+    </IconBase>
+  );
+}
+
+/** Storefront — shopping bag icon */
+export function IconStorefront(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <path d="M16 10a4 4 0 01-8 0" />
+    </IconBase>
+  );
+}
+
+/** AI — brain/circuit icon */
+export function IconAI(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 2a4 4 0 00-4 4v2a4 4 0 008 0V6a4 4 0 00-4-4z" />
+      <path d="M16 14h.01" />
+      <path d="M8 14h.01" />
+      <path d="M12 14v4" />
+      <path d="M8 18h8" />
+      <path d="M6 22h12" />
+    </IconBase>
+  );
+}

@@ -12,7 +12,7 @@ const mockUseAdminStatsQuery = vi.fn();
 const mockUseAuth = vi.fn().mockReturnValue({ user: { role: 'super_admin' } });
 
 vi.mock('@/hooks/useQueryHooks', () => ({
-  useAdminStatsQuery: () => mockUseAdminStatsQuery(),
+  useAdminStatsQuery: (...args: unknown[]) => mockUseAdminStatsQuery(...args),
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -26,6 +26,24 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/lib/utils', () => ({
   formatCurrency: (n: number) => `$${Number(n).toFixed(2)}`,
   cn: (...classes: (string | undefined | false | null)[]) => classes.filter(Boolean).join(' '),
+}));
+
+vi.mock('@/components/ui/ChartCard', () => ({
+  ChartCard: ({ title, children }: { title?: string; children?: React.ReactNode }) => (
+    <div data-testid="chart-card"><h3>{title}</h3>{children}</div>
+  ),
+}));
+vi.mock('@/components/ui/BarChart', () => ({
+  BarChart: () => <div data-testid="bar-chart" />,
+}));
+vi.mock('@/components/ui/LineChart', () => ({
+  LineChart: () => <div data-testid="line-chart" />,
+}));
+vi.mock('@/components/ui/PieChart', () => ({
+  PieChart: () => <div data-testid="pie-chart" />,
+}));
+vi.mock('@/components/ui/DateRangePicker', () => ({
+  DateRangePicker: () => <div data-testid="date-range-picker" />,
 }));
 
 import * as api from '@/lib/api';

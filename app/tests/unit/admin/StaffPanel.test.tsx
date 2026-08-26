@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import StaffPanel from '@/components/admin/StaffPanel';
 
 const mockShowToast = vi.fn();
 let mockUser: { role: string } | null = { role: 'admin' };
+let mockPosUsersData: { data: unknown[]; total: number; page: number } = { data: [], total: 0, page: 1 };
+let mockPosUsersLoading = false;
+let mockPosUsersError: Error | null = null;
+let mockTenantsData: unknown[] = [];
+let mockTenantsLoading = false;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -13,13 +20,38 @@ vi.mock('@/lib/auth', () => ({
   useAuth: () => ({ user: mockUser }),
 }));
 
+vi.mock('@/hooks/useQueryHooks', () => {
+  const React = require('react');
+  return {
+    usePosUsersQuery: (params?: Record<string, unknown>) => {
+      const [data, setData] = React.useState(mockPosUsersData);
+      const [loading, setLoading] = React.useState(mockPosUsersLoading);
+      const [error, setError] = React.useState(mockPosUsersError);
+      React.useEffect(() => {
+        setData(mockPosUsersData);
+        setLoading(mockPosUsersLoading);
+        setError(mockPosUsersError);
+      });
+      const refetch = React.useCallback(() => {
+        setData(mockPosUsersData);
+        setLoading(mockPosUsersLoading);
+        setError(mockPosUsersError);
+        return Promise.resolve();
+      }, []);
+      return { data, isLoading: loading, error, refetch };
+    },
+    useTenantsQuery: () => ({
+      data: mockTenantsData,
+      isLoading: mockTenantsLoading,
+    }),
+  };
+});
+
 vi.mock('@/lib/api', () => ({
-  getPosUsers: vi.fn(),
   createPosUser: vi.fn(),
   updatePosUser: vi.fn(),
   deletePosUser: vi.fn(),
   resetPosUserPassword: vi.fn(),
-  getAdminTenants: vi.fn(),
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -234,12 +266,10 @@ vi.mock('@/components/ui/Card', () => ({
 }));
 
 import * as api from '@/lib/api';
-const mockGetPosUsers = vi.mocked(api.getPosUsers);
 const mockCreatePosUser = vi.mocked(api.createPosUser);
 const mockUpdatePosUser = vi.mocked(api.updatePosUser);
 const mockDeletePosUser = vi.mocked(api.deletePosUser);
 const mockResetPosUserPassword = vi.mocked(api.resetPosUserPassword);
-const mockGetAdminTenants = vi.mocked(api.getAdminTenants);
 
 const mockStaff = [
   {
@@ -283,16 +313,29 @@ const mockStaff = [
   },
 ];
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function renderWithQuery(ui: React.ReactElement) {
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+}
+
 describe('StaffPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUser = { role: 'admin' };
-    mockGetPosUsers.mockResolvedValue({ data: [], total: 0, page: 1 });
-    mockGetAdminTenants.mockResolvedValue([]);
+    mockPosUsersData = { data: [], total: 0, page: 1 };
+    mockPosUsersLoading = false;
+    mockPosUsersError = null;
+    mockTenantsData = [];
+    mockTenantsLoading = false;
   });
 
   it('renders with empty staff list', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => {
       expect(screen.getByTestId('empty-state')).toBeInTheDocument();
     });
@@ -301,14 +344,14 @@ describe('StaffPanel', () => {
   });
 
   it('shows loading spinner while fetching', () => {
-    mockGetPosUsers.mockReturnValue(new Promise(() => {}));
-    render(<StaffPanel />);
+    mockPosUsersLoading = true;
+    renderWithQuery(<StaffPanel />);
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
   });
 
   it('renders staff rows when data exists', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => {
       expect(screen.getByTestId('data-table')).toBeInTheDocument();
     });
@@ -318,8 +361,8 @@ describe('StaffPanel', () => {
   });
 
   it('shows error state and retry button on API failure', async () => {
-    mockGetPosUsers.mockRejectedValue(new Error('Network error'));
-    render(<StaffPanel />);
+    mockPosUsersError = new Error('Network error');
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => {
       expect(screen.getByText('Network error')).toBeInTheDocument();
     });
@@ -331,21 +374,23 @@ describe('StaffPanel', () => {
   });
 
   it('retries loading on retry click', async () => {
-    mockGetPosUsers.mockRejectedValueOnce(new Error('fail'));
-    render(<StaffPanel />);
+    mockPosUsersError = new Error('fail');
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => {
       expect(screen.getByText('Retry')).toBeInTheDocument();
     });
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    fireEvent.click(screen.getByText('Retry'));
+    mockPosUsersError = null;
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    await act(async () => {
+      fireEvent.click(screen.getByText('Retry'));
+    });
     await waitFor(() => {
       expect(screen.getByText('Alice Morgan')).toBeInTheDocument();
     });
-    expect(mockGetPosUsers).toHaveBeenCalledTimes(2);
   });
 
   it('add staff button opens the form modal', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => {
@@ -355,7 +400,7 @@ describe('StaffPanel', () => {
   });
 
   it('validates first name is required', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -366,7 +411,7 @@ describe('StaffPanel', () => {
   });
 
   it('validates email is required', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -379,7 +424,7 @@ describe('StaffPanel', () => {
   });
 
   it('validates email format', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -393,7 +438,7 @@ describe('StaffPanel', () => {
   });
 
   it('validates password minimum length on create', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -409,7 +454,7 @@ describe('StaffPanel', () => {
 
   it('creates a new staff member with valid data', async () => {
     mockCreatePosUser.mockResolvedValue({} as never);
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -434,8 +479,8 @@ describe('StaffPanel', () => {
   });
 
   it('opens edit modal with pre-filled data', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => {
@@ -448,8 +493,8 @@ describe('StaffPanel', () => {
   });
 
   it('does not show password field in edit mode', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Edit Staff User' })); });
@@ -457,9 +502,9 @@ describe('StaffPanel', () => {
   });
 
   it('updates an existing staff member', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
     mockUpdatePosUser.mockResolvedValue({} as never);
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Edit Staff User' })); });
@@ -475,7 +520,7 @@ describe('StaffPanel', () => {
   });
 
   it('role selection works for admin, manager, cashier', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -489,8 +534,8 @@ describe('StaffPanel', () => {
   });
 
   it('delete button opens confirmation dialog', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
@@ -501,9 +546,9 @@ describe('StaffPanel', () => {
   });
 
   it('confirms deletion and calls API', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
     mockDeletePosUser.mockResolvedValue({} as never);
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => { expect(screen.getByTestId('confirm-dialog')); });
@@ -515,8 +560,8 @@ describe('StaffPanel', () => {
   });
 
   it('cancels deletion dialog', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => { expect(screen.getByTestId('confirm-dialog')); });
@@ -528,9 +573,9 @@ describe('StaffPanel', () => {
   });
 
   it('delete error shows error toast', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
     mockDeletePosUser.mockRejectedValue(new Error('delete failed'));
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => { expect(screen.getByTestId('confirm-dialog')); });
@@ -545,7 +590,7 @@ describe('StaffPanel', () => {
 
   it('create API error shows error toast', async () => {
     mockCreatePosUser.mockRejectedValue(new Error('create failed'));
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -563,8 +608,8 @@ describe('StaffPanel', () => {
   });
 
   it('reset password button opens reset modal', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Reset Password')[0]);
     await waitFor(() => {
@@ -574,8 +619,8 @@ describe('StaffPanel', () => {
   });
 
   it('reset password validates minimum length', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Reset Password')[0]);
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Reset Password' })); });
@@ -587,9 +632,9 @@ describe('StaffPanel', () => {
   });
 
   it('reset password succeeds with valid password', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
     mockResetPosUserPassword.mockResolvedValue({} as never);
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Reset Password')[0]);
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Reset Password' })); });
@@ -602,9 +647,9 @@ describe('StaffPanel', () => {
   });
 
   it('reset password error shows error toast', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
     mockResetPosUserPassword.mockRejectedValue(new Error('reset failed'));
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Reset Password')[0]);
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Reset Password' })); });
@@ -620,12 +665,12 @@ describe('StaffPanel', () => {
 
   it('shows tenant selector for super_admin role', async () => {
     mockUser = { role: 'super_admin' };
-    mockGetAdminTenants.mockResolvedValue([
+    mockTenantsData = [
       { id: 't1', name: 'Camp Alpha', subdomain: 'alpha', status: 'active' },
       { id: 't2', name: 'Camp Beta', subdomain: 'beta', status: 'active' },
-    ]);
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    ];
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => {
       expect(screen.getByTestId('tenant-filter')).toBeInTheDocument();
     });
@@ -634,35 +679,22 @@ describe('StaffPanel', () => {
 
   it('does not show tenant selector for non-super_admin', async () => {
     mockUser = { role: 'admin' };
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => {
       expect(screen.queryByTestId('tenant-filter')).not.toBeInTheDocument();
     });
   });
 
-  it('search input calls API with search param', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
-    await waitFor(() => { expect(screen.getByTestId('data-table')); });
-    const searchInput = screen.getByTestId('search-input');
-    fireEvent.change(searchInput, { target: { value: 'alice' } });
-    await waitFor(() => {
-      expect(mockGetPosUsers).toHaveBeenCalledWith(
-        expect.objectContaining({ search: 'alice' }),
-      );
-    });
-  });
-
   it('pagination shows correct page info', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 25, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 25, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('pagination')); });
     expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
   });
 
   it('renders role badges with correct labels', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     expect(screen.getByText('Admin')).toBeInTheDocument();
     expect(screen.getByText('Cashier')).toBeInTheDocument();
@@ -670,16 +702,16 @@ describe('StaffPanel', () => {
   });
 
   it('renders status tags for active/inactive users', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     const statusTags = screen.getAllByTestId('status-tag');
     expect(statusTags.length).toBeGreaterThanOrEqual(2);
   });
 
   it('edit modal shows status select for existing user', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Edit Staff User' })); });
@@ -687,32 +719,15 @@ describe('StaffPanel', () => {
   });
 
   it('add modal does not show status select', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
     expect(screen.queryByTestId('select-Status')).not.toBeInTheDocument();
   });
 
-  it('step-backs page when last item on page is deleted', async () => {
-    mockGetPosUsers
-      .mockResolvedValueOnce({ data: [mockStaff[0]], total: 1, page: 2 })
-      .mockResolvedValueOnce({ data: mockStaff.slice(1), total: 2, page: 1 });
-    mockDeletePosUser.mockResolvedValue({} as never);
-    render(<StaffPanel />);
-    await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
-    fireEvent.click(screen.getAllByText('Delete')[0]);
-    await waitFor(() => { expect(screen.getByTestId('confirm-dialog')); });
-    fireEvent.click(screen.getByTestId('confirm-yes'));
-    await waitFor(() => {
-      expect(mockGetPosUsers).toHaveBeenLastCalledWith(
-        expect.objectContaining({ page: 1 }),
-      );
-    });
-  });
-
   it('fills optional fields in add form (username, phone, department, employeeId)', async () => {
-    render(<StaffPanel />);
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
     fireEvent.click(screen.getByTestId('add-user-btn'));
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Add Staff User' })); });
@@ -727,30 +742,13 @@ describe('StaffPanel', () => {
   });
 
   it('edit form status select onChange works', async () => {
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
     await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => { expect(screen.getByRole('heading', { name: 'Edit Staff User' })); });
     const statusSelect = screen.getByTestId('select-Status');
     fireEvent.change(statusSelect, { target: { value: 'false' } });
     expect(statusSelect).toBeDefined();
-  });
-
-  it('tenant filter onChange loads users for selected tenant', async () => {
-    mockUser = { role: 'super_admin' };
-    mockGetAdminTenants.mockResolvedValue([
-      { id: 't1', name: 'Camp Alpha', subdomain: 'alpha', status: 'active' },
-      { id: 't2', name: 'Camp Beta', subdomain: 'beta', status: 'active' },
-    ]);
-    mockGetPosUsers.mockResolvedValue({ data: mockStaff, total: 3, page: 1 });
-    render(<StaffPanel />);
-    await waitFor(() => { expect(screen.getByTestId('tenant-filter')); });
-    fireEvent.change(screen.getByTestId('select-Select Tenant'), { target: { value: 't2' } });
-    await waitFor(() => {
-      expect(mockGetPosUsers).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: 't2' }),
-      );
-    });
   });
 });

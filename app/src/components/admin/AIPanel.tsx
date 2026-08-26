@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import * as api from '@/lib/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
@@ -10,6 +11,7 @@ import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { queryKeys, useAIPredictionsQuery, useAIPriceRulesQuery, useAIAutomationRulesQuery, useAIAutomationLogsQuery } from '@/hooks/useQueryHooks';
 
 type Tab = 'predictions' | 'priceRules' | 'automationRules' | 'automationLogs' | 'forecast';
 
@@ -106,14 +108,15 @@ interface ForecastPoint {
 
 export default function AIPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('predictions');
-  const [loading, setLoading] = useState(true);
 
-  // Data
-  const [predictions, setPredictions] = useState<Prediction[]>([]);
-  const [priceRules, setPriceRules] = useState<PriceRule[]>([]);
-  const [automationRules, setAutomationRules] = useState<AutomationRule[]>([]);
-  const [automationLogs, setAutomationLogs] = useState<AutomationLog[]>([]);
+  // Data via TanStack Query
+  const { data: predictions = [], isLoading: loadingPredictions } = useAIPredictionsQuery();
+  const { data: priceRules = [], isLoading: loadingPriceRules } = useAIPriceRulesQuery();
+  const { data: automationRules = [], isLoading: loadingAutomationRules } = useAIAutomationRulesQuery();
+  const { data: automationLogs = [], isLoading: loadingAutomationLogs } = useAIAutomationLogsQuery();
+  const loading = loadingPredictions || loadingPriceRules || loadingAutomationRules || loadingAutomationLogs;
   const [forecasts, setForecasts] = useState<ForecastPoint[]>([]);
 
   // Price Rule modal
@@ -134,24 +137,9 @@ export default function AIPanel() {
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'priceRule'; item: PriceRule } | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [p, pr, ar, al] = await Promise.all([
-        (api as any).getAIPredictions?.() ?? Promise.resolve([]),
-        (api as any).getAIPriceRules?.() ?? Promise.resolve([]),
-        (api as any).getAIAutomationRules?.() ?? Promise.resolve([]),
-        (api as any).getAIAutomationLogs?.() ?? Promise.resolve([]),
-      ]);
-      setPredictions(p || []);
-      setPriceRules(pr || []);
-      setAutomationRules(ar || []);
-      setAutomationLogs(al || []);
-    } catch (err) {
-      showToast('Failed to load AI data: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  const invalidateAi = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'ai'] });
+  }, [queryClient]);
 
   // ── Price Rule handlers ────────────────────────────────────────────
   const openAddPriceRule = useCallback(() => { setEditingPriceRuleId(null); setPriceRuleForm(emptyPriceRuleForm); setShowPriceRuleForm(true); }, []);
@@ -189,11 +177,11 @@ export default function AIPanel() {
       setShowPriceRuleForm(false);
       setEditingPriceRuleId(null);
       setPriceRuleForm(emptyPriceRuleForm);
-      await loadData();
+      invalidateAi();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [priceRuleForm, editingPriceRuleId, showToast, loadData]);
+  }, [priceRuleForm, editingPriceRuleId, showToast, invalidateAi]);
 
   // ── Automation Rule handlers ────────────────────────────────────────
   const openAddAutomation = useCallback(() => { setEditingAutomationId(null); setAutomationForm(emptyAutomationForm); setShowAutomationForm(true); }, []);
@@ -223,21 +211,21 @@ export default function AIPanel() {
       setShowAutomationForm(false);
       setEditingAutomationId(null);
       setAutomationForm(emptyAutomationForm);
-      await loadData();
+      invalidateAi();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [automationForm, editingAutomationId, showToast, loadData]);
+  }, [automationForm, editingAutomationId, showToast, invalidateAi]);
 
   const handleToggleAutomation = useCallback(async (id: string) => {
     try {
       await (api as any).toggleAIAutomationRule?.(id);
       showToast('Rule toggled.', 'success');
-      await loadData();
+      invalidateAi();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [showToast, loadData]);
+  }, [showToast, invalidateAi]);
 
   // ── Delete price rule ──────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
@@ -246,11 +234,11 @@ export default function AIPanel() {
       await (api as any).deleteAIPriceRule?.(deleteTarget.item.id);
       showToast('Deleted.', 'success');
       setDeleteTarget(null);
-      await loadData();
+      invalidateAi();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast, loadData]);
+  }, [deleteTarget, showToast, invalidateAi]);
 
   // ── Forecast ───────────────────────────────────────────────────────
   const handleRunForecast = useCallback(async () => {

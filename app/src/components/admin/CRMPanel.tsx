@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
@@ -12,6 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
+import { queryKeys, useCrmContactsQuery, useCrmLeadsQuery, useCrmOpportunitiesQuery, useCrmTasksQuery, useCrmTicketsQuery, useCrmKnowledgeArticlesQuery } from '@/hooks/useQueryHooks';
 
 type Tab = 'contacts' | 'leads' | 'opportunities' | 'tasks' | 'tickets' | 'knowledge';
 
@@ -333,16 +335,17 @@ function GanttChart({ tasks }: GanttChartProps) {
 
 export default function CRMPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('contacts');
-  const [loading, setLoading] = useState(true);
 
-  // Data
-  const [contacts, setContacts] = useState<Record<string, unknown>[]>([]);
-  const [leads, setLeads] = useState<Record<string, unknown>[]>([]);
-  const [opportunities, setOpportunities] = useState<Record<string, unknown>[]>([]);
-  const [tasks, setTasks] = useState<Record<string, unknown>[]>([]);
-  const [tickets, setTickets] = useState<Record<string, unknown>[]>([]);
-  const [articles, setArticles] = useState<Record<string, unknown>[]>([]);
+  // Data via TanStack Query
+  const { data: contacts = [], isLoading: loadingContacts } = useCrmContactsQuery();
+  const { data: leads = [], isLoading: loadingLeads } = useCrmLeadsQuery();
+  const { data: opportunities = [], isLoading: loadingOpps } = useCrmOpportunitiesQuery();
+  const { data: tasks = [], isLoading: loadingTasks } = useCrmTasksQuery();
+  const { data: tickets = [], isLoading: loadingTickets } = useCrmTicketsQuery();
+  const { data: articles = [], isLoading: loadingArticles } = useCrmKnowledgeArticlesQuery();
+  const loading = loadingContacts || loadingLeads || loadingOpps || loadingTasks || loadingTickets || loadingArticles;
 
   // Contact modal
   const [showContactForm, setShowContactForm] = useState(false);
@@ -382,28 +385,9 @@ export default function CRMPanel() {
 
   const [saving, setSaving] = useState(false);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [c, l, o, t, tk, a] = await Promise.all([
-        apiFetch<Record<string, unknown>[]>('/crm/contacts'),
-        apiFetch<Record<string, unknown>[]>('/crm/leads'),
-        apiFetch<Record<string, unknown>[]>('/crm/opportunities'),
-        apiFetch<Record<string, unknown>[]>('/crm/tasks'),
-        apiFetch<Record<string, unknown>[]>('/crm/tickets'),
-        apiFetch<Record<string, unknown>[]>('/crm/knowledge-articles'),
-      ]);
-      setContacts(c);
-      setLeads(l);
-      setOpportunities(o);
-      setTasks(t);
-      setTickets(tk);
-      setArticles(a);
-    } catch (err) {
-      showToast('Failed to load CRM data: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  const invalidateCrm = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'crm'] });
+  }, [queryClient]);
 
   // ── Contact handlers ──────────────────────────────────────────
   const openAddContact = useCallback(() => { setEditingContactId(null); setContactForm(emptyContactForm); setShowContactForm(true); }, []);
@@ -437,11 +421,11 @@ export default function CRMPanel() {
       showToast(editingContactId ? 'Contact updated.' : 'Contact created.', 'success');
       setShowContactForm(false);
       setEditingContactId(null);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [contactForm, editingContactId, showToast, loadData]);
+  }, [contactForm, editingContactId, showToast, invalidateCrm]);
 
   // ── Lead handlers ─────────────────────────────────────────────
   const openAddLead = useCallback(() => { setLeadForm(emptyLeadForm); setShowLeadForm(true); }, []);
@@ -452,11 +436,11 @@ export default function CRMPanel() {
       await apiFetch('/crm/leads', { method: 'POST', body: JSON.stringify({ ...leadForm, value: leadForm.value ? parseFloat(leadForm.value) : undefined }) });
       showToast('Lead created.', 'success');
       setShowLeadForm(false);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [leadForm, showToast, loadData]);
+  }, [leadForm, showToast, invalidateCrm]);
 
   const handleLeadStatus = useCallback(async (newStatus: string) => {
     if (!leadStatusTarget) return;
@@ -464,11 +448,11 @@ export default function CRMPanel() {
       await apiFetch(`/crm/leads/${leadStatusTarget.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
       showToast(`Lead marked as ${newStatus}.`, 'success');
       setLeadStatusTarget(null);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [leadStatusTarget, showToast, loadData]);
+  }, [leadStatusTarget, showToast, invalidateCrm]);
 
   // ── Opportunity handlers ──────────────────────────────────────
   const openAddOpp = useCallback(() => { setOppForm(emptyOppForm); setShowOppForm(true); }, []);
@@ -489,11 +473,11 @@ export default function CRMPanel() {
       });
       showToast('Opportunity created.', 'success');
       setShowOppForm(false);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [oppForm, showToast, loadData]);
+  }, [oppForm, showToast, invalidateCrm]);
 
   const handleOppStage = useCallback(async (newStage: string) => {
     if (!oppStageTarget) return;
@@ -501,21 +485,21 @@ export default function CRMPanel() {
       await apiFetch(`/crm/opportunities/${oppStageTarget.id}/stage`, { method: 'PATCH', body: JSON.stringify({ stage: newStage }) });
       showToast(`Opportunity moved to ${newStage}.`, 'success');
       setOppStageTarget(null);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [oppStageTarget, showToast, loadData]);
+  }, [oppStageTarget, showToast, invalidateCrm]);
 
   const handleMoveOppStage = useCallback(async (opp: Record<string, unknown>, newStage: string) => {
     try {
       await apiFetch(`/crm/opportunities/${opp.id}/stage`, { method: 'PATCH', body: JSON.stringify({ stage: newStage }) });
       showToast(`Opportunity moved to ${formatLabel(newStage)}.`, 'success');
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [showToast, loadData]);
+  }, [showToast, invalidateCrm]);
 
   // ── Task handlers ─────────────────────────────────────────────
   const openAddTask = useCallback(() => { setTaskForm(emptyTaskForm); setShowTaskForm(true); }, []);
@@ -536,11 +520,11 @@ export default function CRMPanel() {
       });
       showToast('Task created.', 'success');
       setShowTaskForm(false);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [taskForm, showToast, loadData]);
+  }, [taskForm, showToast, invalidateCrm]);
 
   const handleTaskStatus = useCallback(async (newStatus: string) => {
     if (!taskStatusTarget) return;
@@ -548,11 +532,11 @@ export default function CRMPanel() {
       await apiFetch(`/crm/tasks/${taskStatusTarget.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
       showToast(`Task status updated.`, 'success');
       setTaskStatusTarget(null);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [taskStatusTarget, showToast, loadData]);
+  }, [taskStatusTarget, showToast, invalidateCrm]);
 
   // ── Ticket handlers ───────────────────────────────────────────
   const openAddTicket = useCallback(() => { setTicketForm(emptyTicketForm); setShowTicketForm(true); }, []);
@@ -572,11 +556,11 @@ export default function CRMPanel() {
       });
       showToast('Ticket created.', 'success');
       setShowTicketForm(false);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [ticketForm, showToast, loadData]);
+  }, [ticketForm, showToast, invalidateCrm]);
 
   const handleAddComment = useCallback(async () => {
     if (!ticketCommentTarget || !commentText.trim()) return;
@@ -618,11 +602,11 @@ export default function CRMPanel() {
       showToast(editingKBId ? 'Article updated.' : 'Article created.', 'success');
       setShowKBForm(false);
       setEditingKBId(null);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [kbForm, editingKBId, showToast, loadData]);
+  }, [kbForm, editingKBId, showToast, invalidateCrm]);
 
   // ── Delete handler ────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
@@ -633,11 +617,11 @@ export default function CRMPanel() {
       }
       showToast('Deleted.', 'success');
       setDeleteTarget(null);
-      await loadData();
+      invalidateCrm();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast, loadData]);
+  }, [deleteTarget, showToast, invalidateCrm]);
 
   const badgeVariant = (status: string) => STATUS_BADGE[status]?.variant || 'neutral' as const;
   const formatLabel = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

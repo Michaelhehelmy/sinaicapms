@@ -497,6 +497,47 @@ export function updateBranding(data: Schemas['TenantMeUpdateRequest']) {
   });
 }
 
+// ─── Tenant Billing ────────────────────────────────────────────────
+export interface TenantBillingPlan {
+  name: string;
+  price: string;
+  period: string;
+  bookingsLimit: number | null;
+  storageLimit: string;
+  posUsersLimit: number | null;
+  features: string[];
+}
+
+export interface TenantBillingResponse {
+  subscription: {
+    plan: string;
+    planLabel: string;
+    price: number;
+    status: string;
+    currentPeriodEnd: string | null;
+    trialEndsAt: string | null;
+    bookingsLimit: number;
+  };
+  usage: {
+    bookings: number;
+    bookingsLimit: number;
+    posUsers: number;
+    posUsersLimit: number;
+  };
+  plans: TenantBillingPlan[];
+  billingHistory: Array<{
+    id: string;
+    date: string;
+    amount: number;
+    status: string;
+    description: string;
+  }>;
+}
+
+export function getTenantBilling() {
+  return apiFetch<TenantBillingResponse>('/tenant/billing');
+}
+
 export function getTenants() {
   return apiFetch<Schemas['TenantList']>('/tenants');
 }
@@ -1946,4 +1987,168 @@ export function syncDurableState(data: { key: string; value: unknown; ttl?: numb
 
 export function getDurableStateValue(key: string) {
   return apiFetch<{ key: string; value: unknown; found: boolean; message: string; success: boolean }>(`/ai/state/sync/${encodeURIComponent(key)}`);
+}
+
+// ─── Super Admin: Cross-Tenant Pillar Overview APIs ──────────────────
+
+export function getSuperFinancialsOverview() {
+  return apiFetch<{ revenue: { totalCamps: number; totalRevenue: number; collectedAmount: number; pendingAmount: number; averageRevenuePerCamp: number; revenuePerCamp: Array<{ campId: number; campName: string; revenue: number; collected: number; pending: number }> }; collections: { outstandingInvoices: number; overdueInvoices: number; averageCollectionPeriod: number; collectionRate: number } }>('/admin/financials/overview');
+}
+
+export function getSuperInvoices(page = 1, limit = 20) {
+  return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; guestName: string; amount: number; currency: string; status: string; dueDate: string; paidDate: string | null; invoiceNumber: string; createdAt: string }>>(`/admin/financials/invoices?page=${page}&limit=${limit}`);
+}
+
+export function getSuperHROverview() {
+  return apiFetch<{ employees: { totalEmployees: number; activeEmployees: number; pendingLeaveRequests: number; recentHires: number; terminationRate: number }; payroll: { totalPayroll: number; averageSalary: number; pendingPayrollRuns: number; lastPayrollDate: string | null }; training: { completionRate: number; overdueTrainings: number; upcomingSessions: number } }>('/admin/hr/overview');
+}
+
+export function getSuperEmployees(page = 1, limit = 20) {
+  return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; firstName: string; lastName: string; email: string; position: string; department: string; status: string; hireDate: string; salary: number; currency: string; createdAt: string }>>(`/admin/hr/employees?page=${page}&limit=${limit}`);
+}
+
+export function getSuperSupplyOverview() {
+  return apiFetch<{ inventory: { totalWarehouses: number; totalProducts: number; lowStockAlerts: number; totalInventoryValue: number; averageStockLevel: number }; procurement: { pendingPurchaseOrders: number; totalSpend: number; averageOrderValue: number; suppliers: number; recentOrders: Array<{ id: number; supplier: string; amount: number; status: string; expectedDate: string }> } }>('/admin/supply/overview');
+}
+
+export function getSuperPurchaseOrders(page = 1, limit = 20) {
+  return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; supplier: string; totalAmount: number; currency: string; status: string; expectedDate: string; actualDate: string | null; items: number; createdAt: string }>>(`/admin/supply/purchase-orders?page=${page}&limit=${limit}`);
+}
+
+export function getSuperCRMOverview() {
+  return apiFetch<{ contacts: { totalContacts: number; activeContacts: number; conversionRate: number; averageLeadScore: number }; pipeline: { totalLeads: number; qualifiedLeads: number; opportunities: number; totalPipelineValue: number; averageDealSize: number; winRate: number }; support: { totalTickets: number; openTickets: number; averageResolutionTime: number; satisfactionRate: number } }>('/admin/crm/overview');
+}
+
+export function getSuperContacts(page = 1, limit = 20) {
+  return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; firstName: string; lastName: string; email: string; phone: string; company: string; leadScore: number; status: string; source: string; lastContacted: string | null; createdAt: string }>>(`/admin/crm/contacts?page=${page}&limit=${limit}`);
+}
+
+export function getSuperOpportunities(page = 1, limit = 20) {
+  return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; name: string; value: number; currency: string; stage: string; probability: number; expectedCloseDate: string; contactName: string; contactEmail: string; createdAt: string }>>(`/admin/crm/opportunities?page=${page}&limit=${limit}`);
+}
+
+export function getSuperStorefrontOverview() {
+  return apiFetch<{ products: { totalProducts: number; activeProducts: number; draftProducts: number; averagePrice: number }; sales: { totalOrders: number; totalRevenue: number; averageOrderValue: number; conversionRate: number; topSelling: Array<{ productId: number; productName: string; quantity: number; revenue: number }> }; pos: { totalPOSTransactions: number; posRevenue: number; averagePOSTransaction: number; activeTerminals: number } }>('/admin/storefront/overview');
+}
+
+export function getSuperStorefrontProducts(page = 1, limit = 20) {
+  return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; name: string; description: string; price: number; currency: string; category: string; status: string; stockQuantity: number; imageUrl: string | null; createdAt: string }>>(`/admin/storefront/products?page=${page}&limit=${limit}`);
+}
+
+export function getSuperAIOverview() {
+  return apiFetch<{ predictions: { totalPredictions: number; activeModels: number; averageAccuracy: number; recentPredictions: number }; automation: { totalRules: number; activeRules: number; triggeredToday: number; successRate: number; totalExecutions: number }; insights: { priceOptimizations: number; demandForecasts: number; anomalyDetections: number; lastUpdated: string | null } }>('/admin/ai/overview');
+}
+
+export function getSuperPredictions(page = 1, limit = 20) {
+  return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; modelType: string; prediction: string; confidence: number; inputFeatures: string; status: string; validUntil: string; createdAt: string }>>(`/admin/ai/predictions?page=${page}&limit=${limit}`);
+}
+
+// ─── Generic request helper (used by SupplyPanel, etc.) ─────────────────────
+
+export async function request<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  return apiFetch<T>(path, init);
+}
+
+// ─── HR Module: Additional API Functions ────────────────────────────────────
+
+export function createHrApplicant(data: Record<string, unknown>) {
+  return apiFetch('/hr/applicants', { method: 'POST', body: JSON.stringify(data) });
+}
+
+// ─── Storefront API Functions ───────────────────────────────────────────────
+
+export function saveStorefrontPage(data: Record<string, unknown>, editId?: string) {
+  const method = editId ? 'PUT' : 'POST';
+  const path = editId ? `/storefront/pages/${editId}` : '/storefront/pages';
+  return apiFetch(path, { method, body: JSON.stringify(data) });
+}
+
+export function saveStorefrontBlogPost(data: Record<string, unknown>, editId?: string) {
+  const method = editId ? 'PUT' : 'POST';
+  const path = editId ? `/storefront/blog/posts/${editId}` : '/storefront/blog/posts';
+  return apiFetch(path, { method, body: JSON.stringify(data) });
+}
+
+export function saveStorefrontBlogCategory(data: Record<string, unknown>, editId?: string) {
+  const method = editId ? 'PUT' : 'POST';
+  const path = editId ? `/storefront/blog/categories/${editId}` : '/storefront/blog/categories';
+  return apiFetch(path, { method, body: JSON.stringify(data) });
+}
+
+export function deleteStorefrontBlogCategory(id: string) {
+  return apiFetch(`/storefront/blog/categories/${id}`, { method: 'DELETE' });
+}
+
+// ─── AI Module API Functions ────────────────────────────────────────────────
+
+export function updateAIPriceRule(id: string, data: Record<string, unknown>) {
+  return apiFetch(`/ai/price-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function createAIPriceRule(data: Record<string, unknown>) {
+  return apiFetch('/ai/price-rules', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function deleteAIPriceRule(id: string) {
+  return apiFetch(`/ai/price-rules/${id}`, { method: 'DELETE' });
+}
+
+export function updateAIAutomationRule(id: string, data: Record<string, unknown>) {
+  return apiFetch(`/ai/automation-rules/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function createAIAutomationRule(data: Record<string, unknown>) {
+  return apiFetch('/ai/automation-rules', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function toggleAIAutomationRule(id: string) {
+  return apiFetch(`/ai/automation-rules/${id}/toggle`, { method: 'PUT' });
+}
+
+export function runAIForecast(data: Record<string, unknown>) {
+  return apiFetch('/ai/forecast', { method: 'POST', body: JSON.stringify(data) });
+}
+
+// ─── Admin Settings API Functions ───────────────────────────────────────────
+
+export function getAdminSettings() {
+  return apiFetch('/admin/settings');
+}
+
+export function updateAdminSettings(data: Record<string, unknown>) {
+  return apiFetch('/admin/settings', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+// ─── Admin Subscriptions API Functions ──────────────────────────────────────
+
+export function updateAdminSubscription(id: string, data: Record<string, unknown>) {
+  return apiFetch(`/admin/subscriptions/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export function cancelAdminSubscription(id: string) {
+  return apiFetch(`/admin/subscriptions/${id}/cancel`, { method: 'POST' });
+}
+
+export function resumeAdminSubscription(id: string) {
+  return apiFetch(`/admin/subscriptions/${id}/resume`, { method: 'POST' });
+}
+
+// ─── Admin Reports API Functions ────────────────────────────────────────────
+
+export function generateAdminReport(data: Record<string, unknown>) {
+  return apiFetch('/admin/reports/generate', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function createAdminScheduledReport(data: Record<string, unknown>) {
+  return apiFetch('/admin/reports/scheduled', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export function deleteAdminScheduledReport(id: string) {
+  return apiFetch(`/admin/reports/scheduled/${id}`, { method: 'DELETE' });
+}
+
+// ─── Admin Performance API Functions ────────────────────────────────────────
+
+export function exportAdminPerformance(format: string) {
+  return apiFetch(`/admin/performance/export?format=${format}`);
 }

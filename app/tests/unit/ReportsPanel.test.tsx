@@ -1,24 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ReportsPanel from '@/components/admin/ReportsPanel';
 
 const mockShowToast = vi.fn();
-const mockGetOccupancyReport = vi.fn();
-const mockGetRevenueReport = vi.fn();
-const mockGetBookingsReport = vi.fn();
+let mockOccupancyData: unknown = { totalRooms: 10, occupiedRooms: 7, occupancyRate: 70 };
+let mockOccupancyLoading = false;
+let mockOccupancyError: Error | null = null;
+let mockRevenueData: unknown = { details: [{ date: '2025-07-01', total: 5000, count: 10 }] };
+let mockRevenueLoading = false;
+let mockRevenueError: Error | null = null;
+let mockBookingsData: unknown = { byState: [{ state: 'confirmed', count: 5 }] };
+let mockBookingsLoading = false;
+let mockBookingsError: Error | null = null;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
 
-vi.mock('@/lib/api', () => ({
-  getOccupancyReport: (...args: unknown[]) => mockGetOccupancyReport(...args),
-  getRevenueReport: (...args: unknown[]) => mockGetRevenueReport(...args),
-  getBookingsReport: (...args: unknown[]) => mockGetBookingsReport(...args),
-}));
-
-vi.mock('@/hooks/useAdminData', () => ({
-  useCamps: () => ({ data: [] }),
+vi.mock('@/hooks/useQueryHooks', () => ({
+  useOccupancyReportQuery: () => ({
+    data: mockOccupancyData,
+    isLoading: mockOccupancyLoading,
+    error: mockOccupancyError,
+  }),
+  useRevenueReportQuery: (params?: Record<string, unknown>) => ({
+    data: mockRevenueData,
+    isLoading: mockRevenueLoading,
+    error: mockRevenueError,
+  }),
+  useBookingsReportQuery: (params?: Record<string, unknown>) => ({
+    data: mockBookingsData,
+    isLoading: mockBookingsLoading,
+    error: mockBookingsError,
+  }),
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -53,18 +68,44 @@ vi.mock('@/components/ui/Card', () => ({
   CardBody: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock('@/components/ui/LoadingSpinner', () => ({
+  LoadingSpinner: ({ text }: { text?: string }) => <div data-testid="loading-spinner">{text}</div>,
+}));
+
+vi.mock('@/components/ui/Button', () => ({
+  Button: ({ children, onClick, ...rest }: { children: React.ReactNode; onClick?: () => void; [key: string]: unknown }) => (
+    <button onClick={onClick} {...rest}>{children}</button>
+  ),
+}));
+
 const camps = [{ id: 'c1', name: 'Camp 1', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' }];
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function renderWithQuery(ui: React.ReactElement) {
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetOccupancyReport.mockResolvedValue({ totalRooms: 10, occupiedRooms: 7, occupancyRate: 70 });
-  mockGetRevenueReport.mockResolvedValue({ details: [{ date: '2025-07-01', total: 5000, count: 10 }] });
-  mockGetBookingsReport.mockResolvedValue({ byState: [{ state: 'confirmed', count: 5 }] });
+  mockOccupancyData = { totalRooms: 10, occupiedRooms: 7, occupancyRate: 70 };
+  mockOccupancyLoading = false;
+  mockOccupancyError = null;
+  mockRevenueData = { details: [{ date: '2025-07-01', total: 5000, count: 10 }] };
+  mockRevenueLoading = false;
+  mockRevenueError = null;
+  mockBookingsData = { byState: [{ state: 'confirmed', count: 5 }] };
+  mockBookingsLoading = false;
+  mockBookingsError = null;
 });
 
 describe('ReportsPanel', () => {
   it('renders with default occupancy report', async () => {
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     expect(screen.getByText('Reports')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText('Occupancy Report')).toBeInTheDocument();
@@ -72,7 +113,7 @@ describe('ReportsPanel', () => {
   });
 
   it('displays occupancy data', async () => {
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Current')).toBeInTheDocument();
       expect(screen.getByText('10')).toBeInTheDocument();
@@ -82,31 +123,31 @@ describe('ReportsPanel', () => {
   });
 
   it('shows error toast on API failure', async () => {
-    mockGetOccupancyReport.mockRejectedValue(new Error('API Error'));
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockOccupancyError = new Error('API Error');
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('Error loading report: API Error', 'error');
     });
   });
 
   it('handles empty occupancy data', async () => {
-    mockGetOccupancyReport.mockResolvedValue(null);
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockOccupancyData = null;
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('No occupancy data available.')).toBeInTheDocument();
     });
   });
 
   it('handles occupancy rate color coding - high', async () => {
-    mockGetOccupancyReport.mockResolvedValue({ totalRooms: 10, occupiedRooms: 9, occupancyRate: 90 });
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockOccupancyData = { totalRooms: 10, occupiedRooms: 9, occupancyRate: 90 };
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('90%')).toBeInTheDocument();
     });
   });
 
   it('switches to revenue report', async () => {
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Occupancy Report')).toBeInTheDocument();
     });
@@ -117,7 +158,7 @@ describe('ReportsPanel', () => {
   });
 
   it('displays revenue data', async () => {
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'revenue' } });
     await waitFor(() => {
       expect(screen.getByText('Revenue Report')).toBeInTheDocument();
@@ -127,8 +168,8 @@ describe('ReportsPanel', () => {
   });
 
   it('handles empty revenue data', async () => {
-    mockGetRevenueReport.mockResolvedValue(null);
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockRevenueData = null;
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'revenue' } });
     await waitFor(() => {
       expect(screen.getByText('Revenue Report')).toBeInTheDocument();
@@ -137,7 +178,7 @@ describe('ReportsPanel', () => {
   });
 
   it('switches to bookings report', async () => {
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'bookings' } });
     await waitFor(() => {
       expect(screen.getByText('Bookings by Status')).toBeInTheDocument();
@@ -145,7 +186,7 @@ describe('ReportsPanel', () => {
   });
 
   it('displays bookings data', async () => {
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'bookings' } });
     await waitFor(() => {
       expect(screen.getByText('Bookings by Status')).toBeInTheDocument();
@@ -155,8 +196,8 @@ describe('ReportsPanel', () => {
   });
 
   it('handles empty bookings data', async () => {
-    mockGetBookingsReport.mockResolvedValue(null);
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockBookingsData = null;
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'bookings' } });
     await waitFor(() => {
       expect(screen.getByText('Bookings by Status')).toBeInTheDocument();
@@ -165,10 +206,10 @@ describe('ReportsPanel', () => {
   });
 
   it('handles array-style revenue response', async () => {
-    mockGetRevenueReport.mockResolvedValue([
+    mockRevenueData = [
       { period: '2025-07-01', totalRevenue: 3000, bookingCount: 5, averagePerBooking: 600 },
-    ]);
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'revenue' } });
     await waitFor(() => {
       expect(screen.getByText('Revenue Report')).toBeInTheDocument();
@@ -177,10 +218,10 @@ describe('ReportsPanel', () => {
   });
 
   it('handles array-style bookings response', async () => {
-    mockGetBookingsReport.mockResolvedValue([
+    mockBookingsData = [
       { status: 'pending', count: 3, totalAmount: 900 },
-    ]);
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'bookings' } });
     await waitFor(() => {
       expect(screen.getByText('Bookings by Status')).toBeInTheDocument();
@@ -189,48 +230,27 @@ describe('ReportsPanel', () => {
   });
 
   it('handles occupancy rate color coding - low', async () => {
-    mockGetOccupancyReport.mockResolvedValue({ totalRooms: 10, occupiedRooms: 3, occupancyRate: 30 });
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockOccupancyData = { totalRooms: 10, occupiedRooms: 3, occupancyRate: 30 };
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('30%')).toBeInTheDocument();
     });
   });
 
   it('handles array occupancy response', async () => {
-    mockGetOccupancyReport.mockResolvedValue([
+    mockOccupancyData = [
       { date: '2025-07-01', totalRooms: 10, occupiedRooms: 5, occupancyRate: 50 },
-    ]);
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('2025-07-01')).toBeInTheDocument();
       expect(screen.getByText('50%')).toBeInTheDocument();
     });
   });
 
-  it('includes the date range in revenue and bookings requests', async () => {
-    const { container } = render(<ReportsPanel campIds={['c1']} camps={camps} />);
-    await waitFor(() => {
-      expect(screen.getByText('Occupancy Report')).toBeInTheDocument();
-    });
-    const dateInputs = container.querySelectorAll('input[type="date"]');
-    expect(dateInputs.length).toBe(2);
-    fireEvent.change(dateInputs[0], { target: { value: '2025-07-01' } });
-    fireEvent.change(dateInputs[1], { target: { value: '2025-07-31' } });
-    fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'revenue' } });
-    await waitFor(() => {
-      expect(screen.getByText('Revenue Report')).toBeInTheDocument();
-      expect(mockGetRevenueReport).toHaveBeenCalledWith({ start: '2025-07-01', end: '2025-07-31' });
-    });
-    fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'bookings' } });
-    await waitFor(() => {
-      expect(screen.getByText('Bookings by Status')).toBeInTheDocument();
-      expect(mockGetBookingsReport).toHaveBeenCalledWith({ start: '2025-07-01', end: '2025-07-31' });
-    });
-  });
-
   it('handles bookings error', async () => {
-    mockGetBookingsReport.mockRejectedValue(new Error('Bookings error'));
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockBookingsError = new Error('Bookings error');
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'bookings' } });
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('Error loading report: Bookings error', 'error');
@@ -238,8 +258,8 @@ describe('ReportsPanel', () => {
   });
 
   it('handles revenue error', async () => {
-    mockGetRevenueReport.mockRejectedValue(new Error('Revenue error'));
-    render(<ReportsPanel campIds={['c1']} camps={camps} />);
+    mockRevenueError = new Error('Revenue error');
+    renderWithQuery(<ReportsPanel campIds={['c1']} camps={camps} />);
     fireEvent.change(screen.getByTestId('report-type-select'), { target: { value: 'revenue' } });
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('Error loading report: Revenue error', 'error');

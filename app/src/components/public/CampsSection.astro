@@ -33,6 +33,8 @@ interface Props {
 }
 
 const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = false } = Astro.props;
+const locations = [...new Set((tenants || []).map(t => t.location).filter(Boolean))];
+const activities = [...new Set((tenants || []).flatMap(t => (t.activities || '').split(',').map(a => a.trim()).filter(Boolean)))];
 ---
 
 <!-- Search & Filters -->
@@ -63,8 +65,9 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
         <label for="filterLocation" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Location</label>
         <select id="filterLocation" data-testid="location-filter" class="input">
           <option value="">All Locations</option>
-          <option value="Sinai">Sinai Peninsula</option>
-          <option value="Dahab">Dahab</option>
+          {locations.map(loc => (
+            <option value={loc}>{loc}</option>
+          ))}
         </select>
       </div>
       <div>
@@ -80,10 +83,9 @@ const { tenants, apiBase, title = 'Registered Adventure Camps', ssrRendered = fa
         <label for="filterActivity" class="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Activity</label>
         <select id="filterActivity" data-testid="activity-filter" class="input">
           <option value="">All Activities</option>
-          <option value="Hiking">Hiking</option>
-          <option value="Yoga">Yoga</option>
-          <option value="Snorkeling">Snorkeling</option>
-          <option value="Windsurfing">Windsurfing</option>
+          {activities.map(act => (
+            <option value={act}>{act}</option>
+          ))}
         </select>
       </div>
       <div class="flex items-end">

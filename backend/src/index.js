@@ -8,6 +8,21 @@ import { handleAuthRoute } from './api/auth';
 import { handleTenants } from './api/tenants';
 import meRoutes from './api/tenants';
 import { handleAdminRoute } from './api/admin';
+import { handleAdminStatsRoute } from './api/admin-stats.js';
+import { handleAdminUsersList, handleAdminUserUpdate, handleAdminUserDelete } from './api/admin-users.js';
+import { handleAdminReportsRoute } from './api/admin-reports.js';
+import { handleAdminHealthRoute } from './api/admin-health.js';
+import { handleAdminPerformanceRoute } from './api/admin-performance.js';
+import { adminSettingsRoutes } from './api/admin-settings.js';
+import adminAuditRoutes from './api/admin-audit.js';
+import adminSubscriptionsRoutes from './api/admin-subscriptions.js';
+import tenantBillingRoutes from './api/tenant-billing.js';
+import adminFinancialsRoutes from './api/admin-financials.js';
+import adminHrRoutes from './api/admin-hr.js';
+import adminSupplyRoutes from './api/admin-supply.js';
+import adminCrmRoutes from './api/admin-crm.js';
+import adminStorefrontRoutes from './api/admin-storefront.js';
+import adminAiRoutes from './api/admin-ai.js';
 import campsRoutes, { productsRoutes, roomsRoutes, ratePlansRoutes } from './api/camps';
 import ordersRoutes, { availabilityRoutes } from './api/orders';
 import uploadRoutes, { mediaRoutes } from './api/upload';
@@ -36,6 +51,7 @@ import servicesRoutes from './api/services';
 import marketplaceRoutes from './api/marketplace';
 import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
+import posBarcodeRoutes from './api/pos-barcode.js';
 import { withSunset } from './utils/deprecation.js';
 import { Broadcaster } from './durable/broadcaster.js';
 import financialsRoutes from './api/financials.js';
@@ -205,6 +221,45 @@ app.get('/api/tenants/*', handleTenantsRoute);
 
 // ── Admin routes (rate-limited by policy table; super-admin only) ─────────
 const handleSuperAdminRoute = async (c) => handleAdminRoute(c.req.raw, c.env);
+
+// ── Super Admin: Pillar cross-tenant overview sub-routers ──────────────
+// Registered BEFORE the catch-all so /api/admin/financials, /api/admin/hr, etc.
+// match first and get superAdminGate protection.
+const superAdminGate = requireAuth({
+  realm: 'admin',
+  roles: ['super_admin'],
+  requireTenant: false,
+  invalidToken: { status: 403, message: 'Unauthorized: Super Admin access required' },
+  realmMismatch: { message: 'Unauthorized: Super Admin access required' },
+  insufficientRole: { message: 'Unauthorized: Super Admin access required' },
+});
+for (const [prefix, handler] of [
+  ['/admin/financials', adminFinancialsRoutes],
+  ['/admin/hr', adminHrRoutes],
+  ['/admin/supply', adminSupplyRoutes],
+  ['/admin/crm', adminCrmRoutes],
+  ['/admin/storefront', adminStorefrontRoutes],
+  ['/admin/ai', adminAiRoutes],
+]) {
+  app.all(`/api${prefix}`, async (c) => {
+    const auth = await superAdminGate(c.req.raw, c.env);
+    if (auth instanceof Response) return auth;
+    return handler.fetch(c.req.raw, c.env);
+  });
+  app.all(`/api${prefix}/*`, async (c) => {
+    const auth = await superAdminGate(c.req.raw, c.env);
+    if (auth instanceof Response) return auth;
+    return handler.fetch(c.req.raw, c.env);
+  });
+}
+
+// ── Tenant billing (admin-scoped, tenant-scoped — NOT super-admin) ────
+const tenantBillingScope = resolveScope();
+app.use('/api/tenant/billing', tenantBillingScope);
+app.use('/api/tenant/billing/*', tenantBillingScope);
+app.route('/api/tenant/billing', tenantBillingRoutes);
+
+// Legacy catch-all admin route
 app.all('/api/admin', handleSuperAdminRoute);
 app.all('/api/admin/*', handleSuperAdminRoute);
 
@@ -241,6 +296,7 @@ app.post('/api/payments/webhook', async (c) => {
 // ── POS routes (self-contained auth, before catch-all;
 //    login + general POS limits live in the policy table) ────
 app.route('/api/pos', posRoutes);
+app.route('/api/pos/products/barcode', posBarcodeRoutes);
 
 // ── Contact form (public; POST /api/contact 10/min via policy table).
 // Phase 9: DEPRECATED alias of POST /api/leads (source defaults to 'contact').

@@ -49,6 +49,15 @@ vi.mock('@/hooks/useQueryHooks', () => ({
   useDeleteCampMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useSettingsQuery: () => ({ data: { primaryColor: '#4a7c4f' } }),
   useInboxUnreadQuery: () => ({ data: 3 }),
+  useAdminUsersQuery: () => ({ data: [], isLoading: false }),
+  useAdminSettingsQuery: () => ({ data: {}, isLoading: false }),
+  useAdminAuditQuery: () => ({ data: [], isLoading: false }),
+  useAdminSubscriptionsQuery: () => ({ data: [], isLoading: false }),
+  useAdminReportsQuery: () => ({ data: [], isLoading: false }),
+  useAdminScheduledReportsQuery: () => ({ data: [], isLoading: false, refetch: vi.fn() }),
+  useAdminHealthQuery: () => ({ data: {}, isLoading: false }),
+  useAdminHealthMetricsQuery: () => ({ data: [], isLoading: false }),
+  useAdminPerformanceQuery: () => ({ data: [], isLoading: false }),
 }));
 
 vi.mock('@/components/admin/DashboardPanel', () => ({
@@ -110,6 +119,45 @@ vi.mock('@/components/admin/StaffPanel', () => ({
 }));
 vi.mock('@/components/admin/ServiceBookingsPanel', () => ({
   default: () => <div data-testid="service-bookings-panel">ServiceBookings</div>,
+}));
+vi.mock('@/components/admin/UsersPanel', () => ({
+  default: () => <div data-testid="users-panel">Users</div>,
+}));
+vi.mock('@/components/admin/SystemSettingsPanel', () => ({
+  default: () => <div data-testid="system-settings-panel">SystemSettings</div>,
+}));
+vi.mock('@/components/admin/AuditLogPanel', () => ({
+  default: () => <div data-testid="audit-log-panel">AuditLog</div>,
+}));
+vi.mock('@/components/admin/SubscriptionsPanel', () => ({
+  default: () => <div data-testid="subscriptions-panel">Subscriptions</div>,
+}));
+vi.mock('@/components/admin/SuperReportsPanel', () => ({
+  default: () => <div data-testid="super-reports-panel">SuperReports</div>,
+}));
+vi.mock('@/components/admin/SystemHealthPanel', () => ({
+  default: () => <div data-testid="system-health-panel">SystemHealth</div>,
+}));
+vi.mock('@/components/admin/TenantPerformancePanel', () => ({
+  default: () => <div data-testid="tenant-performance-panel">TenantPerformance</div>,
+}));
+vi.mock('@/components/admin/SuperFinancialsPanel', () => ({
+  default: () => <div data-testid="super-financials-panel">SuperFinancials</div>,
+}));
+vi.mock('@/components/admin/SuperHRPanel', () => ({
+  default: () => <div data-testid="super-hr-panel">SuperHR</div>,
+}));
+vi.mock('@/components/admin/SuperSupplyPanel', () => ({
+  default: () => <div data-testid="super-supply-panel">SuperSupply</div>,
+}));
+vi.mock('@/components/admin/SuperCRMPanel', () => ({
+  default: () => <div data-testid="super-crm-panel">SuperCRM</div>,
+}));
+vi.mock('@/components/admin/SuperStorefrontPanel', () => ({
+  default: () => <div data-testid="super-storefront-panel">SuperStorefront</div>,
+}));
+vi.mock('@/components/admin/SuperAIPanel', () => ({
+  default: () => <div data-testid="super-ai-panel">SuperAI</div>,
 }));
 
 describe('AdminApp', () => {
@@ -421,12 +469,17 @@ describe('AdminApp', () => {
     });
   });
 
-  it('super admin sees ONLY the 3 super nav items (no tenant tabs)', async () => {
+  it('super admin sees ONLY the 16 super nav items (no tenant tabs)', async () => {
     authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
     render(<AdminApp />);
     const sidebar = within(screen.getByTestId('admin-sidebar'));
     const tabIds = screen.getAllByTestId(/^nav-tab-/).map((el) => el.getAttribute('data-testid')!.replace('nav-tab-', ''));
-    expect(tabIds).toEqual(['super_dashboard', 'super_tenants', 'super_reservations']);
+    expect(tabIds).toEqual([
+      'super_dashboard', 'super_tenants', 'super_reservations', 'super_users',
+      'super_settings', 'super_audit', 'super_subscriptions',
+      'super_financials', 'super_hr', 'super_supply', 'super_crm', 'super_storefront', 'super_ai',
+      'super_reports', 'super_health', 'super_performance',
+    ]);
     // Tenant panels must NOT leak into the super-admin sidebar nav.
     expect(sidebar.queryByText('Dashboard')).not.toBeInTheDocument();
     expect(sidebar.queryByText('Camps')).not.toBeInTheDocument();
@@ -466,7 +519,7 @@ describe('AdminApp', () => {
     expect(screen.queryByText('Super Admin')).not.toBeInTheDocument();
   });
 
-  it('renders super mobile bottom nav with the 3 super tabs', () => {
+  it('renders super mobile bottom nav with the 5 super tabs', () => {
     authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
     render(<AdminApp />);
     const nav = screen.getByTestId('mobile-bottom-nav');
@@ -474,6 +527,8 @@ describe('AdminApp', () => {
     expect(screen.getByTestId('mobile-nav-super_dashboard')).toBeInTheDocument();
     expect(screen.getByTestId('mobile-nav-super_tenants')).toBeInTheDocument();
     expect(screen.getByTestId('mobile-nav-super_reservations')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-super_financials')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-super_settings')).toBeInTheDocument();
     // Tenant primary tabs must not leak into the super mobile nav.
     expect(screen.queryByTestId('mobile-nav-dashboard')).not.toBeInTheDocument();
     expect(screen.queryByTestId('mobile-nav-camps')).not.toBeInTheDocument();
@@ -481,9 +536,9 @@ describe('AdminApp', () => {
 
   it('renders placeholder for unknown super tabs', async () => {
     authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
-    window.location.hash = '#tab=super_reports';
+    window.location.hash = '#tab=super_unknown_xyz';
     render(<AdminApp />);
-    expect(await screen.findByText('super_reports')).toBeInTheDocument();
+    expect(await screen.findByText('super_unknown_xyz')).toBeInTheDocument();
     expect(screen.getByText('This panel is under construction.')).toBeInTheDocument();
   });
 

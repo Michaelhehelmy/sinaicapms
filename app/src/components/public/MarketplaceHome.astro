@@ -164,6 +164,10 @@ const heroStats: { value: number; label: string }[] = (() => {
           <input id="tenantActivities" data-testid="tenant-activities" type="text" placeholder="e.g. Hiking, Yoga, Diving" required class="input" />
         </div>
         <div>
+          <label for="tenantCapacity" class="mb-1 block text-sm font-semibold text-gray-600">Capacity (guests)</label>
+          <input id="tenantCapacity" data-testid="tenant-capacity" type="number" min="1" placeholder="e.g. 50" required class="input" />
+        </div>
+        <div>
           <label for="tenantDesc" class="mb-1 block text-sm font-semibold text-gray-600">Short Description</label>
           <textarea id="tenantDesc" data-testid="tenant-description" rows="3" placeholder="A brief summary of what your camp offers..." required class="input"></textarea>
         </div>
@@ -235,7 +239,7 @@ const heroStats: { value: number; label: string }[] = (() => {
       var response = await fetch(window.__API_BASE + '/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, subdomain: subdomain, primary_color: primary_color, location: location, activities: activities, description: description, capacity: 50, admin_first_name: admin_first_name, admin_last_name: admin_last_name, admin_email: admin_email, admin_password: admin_password })
+        body: JSON.stringify({ name: name, subdomain: subdomain, primary_color: primary_color, location: location, activities: activities, description: description, capacity: parseInt(document.getElementById('tenantCapacity').value) || 50, admin_first_name: admin_first_name, admin_last_name: admin_last_name, admin_email: admin_email, admin_password: admin_password })
       });
       var data = await response.json();
       if (!response.ok || !data.success) {

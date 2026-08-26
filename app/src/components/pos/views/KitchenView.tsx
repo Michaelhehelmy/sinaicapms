@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useEnrichedOrders,
   usePosTables,
   useUpdateKitchenStatusMutation,
   KITCHEN_REFRESH_MS,
+  posKeys,
   type KitchenOrder,
 } from '@/hooks/usePosQueries';
 import type { KitchenStatus } from '@/lib/api';
@@ -114,6 +116,7 @@ function KitchenCard({
 
 // ─── Kitchen Display View ───────────────────────────────────
 export default function KitchenView() {
+  const queryClient = useQueryClient();
   const { orders, isLoading, error } = useEnrichedOrders(true);
   const { data: tableData } = usePosTables();
   const updateKitchen = useUpdateKitchenStatusMutation();
@@ -156,7 +159,12 @@ export default function KitchenView() {
   }
 
   if (isLoading) return <div className="p-6"><TableSkeleton rows={4} columns={4} /></div>;
-  if (error) return <div className="p-8 text-red-500">{(error as Error).message || 'Failed to load kitchen orders'}</div>;
+  if (error) return (
+    <div className="p-8 text-center">
+      <div className="text-red-500 mb-3">{(error as Error).message || 'Failed to load kitchen orders'}</div>
+      <button onClick={() => queryClient.invalidateQueries({ queryKey: posKeys.all })} className="text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-md px-4 py-2 border-none cursor-pointer">Try Again</button>
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-4 overflow-y-auto h-full" data-testid="pos-kitchen">

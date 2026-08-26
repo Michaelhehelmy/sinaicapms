@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { components } from '@/lib/api-types';
-import * as api from '@/lib/api';
+import { usePosUsersQuery, useTenantsQuery } from '@/hooks/useQueryHooks';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/components/ui/Toast';
 import { DataTable } from '@/components/ui/DataTable';
@@ -15,20 +15,13 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { StatusTag } from '@/components/ui/StatusTag';
 import { formatDate } from '@/lib/utils';
 import { IconStaff } from './icons';
+import * as api from '@/lib/api';
 
 type Schemas = components['schemas'];
 type PosUser = Schemas['PosUser'];
 type PosRole = 'cashier' | 'manager' | 'admin' | 'viewer';
 
 const PAGE_SIZE = 10;
-
-interface TenantRecord {
-  id: string;
-  name: string;
-  subdomain: string;
-  status: string;
-  [key: string]: unknown;
-}
 
 interface StaffForm {
   firstName: string;
@@ -40,7 +33,7 @@ interface StaffForm {
   phone: string;
   department: string;
   employeeId: string;
-  isActive: string; // '1' | '0' (Select-friendly)
+  isActive: string;
 }
 
 const emptyForm: StaffForm = {
@@ -58,7 +51,6 @@ const emptyForm: StaffForm = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Role pill — color-coded per POS role (heroicons-free, plain span). */
 function RoleBadge({ role, label }: { role: string; label: string }) {
   const palette: Record<string, string> = {
     admin: 'bg-purple-100 text-purple-700',
@@ -99,37 +91,14 @@ const trashIcon = (
   </svg>
 );
 
-/**
- * Admin Staff panel — POS user management (CRUD + reset password).
- *
- * Super admins get a tenant selector (scoped via `getAdminTenants` +
- * `getPosUsers({ tenantId })`); tenant admins are hard-scoped server-side and
- * call `getPosUsers()` without a tenantId.
- *
- * When `scopedTenantId` is provided (e.g. from TenantDrilldown), the tenant
- * selector is hidden and the panel operates directly on that tenant.
- *
- * All user-provided values are rendered through React JSX, which escapes text
- * by default — the project-safe pattern for components (escHtml() is only for
- * raw HTML string contexts such as Astro templates).
- */
 export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string }) {
   const { user } = useAuth();
   const { showToast } = useToast();
 
   const isSuperAdmin = user?.role === 'super_admin';
 
-  // ─── Data ───────────────────────────────────────────────────────────
-  const [users, setUsers] = useState<PosUser[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-
-  // Super-admin tenant selector
-  const [tenants, setTenants] = useState<TenantRecord[]>([]);
-  const [loadingTenants, setLoadingTenants] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState('');
 
   // Create/edit modal
@@ -148,64 +117,54 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
   const [deleteTarget, setDeleteTarget] = useState<PosUser | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const loadTenants = useCallback(async () => {
-    setLoadingTenants(true);
-    try {
-      const data = await api.getAdminTenants();
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray((data as { data?: unknown })?.data)
-          ? ((data as { data: TenantRecord[] }).data)
-          : [];
-      setTenants(list);
-      setSelectedTenantId((prev) => prev || (list.length > 0 ? list[0].id : ''));
-    } catch (err) {
-      showToast('Failed to load tenants: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally {
-      setLoadingTenants(false);
+  // Tenant list via React Query
+  const { data: tenantsData, isLoading: loadingTenants } = useTenantsQuery();
+
+  const tenants = useMemo(() => {
+    const raw = tenantsData as unknown;
+    if (Array.isArray(raw)) return raw as Array<{ id: string; name: string; subdomain: string; status: string }>;
+    if (raw && typeof raw === 'object' && 'data' in raw && Array.isArray((raw as { data?: unknown }).data)) {
+      return (raw as { data: Array<{ id: string; name: string; subdomain: string; status: string }> }).data;
     }
-  }, [showToast]);
+    return [] as Array<{ id: string; name: string; subdomain: string; status: string }>;
+  }, [tenantsData]);
 
+  // Auto-select first tenant for super admins
   useEffect(() => {
-    if (isSuperAdmin && !scopedTenantId) loadTenants();
-  }, [isSuperAdmin, scopedTenantId, loadTenants]);
+    if (!selectedTenantId && tenants.length > 0) {
+      setSelectedTenantId(tenants[0].id);
+    }
+  }, [tenants, selectedTenantId]);
 
-  // When scopedTenantId is provided, use it directly as the selected tenant
+  // When scopedTenantId is provided, use it directly
   useEffect(() => {
     if (scopedTenantId) setSelectedTenantId(scopedTenantId);
   }, [scopedTenantId]);
 
-  const loadUsers = useCallback(
-    async (targetPage: number, query: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params: { page?: number; pageSize?: number; search?: string; tenantId?: string } = {
-          page: targetPage,
-          pageSize: PAGE_SIZE,
-        };
-        if (query) params.search = query;
-        if (isSuperAdmin) params.tenantId = scopedTenantId || selectedTenantId;
+  const effectiveTenantId = scopedTenantId || selectedTenantId;
 
-        const res = await api.getPosUsers(params);
-        setUsers(res.data ?? []);
-        setTotal(res.total ?? 0);
-        setPage(res.page ?? targetPage);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setError(msg);
-        showToast('Failed to load staff: ' + msg, 'error');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [isSuperAdmin, scopedTenantId, selectedTenantId, showToast],
-  );
+  // POS users via React Query
+  const userParams = useMemo(() => {
+    if (isSuperAdmin && !effectiveTenantId) return undefined;
+    const p: { page: number; pageSize: number; search?: string; tenantId?: string } = { page, pageSize: PAGE_SIZE };
+    if (search) p.search = search;
+    if (isSuperAdmin && effectiveTenantId) p.tenantId = effectiveTenantId;
+    return p;
+  }, [page, search, isSuperAdmin, effectiveTenantId]);
+
+  const { data: usersData, isLoading: loadingUsers, error: usersError, refetch } = usePosUsersQuery(userParams);
+
+  const users = useMemo(() => (usersData?.data ?? []) as PosUser[], [usersData]);
+  const total = useMemo(() => usersData?.total ?? 0, [usersData]);
+
+  const loading = loadingUsers;
+  const error = usersError ? (usersError instanceof Error ? usersError.message : String(usersError)) : null;
 
   useEffect(() => {
-    if (isSuperAdmin && !selectedTenantId) return;
-    loadUsers(1, search);
-  }, [isSuperAdmin, selectedTenantId, search, loadUsers]);
+    if (error) {
+      showToast(`Failed to load staff: ${error}`, 'error');
+    }
+  }, [error, showToast]);
 
   const roleOptions = [
     { value: 'cashier', label: 'Cashier' },
@@ -370,13 +329,13 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
       setShowForm(false);
       setEditUserId(null);
       setForm(emptyForm);
-      loadUsers(editUserId != null ? page : 1, search);
+      refetch();
     } catch (err) {
       showToast('Error saving staff user: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {
       setSaving(false);
     }
-  }, [form, editUserId, page, search, loadUsers, showToast]);
+  }, [form, editUserId, showToast, refetch]);
 
   const handleResetPassword = useCallback(async () => {
     if (resetUserId == null) return;
@@ -404,16 +363,16 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
     try {
       await api.deletePosUser(deleteTarget.id);
       showToast('Staff user deleted successfully', 'success');
-      // If the deleted row was the only one on this page, step back a page.
       const nextPage = users.length === 1 && page > 1 ? page - 1 : page;
       setDeleteTarget(null);
-      loadUsers(nextPage, search);
+      setPage(nextPage);
+      refetch();
     } catch (err) {
       showToast('Error deleting staff user: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {
       setDeleting(false);
     }
-  }, [deleteTarget, deleting, users.length, page, search, loadUsers, showToast]);
+  }, [deleteTarget, deleting, users.length, page, showToast, refetch]);
 
   return (
     <Card padding="none" className="p-6" data-testid="staff-panel" aria-busy={loading || loadingTenants || undefined}>
@@ -440,7 +399,7 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
               label="Select Tenant"
               options={tenantOptions}
               value={selectedTenantId}
-              onChange={(e) => setSelectedTenantId(e.target.value)}
+              onChange={(e) => { setSelectedTenantId(e.target.value); setPage(1); }}
               placeholder="Select Tenant"
               disabled={loadingTenants}
             />
@@ -453,7 +412,7 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
       ) : error ? (
         <div className="text-center py-12">
           <p className="text-red-500 text-sm mb-3">{error}</p>
-          <Button variant="success" size="md" onClick={() => loadUsers(page, search)}>
+          <Button variant="success" size="md" onClick={() => refetch()}>
             Retry
           </Button>
         </div>
@@ -471,13 +430,13 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
           size="md"
           searchable
           searchPlaceholder="Search staff…"
-          onSearch={setSearch}
+          onSearch={(s) => { setSearch(s); setPage(1); }}
           emptyMessage="No staff users found"
           pagination={{
             page,
             total,
             pageSize: PAGE_SIZE,
-            onChange: (p) => loadUsers(p, search),
+            onChange: (p) => setPage(p),
           }}
           actions={(u) => (
             <div className="flex gap-1.5" aria-label="Actions">

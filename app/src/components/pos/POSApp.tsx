@@ -135,7 +135,13 @@ function POSAppShell() {
     if (typeof window === 'undefined') return 'dashboard';
     return viewFromPath(window.location.pathname);
   });
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('pos_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   // Shift opened in this tab (overrides the server probe until invalidated).
   const [openedShift, setOpenedShift] = useState<Shift | null>(null);
 
@@ -143,6 +149,16 @@ function POSAppShell() {
   const shiftProbe = usePosActiveShift(Boolean(user && token));
   const probeShift = shiftProbe.data?.active ? (shiftProbe.data.shift as Shift) : null;
   const activeShift = openedShift ?? probeShift;
+
+  // Persist cart to localStorage so it survives page refreshes within a session.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (cart.length > 0) {
+      localStorage.setItem('pos_cart', JSON.stringify(cart));
+    } else {
+      localStorage.removeItem('pos_cart');
+    }
+  }, [cart]);
 
   // Phase 7: keep `view` in sync with every URL change — sidebar clicks,
   // checkout → orders, receipt close, and browser back/forward all flow

@@ -5,12 +5,15 @@ import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody } from '@/components/ui/Card';
 import { useCloseShiftMutation } from '@/hooks/usePosQueries';
 import type { Shift } from '../types';
+import type { components } from '@/lib/api-types';
+
+type ShiftCloseResult = components['schemas']['PosShiftCloseResponse']['shift'];
 
 // ─── Shift Dashboard View ──────────────────────────────────
 export default function ShiftDashboard({ shift, onShiftClosed }: { shift: Shift | null; onShiftClosed: () => void }) {
   const [closingCash, setClosingCash] = useState('');
   const [error, setError] = useState('');
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ShiftCloseResult | null>(null);
   const closeShift = useCloseShiftMutation();
 
   async function handleClose() {
@@ -19,8 +22,8 @@ export default function ShiftDashboard({ shift, onShiftClosed }: { shift: Shift 
     setError('');
     try {
       const res = await closeShift.mutateAsync({ actualClosingCash: amount, notes: '' });
-      setResult((res as { shift: any }).shift);
-    } catch (err: any) { setError(err.message); }
+      setResult((res as components['schemas']['PosShiftCloseResponse']).shift);
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Failed to close shift'); }
   }
 
   // If the shift was just closed (result exists), show the summary regardless of whether the parent

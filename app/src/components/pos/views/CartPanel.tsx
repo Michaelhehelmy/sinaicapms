@@ -8,6 +8,9 @@ import { posUrl } from '@/lib/posUrl';
 import { push } from '@/lib/navigation';
 import ReceiptModal from './ReceiptModal';
 import type { CartItem, Order, PosUser } from '../types';
+import type { components } from '@/lib/api-types';
+
+type PosOrderCreateRequest = components['schemas']['PosOrderCreateRequest'];
 
 // ─── Cart Panel ────────────────────────────────────────────
 export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: CartItem[]; setCart: React.Dispatch<React.SetStateAction<CartItem[]>>; onCheckout: () => void; user: PosUser }) {
@@ -16,6 +19,9 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
   const [splitCash, setSplitCash] = useState('');
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const [promoResult, setPromoResult] = useState<PromotionApplyResult | null>(null);
+  const [tip, setTip] = useState(0);
+  const [customTip, setCustomTip] = useState('');
+  const [showCustomTip, setShowCustomTip] = useState(false);
   const { showToast } = useToast();
 
   // Debounce timer for promotion preview
@@ -59,16 +65,22 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
   const discount = promoResult?.total_discount ?? 0;
   const discountedSubtotal = Math.max(0, subtotal - discount);
   const tax = Math.round(discountedSubtotal * taxRate * 100) / 100;
-  const total = Math.round((discountedSubtotal + tax) * 100) / 100;
+  const total = Math.round((discountedSubtotal + tax + tip) * 100) / 100;
 
   const splitCashAmt = payMethod === 'split' ? (parseFloat(splitCash) || 0) : 0;
   const splitCardAmt = Math.round((total - splitCashAmt) * 100) / 100;
+
+  function handleTipSelect(amount: number) {
+    setTip(amount);
+    setShowCustomTip(false);
+    setCustomTip('');
+  }
 
   async function handleCheckout() {
     if (cart.length === 0 || paying) return;
     setPaying(true);
     try {
-      const body: any = {
+      const body: PosOrderCreateRequest & { tipAmount?: number } = {
         items: cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
         paymentMethod: payMethod,
       };
@@ -76,26 +88,21 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
         body.amountCash = splitCashAmt;
         body.amountCard = splitCardAmt;
       }
+      if (tip > 0) {
+        body.tipAmount = tip;
+      }
       const res = await apiClient.posCreateOrder(body);
       setCart([]);
+      localStorage.removeItem('pos_cart');
       onCheckout();
       // Navigate to orders page after successful checkout (pushState — no reload)
       push(posUrl('/pos/orders'));
-    } catch (err: any) {
-      showToast(err.message || 'Checkout failed', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Checkout failed', 'error');
     } finally {
       setPaying(false);
     }
   }
-
-  // v8 ignore start -- unreachable defensive branch: `receiptOrder` is only ever
-  // set to null (checkout navigates to /pos/orders instead of rendering a receipt)
-  if (receiptOrder) {
-    return (
-      <ReceiptModal order={receiptOrder} user={user} onClose={() => { setReceiptOrder(null); push(posUrl('/pos/orders')); }} />
-    );
-  }
-  // v8 ignore stop
 
   return (
     <div className="w-full sm:w-80 bg-white border-t sm:border-t-0 sm:border-l border-gray-200 flex flex-col shrink-0 max-h-[50vh] sm:max-h-none" data-testid="pos-cart">
@@ -155,7 +162,61 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
           </div>
         )}
         <div className="flex justify-between text-sm text-gray-600" data-testid="cart-tax"><span>Tax ({Math.round(taxRate * 100)}%)</span><span>${tax.toFixed(2)}</span></div>
+        {tip > 0 && (
+          <div className="flex justify-between text-sm text-gray-600" data-testid="cart-tip"><span>Tip</span><span>${tip.toFixed(2)}</span></div>
+        )}
         <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t border-gray-300" data-testid="cart-total"><span>Total</span><span>${total.toFixed(2)}</span></div>
+
+        {/* Tip selector */}
+        {cart.length > 0 && (
+          <div className="space-y-1 pt-1" data-testid="tip-selector">
+            <div className="text-xs text-gray-500 font-medium">Add Tip</div>
+            <div className="flex gap-1">
+              {[
+                { label: '15%', pct: 0.15 },
+                { label: '18%', pct: 0.18 },
+                { label: '20%', pct: 0.20 },
+              ].map(({ label, pct }) => {
+                const tipAmount = Math.round(discountedSubtotal * pct * 100) / 100;
+                const isActive = tip === tipAmount && !showCustomTip;
+                return (
+                  <Button
+                    key={label}
+                    variant={isActive ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => handleTipSelect(tipAmount)}
+                    className="flex-1 min-h-[36px] text-xs"
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+              <Button
+                variant={showCustomTip ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => { setShowCustomTip(!showCustomTip); if (!showCustomTip) { setTip(0); } }}
+                className="flex-1 min-h-[36px] text-xs"
+              >
+                Custom
+              </Button>
+            </div>
+            {showCustomTip && (
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={customTip}
+                onChange={(e) => {
+                  setCustomTip(e.target.value);
+                  setTip(parseFloat(e.target.value) || 0);
+                }}
+                placeholder="0.00"
+                className="min-h-[40px]"
+                data-testid="custom-tip-input"
+              />
+            )}
+          </div>
+        )}
 
         {/* Payment method selector */}
         <div className="flex gap-1 pt-2">

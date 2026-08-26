@@ -71,7 +71,7 @@ export default function MarketplaceDirectory() {
     staleTime: 600_000,
   });
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['marketplace-listings', debouncedSearch, activeCategory, page],
     queryFn: () =>
       getMarketplaceListings({
@@ -184,7 +184,7 @@ export default function MarketplaceDirectory() {
             We hit a snag while fetching the latest listings. Please try again.
           </p>
           <button
-            onClick={() => setPage((p) => p)}
+            onClick={() => refetch()}
             className="mt-4 rounded-full bg-brand px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
           >
             Try Again

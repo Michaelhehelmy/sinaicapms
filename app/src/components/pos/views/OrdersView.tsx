@@ -15,11 +15,16 @@ const statusLabels: Record<string, string> = {
 
 // ─── Orders View ───────────────────────────────────────────
 export default function OrdersView() {
-  const { data: rawOrders, isLoading, error } = usePosOrders();
+  const { data: rawOrders, isLoading, error, refetch } = usePosOrders();
   const orders = (Array.isArray(rawOrders) ? rawOrders : []) as Order[];
 
   if (isLoading) return <div className="p-6"><TableSkeleton rows={5} columns={5} /></div>;
-  if (error) return <div className="p-8 text-red-500">{error.message || 'Failed to load orders'}</div>;
+  if (error) return (
+    <div className="p-8 text-center">
+      <div className="text-red-500 mb-3">{error.message || 'Failed to load orders'}</div>
+      <button onClick={() => refetch()} className="text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-md px-4 py-2 border-none cursor-pointer">Try Again</button>
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-4" data-testid="pos-orders">

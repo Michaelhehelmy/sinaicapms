@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import * as api from '@/lib/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
@@ -12,6 +12,16 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useSupplyWarehousesQuery,
+  useSupplyStockQuery,
+  useSupplyTransfersQuery,
+  useSupplyPurchaseOrdersQuery,
+  useSupplyBomsQuery,
+  useSupplyManufacturingOrdersQuery,
+  queryKeys,
+} from '@/hooks/useQueryHooks';
 
 type Tab = 'warehouses' | 'stock' | 'transfers' | 'purchaseOrders' | 'boms' | 'manufacturing';
 
@@ -43,15 +53,29 @@ const WH_STATUS_OPTIONS = [{ value: '1', label: 'Active' }, { value: '0', label:
 
 export default function SupplyPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('warehouses');
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [stock, setStock] = useState<StockRow[]>([]);
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [pos, setPOs] = useState<PurchaseOrder[]>([]);
-  const [boms, setBoms] = useState<BOM[]>([]);
-  const [mos, setMOs] = useState<MO[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // TanStack Query hooks
+  const warehousesQuery = useSupplyWarehousesQuery();
+  const stockQuery = useSupplyStockQuery();
+  const transfersQuery = useSupplyTransfersQuery();
+  const poQuery = useSupplyPurchaseOrdersQuery();
+  const bomsQuery = useSupplyBomsQuery();
+  const mosQuery = useSupplyManufacturingOrdersQuery();
+
+  const warehouses = (warehousesQuery.data as any[]) || [];
+  const stock = (stockQuery.data as any[]) || [];
+  const transfers = (transfersQuery.data as any[]) || [];
+  const pos = (poQuery.data as any[]) || [];
+  const boms = (bomsQuery.data as any[]) || [];
+  const mos = (mosQuery.data as any[]) || [];
+  const loading = warehousesQuery.isLoading || stockQuery.isLoading || transfersQuery.isLoading || poQuery.isLoading || bomsQuery.isLoading || mosQuery.isLoading;
+
+  const invalidateSupply = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'supply'] });
+  }, [queryClient]);
 
   const [showWhForm, setShowWhForm] = useState(false);
   const [editingWhId, setEditingWhId] = useState<string | null>(null);
@@ -76,29 +100,6 @@ export default function SupplyPanel() {
   const [progressTarget, setProgressTarget] = useState<MO | null>(null);
   const [progressQty, setProgressQty] = useState('0');
 
-  const loadData = useCallback(async () => {
-    try {
-      const [w, s, t, p, b, m] = await Promise.all([
-        api.request('/supply/warehouses') as Promise<Warehouse[]>,
-        api.request('/supply/stock') as Promise<StockRow[]>,
-        api.request('/supply/stock-transfers') as Promise<Transfer[]>,
-        api.request('/supply/purchase-orders') as Promise<PurchaseOrder[]>,
-        api.request('/supply/boms') as Promise<BOM[]>,
-        api.request('/supply/manufacturing-orders') as Promise<MO[]>,
-      ]);
-      setWarehouses(w);
-      setStock(s);
-      setTransfers(t);
-      setPOs(p);
-      setBoms(b);
-      setMOs(m);
-    } catch (err) {
-      showToast('Failed to load supply data: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
-
   // ── Warehouse handlers ──────────────────────────────────────────────
   const openAddWh = useCallback(() => { setEditingWhId(null); setWhForm(emptyWhForm); setShowWhForm(true); }, []);
   const openEditWh = useCallback((w: Warehouse) => {
@@ -111,32 +112,38 @@ export default function SupplyPanel() {
     if (!whForm.name.trim()) { showToast('Name is required.', 'warning'); return; }
     setSaving(true);
     try {
-      await api.request('/supply/warehouses', {
-        method: editingWhId ? 'PUT' : 'POST',
-        body: JSON.stringify({ name: whForm.name.trim(), location: whForm.location || undefined }),
-        urlParams: editingWhId ? `/${editingWhId}` : undefined,
-      });
+      if (editingWhId) {
+        await api.request('/supply/warehouses/' + editingWhId, {
+          method: 'PUT',
+          body: JSON.stringify({ name: whForm.name.trim(), location: whForm.location || undefined }),
+        });
+      } else {
+        await api.request('/supply/warehouses', {
+          method: 'POST',
+          body: JSON.stringify({ name: whForm.name.trim(), location: whForm.location || undefined }),
+        });
+      }
       showToast(editingWhId ? 'Warehouse updated.' : 'Warehouse created.', 'success');
       setShowWhForm(false);
       setEditingWhId(null);
       setWhForm(emptyWhForm);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [whForm, editingWhId, showToast, loadData]);
+  }, [whForm, editingWhId, showToast, invalidateSupply]);
 
   const handleDeleteWh = useCallback(async () => {
     if (!confirmTarget || confirmTarget.type !== 'warehouse') return;
     try {
-      await api.request(`/supply/warehouses/${confirmTarget.item.id}`, { method: 'DELETE' });
+      await api.request('/supply/warehouses/' + confirmTarget.item.id, { method: 'DELETE' });
       showToast('Warehouse deactivated.', 'success');
       setConfirmTarget(null);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [confirmTarget, showToast, loadData]);
+  }, [confirmTarget, showToast, invalidateSupply]);
 
   // ── Stock handler ───────────────────────────────────────────────────
   const handleSaveStock = useCallback(async () => {
@@ -150,11 +157,11 @@ export default function SupplyPanel() {
       showToast('Stock adjusted.', 'success');
       setShowStockForm(false);
       setStockForm(emptyStockForm);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [stockForm, showToast, loadData]);
+  }, [stockForm, showToast, invalidateSupply]);
 
   // ── Transfer handlers ───────────────────────────────────────────────
   const handleSaveTransfer = useCallback(async () => {
@@ -175,23 +182,23 @@ export default function SupplyPanel() {
       showToast('Transfer created.', 'success');
       setShowTransferForm(false);
       setTransferForm(emptyTransferForm);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [transferForm, showToast, loadData]);
+  }, [transferForm, showToast, invalidateSupply]);
 
   const handleConfirmTransfer = useCallback(async () => {
     if (!confirmTarget || confirmTarget.type !== 'transfer') return;
     try {
-      await api.request(`/supply/stock-transfers/${confirmTarget.item.id}/confirm`, { method: 'PATCH' });
+      await api.request('/supply/stock-transfers/' + confirmTarget.item.id + '/confirm', { method: 'PATCH' });
       showToast('Transfer confirmed.', 'success');
       setConfirmTarget(null);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [confirmTarget, showToast, loadData]);
+  }, [confirmTarget, showToast, invalidateSupply]);
 
   // ── PO handlers ─────────────────────────────────────────────────────
   const handleSavePO = useCallback(async () => {
@@ -211,23 +218,23 @@ export default function SupplyPanel() {
       showToast('Purchase order created.', 'success');
       setShowPOForm(false);
       setPOForm(emptyPOForm);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [poForm, showToast, loadData]);
+  }, [poForm, showToast, invalidateSupply]);
 
   const handleReceivePO = useCallback(async () => {
     if (!confirmTarget || confirmTarget.type !== 'po') return;
     try {
-      await api.request(`/supply/purchase-orders/${confirmTarget.item.id}/receive`, { method: 'PATCH' });
+      await api.request('/supply/purchase-orders/' + confirmTarget.item.id + '/receive', { method: 'PATCH' });
       showToast('Purchase order received.', 'success');
       setConfirmTarget(null);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [confirmTarget, showToast, loadData]);
+  }, [confirmTarget, showToast, invalidateSupply]);
 
   // ── BOM handler ─────────────────────────────────────────────────────
   const handleSaveBOM = useCallback(async () => {
@@ -247,11 +254,11 @@ export default function SupplyPanel() {
       showToast('BOM created.', 'success');
       setShowBOMForm(false);
       setBOMForm(emptyBOMForm);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [bomForm, showToast, loadData]);
+  }, [bomForm, showToast, invalidateSupply]);
 
   // ── MO handler ──────────────────────────────────────────────────────
   const handleSaveMO = useCallback(async () => {
@@ -271,29 +278,29 @@ export default function SupplyPanel() {
       showToast('Manufacturing order created.', 'success');
       setShowMOForm(false);
       setMOForm(emptyMOForm);
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [moForm, showToast, loadData]);
+  }, [moForm, showToast, invalidateSupply]);
 
   const handleProgressMO = useCallback(async () => {
     if (!progressTarget) return;
     try {
       const qty = parseInt(progressQty) || 0;
       const status = qty >= progressTarget.quantity ? 'completed' : 'in_production';
-      await api.request(`/supply/manufacturing-orders/${progressTarget.id}/progress`, {
+      await api.request('/supply/manufacturing-orders/' + progressTarget.id + '/progress', {
         method: 'PATCH',
         body: JSON.stringify({ producedQuantity: qty, status }),
       });
       showToast('Progress updated.', 'success');
       setProgressTarget(null);
       setProgressQty('0');
-      await loadData();
+      invalidateSupply();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [progressTarget, progressQty, showToast, loadData]);
+  }, [progressTarget, progressQty, showToast, invalidateSupply]);
 
   const statusBadge = (s: string) => {
     const map: Record<string, { text: string; variant: 'info' | 'success' | 'warning' | 'danger' | 'neutral' }> = {
@@ -510,7 +517,7 @@ export default function SupplyPanel() {
       <FormModal open={showStockForm} title="Adjust Stock" onClose={() => setShowStockForm(false)} onSubmit={handleSaveStock} submitLabel={saving ? 'Saving...' : 'Save'} submitDisabled={saving}>
         <div className="space-y-4">
           <Input label="Product ID *" type="text" value={stockForm.productId} onChange={(e) => setStockForm((p) => ({ ...p, productId: e.target.value }))} placeholder="Product ID" />
-          <Select label="Warehouse *" options={warehouses.filter((w) => Number(w.is_active) === 1).map((w) => ({ value: w.id, label: w.name }))} value={stockForm.warehouseId} onChange={(e) => setStockForm((p) => ({ ...p, warehouseId: e.target.value }))} />
+          <Select label="Warehouse *" options={warehouses.filter((w: any) => Number(w.is_active) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={stockForm.warehouseId} onChange={(e) => setStockForm((p) => ({ ...p, warehouseId: e.target.value }))} />
           <Input label="Quantity (positive to add, negative to deduct) *" type="number" value={stockForm.quantity} onChange={(e) => setStockForm((p) => ({ ...p, quantity: e.target.value }))} />
         </div>
       </FormModal>
@@ -519,8 +526,8 @@ export default function SupplyPanel() {
       <FormModal open={showTransferForm} title="New Transfer" onClose={() => setShowTransferForm(false)} onSubmit={handleSaveTransfer} submitLabel={saving ? 'Saving...' : 'Save'} submitDisabled={saving}>
         <div className="space-y-4">
           <Input label="Product ID *" type="text" value={transferForm.productId} onChange={(e) => setTransferForm((p) => ({ ...p, productId: e.target.value }))} placeholder="Product ID" />
-          <Select label="From Warehouse *" options={warehouses.filter((w) => Number(w.is_active) === 1).map((w) => ({ value: w.id, label: w.name }))} value={transferForm.fromWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, fromWarehouseId: e.target.value }))} />
-          <Select label="To Warehouse *" options={warehouses.filter((w) => Number(w.is_active) === 1).map((w) => ({ value: w.id, label: w.name }))} value={transferForm.toWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, toWarehouseId: e.target.value }))} />
+          <Select label="From Warehouse *" options={warehouses.filter((w: any) => Number(w.is_active) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={transferForm.fromWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, fromWarehouseId: e.target.value }))} />
+          <Select label="To Warehouse *" options={warehouses.filter((w: any) => Number(w.is_active) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={transferForm.toWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, toWarehouseId: e.target.value }))} />
           <Input label="Quantity *" type="number" value={transferForm.quantity} onChange={(e) => setTransferForm((p) => ({ ...p, quantity: e.target.value }))} min="1" />
         </div>
       </FormModal>
@@ -568,7 +575,7 @@ export default function SupplyPanel() {
       {/* ── MO Form Modal ───────────────────────────────────── */}
       <FormModal open={showMOForm} title="New Manufacturing Order" onClose={() => setShowMOForm(false)} onSubmit={handleSaveMO} submitLabel={saving ? 'Saving...' : 'Create'} submitDisabled={saving}>
         <div className="space-y-4">
-          <Select label="BOM *" options={boms.map((b) => ({ value: b.id, label: `${b.name} (${b.product_name || b.product_id})` }))} value={moForm.bomId} onChange={(e) => setMOForm((p) => ({ ...p, bomId: e.target.value }))} />
+          <Select label="BOM *" options={boms.map((b: any) => ({ value: b.id, label: `${b.name} (${b.product_name || b.product_id})` }))} value={moForm.bomId} onChange={(e) => setMOForm((p) => ({ ...p, bomId: e.target.value }))} />
           <Input label="Product ID *" type="text" value={moForm.productId} onChange={(e) => setMOForm((p) => ({ ...p, productId: e.target.value }))} placeholder="Product ID" />
           <Input label="Quantity *" type="number" value={moForm.quantity} onChange={(e) => setMOForm((p) => ({ ...p, quantity: e.target.value }))} min="1" />
           <Input label="Start Date" type="date" value={moForm.startDate} onChange={(e) => setMOForm((p) => ({ ...p, startDate: e.target.value }))} />

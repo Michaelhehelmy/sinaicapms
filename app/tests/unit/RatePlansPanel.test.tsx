@@ -1,19 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import RatePlansPanel from '@/components/admin/RatePlansPanel';
 
 const mockShowToast = vi.fn();
-const mockGetRatePlans = vi.fn();
 const mockSaveRatePlan = vi.fn();
 const mockDeleteRatePlan = vi.fn();
 const mockTrackEvent = vi.fn();
+let mockPlansData: unknown[] = [];
+let mockPlansLoading = false;
+let mockPlansError: Error | null = null;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
 
 vi.mock('@/lib/api', () => ({
-  getRatePlans: (...args: unknown[]) => mockGetRatePlans(...args),
   saveRatePlan: (...args: unknown[]) => mockSaveRatePlan(...args),
   deleteRatePlan: (...args: unknown[]) => mockDeleteRatePlan(...args),
 }));
@@ -92,66 +95,102 @@ vi.mock('@/components/ui/Badge', () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
-vi.mock('@/hooks/useQueryHooks', () => ({
-  useProductsQuery: () => ({
-    data: [
-      { id: 'p1', name: 'Standard Tent', type: 'room', tenantId: 'acaciacamp', sellingPrice: 100, capacity: 2, isActive: true },
-      { id: 'p2', name: 'Deluxe Cabin', type: 'room', tenantId: 'acaciacamp', sellingPrice: 250, capacity: 4, isActive: true },
-    ],
-    isLoading: false,
-    error: null,
-  }),
+vi.mock('@/components/ui/LoadingSpinner', () => ({
+  LoadingSpinner: ({ text }: { text?: string }) => <div data-testid="loading-spinner">{text}</div>,
 }));
 
+vi.mock('@/hooks/useQueryHooks', () => {
+  const React = require('react');
+  return {
+    queryKeys: { ratePlans: ['admin', 'ratePlans'], products: ['admin', 'products'] },
+    useProductsQuery: () => ({
+      data: [
+        { id: 'p1', name: 'Standard Tent', type: 'room', tenantId: 'acaciacamp', sellingPrice: 100, capacity: 2, isActive: true },
+        { id: 'p2', name: 'Deluxe Cabin', type: 'room', tenantId: 'acaciacamp', sellingPrice: 250, capacity: 4, isActive: true },
+      ],
+      isLoading: false,
+      error: null,
+    }),
+    useRatePlansQuery: () => {
+      const [tick, setTick] = React.useState(0);
+      return {
+        data: mockPlansData,
+        isLoading: mockPlansLoading,
+        error: mockPlansError,
+        refetch: () => { setTick((t) => t + 1); return Promise.resolve(); },
+      };
+    },
+    useSaveRatePlanMutation: (editId?: string | number) => ({
+      mutateAsync: (...args: unknown[]) => mockSaveRatePlan(...args, editId),
+      isPending: false,
+    }),
+    useDeleteRatePlanMutation: () => ({
+      mutateAsync: mockDeleteRatePlan,
+      isPending: false,
+    }),
+  };
+});
+
 const camps = [{ id: 'c1', name: 'Camp 1', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' }];
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
+function renderWithQuery(ui: React.ReactElement) {
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+}
 
 describe('RatePlansPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetRatePlans.mockResolvedValue([]);
+    mockPlansData = [];
+    mockPlansLoading = false;
+    mockPlansError = null;
   });
 
   it('renders with loading state', () => {
-    mockGetRatePlans.mockReturnValue(new Promise(() => {}));
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
-    expect(screen.getByText('Rate Plans')).toBeInTheDocument();
-    expect(screen.getByText('Loading rate plans...')).toBeInTheDocument();
+    mockPlansLoading = true;
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
   });
 
   it('shows empty state when no plans', async () => {
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('No rate plans yet')).toBeInTheDocument();
     });
   });
 
   it('shows Add Plan button', async () => {
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
   });
 
   it('handles load error', async () => {
-    mockGetRatePlans.mockRejectedValue(new Error('Failed'));
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    mockPlansError = new Error('Failed');
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to load rate plans'), 'error');
     });
   });
 
   it('displays rate plan data when plans exist', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: '2025-06-01', endDate: '2025-08-31', season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
   });
 
   it('opens add plan form', async () => {
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
@@ -162,7 +201,7 @@ describe('RatePlansPanel', () => {
   });
 
   it('validates name on save', async () => {
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
@@ -178,10 +217,10 @@ describe('RatePlansPanel', () => {
 
   it('saves plan successfully', async () => {
     mockSaveRatePlan.mockResolvedValueOnce({});
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'New Plan', productId: 'p1', pricePerNight: 100, minStay: 1, isActive: 1, startDate: null, endDate: null, season: 'all' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
@@ -199,7 +238,7 @@ describe('RatePlansPanel', () => {
 
   it('shows error when save fails', async () => {
     mockSaveRatePlan.mockRejectedValueOnce(new Error('Save failed'));
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
@@ -216,10 +255,10 @@ describe('RatePlansPanel', () => {
   });
 
   it('shows delete button for existing plans', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: null, endDate: null, season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
@@ -227,10 +266,10 @@ describe('RatePlansPanel', () => {
   });
 
   it('renders all table columns with formatted values', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: '2025-06-01', endDate: '2025-08-31', season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
@@ -242,10 +281,10 @@ describe('RatePlansPanel', () => {
   });
 
   it('renders Inactive status and N/A camp fallback', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp2', campId: 'r99', name: 'Off Peak', productId: 'p2', pricePerNight: 0, minStay: 1, isActive: 0, startDate: null, endDate: null, season: 'off' },
-    ]);
-    render(<RatePlansPanel campIds={['c1', 'r99']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1', 'r99']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Off Peak')).toBeInTheDocument();
     });
@@ -254,10 +293,10 @@ describe('RatePlansPanel', () => {
   });
 
   it('opens edit form prefilled and updates plan', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: '2025-06-01', endDate: '2025-08-31', season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
@@ -279,7 +318,7 @@ describe('RatePlansPanel', () => {
   });
 
   it('closes the form modal without saving', async () => {
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
@@ -294,10 +333,10 @@ describe('RatePlansPanel', () => {
   });
 
   it('deletes plan after confirmation', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: null, endDate: null, season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
@@ -313,10 +352,10 @@ describe('RatePlansPanel', () => {
   });
 
   it('cancels delete without calling api', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: null, endDate: null, season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
@@ -333,10 +372,10 @@ describe('RatePlansPanel', () => {
 
   it('shows error when delete fails', async () => {
     mockDeleteRatePlan.mockRejectedValueOnce(new Error('Delete failed'));
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: null, endDate: null, season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
@@ -352,10 +391,10 @@ describe('RatePlansPanel', () => {
 
   it('fills every form field and saves a new plan', async () => {
     mockSaveRatePlan.mockResolvedValueOnce({ id: 'rp1', success: true });
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Custom Season', productId: 'p1', pricePerNight: 150, minStay: 2, isActive: 1, startDate: '2025-06-01', endDate: '2025-08-31', season: 'off' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
@@ -382,11 +421,11 @@ describe('RatePlansPanel', () => {
   });
 
   it('renders the Min Stay column values for every plan', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: null, endDate: null, season: 'peak' },
       { id: 'rp2', name: 'Off Season', productId: 'p2', pricePerNight: 90, minStay: 2, isActive: 1, startDate: null, endDate: null, season: 'off' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });
@@ -395,10 +434,10 @@ describe('RatePlansPanel', () => {
   });
 
   it('does not expose a per-camp duplicate edit affordance in the form', async () => {
-    mockGetRatePlans.mockResolvedValue([
+    mockPlansData = [
       { id: 'rp1', campId: 'c1', name: 'Peak Season', productId: 'p1', pricePerNight: 200, minStay: 3, isActive: 1, startDate: null, endDate: null, season: 'peak' },
-    ]);
-    render(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    ];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
     await waitFor(() => {
       expect(screen.getByText('Peak Season')).toBeInTheDocument();
     });

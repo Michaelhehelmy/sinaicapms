@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import * as api from '@/lib/api';
+import React, { useState, useCallback } from 'react';
 import type { ServiceDefinition, ServiceItem, ServiceBooking } from '@/lib/api';
+import { useServiceDefinitionsQuery, useServiceItemsQuery, useServiceBookingsQuery } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -13,10 +13,10 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
+import * as api from '@/lib/api';
 
 type Tab = 'definitions' | 'items' | 'bookings';
 
-// ─── Definitions Form ────────────────────────────────────────────
 interface DefForm {
   slug: string;
   name: string;
@@ -25,7 +25,6 @@ interface DefForm {
 
 const emptyDefForm: DefForm = { slug: '', name: '', description: '' };
 
-// ─── Items Form ──────────────────────────────────────────────────
 interface ItemForm {
   service_definition_id: string;
   project_id: string;
@@ -54,10 +53,10 @@ const BOOKING_STATUS_OPTIONS = [
 export default function ServicesPanel() {
   const { showToast } = useToast();
   const [tab, setTab] = useState<Tab>('definitions');
-  const [defs, setDefs] = useState<ServiceDefinition[]>([]);
-  const [items, setItems] = useState<ServiceItem[]>([]);
-  const [bookings, setBookings] = useState<ServiceBooking[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const { data: defs = [], isLoading: defsLoading } = useServiceDefinitionsQuery();
+  const { data: items = [], isLoading: itemsLoading } = useServiceItemsQuery();
+  const { data: bookings = [], isLoading: bookingsLoading } = useServiceBookingsQuery();
 
   // Definitions modal
   const [showDefForm, setShowDefForm] = useState(false);
@@ -74,22 +73,7 @@ export default function ServicesPanel() {
   // Bookings status update
   const [bookingStatusTarget, setBookingStatusTarget] = useState<ServiceBooking | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [d, i, b] = await Promise.all([
-        api.getServiceDefinitions() as Promise<ServiceDefinition[]>,
-        api.getServiceItems() as Promise<ServiceItem[]>,
-        api.getServiceBookings() as Promise<ServiceBooking[]>,
-      ]);
-      setDefs(d);
-      setItems(i);
-      setBookings(b);
-    } catch (err) {
-      showToast('Failed to load services: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  const loading = defsLoading || itemsLoading || bookingsLoading;
 
   // ── Definition handlers ──────────────────────────────────────────────
   const openAddDef = useCallback(() => { setEditingDefId(null); setDefForm(emptyDefForm); setShowDefForm(true); }, []);
@@ -112,11 +96,10 @@ export default function ServicesPanel() {
       setShowDefForm(false);
       setEditingDefId(null);
       setDefForm(emptyDefForm);
-      await loadData();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [defForm, editingDefId, showToast, loadData]);
+  }, [defForm, editingDefId, showToast]);
 
   // ── Item handlers ────────────────────────────────────────────────────
   const openAddItem = useCallback(() => { setEditingItemId(null); setItemForm(emptyItemForm); setShowItemForm(true); }, []);
@@ -150,11 +133,10 @@ export default function ServicesPanel() {
       setShowItemForm(false);
       setEditingItemId(null);
       setItemForm(emptyItemForm);
-      await loadData();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [itemForm, editingItemId, showToast, loadData]);
+  }, [itemForm, editingItemId, showToast]);
 
   // ── Delete handler ───────────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
@@ -167,11 +149,10 @@ export default function ServicesPanel() {
       }
       showToast('Deleted.', 'success');
       setDeleteTarget(null);
-      await loadData();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast, loadData]);
+  }, [deleteTarget, showToast]);
 
   // ── Booking status update ────────────────────────────────────────────
   const handleBookingStatus = useCallback(async (newStatus: string) => {
@@ -180,11 +161,10 @@ export default function ServicesPanel() {
       await api.updateBookingStatus(bookingStatusTarget.id, newStatus);
       showToast(`Booking marked as ${newStatus}.`, 'success');
       setBookingStatusTarget(null);
-      await loadData();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [bookingStatusTarget, showToast, loadData]);
+  }, [bookingStatusTarget, showToast]);
 
   const bookingStatusLabel: Record<string, { text: string; variant: 'info' | 'success' | 'warning' | 'danger' | 'neutral' }> = {
     pending: { text: 'Pending', variant: 'warning' },

@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import * as api from '@/lib/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +11,16 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useFinancialAccountsQuery,
+  useFinancialJournalsQuery,
+  useFinancialJournalEntriesQuery,
+  useFinancialInvoicesQuery,
+  useFinancialPaymentsQuery,
+  useFinancialTaxRatesQuery,
+  queryKeys,
+} from '@/hooks/useQueryHooks';
 
 type Tab = 'accounts' | 'journals' | 'invoices' | 'payments' | 'taxes';
 
@@ -63,14 +72,6 @@ const JOURNAL_TYPES = [
   { value: 'general', label: 'General' },
 ];
 
-const INVOICE_STATUS_OPTIONS = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'sent', label: 'Sent' },
-  { value: 'paid', label: 'Paid' },
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'canceled', label: 'Canceled' },
-];
-
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
   { value: 'card', label: 'Card' },
@@ -93,14 +94,28 @@ const TYPE_BADGE: Record<string, { variant: 'info' | 'success' | 'warning' | 'da
 
 export default function FinancialPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('accounts');
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [journals, setJournals] = useState<Journal[]>([]);
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // TanStack Query hooks
+  const accountsQuery = useFinancialAccountsQuery();
+  const journalsQuery = useFinancialJournalsQuery();
+  const entriesQuery = useFinancialJournalEntriesQuery();
+  const invoicesQuery = useFinancialInvoicesQuery();
+  const paymentsQuery = useFinancialPaymentsQuery();
+  const taxRatesQuery = useFinancialTaxRatesQuery();
+
+  const accounts = (accountsQuery.data as any[]) || [];
+  const journals = (journalsQuery.data as any[]) || [];
+  const entries = (entriesQuery.data as any[]) || [];
+  const invoices = (invoicesQuery.data as any[]) || [];
+  const payments = (paymentsQuery.data as any[]) || [];
+  const taxRates = (taxRatesQuery.data as any[]) || [];
+  const loading = accountsQuery.isLoading || journalsQuery.isLoading || entriesQuery.isLoading || invoicesQuery.isLoading || paymentsQuery.isLoading || taxRatesQuery.isLoading;
+
+  const invalidateFinancial = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'financials'] });
+  }, [queryClient]);
 
   // Account modal
   const [showAccountForm, setShowAccountForm] = useState(false);
@@ -130,29 +145,6 @@ export default function FinancialPanel() {
 
   const [saving, setSaving] = useState(false);
 
-  const loadData = useCallback(async () => {
-    try {
-      const [a, j, e, i, p, t] = await Promise.all([
-        api.getFinancialAccounts() as Promise<Account[]>,
-        api.getFinancialJournals() as Promise<Journal[]>,
-        api.getFinancialJournalEntries() as Promise<JournalEntry[]>,
-        api.getFinancialInvoices() as Promise<Invoice[]>,
-        api.getFinancialPayments() as Promise<Payment[]>,
-        api.getFinancialTaxRates() as Promise<TaxRate[]>,
-      ]);
-      setAccounts(a);
-      setJournals(j);
-      setEntries(e);
-      setInvoices(i);
-      setPayments(p);
-      setTaxRates(t);
-    } catch (err) {
-      showToast('Failed to load financial data: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
-
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
-
   // ── Account handlers ──────────────────────────────────────
   const openAddAccount = useCallback(() => { setEditingAccountId(null); setAccountForm(emptyAccountForm); setShowAccountForm(true); }, []);
   const openEditAccount = useCallback((a: Account) => {
@@ -166,54 +158,52 @@ export default function FinancialPanel() {
     setSaving(true);
     try {
       if (editingAccountId) {
-        await api.saveFinancialAccount({
-          code: accountForm.code.trim(),
+        await api.updateFinancialAccount(editingAccountId, {
           name: accountForm.name.trim(),
           type: accountForm.type,
-          parentId: accountForm.parentId || null,
-        }, editingAccountId);
+        });
       } else {
-        await api.saveFinancialAccount({
+        await api.createFinancialAccount({
           code: accountForm.code.trim(),
           name: accountForm.name.trim(),
           type: accountForm.type,
-          parentId: accountForm.parentId || null,
+          parentId: accountForm.parentId || undefined,
         });
       }
       showToast(editingAccountId ? 'Account updated.' : 'Account created.', 'success');
       setShowAccountForm(false);
       setEditingAccountId(null);
       setAccountForm(emptyAccountForm);
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [accountForm, editingAccountId, showToast, loadData]);
+  }, [accountForm, editingAccountId, showToast, invalidateFinancial]);
 
   const handleDeleteAccount = useCallback(async (id: string) => {
     try {
       await api.deleteFinancialAccount(id);
       showToast('Account deactivated.', 'success');
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [showToast, loadData]);
+  }, [showToast, invalidateFinancial]);
 
   // ── Journal handlers ──────────────────────────────────────
   const handleSaveJournal = useCallback(async () => {
     if (!journalForm.name.trim()) { showToast('Name is required.', 'warning'); return; }
     setSaving(true);
     try {
-      await api.saveFinancialJournal({ name: journalForm.name.trim(), type: journalForm.type });
+      await api.createFinancialJournal({ name: journalForm.name.trim(), type: journalForm.type });
       showToast('Journal created.', 'success');
       setShowJournalForm(false);
       setJournalForm(emptyJournalForm);
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [journalForm, showToast, loadData]);
+  }, [journalForm, showToast, invalidateFinancial]);
 
   // ── Entry handlers ────────────────────────────────────────
   const handleSaveEntry = useCallback(async () => {
@@ -227,7 +217,7 @@ export default function FinancialPanel() {
     if (Math.abs(totalDebit - totalCredit) > 0.001) { showToast('Debits must equal credits.', 'warning'); return; }
     setSaving(true);
     try {
-      await api.saveFinancialJournalEntry({
+      await api.createJournalEntry({
         journalId: entryForm.journalId,
         date: entryForm.date,
         description: entryForm.description || undefined,
@@ -237,21 +227,21 @@ export default function FinancialPanel() {
       showToast('Journal entry created.', 'success');
       setShowEntryForm(false);
       setEntryForm(emptyEntryForm);
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [entryForm, showToast, loadData]);
+  }, [entryForm, showToast, invalidateFinancial]);
 
   const handlePostEntry = useCallback(async (id: string) => {
     try {
-      await api.postFinancialJournalEntry(id);
+      await api.postJournalEntry(id);
       showToast('Entry posted.', 'success');
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [showToast, loadData]);
+  }, [showToast, invalidateFinancial]);
 
   // ── Invoice handlers ──────────────────────────────────────
   const handleSaveInvoice = useCallback(async () => {
@@ -266,11 +256,11 @@ export default function FinancialPanel() {
     if (lines.length === 0) { showToast('At least one line item required.', 'warning'); return; }
     setSaving(true);
     try {
-      await api.saveFinancialInvoice({
+      await api.createFinancialInvoice({
         type: invoiceForm.type,
-        contactId: invoiceForm.contactId || null,
+        contactId: invoiceForm.contactId || undefined,
         issueDate: invoiceForm.issueDate,
-        dueDate: invoiceForm.dueDate || null,
+        dueDate: invoiceForm.dueDate || undefined,
         currency: invoiceForm.currency || 'USD',
         notes: invoiceForm.notes || undefined,
         lines,
@@ -278,29 +268,29 @@ export default function FinancialPanel() {
       showToast('Invoice created.', 'success');
       setShowInvoiceForm(false);
       setInvoiceForm(emptyInvoiceForm);
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [invoiceForm, showToast, loadData]);
+  }, [invoiceForm, showToast, invalidateFinancial]);
 
   const handleUpdateInvoiceStatus = useCallback(async (id: string, status: string) => {
     try {
-      await api.updateFinancialInvoiceStatus(id, status);
+      await api.updateInvoiceStatus(id, status);
       showToast(`Invoice marked as ${status}.`, 'success');
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [showToast, loadData]);
+  }, [showToast, invalidateFinancial]);
 
   // ── Payment handlers ──────────────────────────────────────
   const handleSavePayment = useCallback(async () => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) { showToast('Amount is required.', 'warning'); return; }
     setSaving(true);
     try {
-      await api.saveFinancialPayment({
-        invoiceId: paymentForm.invoiceId || null,
+      await api.createPayment({
+        invoiceId: paymentForm.invoiceId || undefined,
         amount: parseFloat(paymentForm.amount),
         paymentDate: paymentForm.paymentDate,
         method: paymentForm.method,
@@ -309,32 +299,32 @@ export default function FinancialPanel() {
       showToast('Payment recorded.', 'success');
       setShowPaymentForm(false);
       setPaymentForm(emptyPaymentForm);
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [paymentForm, showToast, loadData]);
+  }, [paymentForm, showToast, invalidateFinancial]);
 
   // ── Tax rate handlers ─────────────────────────────────────
   const handleSaveTaxRate = useCallback(async () => {
     if (!taxRateForm.name.trim() || !taxRateForm.rate) { showToast('Name and rate are required.', 'warning'); return; }
     setSaving(true);
     try {
-      await api.saveFinancialTaxRate({
+      await api.createTaxRate({
         name: taxRateForm.name.trim(),
         rate: parseFloat(taxRateForm.rate),
         jurisdiction: taxRateForm.jurisdiction || undefined,
-        isDefault: taxRateForm.isDefault,
-      }, editingTaxRateId ?? undefined);
+        isDefault: taxRateForm.isDefault ? 1 : 0,
+      });
       showToast(editingTaxRateId ? 'Tax rate updated.' : 'Tax rate created.', 'success');
       setShowTaxRateForm(false);
       setEditingTaxRateId(null);
       setTaxRateForm(emptyTaxRateForm);
-      await loadData();
+      invalidateFinancial();
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [taxRateForm, editingTaxRateId, showToast, loadData]);
+  }, [taxRateForm, editingTaxRateId, showToast, invalidateFinancial]);
 
   if (loading) return <LoadingSpinner text="Loading financial data..." />;
 
@@ -500,7 +490,7 @@ export default function FinancialPanel() {
       {/* ── Entry Form Modal ──────────────────────────────── */}
       <FormModal open={showEntryForm} title="New Journal Entry" onClose={() => setShowEntryForm(false)} onSubmit={handleSaveEntry} submitLabel={saving ? 'Saving...' : 'Create'} submitDisabled={saving}>
         <div className="space-y-4">
-          <Select label="Journal *" options={journals.filter((j) => Number(j.is_active) === 1).map((j) => ({ value: j.id, label: j.name }))} value={entryForm.journalId} onChange={(e) => setEntryForm((p) => ({ ...p, journalId: e.target.value }))} />
+          <Select label="Journal *" options={journals.filter((j: any) => Number(j.is_active) === 1).map((j: any) => ({ value: j.id, label: j.name }))} value={entryForm.journalId} onChange={(e) => setEntryForm((p) => ({ ...p, journalId: e.target.value }))} />
           <Input label="Date *" type="date" value={entryForm.date} onChange={(e) => setEntryForm((p) => ({ ...p, date: e.target.value }))} />
           <Input label="Description" type="text" value={entryForm.description} onChange={(e) => setEntryForm((p) => ({ ...p, description: e.target.value }))} />
           <Input label="Reference" type="text" value={entryForm.reference} onChange={(e) => setEntryForm((p) => ({ ...p, reference: e.target.value }))} />
@@ -509,7 +499,7 @@ export default function FinancialPanel() {
             {entryForm.lines.map((line, idx) => (
               <div key={idx} className="flex gap-2 mb-2 items-end">
                 <div className="flex-1">
-                  <Select options={accounts.filter((a) => Number(a.is_active) === 1).map((a) => ({ value: a.id, label: `${a.code} - ${a.name}` }))} value={line.accountId} onChange={(e) => {
+                  <Select options={accounts.filter((a: any) => Number(a.is_active) === 1).map((a: any) => ({ value: a.id, label: `${a.code} - ${a.name}` }))} value={line.accountId} onChange={(e) => {
                     const lines = [...entryForm.lines]; lines[idx] = { ...lines[idx], accountId: e.target.value }; setEntryForm((p) => ({ ...p, lines }));
                   }} />
                 </div>
@@ -566,7 +556,7 @@ export default function FinancialPanel() {
       {/* ── Payment Form Modal ────────────────────────────── */}
       <FormModal open={showPaymentForm} title="Record Payment" onClose={() => setShowPaymentForm(false)} onSubmit={handleSavePayment} submitLabel={saving ? 'Saving...' : 'Record'} submitDisabled={saving}>
         <div className="space-y-4">
-          <Select label="Invoice (optional)" options={invoices.filter((i) => i.status !== 'paid' && i.status !== 'canceled').map((i) => ({ value: i.id, label: `${i.invoice_number} — ${formatCurrency(i.total_amount)}` }))} value={paymentForm.invoiceId} onChange={(e) => setPaymentForm((p) => ({ ...p, invoiceId: e.target.value }))} />
+          <Select label="Invoice (optional)" options={invoices.filter((i: any) => i.status !== 'paid' && i.status !== 'canceled').map((i: any) => ({ value: i.id, label: `${i.invoice_number} — ${formatCurrency(i.total_amount)}` }))} value={paymentForm.invoiceId} onChange={(e) => setPaymentForm((p) => ({ ...p, invoiceId: e.target.value }))} />
           <Input label="Amount *" type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm((p) => ({ ...p, amount: e.target.value }))} min="0.01" step="0.01" />
           <Input label="Payment Date *" type="date" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm((p) => ({ ...p, paymentDate: e.target.value }))} />
           <Select label="Method *" options={PAYMENT_METHODS} value={paymentForm.method} onChange={(e) => setPaymentForm((p) => ({ ...p, method: e.target.value }))} />

@@ -1,24 +1,22 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import * as api from '@/lib/api';
 import type { Camp } from '@/hooks/useAdminData';
-import { useProductsQuery } from '@/hooks/useQueryHooks';
+import { useProductsQuery, useRatePlansQuery, useSaveRatePlanMutation, useDeleteRatePlanMutation } from '@/hooks/useQueryHooks';
+import { useToast } from '@/components/ui/Toast';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { useToast } from '@/components/ui/Toast';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { formatCurrency } from '@/lib/utils';
 import { trackEvent } from '@/lib/plausible';
 
 interface RatePlan {
   id: string;
-  // T8-C: rate_plans are product-scoped (no camp_id column) — campId kept optional
   campId?: string;
   name: string;
   productId: string;
@@ -56,32 +54,26 @@ const seasonOptions = [
 
 export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) {
   const { showToast } = useToast();
-  const { data: products } = useProductsQuery();
-  const [plans, setPlans] = useState<RatePlan[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: products, isLoading: productsLoading } = useProductsQuery();
+  const { data: plansData, isLoading: plansLoading, error: plansError } = useRatePlansQuery();
+
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PlanForm>(emptyForm);
-  const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const data = (await api.getRatePlans()) as RatePlan[];
-        if (!cancelled) setPlans(data);
-      } catch (err) {
-        showToast('Failed to load rate plans: ' + (err instanceof Error ? err.message : String(err)), 'error');
-      }
-      finally { if (!cancelled) setLoading(false); }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, []);
+  const saveMutation = useSaveRatePlanMutation(editingId ?? undefined);
+  const deleteMutation = useDeleteRatePlanMutation();
 
-  // T8-C: rate plans are product-scoped — backend returns no campId, so the old
-  // camp filter (campIds.includes(p.campId)) matched nothing and hid all plans.
+  const plans = useMemo(() => (plansData ?? []) as RatePlan[], [plansData]);
+  const loading = plansLoading || productsLoading;
+
+  React.useEffect(() => {
+    if (plansError) {
+      showToast('Failed to load rate plans: ' + (plansError instanceof Error ? plansError.message : String(plansError)), 'error');
+    }
+  }, [plansError, showToast]);
+
   const filtered = useMemo(() => plans.filter((p) => !p.campId || campIds.includes(p.campId)), [plans, campIds]);
 
   const productSelectOptions = useMemo(
@@ -99,27 +91,31 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
   const handleSave = useCallback(async () => {
     if (!form.name.trim()) { showToast('Name is required.', 'warning'); return; }
     if (!form.productId) { showToast('Product is required.', 'warning'); return; }
-    setSaving(true);
     try {
-      // T8-C: RatePlanCreateRequest has no campId and non-nullable dates
-      const saved = (await api.saveRatePlan({ name: form.name.trim(), productId: form.productId, pricePerNight: parseFloat(form.pricePerNight) || 0, minStay: parseInt(form.minStay) || 1, startDate: form.startDate || undefined, endDate: form.endDate || undefined, season: form.season, isActive: 1 }, editingId ?? undefined)) as { id?: string } | undefined;
+      const saved = await saveMutation.mutateAsync({ name: form.name.trim(), productId: form.productId, pricePerNight: parseFloat(form.pricePerNight) || 0, minStay: parseInt(form.minStay) || 1, startDate: form.startDate || undefined, endDate: form.endDate || undefined, season: form.season, isActive: 1 } as never);
+      trackEvent('Tenant: Price Updated', { productId: form.productId, planId: (saved as { id?: string })?.id ?? editingId });
       showToast(editingId ? 'Plan updated.' : 'Plan created.', 'success');
-      trackEvent('Tenant: Price Updated', { productId: form.productId, planId: saved?.id ?? editingId });
-      const data = (await api.getRatePlans()) as RatePlan[];
-      setPlans(data);
       setShowForm(false); setEditingId(null); setForm(emptyForm);
-    } catch (err) { showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error'); }
-    finally { setSaving(false); }
-  }, [form, editingId, showToast]);
+    } catch (err) {
+      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  }, [form, editingId, showToast, saveMutation]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    try { await api.deleteRatePlan(deleteTarget); showToast('Deleted.', 'success'); setDeleteTarget(null); const data = (await api.getRatePlans()) as RatePlan[]; setPlans(data); }
-    catch (err) { showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error'); }
-  }, [deleteTarget, showToast]);
+    try {
+      await deleteMutation.mutateAsync(deleteTarget);
+      showToast('Deleted.', 'success');
+      setDeleteTarget(null);
+    } catch (err) {
+      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  }, [deleteTarget, deleteMutation, showToast]);
+
+  if (loading) return <LoadingSpinner text="Loading rate plans..." />;
 
   return (
-    <Card padding="none" className="p-6" data-testid="rate-plans-panel" aria-busy={loading || undefined}>
+    <Card padding="none" className="p-6" data-testid="rate-plans-panel">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xl font-bold text-gray-800">Rate Plans</h2>
         <Button
@@ -137,9 +133,7 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
         </Button>
       </div>
       <p className="text-sm text-gray-500 mb-6">Set seasonal pricing per room type to manage rates effectively across seasons.</p>
-      {loading ? (
-        <LoadingSpinner text="Loading rate plans..." />
-      ) : filtered.length === 0 ? (
+      {filtered.length === 0 ? (
         <EmptyState
           title="No rate plans yet"
           description="Create your first rate plan to define pricing for your accommodations."
@@ -187,7 +181,7 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
           )}
         />
       )}
-      <FormModal open={showForm} title={editingId ? 'Edit Rate Plan' : 'Add Rate Plan'} onClose={() => { setShowForm(false); setEditingId(null); }} onSubmit={handleSave} submitLabel={saving ? 'Saving...' : editingId ? 'Update' : 'Save'} submitDisabled={saving}>
+      <FormModal open={showForm} title={editingId ? 'Edit Rate Plan' : 'Add Rate Plan'} onClose={() => { setShowForm(false); setEditingId(null); }} onSubmit={handleSave} submitLabel={saveMutation.isPending ? 'Saving...' : editingId ? 'Update' : 'Save'} submitDisabled={saveMutation.isPending}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Name *"

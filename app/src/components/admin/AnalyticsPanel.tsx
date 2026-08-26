@@ -1,14 +1,17 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import * as api from '@/lib/api';
-import type { TopProduct, KitchenStatusCount, KitchenTrend, LowStockItem } from '@/lib/api';
+import React, { useState, useMemo } from 'react';
+import { useRevenueReportQuery, useOccupancyReportQuery, useTopProductsQuery, useKitchenPerformanceQuery, useAnalyticsLowStockQuery, useRevenueBreakdownQuery, useCustomerMetricsQuery, useSeasonalComparisonQuery } from '@/hooks/useQueryHooks';
+import type { components } from '@/lib/api-types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { useToast } from '@/components/ui/Toast';
 import { formatCurrency } from '@/lib/utils';
+
+type Schemas = components['schemas'];
+type RevenueReport = Schemas['RevenueReport'];
+type OccupancyReport = Schemas['OccupancyReport'];
 
 type Tab = 'overview' | 'products' | 'kitchen' | 'inventory' | 'revenue' | 'customers';
 
@@ -80,50 +83,23 @@ function StackedBarChart({ items, labelKey, stacks }: { items: Record<string, un
 }
 
 export default function AnalyticsPanel() {
-  const { showToast } = useToast();
   const [tab, setTab] = useState<Tab>('overview');
   const [period, setPeriod] = useState('30');
-  const [loading, setLoading] = useState(true);
+  const days = parseInt(period);
 
-  const [revenue, setRevenue] = useState<RevenueReport | null>(null);
-  const [occupancy, setOccupancy] = useState<OccupancyReport | null>(null);
-  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
-  const [kitchen, setKitchen] = useState<{ by_status: KitchenStatusCount[]; daily_trend: KitchenTrend[] } | null>(null);
-  const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
-  const [revenueBreakdown, setRevenueBreakdown] = useState<{ by_product_type: Array<{ type: string; revenue: number; order_count: number }>; by_payment_method: Array<{ method: string; revenue: number; count: number }>; accommodation: { revenue: number; order_count: number } } | null>(null);
-  const [customerMetrics, setCustomerMetrics] = useState<{ total_customers: number; new_customers: number; repeat_customers: number; avg_order_value: number; avg_collected: number } | null>(null);
-  const [seasonal, setSeasonal] = useState<{ accommodation_monthly: Array<{ month: string; revenue: number; order_count: number }>; pos_monthly: Array<{ month: string; revenue: number; tx_count: number }> } | null>(null);
+  const { data: revenue, isLoading: revLoading } = useRevenueReportQuery({ days });
+  const { data: occupancy, isLoading: occLoading } = useOccupancyReportQuery();
+  const { data: topProductsData, isLoading: tpLoading } = useTopProductsQuery(days, 10);
+  const { data: kitchen, isLoading: ksLoading } = useKitchenPerformanceQuery(Math.min(days, 30));
+  const { data: lowStockData, isLoading: lsLoading } = useAnalyticsLowStockQuery();
+  const { data: revenueBreakdown, isLoading: rbLoading } = useRevenueBreakdownQuery(days);
+  const { data: customerMetrics, isLoading: cmLoading } = useCustomerMetricsQuery(days);
+  const { data: seasonal, isLoading: scLoading } = useSeasonalComparisonQuery();
 
-  const loadData = useCallback(async () => {
-    const days = parseInt(period);
-    try {
-      const [rev, occ, tp, ks, ls, rb, cm, sc] = await Promise.allSettled([
-        api.getRevenueReport({ days }),
-        api.getOccupancyReport(),
-        api.getTopProducts(days, 10),
-        api.getKitchenPerformance(Math.min(days, 30)),
-        api.getAnalyticsLowStock(),
-        api.getRevenueBreakdown(days),
-        api.getCustomerMetrics(days),
-        api.getSeasonalComparison(),
-      ]);
-      if (rev.status === 'fulfilled') setRevenue(rev.value as RevenueReport);
-      if (occ.status === 'fulfilled') setOccupancy(occ.value as OccupancyReport);
-      if (tp.status === 'fulfilled') setTopProducts((tp.value as { top_products: TopProduct[] }).top_products);
-      if (ks.status === 'fulfilled') {
-        const kv = ks.value as { by_status: KitchenStatus[]; daily_trend: KitchenTrend[] };
-        setKitchen(kv);
-      }
-      if (ls.status === 'fulfilled') setLowStock((ls.value as { low_stock: LowStockItem[] }).low_stock);
-      if (rb.status === 'fulfilled') setRevenueBreakdown(rb.value as { by_product_type: Array<{ type: string; revenue: number; order_count: number }>; by_payment_method: Array<{ method: string; revenue: number; count: number }>; accommodation: { revenue: number; order_count: number } });
-      if (cm.status === 'fulfilled') setCustomerMetrics(cm.value as { total_customers: number; new_customers: number; repeat_customers: number; avg_order_value: number; avg_collected: number });
-      if (sc.status === 'fulfilled') setSeasonal(sc.value as { accommodation_monthly: Array<{ month: string; revenue: number; order_count: number }>; pos_monthly: Array<{ month: string; revenue: number; tx_count: number }> });
-    } catch (err) {
-      showToast('Failed to load analytics: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [period, showToast]);
+  const loading = revLoading || occLoading || tpLoading || ksLoading || lsLoading || rbLoading || cmLoading || scLoading;
 
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  const topProducts = useMemo(() => topProductsData?.top_products ?? [], [topProductsData]);
+  const lowStock = useMemo(() => lowStockData?.low_stock ?? [], [lowStockData]);
 
   const maxRevenue = useMemo(() => {
     if (!revenue?.details?.length) return 0;
@@ -154,7 +130,7 @@ export default function AnalyticsPanel() {
           <h2 className="text-xl font-bold text-gray-800">Analytics</h2>
           <p className="text-sm text-gray-500">Business insights across reservations, POS, and kitchen operations.</p>
         </div>
-        <Select options={PERIOD_OPTIONS} value={period} onChange={(e) => { setPeriod(e.target.value); setLoading(true); }} />
+        <Select options={PERIOD_OPTIONS} value={period} onChange={(e) => setPeriod(e.target.value)} />
       </div>
 
       {/* Tab bar */}
@@ -175,10 +151,10 @@ export default function AnalyticsPanel() {
       {tab === 'overview' && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Total Revenue" value={revenue ? formatCurrency(revenue.summary.total_revenue) : '-'} sub={`${period} day period`} />
-            <StatCard label="Collected" value={revenue ? formatCurrency(revenue.summary.total_collected) : '-'} color="text-emerald-600" />
-            <StatCard label="Outstanding" value={revenue ? formatCurrency(revenue.summary.total_outstanding) : '-'} color={revenue && revenue.summary.total_outstanding > 0 ? 'text-amber-600' : 'text-gray-900'} />
-            <StatCard label="Total Orders" value={revenue?.summary.total_orders ?? '-'} />
+            <StatCard label="Total Revenue" value={revenue ? formatCurrency(revenue.summary.totalRevenue) : '-'} sub={`${period} day period`} />
+            <StatCard label="Collected" value={revenue ? formatCurrency(revenue.summary.totalCollected) : '-'} color="text-emerald-600" />
+            <StatCard label="Outstanding" value={revenue ? formatCurrency(revenue.summary.totalOutstanding) : '-'} color={revenue && revenue.summary.totalOutstanding > 0 ? 'text-amber-600' : 'text-gray-900'} />
+            <StatCard label="Total Orders" value={revenue?.summary.totalOrders ?? '-'} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -188,13 +164,13 @@ export default function AnalyticsPanel() {
               {occupancy ? (
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>{occupancy.occupied_rooms} of {occupancy.total_rooms} rooms occupied</span>
-                    <span className="font-semibold">{Math.round(occupancy.occupancy_rate)}%</span>
+                    <span>{occupancy.occupiedRooms} of {occupancy.totalRooms} rooms occupied</span>
+                    <span className="font-semibold">{Math.round(occupancy.occupancyRate)}%</span>
                   </div>
                   <div className="bg-gray-100 rounded-full h-4 overflow-hidden">
                     <div
                       className="h-full bg-emerald-500 rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(occupancy.occupancy_rate, 100)}%` }}
+                      style={{ width: `${Math.min(occupancy.occupancyRate, 100)}%` }}
                     />
                   </div>
                 </div>

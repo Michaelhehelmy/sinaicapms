@@ -11,7 +11,11 @@ export {
   IconAnalytics,
   IconCalendar,
   IconCamps,
+  IconCRM,
   IconDashboard,
+  IconAI,
+  IconFinancials,
+  IconHR,
   IconInbox,
   IconLowStock,
   IconMeals,
@@ -29,4 +33,6 @@ export {
   IconSettings,
   IconShift,
   IconStaff,
+  IconStorefront,
+  IconSupply,
 } from '@/components/ui/icons';

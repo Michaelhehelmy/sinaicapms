@@ -8,10 +8,15 @@ import type { Dashboard } from '../types';
 
 // ─── Dashboard View ────────────────────────────────────────
 export default function DashboardView() {
-  const { data, isLoading, error } = usePosDashboard();
+  const { data, isLoading, error, refetch } = usePosDashboard();
 
   if (isLoading) return <POSDashboardSkeleton />;
-  if (error) return <div className="p-8 text-red-500">{error.message}</div>;
+  if (error) return (
+    <div className="p-8 text-center">
+      <div className="text-red-500 mb-3">{error.message}</div>
+      <button onClick={() => refetch()} className="text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-md px-4 py-2 border-none cursor-pointer">Try Again</button>
+    </div>
+  );
   if (!data) return null;
   const dashboard = data as unknown as Dashboard;
 
