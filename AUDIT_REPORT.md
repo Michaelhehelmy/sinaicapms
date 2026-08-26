@@ -121,4 +121,4 @@ The SinaiCamps platform is **functionally complete** across all 5 business types
 | 4 | CSRF documentation | ✅ RESOLVED | `caf12d7` — `docs/security-guide.md` + README link |
 | 5 | npm dependency fix | ✅ RESOLVED | `f0e7f8f` — `@types/react` ^18.3.31, `@types/react-dom` ^18.3.7 |
 
-**All 5 audit recommendations resolved. Final test suite: 3,389 passing (1,364 backend + 1,869 frontend + 156 root).**
+**All 5 audit recommendations resolved. Migrations 0074-0077 fixed and deployed. Final test suite: 3,389 passing (1,364 backend + 1,869 frontend + 156 root).**

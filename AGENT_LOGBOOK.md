@@ -7240,3 +7240,14 @@ No test asserted the exact `allowMethods` array (backend vitest / root integrati
 - **Mock DB auto-wrapping**: Pass raw arrays to `.on()`, not `{ results: [...] }` — the mock auto-wraps to `{ results: rawArray, meta }`. Double-wrapping causes assertion failures.
 - **Mock DB custom meta**: Use function callback for custom meta (avoids double-wrapping): `.on(/pattern/, () => ({ meta: { changes: 0 } }))`.
 - **toCamel wire format**: Backend auto-converts snake_case DB columns to camelCase on the wire — assert on camelCase keys (e.g., `itemName` not `item_name`) in test expectations.
+- **Migration column name verification (2026-08-26)**: Always verify actual column names via `PRAGMA table_info()` before writing CREATE INDEX or ALTER TABLE. The production D1 schema may differ from what migrations assume. Key mismatches found:
+  - `pos_transactions` has `order_type` not `type`; `projects` has `project_type` not `type`
+  - `pos_shifts` has `cashier_id` not `staff_id`, `opening_time`/`closing_time` not `opened_at`/`closed_at`
+  - `inbox` has `severity`/`is_read` not `status`
+  - `meal_schedules` has `camp_id` not `project_id`
+  - `rooms_new` has `max_guests` not `capacity`, no `room_number` column
+  - `service_items` has no `assigned_worker_id` (only `service_bookings` got it in 0075)
+  - `inventory_adjustments` has `notes` (plural) not `note`
+  - `pos_products.reorder_point` already existed before 0075
+- **SQLite REPLACE() nesting**: Each `REPLACE(string, from, to)` call needs its own closing paren. `REPLACE(REPLACE(REPLACE(x, a, b, c, d, e, f))` passes 7 args to the outer call — wrong. Must be `REPLACE(REPLACE(REPLACE(x, a, b), c, d), e, f)`.
+- **D1 migration batching**: D1 splits migration files into batches of ~4 SQL statements. A single bad statement kills the entire batch. Use `CREATE INDEX IF NOT EXISTS` for idempotency.
