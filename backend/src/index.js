@@ -240,6 +240,7 @@ for (const [prefix, handler] of [
   ['/admin/crm', adminCrmRoutes],
   ['/admin/storefront', adminStorefrontRoutes],
   ['/admin/ai', adminAiRoutes],
+  ['/admin/audit', adminAuditRoutes],
 ]) {
   app.all(`/api${prefix}`, async (c) => {
     const auth = await superAdminGate(c.req.raw, c.env);
