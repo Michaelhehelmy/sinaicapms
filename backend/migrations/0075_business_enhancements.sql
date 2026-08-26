@@ -56,7 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_inv_adj_date ON inventory_adjustments(created_at)
 
 -- Supplier info on products (B2.4) — extend pos_products
 ALTER TABLE pos_products ADD COLUMN supplier_name TEXT;        -- text name (supplier_id already exists)
-ALTER TABLE pos_products ADD COLUMN reorder_point INTEGER DEFAULT 20;
+-- reorder_point already exists from earlier migration — skip
 
 
 -- ══════════════════════════════════════════════════════════════════════

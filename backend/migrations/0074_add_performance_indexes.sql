@@ -34,12 +34,11 @@ CREATE INDEX IF NOT EXISTS idx_pos_products_type ON pos_products(type);
 CREATE INDEX IF NOT EXISTS idx_pos_products_active ON pos_products(is_active, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_pos_products_stock ON pos_products(stock_quantity, min_stock_level);
 CREATE INDEX IF NOT EXISTS idx_pos_products_barcode ON pos_products(barcode);
-CREATE INDEX IF NOT EXISTS idx_pos_products_variant ON pos_products(variant_of);
 
 -- ── POS shifts: tenant + date range + staff ────────────────────────
 CREATE INDEX IF NOT EXISTS idx_pos_shifts_tenant ON pos_shifts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_pos_shifts_staff ON pos_shifts(staff_id);
-CREATE INDEX IF NOT EXISTS idx_pos_shifts_dates ON pos_shifts(opened_at, closed_at);
+CREATE INDEX IF NOT EXISTS idx_pos_shifts_staff ON pos_shifts(cashier_id);
+CREATE INDEX IF NOT EXISTS idx_pos_shifts_dates ON pos_shifts(opening_time, closing_time);
 
 -- ── POS users: tenant + role lookups ───────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_pos_users_tenant ON pos_users(tenant_id);
@@ -60,15 +59,14 @@ CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
 CREATE INDEX IF NOT EXISTS idx_rooms_camp ON rooms_new(camp_id);
 CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms_new(status);
 CREATE INDEX IF NOT EXISTS idx_rooms_floor ON rooms_new(floor);
-CREATE INDEX IF NOT EXISTS idx_rooms_capacity ON rooms_new(capacity);
 
 -- ── Customers: tenant scoping ──────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
 
--- ── Inbox: tenant + status + date ──────────────────────────────────
+-- ── Inbox: tenant + severity + date ────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_inbox_tenant ON inbox(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_inbox_status ON inbox(status);
+CREATE INDEX IF NOT EXISTS idx_inbox_severity ON inbox(severity);
 CREATE INDEX IF NOT EXISTS idx_inbox_date ON inbox(created_at);
 
 -- ── Promotions: tenant + active + date range ───────────────────────
@@ -86,7 +84,6 @@ CREATE INDEX IF NOT EXISTS idx_service_items_tenant ON service_items(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_service_items_def ON service_items(service_definition_id);
 CREATE INDEX IF NOT EXISTS idx_service_items_project ON service_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_service_items_status ON service_items(status);
-CREATE INDEX IF NOT EXISTS idx_service_items_worker ON service_items(assigned_worker_id);
 
 -- ── Service bookings: tenant + item + status + date ────────────────
 CREATE INDEX IF NOT EXISTS idx_service_bookings_tenant ON service_bookings(tenant_id);
@@ -108,13 +105,10 @@ CREATE INDEX IF NOT EXISTS idx_tenants_onboarding ON tenants(onboarding_status);
 CREATE INDEX IF NOT EXISTS idx_leads_tenant ON leads(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 
--- ── Meal schedules: project + date ─────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_meal_schedules_project ON meal_schedules(project_id);
+-- ── Meal schedules: camp + date ────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_meal_schedules_camp ON meal_schedules(camp_id);
 CREATE INDEX IF NOT EXISTS idx_meal_schedules_date ON meal_schedules(date);
 
 -- ── Restaurant tables (pos_tables): availability check ─────────────
 -- (Composite index for the most common query: available tables for a date+time)
 -- Already covered by idx_pos_tables_tenant + idx_pos_tables_status above.
-
--- ── Rooms_new: room_number lookups ─────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_rooms_number ON rooms_new(room_number);
