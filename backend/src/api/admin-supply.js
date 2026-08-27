@@ -14,30 +14,41 @@ const router = new Hono();
 router.get('/overview', async (c) => {
   const db = c.env.DB;
 
-  const [totalWarehouses, totalProducts, pendingPOs, lowStockItems, tenantBreakdown] = await Promise.all([
-    db.prepare('SELECT COUNT(*) as cnt FROM warehouses').first(),
-    db.prepare('SELECT COUNT(*) as cnt FROM pos_products WHERE is_active = 1').first(),
-    db.prepare("SELECT COUNT(*) as cnt FROM purchase_orders WHERE status IN ('draft', 'pending', 'ordered')").first(),
-    db.prepare('SELECT COUNT(*) as cnt FROM stock_quant WHERE quantity <= reorder_point AND reorder_point > 0').first(),
-    db.prepare(`
-      SELECT t.id as tenant_id, t.name as tenant_name,
-             COUNT(DISTINCT w.id) as warehouse_count,
-             COUNT(DISTINCT pp.id) as product_count
-      FROM tenants t
-      LEFT JOIN warehouses w ON w.tenant_id = t.id
-      LEFT JOIN pos_products pp ON pp.tenant_id = t.id AND pp.is_active = 1
-      GROUP BY t.id, t.name
-      ORDER BY product_count DESC
-    `).all(),
-  ]);
+  try {
+    const [totalWarehouses, totalProducts, pendingPOs, lowStockItems, tenantBreakdown] = await Promise.all([
+      db.prepare('SELECT COUNT(*) as cnt FROM warehouses').first(),
+      db.prepare('SELECT COUNT(*) as cnt FROM pos_products WHERE is_active = 1').first(),
+      db.prepare("SELECT COUNT(*) as cnt FROM purchase_orders WHERE status IN ('draft', 'pending', 'ordered')").first(),
+      db.prepare('SELECT COUNT(*) as cnt FROM stock_quant WHERE quantity <= reorder_point AND reorder_point > 0').first(),
+      db.prepare(`
+        SELECT t.id as tenant_id, t.name as tenant_name,
+               COUNT(DISTINCT w.id) as warehouse_count,
+               COUNT(DISTINCT pp.id) as product_count
+        FROM tenants t
+        LEFT JOIN warehouses w ON w.tenant_id = t.id
+        LEFT JOIN pos_products pp ON pp.tenant_id = t.id AND pp.is_active = 1
+        GROUP BY t.id, t.name
+        ORDER BY product_count DESC
+      `).all(),
+    ]);
 
-  return jsonResponse({
-    totalWarehouses: totalWarehouses?.cnt || 0,
-    totalProducts: totalProducts?.cnt || 0,
-    pendingPurchaseOrders: pendingPOs?.cnt || 0,
-    lowStockItems: lowStockItems?.cnt || 0,
-    tenantBreakdown: tenantBreakdown?.results || [],
-  });
+    return jsonResponse({
+      totalWarehouses: totalWarehouses?.cnt || 0,
+      totalProducts: totalProducts?.cnt || 0,
+      pendingPurchaseOrders: pendingPOs?.cnt || 0,
+      lowStockItems: lowStockItems?.cnt || 0,
+      tenantBreakdown: tenantBreakdown?.results || [],
+    });
+  } catch (e) {
+    console.error('[admin-supply] overview error:', e.message);
+    return jsonResponse({
+      totalWarehouses: 0,
+      totalProducts: 0,
+      pendingPurchaseOrders: 0,
+      lowStockItems: 0,
+      tenantBreakdown: [],
+    });
+  }
 });
 
 router.get('/purchase-orders', async (c) => {

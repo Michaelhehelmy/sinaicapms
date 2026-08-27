@@ -197,6 +197,11 @@ export async function handleAdminReportsRoute(request, env) {
   const auth = await superAdminGate(request, env);
   if (auth instanceof Response) return auth;
 
+  // GET /api/admin/reports — list available report templates (alias for /available)
+  if (method === 'GET' && path.length === 3 && path[2] === 'reports') {
+    return jsonResponse({ reports: REPORT_TEMPLATES });
+  }
+
   // GET /api/admin/reports/available
   if (method === 'GET' && path.length === 4 && path[3] === 'available') {
     return jsonResponse({ reports: REPORT_TEMPLATES });
