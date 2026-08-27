@@ -233,6 +233,15 @@ const superAdminGate = requireAuth({
   realmMismatch: { message: 'Unauthorized: Super Admin access required' },
   insufficientRole: { message: 'Unauthorized: Super Admin access required' },
 });
+
+// Auth middleware for Hono routers — strips the route prefix so the
+// sub-router sees relative paths (e.g. /overview instead of /api/admin/financials/overview).
+async function superAdminAuth(c, next) {
+  const auth = await superAdminGate(c.req.raw, c.env);
+  if (auth instanceof Response) return auth;
+  await next();
+}
+
 for (const [prefix, handler] of [
   ['/admin/financials', adminFinancialsRoutes],
   ['/admin/hr', adminHrRoutes],
@@ -241,35 +250,11 @@ for (const [prefix, handler] of [
   ['/admin/storefront', adminStorefrontRoutes],
   ['/admin/ai', adminAiRoutes],
   ['/admin/audit', adminAuditRoutes],
-]) {
-  app.all(`/api${prefix}`, async (c) => {
-    const auth = await superAdminGate(c.req.raw, c.env);
-    if (auth instanceof Response) return auth;
-    return handler.fetch(c.req.raw, c.env);
-  });
-  app.all(`/api${prefix}/*`, async (c) => {
-    const auth = await superAdminGate(c.req.raw, c.env);
-    if (auth instanceof Response) return auth;
-    return handler.fetch(c.req.raw, c.env);
-  });
-}
-
-// ── Super Admin: Settings, Subscriptions, Health, Performance, Reports ──
-// Mounted BEFORE the legacy catch-all so /api/admin/settings etc. match first.
-for (const [prefix, handler] of [
   ['/admin/settings', adminSettingsRoutes],
   ['/admin/subscriptions', adminSubscriptionsRoutes],
 ]) {
-  app.all(`/api${prefix}`, async (c) => {
-    const auth = await superAdminGate(c.req.raw, c.env);
-    if (auth instanceof Response) return auth;
-    return handler.fetch(c.req.raw, c.env);
-  });
-  app.all(`/api${prefix}/*`, async (c) => {
-    const auth = await superAdminGate(c.req.raw, c.env);
-    if (auth instanceof Response) return auth;
-    return handler.fetch(c.req.raw, c.env);
-  });
+  app.use(`/api${prefix}`, superAdminAuth);
+  app.route(`/api${prefix}`, handler);
 }
 
 // Legacy handlers (own auth gate — wrap for Hono compatibility)
