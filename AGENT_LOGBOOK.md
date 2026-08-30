@@ -8000,3 +8000,21 @@ The old fallback query changed from `SELECT id FROM projects WHERE tenant_id = ?
 **Verification**: backend 1869 / 63 (unit); trio E2E 17/17 (35.8s on warm servers after purge); live probes: super admin + `x-tenant-id: acaciacamp → 2 rows`, `marketplace → 1 row (GROUP BY tenant)`, `Vary: x-tenant-id` present.
 
 **Notes / gotchas**: see Persistent Learnings (wrangler dev crash, scope precedence, Vary, pollution purge runbook, directory GROUP BY). Migrations 0085/0086 still awaiting deploy-time application; all changes uncommitted.
+
+---
+
+## 2026-08-30 (afternoon) — Commit + production deploy (eac3df6)
+
+**Commit**: `eac3df6 feat: tenant→project hierarchy E2E coverage + drilldown tenant-scope fix + cache Vary` — 33 files, +5232/−583 (backend camps.js/project-links.js/project-items.js/index.js/response.js, migrations 0085/0086, panels CampsPanel/TenantDrilldown/SuperTenantsPanel/ProjectItemsPanel/AdminApp, api.ts/useQueryHooks/project-types, camp page localhost back-link, 3 E2E specs, unit tests, logbook). Prior-session admin-pillar backlog left uncommitted (84 files) — separate wave for later.
+
+**Deploy**: `./deploy.sh` → **🎉 Deployment Successful! (82s)**. Remote D1 reported "No migrations to apply!" (0085/0086 already on remote — tracker was current, tables live). Worker deployed (560 KiB), Pages `64331ecd`. Health checks all green (the two ⚠️ are by design: `/api/auth/login` 400 = bad-creds 4xx probe, `/pos` 404 = zone exclusivity).
+
+**Live verification (production)**:
+- `GET /api/camps` unauthenticated → `cache-control: no-store` (no caching → no leak).
+- `GET /api/camps` authed + `x-tenant-id: acaciacamp` → `cache-control: public, max-age=300, stale-while-revalidate=600` **`vary: x-tenant-id, Origin`** — B2 live.
+- Authed marketplace directory (`x-tenant-id: marketplace`) → full cross-tenant listing; acacia scope → exactly 1 row bound to `acaciacamp` — B1 live, multi-tenant isolation holds in production.
+- Live checks: sinaicamps.com `/` 200, `/camps` 200, `/rooms` 404 (zone guard), `/pos` 404 (designed), acaciacamp.com 200, `/api/tenants` 200.
+
+**Auth gotcha re-confirmed**: env/`.env` holds a stale `CLOUDFLARE_API_TOKEN` (`cfat_…`, invalid 9109). `deploy.sh` self-heals (validates Path 1 → 9109 → falls back to wrangler OAuth Path 2, which is still valid). Do NOT set a new token in `.env`; OAuth is the working path. Ad-hoc `wrangler whoami`/`d1` commands: run with `unset CLOUDFLARE_API_TOKEN` first.
+
+**State**: commit is local (NOT pushed — user hasn't requested push); production is live with both fixes; deployments of 0085/0086 no longer pending locally (remote already had them).
