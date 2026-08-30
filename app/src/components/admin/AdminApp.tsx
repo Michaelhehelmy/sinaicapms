@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/Toast';
 import type { Camp } from '@/hooks/useAdminData';
 import { useCampsQuery, useSettingsQuery, useInboxUnreadQuery, queryKeys } from '@/hooks/useQueryHooks';
 import { buildTenantTheme } from '@/lib/theme';
+import { getPrimaryOperation } from '@/lib/project-types';
 import { parseHashTab, onNavigation, push } from '@/lib/navigation';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -58,6 +59,7 @@ const adminQueryClient = new QueryClient({
 const DashboardPanel = React.lazy(() => import('./DashboardPanel'));
 const CampsPanel = React.lazy(() => import('./CampsPanel'));
 const RoomsPanel = React.lazy(() => import('./RoomsPanel'));
+const ProjectItemsPanel = React.lazy(() => import('./ProjectItemsPanel'));
 const OrdersPanel = React.lazy(() => import('./OrdersPanel'));
 const SettingsPanel = React.lazy(() => import('./SettingsPanel'));
 const PasswordPanel = React.lazy(() => import('./PasswordPanel'));
@@ -138,6 +140,21 @@ const TENANT_NAV: NavItem[] = [
 
 /** Primary tabs surfaced on the mobile bottom nav (mobile-optimized subset). */
 const MOBILE_NAV_IDS = ['dashboard', 'camps', 'rooms', 'reservations', 'calendar'];
+
+/**
+ * Type-aware inventory nav item (C3). The "rooms" tab keeps its stable id
+ * (deep links / the backend scope stay `/rooms`) but its label derives from
+ * the active project's primary operation manifest: camp→Rooms,
+ * supermarket→Products, transportation→Vehicles, restaurant→Menu, and
+ * custom/unknown types fall back to 'Rooms'.
+ */
+function getInventoryNav(activeProjectType: string): NavItem {
+  return {
+    id: 'rooms',
+    label: getPrimaryOperation(activeProjectType)?.label || 'Rooms',
+    icon: IconRooms,
+  };
+}
 
 /** Super-admin mobile bottom nav — the 3 super panels fit comfortably. */
 const SUPER_MOBILE_NAV_IDS = ['super_dashboard', 'super_tenants', 'super_reservations', 'super_financials', 'super_settings'];
@@ -238,9 +255,19 @@ function AdminAppInner() {
   const activeCampIds = useMemo(() => (activeCamp ? [activeCamp.id] : []), [activeCamp]);
   const activeCamps = useMemo<Camp[]>(() => (activeCamp ? [activeCamp] : []), [activeCamp]);
 
+  // Type-aware inventory (C3): the active project's project_type picks the
+  // primary operation from the operations manifest. Non-camp types (products,
+  // vehicles, menu items) swap the Rooms panel for ProjectItemsPanel.
+  const activeProjectType = activeCamp?.projectType || 'camp';
+  const inventoryOperation = getPrimaryOperation(activeProjectType);
+
   const isSuperAdmin = hasRole('super_admin');
-  // Phase 2: super admins get ONLY the super panels; tenant admins get the full tenant nav.
-  const navItems = isSuperAdmin ? SUPER_NAV : TENANT_NAV;
+  // Phase 2: super admins get ONLY the super panels; tenant admins get the full
+  // tenant nav — with the inventory (rooms) tab relabeled per project type.
+  const tenantNavItems: NavItem[] = TENANT_NAV.map((item) =>
+    item.id === 'rooms' ? { ...item, label: getInventoryNav(activeProjectType).label } : item,
+  );
+  const navItems = isSuperAdmin ? SUPER_NAV : tenantNavItems;
 
   // Single navigation stream: sidebar/mobile clicks push new `/admin/<tab>`
   // paths; browser back/forward and external pushes re-derive the tab here.
@@ -309,8 +336,24 @@ function AdminAppInner() {
         return <DashboardPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       case 'camps':
         return <CampsPanel onRefreshCamps={refreshCamps} />;
-      case 'rooms':
+      case 'rooms': {
+        // Type-aware inventory: non-camp project types whose primary operation
+        // is not the camp 'room' (supermarket→product, transportation→vehicle,
+        // restaurant→menu_item) render ProjectItemsPanel; camp/custom keep the
+        // legacy Rooms panel.
+        if (inventoryOperation && activeCamp && inventoryOperation.itemTypes[0] !== 'room') {
+          return (
+            <ProjectItemsPanel
+              projectId={activeCamp.id}
+              operation={inventoryOperation}
+              itemType={inventoryOperation.itemTypes[0]}
+              campIds={activeCampIds}
+              camps={activeCamps}
+            />
+          );
+        }
         return <RoomsPanel campIds={activeCampIds} camps={activeCamps} />;
+      }
       case 'rateplans':
         return <RatePlansPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'reservations':
@@ -443,7 +486,7 @@ function AdminAppInner() {
       ]
     : [
         {
-          items: TENANT_NAV.map((item) =>
+          items: tenantNavItems.map((item) =>
             item.id === 'inbox' && user?.tenantId ? { ...item, trailing: <InboxUnreadBadge /> } : item,
           ),
         },

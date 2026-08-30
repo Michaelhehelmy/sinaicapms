@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useCampsQuery, useSaveCampMutation, useDeleteCampMutation, useProjectMetaQuery, useSaveProjectMetaMutation } from '@/hooks/useQueryHooks';
+import { useCampsQuery, useSaveCampMutation, useDeleteCampMutation, useProjectMetaQuery, useSaveProjectMetaMutation, useProjectLinksQuery, useCreateProjectLinkMutation, useDeleteProjectLinkMutation } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -22,6 +22,7 @@ import {
 } from '@/lib/project-types';
 import type { MetaRow } from '@/lib/project-types';
 import type { Camp } from '@/hooks/useAdminData';
+import type { ProjectLink } from '@/lib/api';
 
 interface CampsPanelProps {
   onRefreshCamps: () => void;
@@ -63,11 +64,149 @@ const projectTypeOptions = [
   { value: 'custom', label: '📦 Custom' },
 ];
 
+/** Link-type choices for cross-project connections (backend default: `connection`). */
+const LINK_TYPE_OPTIONS = [
+  { value: 'connection', label: 'Connection' },
+  { value: 'serves', label: 'Serves' },
+  { value: 'supplies', label: 'Supplies' },
+  { value: 'transports', label: 'Transports' },
+];
+
 /**
- * Single-camp admin (B3): a tenant owns exactly one camp. When no camp exists
- * yet the empty state launches the listing wizard (camp + first room type +
- * rate plan in one flow); once a camp exists it is edited in place — there is
- * no "add another camp" button and no wizard entry point.
+ * "Connections" section for the currently edited project — cross-project
+ * links backed by /api/projects/links. Lists every link that touches the
+ * project (showing the OTHER side's name + type + the link type), lets the
+ * admin link the project to any other same-tenant project (excluding self
+ * and already-linked projects), and removes links with confirmation.
+ */
+function ProjectConnections({ projectId, camps }: { projectId: string; camps: Camp[] }) {
+  const { data: links, isLoading } = useProjectLinksQuery(projectId);
+  const createMutation = useCreateProjectLinkMutation();
+  const deleteMutation = useDeleteProjectLinkMutation();
+  const [selectedProject, setSelectedProject] = useState('');
+  const [linkType, setLinkType] = useState('connection');
+  const [removeTarget, setRemoveTarget] = useState<ProjectLink | null>(null);
+
+  const linkList = links ?? [];
+
+  // Projects that can still be linked: every camp except self and any project
+  // already touched by an existing link (links are unique per pair + type).
+  const linkedIds = new Set<string>();
+  for (const link of linkList) {
+    linkedIds.add(String(link.a.id));
+    linkedIds.add(String(link.b.id));
+  }
+  const available = camps.filter((c) => String(c.id) !== String(projectId) && !linkedIds.has(String(c.id)));
+
+  /** Return whichever end of the link is NOT the project being edited. */
+  const otherOf = (link: ProjectLink) =>
+    String(link.a.id) === String(projectId) ? link.b : link.a;
+
+  const handleAdd = () => {
+    if (!selectedProject) return;
+    createMutation.mutate(
+      { projectIdA: projectId, projectIdB: selectedProject, linkType },
+      { onSuccess: () => setSelectedProject('') },
+    );
+  };
+
+  const handleRemove = () => {
+    if (!removeTarget) return;
+    deleteMutation.mutate(removeTarget.id, {
+      onSuccess: () => setRemoveTarget(null),
+    });
+  };
+
+  return (
+    <div className="mt-6 pt-4 border-t border-gray-100" data-testid="project-connections">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-bold text-gray-800">Connections</h3>
+        <span className="text-xs text-gray-400">{linkList.length} linked</span>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">
+        Link this project to another one of your projects (e.g. a supermarket supplies a camp, or a
+        transport company serves it).
+      </p>
+
+      {isLoading ? (
+        <div className="text-sm text-gray-400 py-2">Loading connections…</div>
+      ) : linkList.length === 0 ? (
+        <p className="text-sm text-gray-400 py-2" data-testid="connections-empty">
+          No connections yet.
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100 border border-gray-100 rounded-lg" data-testid="connections-list">
+          {linkList.map((link) => {
+            const other = otherOf(link);
+            return (
+              <li key={link.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{other.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {other.projectType ?? 'project'} · {link.linkType}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRemoveTarget(link)}
+                  data-testid={`remove-link-${link.id}`}
+                >
+                  Remove
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-end">
+        <Select
+          label="Link to project"
+          options={available.map((c) => ({ value: String(c.id), label: c.name }))}
+          value={selectedProject}
+          onChange={(e) => setSelectedProject(e.target.value)}
+          placeholder={available.length === 0 ? 'No other projects to link' : 'Select a project'}
+          disabled={available.length === 0}
+          data-testid="link-project-select"
+        />
+        <Select
+          label="Link type"
+          options={LINK_TYPE_OPTIONS}
+          value={linkType}
+          onChange={(e) => setLinkType(e.target.value)}
+          data-testid="link-type-select"
+        />
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={handleAdd}
+          disabled={!selectedProject || available.length === 0 || createMutation.isPending}
+          data-testid="add-link-button"
+        >
+          {createMutation.isPending ? 'Adding…' : 'Add'}
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        title="Remove Connection"
+        message={`Remove the connection to ${removeTarget ? otherOf(removeTarget).name : ''}?`}
+        confirmLabel={deleteMutation.isPending ? 'Removing…' : 'Yes, Remove'}
+        danger
+        onConfirm={handleRemove}
+        onCancel={() => setRemoveTarget(null)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Projects admin: a tenant can own one or more camps (multi-project). The empty
+ * state launches the listing wizard (camp + first room type + rate plan in one
+ * flow) for the first project; once a project exists the header toolbar exposes
+ * an "Add Project" action so additional projects can be created via the same
+ * create form (POST path), and existing ones are edited in place.
  */
 export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
   const { data: camps, isLoading: loading } = useCampsQuery();
@@ -137,6 +276,19 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
       notes: camp.notes || '',
     });
     setProjectType(camp.projectType && PROJECT_TYPES[camp.projectType] ? camp.projectType : 'camp');
+    setMetaValues({});
+    metaSeededForId.current = null;
+    setShowForm(true);
+  }, []);
+
+  /**
+   * Open the create form in CREATE mode (editingId = null → POST path). All
+   * state is reset so a previously edited project's values never leak through.
+   */
+  const openCreate = useCallback(() => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setProjectType('camp');
     setMetaValues({});
     metaSeededForId.current = null;
     setShowForm(true);
@@ -213,13 +365,25 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
     // so this branch is unreachable from the UI. Kept for type-safety.
     /* v8 ignore next */
     if (!deleteTarget) return;
-    deleteMutation.mutate(deleteTarget, {
-      onSuccess: () => {
-        setDeleteTarget(null);
-        onRefreshCamps();
+
+    // Marketplace directory rows carry the owning tenant (tenant_id/tenantId).
+    // Forward it so the backend super_admin ?tenantId= override scopes this
+    // delete to the right tenant instead of the marketplace header scope.
+    const row = campList.find((c) => String(c.id) === String(deleteTarget)) as
+      | (Camp & { tenant_id?: string; tenantId?: string })
+      | undefined;
+    const tenantId = row?.tenant_id ?? row?.tenantId;
+
+    deleteMutation.mutate(
+      tenantId ? { id: deleteTarget, tenantId } : deleteTarget,
+      {
+        onSuccess: () => {
+          setDeleteTarget(null);
+          onRefreshCamps();
+        },
       },
-    });
-  }, [deleteTarget, deleteMutation, onRefreshCamps]);
+    );
+  }, [deleteTarget, deleteMutation, onRefreshCamps, campList]);
 
   const updateField = (field: keyof CampForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -232,6 +396,21 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
           <h2 className="text-xl font-bold text-gray-800">Projects</h2>
           <p className="text-sm text-gray-500 mt-0.5">Manage your projects — camps, supermarkets, and other business locations.</p>
         </div>
+        {campList.length > 0 && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={openCreate}
+            data-testid="add-project-button"
+            leftIcon={
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            }
+          >
+            Add Project
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -292,6 +471,7 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
       <FormModal
         open={showForm}
         title={editingId ? 'Edit Project' : 'Create Project'}
+        size={editingId ? 'lg' : 'md'}
         onClose={() => {
           setShowForm(false);
           setEditingId(null);
@@ -384,6 +564,12 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
             excludeMetaKeys={CORE_OWNED_META_KEYS}
           />
         </div>
+
+        {/* Cross-project connections — only meaningful once the project exists
+            (edit mode), so hide it during CREATE. */}
+        {showForm && editingId && (
+          <ProjectConnections projectId={editingId} camps={campList} />
+        )}
       </FormModal>
 
       <ConfirmDialog

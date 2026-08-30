@@ -11,8 +11,14 @@ const forbidden = Astro.locals.routeForbidden;
 if (forbidden) Astro.response.status = 404;
 
 const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
-const isMarketplace = Astro.url.hostname === 'sinaicamps.com' || Astro.url.hostname === 'www.sinaicamps.com';
-const marketplaceUrl = isMarketplace ? '/' : 'https://sinaicamps.com/';
+// The marketplace back-link should resolve to the local marketplace root in
+// local dev, otherwise it points at the production origin (which would yank a
+// developer/E2E run out of the running site). Mirror the isLocal logic from
+// middleware/tenant.ts getApiBase().
+const host = Astro.url.hostname;
+const isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost') || host.endsWith('.127.0.0.1');
+const isMarketplace = host === 'sinaicamps.com' || host === 'www.sinaicamps.com';
+const marketplaceUrl = isMarketplace || isLocal ? '/' : 'https://sinaicamps.com/';
 
 let tenant: Record<string, unknown> | null = null;
 let roomTypes: Record<string, unknown>[] = [];
@@ -23,7 +29,7 @@ if (!forbidden) {
     const [tenantRes, productsRes, projectsRes] = await Promise.all([
       ssrFetch(`/tenants/${id}`),
       ssrFetch(`/products`, { headers: { 'x-tenant-id': String(id) } }),
-      ssrFetch(`/projects`, { headers: { 'x-tenant-id': String(id) } }),
+      ssrFetch(`/camps`, { headers: { 'x-tenant-id': String(id) } }),
     ]);
     if (tenantRes.ok) tenant = (await tenantRes.json()) as Record<string, unknown>;
     if (productsRes.ok) roomTypes = await productsRes.json() as Record<string, unknown>[];

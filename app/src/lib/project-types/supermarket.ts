@@ -47,4 +47,5 @@ export const supermarketProjectType: ProjectTypeSchema = {
       placeholder: 'e.g., Points card, Member discounts',
     },
   ],
+  operations: [{ itemTypes: ['product'], label: 'Products', icon: '🛒', primary: true }],
 };

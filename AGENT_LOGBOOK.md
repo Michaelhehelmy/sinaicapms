@@ -18,6 +18,11 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 - **Response helper signatures (2026-08-25)**: `jsonResponse(data, status)` and `errorResponse(message, status, errors)` — NEVER pass the Hono context `c` as first arg. services.js had this systematic bug across 20+ endpoints. `validationError(parsed, status)` takes the Zod safeParse result, not `(c, parsed.error)`.
 - **order_items has no tenant_id (2026-08-25)**: The table only has: id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at, split_group, course_number, course_status. Tenant isolation is via `order_id` → `orders.tenant_id` FK. Never filter order_items by tenant_id.
 - **D1 atomic patterns (2026-08-25)**: Use `DB.batch()` for multi-statement atomicity. Use `WHERE col + ? >= 0` guards for stock/concurrency. Use `INSERT ... SELECT WHERE NOT EXISTS` for race-safe inserts. D1 has no conditional abort between batch statements.
+- **Tenant-scope precedence (2026-08-30, B1)**: `camps.js` (and any drill-down–aware module) resolves request tenant as: REAL tenant admin's own `user.tenantId` ALWAYS wins (cannot escape via `x-tenant-id` hint) → marketplace-scoped super admin honors an EXPLICIT real-tenant scope hint (TenantDrilldown) → else marketplace directory (scope hint or `'marketplace'`). Implemented once in `resolveTenantId(user, scopeTenantId)` at camps.js:133 and used at ALL 5 resolutions (GET ×2, POST, PUT, DELETE). PUT/DELETE keep the `isMarketplaceTenant(tenantId) && user?.role==='super_admin'` owning-tenant resolution branches (only fire when no real tenant scope is effective).
+- **`cachedJsonResponse` MUST vary on `x-tenant-id` (2026-08-30, B2)**: `Cache-Control: public, max-age=300` with no `Vary` means the browser AND the Cloudflare CDN key by URL alone → tenant A's response gets served to tenant B for identical URLs (verified cross-tenant leak). response.js now sets `Vary: x-tenant-id`. `jsonResponse` stays `no-store`. Same-URL/same-header "stale response" assertions still need spec-level `page.route('**/api/v1/camps')` cache busters.
+- **wrangler dev crashes under sustained E2E load (2026-08-30)**: local `npx wrangler dev --port 8787 --local` (miniflare workerd) dies after ~15–17 minutes of continuous Playwright traffic (no error in log — it just stops; ports go dead). Symptom: mid-run `TypeError: fetch failed` at `apiRequest` login + waves of `content-area` 10s waits + mass cascades. The full 218-test `--project=admin` local gate CANNOT reliably finish in one shot. Mitigations: run targeted specs (<10 min) on warm servers; warm with curl login + `GET /api/camps` + `GET /admin`; use `setsid ... </dev/null >log 2>&1 &` to keep dev servers alive across tool sessions; when a run dies, KILL orphaned `workerd` processes before rerunning (they wedge — accept TCP, never respond → `UND_ERR_HEADERS_TIMEOUT`). CI (fresh DB, workers=1, retries=2) is the real full-gate environment.
+- **E2E test data pollution (2026-08-30)**: `playwright.config.ts` has ONLY `globalSetup` (creates a test tenant + admin per run) and NO `globalTeardown` → every run leaks tenants/admins; killed runs leak more. ~70 tenants + 49 admins accumulated. `/api/admin/tenants` and `/api/admin/admins` are PAGINATED (pageSize default 50) → seed rows (acaciacamp) fall off page 1 and DOM-content assertions (`content.toContain(email)`) break at scale. Purge runbook (dev D1 sqlite at `backend/.wrangler/state/v3/d1/miniflare-D1DatabaseObject/*.sqlite`): delete tenants except `acaciacamp`/`michaelshouse`/`marketplace`, delete `admins` NOT IN (`admin@sinaicamps.com`,`e2e-admin@test.com`) AND email LIKE e2e-%/iso-%/double-%/edge-%/crud-%/lifecycle-%/diag-%, delete their `projects`. State-dependent spec known-fragile on a truly clean DB: `crud-execution.spec.ts:33` "no create button for tenant with existing camp" relies on leftover camps pollution; it targets TEST_TENANT (acacia), which HAS camps — it fails only when the backend is down/empty-state renders.
+- **Marketplace camps directory groups by tenant (2026-08-30)**: `GET /api/camps` cross-tenant (marketplace) SELECT is `... GROUP BY c.tenant_id` (one row per tenant); the tenant-scoped SELECT returns ALL of that tenant's projects. Directory presence assertions must not expect every project of every tenant.
 
 - **Initial Setup**: Universal OpenCode workspace successfully configured and bootstrapped.
 - **Backend Merge**: Main backend and POS backend merged into a single Hono-based Cloudflare Worker at `backend/src/index.js`. POS routes inlined under `/api/pos/*` — no more `fetch()` proxy.
@@ -134,6 +139,114 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 ---
 
 ## Task Logs
+
+### [2026-08-29] B1 super-admin drilldown tenant-scope fix — `camps.js` (backend agent)
+
+**Task**: Fix a confirmed backend bug where `TenantDrilldown` (super admin drills into a tenant) sent the right `x-tenant-id: <drill-tenant>` scope hint, but `backend/src/api/camps.js` resolved `tenantId = user?.tenantId || scope.tenantId` and super-admin JWTs carry `tenantId: 'marketplace'` (auth.js:155), so `user.tenantId` ('marketplace') WON over the explicit real-tenant hint → the drilldown's `CampsPanel` showed the cross-tenant marketplace DIRECTORY instead of the drilled tenant's projects.
+
+**Files changed** (ONLY these two):
+- `backend/src/api/camps.js`: Added a `resolveTenantId(user, scopeTenantId)` precedence resolver (after `isMarketplaceTenant`): a REAL tenant admin's `user.tenantId` always wins (cannot escape via the hint); a marketplace-scoped super admin honors an EXPLICIT real-tenant scope hint (drilldown), falling back to `scopeTenantId || userTenantId || null` (marketplace directory). Applied at ALL 5 `tenantId` resolutions: GET `/` (line ~198), GET `/:id` (~223), POST `/` (~247), PUT `/:id` (~308), DELETE `/:id` (~389). Both GET resolutions now read `getScope(c).user` (NOT `c.get('user')`) — required for the `mountRouter` unit-test harness. The `isMarketplaceTenant(tenantId) && user?.role === 'super_admin'` owning-tenant branches in PUT/DELETE are preserved verbatim (they only fire when no real tenant scope is effective, i.e. marketplace-directory mutations).
+- `backend/tests/camps-unit.test.js`: Added describe block `handleCampsRoute — super admin drilldown honors real-tenant scope hint (B1)` with 4 tests: (1) marketplace super admin honors explicit real-tenant hint → tenant-scoped SQL, no `LEFT JOIN tenants`; (2) marketplace super admin without real hint → cross-tenant directory path; (3) tenant admin CANNOT escape via spoofed hint → stays on own tenant; (4) super admin drilldown POST writes to the drilled tenant (not 'marketplace').
+
+**Behavior matrix (verified)**:
+- Tenant admin (real `user.tenantId`) + any hint → user's tenant (D1 property, unchanged).
+- Super admin (`user.tenantId='marketplace'`) + real-tenant hint → THE SCOPE TENANT (the fix).
+- Super admin + 'marketplace'/empty hint → marketplace directory (unchanged).
+- Unauthenticated + hint X → X (public tenant host, unchanged).
+
+**Test result**: `cd backend && npx vitest run tests/camps-unit.test.js` → 94 passed (90 existing + 4 new). Full `cd backend && npx vitest run` → **63 files, 1868 passed** (ALL green). Existing D1 hierarchy tests (P0-1 `tenant-scope hierarchy` + `super_admin resolves owning tenant`) still pass — not weakened. No frontend/other-backend/migration changes.
+
+---
+
+### [2026-08-29] Type-aware subjects E2E spec — `project-type-subjects.spec.ts` (tmp agent T2)
+
+**Task**: Author ONE new Playwright spec proving the type-aware subjects feature: a tenant whose PRIMARY project is `transportation` renders `ProjectItemsPanel` (vehicle subjects) instead of `RoomsPanel`, plus the two-project links UI. Done condition = `npx playwright test tests/e2e/specs/admin/project-type-subjects.spec.ts --list` lists tests without TS/import errors.
+
+**Files changed**:
+- `tests/e2e/specs/admin/project-type-subjects.spec.ts` (new, 5 serial tests + `test.afterAll` cleanup).
+
+**Key design decision (deviation to report)**: The brief's step 2 wanted the primary `transportation` project created via the UI "Add Project" form — but `add-project-button` only renders once `campList.length > 0` (CampsPanel `{campList.length > 0 && ...}`), and on a fresh tenant the only affordance is EmptyState "Create Project" → `ListingWizard`, which has NO project-type selector (always camp). Since `AdminApp` keys `activeCamp = camps[0]`, the primary transportation project **must** be created via `POST /api/camps { projectType: 'transportation' }` (API, test 1 setup) — everything else flows through the UI as the brief describes (camps row assert, Vehicles panel + vehicle item via `add-item-btn`, second `camp` project via the Project Type create-form select, links UI on both sides).
+
+**Verified during authoring** (selectors/contracts): `AdminApp.tsx` rooms-tab gating (~lines 339-355) renders `ProjectItemsPanel <projectId={activeCamp.id} itemType='vehicle'>` for transportation; `ProjectItemsPanel` form has NO Item Type select when `itemType` is fixed (fields: Name* / Base Price / Quantity via placeholders); `Select` is a native `<select>` for non-searchable (spreads `data-testid` onto `<select>`); camps create form exposes `Project Type` select (default `camp`) + `modal-save`; connections only in EDIT mode (`link-project-select`/`link-type-select`/`add-link-button`/`connections-list`/`connections-empty`/`remove-link-<id>`); backend `POST /api/tenants` requires `admin_password` and auto-provisions admin, `POST /api/camps` persists `project_type` (default camp when omitted) and returns camelCase via `toCamel`; `project_items`/`project_links` are admin-scoped `/api/projects/{items,links}` requiring Bearer + `x-tenant-id`, and are NOT in the tenant-delete cascade (`buildTenantCascadeStmts` deletes projects but not project_items/project_links — cleanup deletes them explicitly first).
+
+**Gotchas**: Uniqueness (`Date.now()` + random) generated INSIDE test bodies, never module-level (Per-run unique tenant id + subdomain keeps re-runs idempotent regardless of orphan rows). `apiRequest` returns a raw fetch `Response` (`res.ok`/`res.status` properties, `await res.json()`). Tenant-admin API login needs `tenantId` in the body (401 without it). All `page.goto` must use `{ waitUntil: 'domcontentloaded' }` (AdminDashboardPage already does).
+
+**Test result**: `npx playwright test tests/e2e/specs/admin/project-type-subjects.spec.ts --list` → 5 tests listed, no TS/import errors. No `data-testid` additions were needed (all flows already have stable testids).
+
+### [2026-08-29] Type-aware inventory nav + drill-down gating (tmp agent C3)
+
+**Task**: Wire the project-type `operations` manifest (C1) into `AdminApp.tsx` and `TenantDrilldown.tsx` so the active project's `project_type` determines the inventory tab label and panel (camp→Rooms/RoomsPanel, supermarket→Products, transportation→Vehicles, restaurant→Menu → `ProjectItemsPanel` for non-camp), without touching `project-types/*`, `ProjectItemsPanel.tsx` (C2), `CampsPanel.tsx` (C4), or backend files.
+
+**Files changed** (only these two):
+- `app/src/components/admin/AdminApp.tsx`: Added `getInventoryNav(activeProjectType)` module helper (returns the `rooms` NavItem relabeled from `getPrimaryOperation(type)?.label ?? 'Rooms'`, icon stays `IconRooms`; static `TENANT_NAV` untouched). Added lazy `ProjectItemsPanel` import. Derived `activeProjectType = activeCamp?.projectType ?? 'camp'` + `inventoryOperation = getPrimaryOperation(activeProjectType)`, and a per-render `tenantNavItems` that relabels the rooms item — used for BOTH `navItems`/mobile bottom nav (MOBILE_NAV_IDS includes 'rooms') and the sidebar groups. The `tab === 'rooms'` case now renders `<ProjectItemsPanel projectId={activeCamp.id} operation={inventoryOperation} itemType={inventoryOperation.itemTypes[0]} campIds={activeCampIds} camps={activeCamps} />` when the primary op exists and its `itemTypes[0] !== 'room'`; camp/custom fall back to `RoomsPanel`.
+- `app/src/components/admin/TenantDrilldown.tsx`: Same type-aware derivation in `DrilldownContent`; the drill tab list shows the operation label for the `rooms` view (`v === 'rooms' ? roomsLabel : VIEW_LABELS[v]`), and the `rooms` view renders `ProjectItemsPanel` (eager import, matching the file's panel-import style) for non-camp primary ops, `RoomsPanel` otherwise.
+
+**Gotchas**: The `NavItem.icon` type must stay a React component — the manifest's emoji icon can't be dropped into it, so label-only relabeling with `IconRooms` preserved. Keep the rooms tab id stable (`/admin/rooms`) so deep links and backend scope are untouched. In `TenantDrilldown`, `ProjectItemsPanel`'s `useProjectItemsQuery` comes from the mocked `@/hooks/useQueryHooks` in tests → resolves to `undefined` but is never called in camp mode (camp is the default), so eager import is safe.
+
+**Test result**: `cd app && npx vitest run` → **2771 passed (120 files)**; targeted `AdminApp.test.tsx` + `admin-app-extra.test.tsx` + `TenantDrilldown.test.tsx` → 90 passed. tsc `--noEmit` shows zero errors in `AdminApp.tsx`/`TenantDrilldown.tsx` (the ~624 pre-existing errors are in other panels — AnalyticsPanel, AuditLogPanel, HRPanel, etc.). Verified behavior with a throwaway test (supermarket → sidebar+mobile "Products", rooms tab → ProjectItemsPanel with `c1:Products:product`; camp/custom → "Rooms" + RoomsPanel; drilldown non-camp → Products label + ProjectItemsPanel) then deleted it.
+
+### [2026-08-29] CampsPanel "Add Project" entry point (multi-project per tenant) — frontend agent (tmp B)
+
+**Task**: Give tenant admins a way to create a SECOND+ project (camp). Previously CampsPanel only showed "Create Project" in the EmptyState (zero camps) and otherwise only allowed in-place editing of the single camp. Prereqs done by siblings: backend `POST /api/camps` no longer 409s when a tenant already has a project (A1), and status schema accepts `'planning'` (A5).
+
+**Files changed**:
+- `app/src/components/admin/CampsPanel.tsx`: Replaced the stale single-camp block comment with a multi-project one. Added an `openCreate` callback that resets `editingId=null`, `form=emptyForm`, `projectType='camp'`, `metaValues={}`, `metaSeededForId.current=null` and opens the create FormModal (POST path). Added an "Add Project" Button in the header toolbar rendered when `campList.length > 0` (`data-testid="add-project-button"`). The button opens the existing create form (not the wizard); 0-camp case still uses the wizard via EmptyState.
+- `app/tests/unit/CampsPanel.test.tsx`: Added 4 tests — button present with ≥1 camp; button absent in empty state; clicking Add Project enters CREATE mode (submit label "Save Project") and triggers the POST `useSaveCampMutation(undefined)` + `onRefreshCamps`; and a stale-state does-not-leak test (edit a camp → open Add Project → name/type reset).
+
+**Notes**: `useSaveCampMutation(undefined)` is already the POST path (see `useQueryHooks.ts`), so `saveMutation = useSaveCampMutation(editingId ?? undefined)` produces POST when `editingId` is null with no further wiring; `handleSave` → `persistMetaAndClose` → `finish()` (which calls `onRefreshCamps`) when `editingId` is null. Did NOT touch `ListingWizard.tsx`, backend, migrations, `@/lib/api`, or `@/lib/project-types`.
+
+**Test result**: `cd app && npx vitest run tests/unit/CampsPanel.test.tsx` → 25 passed; also `AdminApp.test.tsx` + `admin-app-extra.test.tsx` + `TenantDrilldown.test.tsx` → 90 passed (no regressions).
+
+### [2026-08-28] AIPanel.tsx function coverage — ~84% → 100% functions / 99.5% statements — frontend agent
+
+**Task**: Increase function coverage of `app/src/components/admin/AIPanel.tsx` (5-tab AI & Intelligence panel). Baseline: ~20 functions uncovered (~84% lines). Constraint: no `src/` edits, no touching the existing `ai-analytics.test.tsx`.
+
+**Files changed**: `app/tests/unit/components/admin/ai-panel-extra.test.tsx` (new, self-contained, mirrors the mocks in `ai-analytics.test.tsx`).
+
+**Coverage result (AIPanel.tsx, extras + existing combined)**: functions **100.0% (74/74)**, statements **99.5% (181/182)**, every previously-uncovered reachable handler now exercised:
+- Price-rule modal inputs: Product ID, Min Price, Max Price, Rule Type select, plus modal `onClose` (fn#46).
+- Automation-rule modal inputs: Condition (JSON), Action (JSON), modal `onClose` (fn#59).
+- Forecast: empty-state "Run Forecast" action (fn#42), "New Forecast" button on the forecast dashboard (fn#43), Period select (fn#71/72), modal `onClose` (fn#68).
+- Delete-confirmation modal `onClose` (fn#73).
+- Error paths: automation save catch (fn#7 stmt line 216), automation-toggle catch (line 226), forecast-run catch (line 256), price-rule delete catch (line 239).
+- Inactive automation rule → "Activate" toggle branch; logs tab with `result: 'success'`.
+
+**Remaining uncovered (dead/unreachable)**: exactly **1 statement** — line 232 `if (!deleteTarget) return;` inside `handleDelete`. `handleDelete` is only wired to the delete-confirmation FormModal's `onSubmit`, and that modal renders only when `deleteTarget` is truthy (`{deleteTarget && <FormModal ...>}`), so when the handler runs the guard is always false → unreachable dead code. Cannot be exercised without a src edit (per the no-src-edit constraint).
+
+**KNOWN BUG — documented, NOT tested (do not edit src/)**: `AIPanel`/`AnalyticsPanel` pass `variant="danger"` to `<Badge>` (AIPanel line 393 `l.result === 'success' ? 'success' : 'danger'`; the Badge component only defines `variantStyles.error`, not `danger`) → `style.bg` is `undefined` and Badge throws `TypeError` when an automation log has `result !== 'success'` (e.g. `'canceled'`/`'out_of_stock'`). Every new log test intentionally uses `result: 'success'` to avoid tripping the bug. Reaching the non-success Badge branch would need either a src fix (`'danger'` → `'error'`) or skipping that render — neither was allowed here.
+
+**Pattern notes / gotchas**:
+1. Mock exactly like `ai-analytics.test.tsx` (hoisted `vi.hoisted` state for `useQueryHooks` + `@/lib/api`; the Select mock re-renders as a native `<select data-testid="native-select">` so drive-change is simple; scope selects/inputs with `within(getByTestId('modal-content'))`).
+2. `useToast` is mocked to NOT render DOM text, so assert on `mockShowToast` inside `waitFor` — never `findByText('Rule toggled.')` (the existing suite's pattern).
+3. The forecast empty-state and the forecast header BOTH render "Run Forecast", so use `getAllByText('Run Forecast')[1]` (empty-state renders after the header) to hit the distinct fn#42 action.
+4. `queryClient` per-render (`new QueryClient({ defaultOptions: { queries: { retry: false } } })`) keeps assertion runs isolated.
+
+**Test result**: 17 passed / 0 failed (new file); 55 passed / 0 failed when run with `ai-analytics.test.tsx` (38 + 17).
+
+### [2026-08-28] AdminApp.tsx coverage boost — 76% → 99.2% statements / 100% functions — frontend agent
+
+**Task**: Raise coverage of `app/src/components/admin/AdminApp.tsx` (SPA host). Baseline: 57 statements + 28 functions uncovered (~76%). Constraint: no `src/` edits, no touching the existing `AdminApp.test.tsx`.
+
+**Files changed**: `app/tests/unit/admin-app-extra.test.tsx` (new, self-contained on top of the existing suite).
+
+**What was done**: 41 new tests covering every remaining lazy-render + `renderPanel` switch case:
+- All 12 non-primary tenant panels (`analytics, promotions, services, service-bookings, staff, financials, hr, supply, crm, storefront, ai, billing`) via `it.each` deep-link paths (`/admin/<tab>`).
+- All 13 optional super panels (`super_financials/hr/supply/crm/storefront/ai/users/settings/audit/subscriptions/reports/health/performance`) in super-admin mode.
+- Panel callbacks: `CampsPanel.onRefreshCamps` → `queryClient.invalidateQueries(['admin','camps'])` (asserted via `vi.spyOn(QueryClient.prototype,'invalidateQueries')`); `InboxPanel.onOpenOrder` → `switchTab('reservations')` + URL push.
+- `onNavigation` kernel listener: applies `/admin` paths (popstate broadcast), ignores non-`/admin` paths.
+- `InboxNavBadge` edges: 0/null hides, 150 caps at `99+`, tenant scoping.
+- No-camp generic badge, userDisplayName fallback chain (name→email→fullName→'Admin'), no-primaryColor theme, non-`#tab=` hashchange ignored, root `/admin` path → dashboard fallback.
+
+**Coverage (AdminApp.tsx, extras + existing combined)**: statements **99.2%** (236/238), functions **100.0%** (76/76), branches **97.7%**. Remaining uncovered = 2 statements (lines 175 & 181) + 1 branch (line 260 idx 1) — all **SSR / defensive type guards unreachable in jsdom** (`typeof window === 'undefined'` in `getInitialTab`; `typeof pathname !== 'string'` in `tabFromLocation`; `window.location.hash ?? ''` nullish leg).
+
+**Test result**: 41 passed / 0 failed (new file); 85 passed / 0 failed when run with `AdminApp.test.tsx`. No `src/` files or the existing test were modified.
+
+**Pattern notes / gotchas**:
+1. **Mock `@/lib/session` fully** — `AdminApp` imports `LoginForm` which pulls `@/lib/api` (module-level `session.onAuthChange(...)`). A partial session mock (`{ getAccessToken }`) throws `session.onAuthChange is not a function` at import time. Mock all of: `getAccessToken, getRefreshToken, setTokens, clear, getUser, setUser, onAuthChange`.
+2. **Do NOT mock `@tanstack/react-query`'s `QueryClient`** — `QueryClientProvider` mounts the client and needs real methods (`client.mount is not a function` if you return a bare stub). Instead use the real client and `vi.spyOn(QueryClient.prototype,'invalidateQueries').mockImplementation(...)`; reset the spy each `beforeEach`.
+3. **`onNavigation` kernel test**: don't rely on `history.pushState` + manual `popstate` — jsdom doesn't reliably sync the overridden `window.location` with history. Instead `setLocation(newPath); fireEvent(window, new Event('popstate'))` — the installed listener reads `window.location.pathname` at emit time, so the new path is honored and the effect's `tabFromLocation` re-derives the tab.
+4. Existing `AdminApp.test.tsx` panels are mocked as bare `<div>`s, so its shell can't trigger panel callbacks; the extra file re-mocks `CampsPanel`/`InboxPanel` as buttons that invoke their props (`onRefreshCamps`/`onOpenOrder`) to reach the covered branches.
+5. `it.each` over `[tabId, testId]` tuples keeps the 25 panel-render tests compact; super tests flip `hasRole = () => true`.
 
 ### [2026-08-24] 0068 trigger fix + Promotions Engine + POS low-stock alerts — tmp agent
 
@@ -7561,3 +7674,329 @@ Comprehensive audit and fix of all frontend domains to ensure 100% real-data-dri
 1. **Admin route mounting**: `handleAdminHealthRoute`, `handleAdminPerformanceRoute`, `handleAdminReportsRoute`, `adminSettingsRoutes`, `adminSubscriptionsRoutes` need to be mounted in `index.js`. Currently imported but not wired → 404s on those endpoints.
 2. **Vite warnings**: ~30 "not exported" warnings for named imports in SupplyPanel, StorefrontPanel, AIPanel (non-fatal, they use `import * as api` pattern). Clean these up for zero-warning builds.
 3. **SystemHealthPanel bundle**: 368.90 KB (gzip 108.55 KB) due to recharts — likely pulling the entire library. Consider lazy loading or tree-shaking config.
+
+---
+
+## Task: Deep Audit — Full-Stack Comprehensive Review
+**Date:** 2026-08-27  
+**Orchestrator:** big-pickle (system)
+
+### What Was Done
+Completed a comprehensive deep audit of the entire SinaiCamps codebase across 8 domains:
+1. **Public pages & zone guards** — Marketplace, onboarding, signup lack ZoneGuard
+2. **Backend route wiring** — Found 2 dead imports (admin-users.js, admin-stats.js)
+3. **Database schema vs code** — Phantom table `password_reset_tokens`, dead tables `languages`/`tenant_usage`
+4. **Frontend API client** — 155 functions cataloged, raw `fetch()` calls documented
+5. **React Query hooks** — 2 unused hooks found (`useCategoriesQuery`, `useAdminsQuery`)
+6. **Admin panels** — Panels using direct mutations instead of hooks, missing error/empty states
+7. **POS subsystem** — 3 critical bugs, 6 warnings found
+8. **Cross-cutting concerns** — Auth consistency, error handling, tenant scoping, SSE, CORS, rate limiting
+
+### Key Discoveries
+- **POS barcode endpoint** (`pos-barcode.js`) passes Hono context `c` as first arg to `errorResponse()` — every error response is malformed JSON
+- **Kitchen board** starts orders at `confirmed` status, skipping `pending` — "New Orders" column always empty
+- **`tipAmount`** from frontend is silently dropped by backend Zod `.strip()` — never persisted
+- **4 super-admin overview handlers** missing try/catch around `Promise.all` DB queries
+- **Idempotency key** in POS doesn't verify caller ownership — cross-cashier data leak possible
+- **POS order list** missing `table_id` and `kitchen_status` columns — forces N+1 for kitchen board
+
+### Files Created/Modified
+- `docs/DEEP_AUDIT_2026_08_27.md` — Full audit report with 4 CRITICAL + 10 WARNING findings
+
+### New Persistent Learnings
+- **POS barcode errorResponse signature**: `errorResponse(c, msg, status)` is WRONG — always use `errorResponse(msg, status)`. The `c` context as first arg produces malformed JSON responses.
+- **POS kitchen_status starts at confirmed**: Orders are inserted with `kitchen_status = 'confirmed'` in `pos/index.js:771`. The `pending` column in the kitchen board is dead. Either change the insert or remove the column.
+- **POS idempotency key is tenant-scoped but not user-scoped**: Any POS user in the same tenant can replay another user's idempotency key and get their order back.
+- **Shared auth middleware dead path**: `sharedAuth.authMiddleware` is exported but never mounted as Hono middleware — silent auth bypass risk.
+
+### Test Counts
+- Frontend: 1,865 ✅
+- Backend: 1,580 ✅
+- Root: 156 ✅
+- **Total: 3,601** (unchanged — audit only, no code changes)
+
+---
+
+## Task: Audit Fix Sweep — All 12 Findings Resolved
+**Date:** 2026-08-27  
+**Orchestrator:** big-pickle (system)
+
+### What Was Done
+Fixed all 4 CRITICAL + 8 WARNING items from the deep audit. 2 items were false positives (W9 documented trade-off, W10 already had try/catch).
+
+### Fixes Applied
+
+| ID | Fix | File(s) |
+|----|-----|---------|
+| C1+C2 | Removed dead imports `handleAdminStatsRoute`, `handleAdminUsersList/Update/Delete` | `backend/src/index.js` |
+| C3 | Fixed `errorResponse(c, msg, status)` → `errorResponse(msg, status)` (4 calls) | `backend/src/api/pos-barcode.js` |
+| C4 | Added try/catch to overview + listing handlers in financials, HR, CRM, AI | `backend/src/api/admin-financials.js`, `admin-hr.js`, `admin-crm.js`, `admin-ai.js` |
+| W1 | Marked `sharedAuth.authMiddleware` as DEPRECATED with comment | `backend/src/middleware/sharedAuth.js` |
+| W2 | Added `table_id, kitchen_status` to `GET /pos/orders` SELECT | `backend/src/routes/pos/index.js` |
+| W3 | Changed `kitchen_status` from `'confirmed'` to `'pending'` on order insert | `backend/src/routes/pos/index.js` |
+| W4 | Added `tipAmount` to Zod schema + response (not persisted to DB yet — TODO migration) | `backend/src/routes/pos/index.js` |
+| W5 | Added `AND tenant_id = ?` to `category_lang` and `categories` DELETE | `backend/src/api/categories.js` |
+| W6 | Added `AND tenant_id = ?` to inventory re-read SELECT | `backend/src/api/inventory.js` |
+| W7 | Added `AND cashier_id = ?` to idempotency key lookup | `backend/src/routes/pos/index.js` |
+| W8 | Added `resolveScope({ dualRealm: true })` middleware to barcode route + updated handler to use `getScope(c).tenantId` | `backend/src/index.js`, `backend/src/api/pos-barcode.js` |
+| — | Updated test expectations for `kitchenStatus: 'pending'` | `backend/tests/pos-tables.test.js` |
+
+### Test Results
+- Backend: 1,580 ✅ (all pass)
+- Root: 156 ✅ (all pass)
+- **Total: 1,736 backend+root** (frontend unchanged at 1,865)
+
+### Remaining TODO
+- **W4 (tipAmount)**: Add `tip_amount` column to `pos_transactions` via migration to persist tips across sessions. Currently tip is accepted in schema and returned in response but not stored in DB.
+
+#### 2026-08-27 — Zero-Coverage Admin System Panels Unit Test Coverage
+- **Files changed:** `app/tests/unit/components/admin/system.test.tsx` (new, only test file touched; no src/ modified)
+- **What was done:** Wrote Vitest React unit tests for six 0%-coverage admin components: `UsersPanel`, `SystemHealthPanel`, `SystemSettingsPanel`, `TenantPerformancePanel`, `AuditLogPanel`, `SuperReportsPanel`.
+- **Coverage (line/stmts):** SystemHealthPanel 100/100, TenantPerformancePanel 100/100, UsersPanel 100/97.3, SuperReportsPanel 98.3/96.7, AuditLogPanel 98.6/95.2, SystemSettingsPanel 87.1/79.7. All ≥ 70% line target.
+- **Test result:** 54 passed / 0 failed.
+- **Pattern notes:** Mocked `@/hooks/useQueryHooks` per-panel (vi.fn) + a stub `queryKeys` (real `queryKeys` LACKS `adminSettings`, which SystemSettingsPanel reads — important), mocked `@/lib/api` + `@/lib/utils` + `@/lib/auth`, mocked UI primitives (DataTable/FormModal/ConfirmDialog/Select/Badge/Card/StatCard/LineChart), and wrapped renders in a fresh `QueryClientProvider` (required by SystemSettingsPanel's `useQueryClient`). All panels were mocked at the hook layer (not real react-query) to control loading/data/branch states.
+- **Gotchas hit:** (1) CSS `capitalize` classes do NOT transform text in jsdom — assert on raw text (`welcome Email`, `financial Reports`). (2) `getByLabelText` fails for labels without `htmlFor`/wrapping (Select mock, date inputs, modal Subject) — use `getAllByRole('combobox')`, `querySelectorAll('input[type=date]')`, `getByDisplayValue`. (3) useEffect state-population needs `findByText`/`waitFor` (or an explicit hook-mock with data) — don't assert effect-derived badges synchronously right after render. (4) The `useAdminSettingsQuery` beforeEach default was `{data: undefined}`; tests asserting rendered flags/emails must override it with sample settings. (5) UI text strings repeat across stat cards/headings/rankings/tables — prefer `getAllByText` when a value legitimately appears multiple times.
+
+#### 2026-08-27 — Zero-Coverage Admin Services/Promos/Billing Panels Unit Test Coverage
+- **Files changed:** `app/tests/unit/components/admin/services-promos-billing.test.tsx` (new, only test file touched; no src/ modified)
+- **What was done:** Wrote Vitest React unit tests for five 0%-coverage admin components: `ServicesPanel`, `ServiceBookingsPanel`, `PromotionsPanel`, `SubscriptionsPanel`, `BillingPanel`. 57 tests in a single file.
+- **Coverage (lines %):** BillingPanel 100, SubscriptionsPanel 93.6, ServicesPanel 88.8, ServiceBookingsPanel 83.9, PromotionsPanel 83.0. All ≥ 70% line target.
+- **Test result:** 57 passed / 0 failed.
+- **Pattern notes:** Four panels use mocked `@/hooks/useQueryHooks` (state-sync `useControlled` pattern); **ServiceBookingsPanel uses REAL `@tanstack/react-query` `useQuery`/`useMutation`** (it imports `useQuery` directly, NOT useQueryHooks) — mock its `api.*` fns and wrap in a `QueryClientProvider`. Mocked `@/lib/api`, `@/lib/utils` (formatCurrency), `@/lib/plausible` (trackEvent), `@/lib/plausible` via `vi.hoisted` (NOT plain factory — plain factory throws `ReferenceError: Cannot access 'mockTrackEvent' before initialization`), `@/components/ui/*` primitives.
+- **Gotchas hit:**
+  1. `queryKeys.adminSubscriptions()` is used by SubscriptionsPanel but does NOT exist in the real `queryKeys` — the mock MUST supply it (returns `['admin','subscriptions']`).
+  2. **Fresh `QueryClient` per render is mandatory** for ServiceBookingsPanel: a never-resolving `new Promise(() => {})` "loading" mock leaves a pending query cached; reusing one client leaks the pending promise into later tests sharing the same query key → cascading 1000ms timeouts. Making `renderWithQuery` create a new client per call fixes it.
+  3. `getByText` for text split across a child element (e.g. `Current status: <strong>Pending</strong>`) fails — match only the leading text node (`/Current status:/`).
+  4. Value that legitimately appears twice ("Pro"/"Free" planLabel + table header, "BOGO" type-badge + value-cell, `/unlimited/` on two usage bars) → use `getAllByText(...).length` instead of `getByText`.
+  5. Mocked modal `<select>` must have matching `<option>`s for a value change to register — set the item/staff mock data (e.g. `mockGetServiceItems.mockResolvedValue(mockItems)`, `mockGetPosUsers.mockResolvedValue({data:[...]})`) or the select stays empty and validation blocks submit.
+  6. Row-action selects with `label=""` get testid `select` (not `select-<label>`) — disambiguate from labelled selects via `getAllByTestId('select')[0]`.
+  7. Subscriptions pagination: mock returns static `data.page`, so assert the query-param change (`subsParams.page === '2'`) after clicking Next, NOT the displayed "Page 2".
+
+#### 2026-08-27 — Zero-Coverage Admin HR/Financial Panels Unit Test Coverage
+- **Files changed:** `app/tests/unit/components/admin/hr-financial.test.tsx` (new, only test file touched; no src/ modified)
+- **What was done:** Wrote Vitest React unit tests for four 0%-coverage admin components: `HRPanel`, `SuperHRPanel`, `FinancialPanel`, `SuperFinancialsPanel`. 93 tests in a single file.
+- **Coverage (line/stmts):** SuperHRPanel 100/100, SuperFinancialsPanel 100/100, HRPanel 89.1/85.9, FinancialPanel 84.5/80.1. All ≥ 70% line target.
+- **Test result:** 93 passed / 0 failed.
+- **Pattern notes:** Mocked `@/hooks/useQueryHooks` with a state-sync `__setData(patch)` helper + 11 hooks (HR: employees/leaveTypes/leaveRequests/payrollRuns/jobPosts/applicants; financial: accounts/journals/entries/invoices/payments/taxRates) and `queryKeys` stubs (`['admin','hr']`, `['admin','financials']`); mocked `@/lib/api` (HR CRUD + financial CRUD + `apiFetch`/`getAdminTenants` for the super panels), `@/lib/auth` (module-level mutable `mockUser`), `@/lib/utils`, all UI primitives. Wrapped renders in `QueryClientProvider` and asserted `invalidateQueries({ queryKey: [...] })` via `vi.spyOn(client, 'invalidateQueries')`. Super panels use raw `apiFetch` in `useEffect` (NOT react-query) — their overview/tenants/invoices mocks must resolve immediately.
+- **Gotchas hit:**
+  1. **Tab empty states duplicate header action buttons**: Journals/Accounts/Payments tabs render BOTH a header `New Entry`/`Add Account`/`Record Payment` button AND an EmptyState action with the same label when data is empty → `getByText` fails with "multiple elements"; use `getAllByText(...)[0]`.
+  2. **jest-dom `toHaveValue` on `<input type="number">`** compares `Number(element.value)` — the assertion must pass a NUMBER (`toHaveValue(2000)`), a string `'2000'` fails with "expected (string) received (number)". Affected Salary Amount, Tax Rate (%) fields.
+  3. **Duplicate badge text**: adding a third active account made `getByText('Active')` ambiguous → `getAllByText('Active')` length 2.
+  4. **FinancialPanel "New Journal" modal is UNREACHABLE dead code** (`showJournalForm` + `handleSaveJournal`): no `setShowJournalForm(true)` trigger exists in the component — cannot be covered via UI tests (part of the remaining FinancialPanel uncovered lines 561-572).
+  5. Super-panel data loads race on mount: await a data row (e.g. `John Doe`/`INV-100`) in `waitFor` BEFORE asserting stat cards/table, not just the panel heading.
+
+#### 2026-08-27 — Zero-Coverage Admin CRM Panels Unit Test Coverage
+- **Files changed:** `app/tests/unit/components/admin/crm.test.tsx` (new, only test file touched; no src/ modified)
+- **What was done:** Wrote Vitest React unit tests for two 0%-coverage admin components: `CRMPanel` and `SuperCRMPanel`. 49 tests in a single file. CRMPanel covered via REAL `@/hooks/useQueryHooks` (not mocked) driven by mocked `@/lib/api` (getCrm* + apiFetch) inside a fresh `QueryClientProvider` (`retry: false`); mutations asserted against `apiFetch` URLs (`/crm/contacts`, `/crm/leads/{id}/status`, `/crm/opportunities/{id}/stage`, `/crm/tasks/{id}/status`, `/crm/tickets/{id}/comments`, `/crm/knowledge-articles`). SuperCRMPanel uses raw `apiFetch` in effects + `getAdminTenants`; `useAuth` mocked via a module-level mutable `mockUser`.
+- **Coverage (line/stmts):** SuperCRMPanel 100/100, CRMPanel 88.99/86.48 (branch 79.93, funcs 77.77). All ≥ 70% line target.
+- **Test result:** 49 passed / 0 failed.
+- **Pattern notes:** `defaultApiFetch(url)` route table resolves super overview/contacts and `{}` for CRMPanel mutations; `deferred()` helper for loading-spinner states; UI primitives mocked (DataTable/FormModal/ConfirmDialog/EmptyState/Badge/Button/Input/Select/Card/StatCard/Toast). Status/stage badges assert RAW formatted text — `formatLabel('todo')` → `'Todo'` (single word), NOT `'To Do'` (only `to_do` with underscore becomes `To Do`).
+- **Gotchas hit:**
+  1. **`CRMPanel.tsx` REAL SOURCE BUG — `ReferenceError: formatLabel is not defined` in production**: `formatLabel` is declared INSIDE `CRMPanel` (line 627) but referenced by the module-level `KanbanBoard` (line 189) and `GanttChart` (lines 303, 313) components → toggling to Kanban or Gantt views crashes at runtime. Since src/ is off-limits, the test provides the formatter at global scope (`globalThis.formatLabel`, mirrors the component's formatter) — unresolvable module identifiers fall back to the global environment at call time, so the views render as intended. NOTE: a src fix is required (hoist `formatLabel` to module scope); the global stub in the tests will then be redundant (delete safely when fixed).
+  2. `formatLabel('todo')` renders `'Todo'`, and in Gantt view statuses appear TWICE (left label column + timeline bar) → `getAllByText('Todo'/'Done')`.
+  3. SuperCRMPanel's `loadContacts` calls `apiFetch(url)` with ONE argument (no options object) — matchers must be `toHaveBeenCalledWith('/admin/crm/contacts?tenantId=t1')`, NOT `(url, expect.any(Object))` (caused 1s waitFor timeouts).
+  4. `getByText('Camp Alpha')` in the envelope test matched select option + contacts table cell → `getAllByText('Camp Alpha').length ≥ 1`.
+  5. `{ data: [...] }` envelope from `/admin/crm/contacts` — component normalizes `Array.isArray(data) ? data : data?.data || data?.contacts || []`, so both shapes render rows; assert on a row name, not the envelope.
+
+#### 2026-08-28 — useQueryHooks.ts: 100% line/statement/function coverage via extra2 test file
+- **Files changed:** `app/tests/unit/useQueryHooks-extra2.test.tsx` (new, only test file touched; no src/ modified)
+- **What was done:** Wrote 116 Vitest tests covering every remaining uncovered hook in `app/src/hooks/useQueryHooks.ts` (the 194 uncovered functions from the extra test baseline): all base CRUD queries (`useCampsQuery/useProductsQuery/useRoomsQuery/useOrdersQuery/useRatePlansQuery/usePlansQuery/useMealsQuery/useCategoriesQuery/useMealCategoriesQuery/useMealSchedulesQuery/useSettingsQuery/useLowStock/useAdminStatsQuery/useTenantsQuery`), mutations (`useSave*Mutation/useDelete*Mutation` for camp/product/room/order/ratePlan/meal/mealCategory/plan, `useUpdateSettingsMutation/useSaveSettingsMutation/useChangePasswordMutation/useCreateMealScheduleMutation/useDeleteMealScheduleMutation/useSetPriceOverrideMutation/useDeletePriceOverrideMutation/useMarkInboxReadMutation/useDeleteInboxLeadMutation`), reports (`useOccupancyReportQuery/useRevenueReportQuery/useBookingsReportQuery/useAdminsQuery`), availability/price overrides/inbox, super-admin paginated queries, `queryKeys` factories, and the `throwOnError`→toast→false error paths of `useProjectMetaQuery`/`useTenantBillingQuery`.
+- **Coverage (useQueryHooks.ts, extras + extra2 combined):** statements 602/602 = 100.00%, functions 361/361 = 100.00%, lines (derived from statementMap) 595/595 = 100.00%, branches 15/37 = 40.54% (uncovered branch hangs are the `editId ?` ternary false-legs in the optimistic camp/room onMutate). Baseline before extra2: statements 44.18%, functions 46.26%, lines 44.53%.
+- **Test result:** 116 passed / 0 failed (new file); 221 passed / 0 failed when run together with `useQueryHooks-extra.test.tsx` (105).
+- **Pattern notes:** Self-contained hoisted `vi.mock('@/lib/api')` returning `vi.fn()` per api fn (`mk = mockResolvedValue([])`, `mkObj = mockResolvedValue({ok:true})`); `vi.mock('@/components/ui/Toast')` → `useToast: () => ({ showToast: mockShowToast })` with module-scope mutable mock. Helpers: `createWrapper` (fresh `QueryClient` with `retry:false`), `mountQuery` (waitFor isSuccess), `mountQueryError` (`mockRejectedValueOnce` + waitFor isError), `runSaveMutation` / `runSaveMutationError`. Loop-driven describe blocks using `[name, hook, apiFn, data]` tuples keep the file compact.
+- **Gotchas hit:**
+  1. **`gcTime: 0` on the QueryClient silently GCs `setQueryData`-seeded cache entries** → optimistic-cache tests read `getQueryData` back as `undefined` ("Target cannot be null or undefined"). Fix: `gcTime: 60_000` in createWrapper (existing extra test uses 0 but never seeds cache, so it was unaffected).
+  2. **`vi.mocked(fn())` is NOT a spy** — calling the api fn returns the Promise, not the mock. The save/delete loop initially used `vi.mocked(callApi(data))` and got `toHaveBeenCalledWith` failures. Fix: store the api fn reference itself in the case tuple (`api.saveProduct`), not a call-thunk.
+  3. **`mockRejectedValue` PERSISTS across tests** — `useUpdateSettingsMutation` error test poisoned `api.updateBranding` for the following `useSaveSettingsMutation` test (unexpected `Error: boom`). Fix: `mockRejectedValueOnce` in `mountQueryError`/`runSaveMutationError` and in the camp/room rollback tests.
+  4. **`beforeEach` must clear EVERY api mock** — the "does not fetch when disabled" assertion failed because `api.getPriceOverrides` call history from an earlier test leaked. Fix: `Object.values(api)` loop calling `.mockClear()` when `typeof fn.mock !== 'undefined'`.
+- **Note:** TypeScript reports cast/conversion errors in the new file (same class as the existing 22 errors in `useQueryHooks-extra.test.tsx`; repo-wide tsc is not clean) — vitest's esbuild transform ignores them. Coverage runs print expected threshold ERRORs (99/95/80) because only 2 of 74 test files are included; parse `coverage/coverage-final.json` for per-file truth.
+
+#### 2026-08-27 — Zero-Coverage Admin Supply/Storefront Panels Unit Test Coverage
+- **Files changed:** `app/tests/unit/components/admin/supply-storefront.test.tsx` (new, only test file touched; no src/ modified)
+- **What was done:** Wrote Vitest React unit tests for four 0%-coverage admin components: `SupplyPanel`, `SuperSupplyPanel`, `StorefrontPanel`, `SuperStorefrontPanel`. 78 tests in a single file. SupplyPanel and StorefrontPanel are covered via REAL `@/hooks/useQueryHooks` driven by mocked `@/lib/api` inside a fresh `QueryClientProvider` (`retry: false`). Super panels use raw `apiFetch` in `useEffect` + `getAdminTenants` (query param `?tenantId=t1`); `useAuth` mocked via module-level mutable `mockUser`.
+- **Coverage (lines %):** SuperSupplyPanel 100, SuperStorefrontPanel 97.77, StorefrontPanel 94.48, SupplyPanel 89.91. All ≥ 70% line target.
+- **Test result:** 78 passed / 0 failed.
+- **Pattern notes:** `defaultApiFetch(url)` route table for super-panel routes (`/admin/supply/overview`, `/admin/supply/purchase-orders` returns `{data,total}`, `/admin/storefront/overview`, `/admin/storefront/products`, `/storefront/admin/blog/categories`, `/storefront/admin/carts`, `/storefront/admin/orders`); storefront categories/carts/orders go through `apiFetch` directly (not `save*`/`get*` api fns — supply/PO/BOM/MO mutations go through `api.request(path, { method, body })` with `JSON.stringify` body). UI primitives mocked (DataTable/FormModal/ConfirmDialog/EmptyState/Badge/Button/Input/Select/Card/StatCard/Toast). Modal select data comes from component state — the warehouse mock must provide ACTIVE warehouses or the transfer select has no options.
+- **Gotchas hit:**
+  1. **Transfer select only lists ACTIVE warehouses** (`Number(w.is_active) === 1`) — `wh2` in sample data is `is_active: 0`, so the create-transfer test could never select it (validation toasted). Fix: per-test override `mockGetSupplyWarehouses.mockResolvedValue([...sample, { ...wh2, is_active: 1 }])` (warehouse table test still needs the inactive badge, so keep the global sample as-is).
+  2. **Blog Categories slug renders WITHOUT leading slash** (`{String(c.slug)}`) while Pages slug renders WITH it (`/` + slug) — assert `news`, not `/news`.
+  3. Tenant names from `getAdminTenants` appear in BOTH the "Filter by Tenant" select and the per-tenant breakdown/rows → `getByText('Camp Alpha')` multi-matches; use `getAllByText('Camp Alpha').length ≥ 2`.
+  4. Empty tab header button + EmptyState action share the label (`Add Page`) when data is empty → `getAllByRole('button', { name: 'Add Page' })[0]` for the header.
+  5. SuperSupplyPanel `created_at` renders through the identity `formatDate` mock → assert the full ISO string `2026-07-01T00:00:00Z`, not the bare date.
+  6. `deferred()` loading gate works because queries are real; mock `request` delegate asserts `/supply/stock-transfers` etc.
+- **Harmless stderr during coverage run only:** React key warning (`quantity` duplicated in StockInputs) + `Received "false" for a non-boolean attribute loading` (LoadingSpinner) come from real component source, not test code.
+
+### [2026-08-28] FinancialPanel.tsx coverage boost — 84.5% lines → 93.99% lines — frontend agent
+
+**Task**: Raise coverage of `app/src/components/admin/FinancialPanel.tsx`. Baseline (hr-financial.test.tsx FinancialPanel block): 80.06% stmts / 85.92% branch / 68.34% funcs / 84.54% lines, with 64 statements + 44 functions uncovered. Constraint: no `src/` edits, no touching the existing `hr-financial.test.tsx`.
+
+**Files changed**: `app/tests/unit/components/admin/financial-panel-extra.test.tsx` (new, self-contained `vi.hoisted` mock factory).
+
+**Result** (combined run of both test files, text reporter on FinancialPanel only):
+- Lines **84.54% → 93.99%**, Statements **80.06% → 93.76%**, Functions **68.34% → 93.52%**, Branches **85.92% → 86.43%**. 102 tests pass (93 existing + 9 new).
+
+**What was covered** (9 new tests): all four empty-state action handlers that open the entry/invoice/payment/tax modals; invoice modal onChange handlers (type, issue-date, due-date, currency, notes, add-line); payment modal onChange handlers (amount, date, method, reference) + `createPayment` error toast; tax modal name/rate/jurisdiction onChange; account modal onClose; entry modal date/description/reference/account-select onChange; add+remove entry lines (idx>=2 `x` button); journal-entry success submit + invalidate; invoice/payment/tax modal onClose buttons.
+
+**Remaining uncovered lines**: `195-202, 204-205, 483, 485-486, 491` — ALL belong to the **journal *creation* form modal** (`handleSaveJournal` + `showJournalForm` modal's onClose/name Input/type Select). This modal is **unreachable dead code**: nothing in `FinancialPanel.tsx` ever calls `setShowJournalForm(true)`, so it cannot be exercised via DOM interaction (the "New Entry" button opens the *entry* modal, not the journal form). A test could only reach it by force-rendering/driving state that isn't exposed.
+
+**Gotchas hit**:
+1. **coverage-final.json is unreliable for combined two-file runs**: when both `hr-financial.test.tsx` and the extra file import FinancialPanel, v8 coverage-final.json ends up an all-zero/clobbered record (reports 0% / only the last file's coverage depending on pool). Use the `text` reporter (authoritative aggregate) for final numbers, or run each file separately and union by line number.
+2. **Text reporter truncates long uncovered-line lists** with `...` — widen via separate-file JSON line-union or accept the truncated tail.
+3. **Empty-state action button and header button share the same label** (e.g. "Add Tax Rate"/"New Invoice") when a tab has no data → use `getAllByText(...)[0]` for the header button.
+4. Invoice/payment/tax **modal onClose** handlers are separate anonymous fns — each needs its own modal-open+close test; they were (and stay) uncovered without them.
+
+### [2026-08-29] Investigate & harden Plausible script load — frontend agent
+
+**Task**: Diagnose "Loading failed for the `<script>` with source https://plausible.io/js/script.tagged-events.js" and close the genuine gap where admin panels call `trackEvent` but AdminLayout never loaded the Plausible loader.
+
+**Root cause**: Endpoint verified HTTP 200 + `application/javascript` via curl. CSP already allow-lists `https://plausible.io` in both `script-src` and `connect-src` (middleware `securityHeaders.ts` + `app/public/_headers` duplicate). No code-level misconfig -> failure is almost certainly environmental (ad-blocker/extension blocking plausible.io, regional BunnyCDN edge, or a transient).
+
+**Genuine gap fixed**: `AdminLayout.astro` rendered no Plausible loader, yet `DashboardPanel.tsx` (`'Tenant: Dashboard View'`), `PromotionsPanel.tsx` (`'Tenant: Promotion Updated'`), `RatePlansPanel.tsx` (`'Tenant: Price Updated'`) call `trackEvent` which requires the loader to inject `window.plausible` — so those admin events NEVER fired. Added the same guarded production-only loader as PublicLayout to AdminLayout head (localhost/`.localhost`/`127.0.0.1`/`.127.0.0.1` guard + `resolveDataDomain(hostname)`), so admin events actually fire on prod-like hosts and dev/E2E stay silent.
+
+**Files changed**: `app/src/layouts/AdminLayout.astro` only (import `resolveDataDomain`, compute `isLocalAnalyticsHost` from `Astro.url.hostname`, emit `<script defer data-domain={resolveDataDomain(...)} src="https://plausible.io/js/script.tagged-events.js">` when not localhost). No changes to `securityHeaders.ts`/`_headers` (already correct), `PublicLayout.astro` (already hard), or DOMAIN_MAP (no new host alias warranted; unknown hosts degrade to fallback `sinaicamps.com` by design, not a break).
+
+**Verified**: `astro build` succeeds; admin SSR output (`_---rest_.astro.mjs`) conditionally emits the loader guarded by `isLocalAnalyticsHost` + `resolveDataDomain`. Tests passing: `plausible.test.ts` (15), `middleware-securityHeaders.test.ts` (9), `DashboardPanel.test.tsx` (10), `RatePlansPanel.test.tsx` (20), `components/admin/promotions-extra.test.tsx` (9), `components/admin/services-promos-billing.test.tsx` (57).
+
+**Gotcha**: `script.tagged-events.js` is the correct variant for `trackEvent` (injects `window.plausible` + `data-*` tagged events); the codebase relies on `window.plausible` API only, no `document.addEventListener('plausible:...')` consumers, so this variant is right and should not be swapped.
+
+### [2026-08-29] A3 — Product room-type camp scoping for multi-project tenants
+
+**Task**: Follow-on to A1 (removed the one-camp-per-tenant 409 guard so tenants can now own multiple projects). Fix `productsRoutes.post` so product creation no longer silently picks an arbitrary `LIMIT 1` project when `camp_id` is omitted.
+
+**Fallback logic** (in `backend/src/api/camps.js` `productsRoutes.post`):
+- `camp_id` provided → validate it belongs to tenant (unchanged, 404 if not).
+- omitted AND tenant has exactly 1 active (non-deleted) project → use it (preserved single-camp convenience).
+- omitted AND tenant has 0 projects → keep `productCampId = null` (existing allowed behavior, no hard-fail).
+- omitted AND tenant has >1 projects → `400 'camp_id is required when a tenant has multiple projects'`.
+
+The old fallback query changed from `SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 1` to the same query WITHOUT `LIMIT 1` (branch on count). Stale "One-camp-per-tenant (0053)" comment replaced with multi-project wording.
+
+**Files changed**: `backend/src/api/camps.js` (productsRoutes.post only), `backend/tests/camps-unit.test.js` (product-create tests).
+
+**Tests**: Updated existing "resolves the tenant single camp when camp_id omitted" to assert the new query (`deleted_at IS NULL` + `not.toContain('LIMIT 1')`). Added new test: `POST /api/products` without `camp_id` on a multi-project tenant (mock returns 2 project rows) returns 400 with the exact error message.
+
+**Command**: `cd backend && npx vitest run tests/camps-unit.test.js` → **84 passed** (1 file).
+
+**Chain-mock gotchas**: The mock reproduces the call ORDER of prepares in the handler. For product-create with omitted `camp_id`, prepare index 0 is now the "list active projects" query (returns ≥1 row per scenario); subsequent prepares (org lookup, INSERT) return empty `results`. Use `db.prepare.mockImplementation` + an incrementing `callIdx` when the same call returns different data, or the shared `makeDbMock()` default (`chain.all` → `{ results: [] }`) for the 0-projects path. Assert SQL identity via `db.prepare.mock.calls[i][0]` / `.find(c => c[0].includes(...))` rather than index when order matters.
+
+### [2026-08-29] Multi-project-per-tenant feature (A1·A2·A3·A4·A5·B) — orchestrator
+
+**Request**: Deep-dive the tenant structure and enable creating SEVERAL projects per tenant, where rooms/products belong to the project (camp), not the whole tenant — plus fix the Plausible script load error.
+
+**Key discovery**: The live schema ALREADY supports N projects per tenant. Migration 0063 renamed `camps` → `projects` with `UNIQUE(tenant_id, slug)` (NOT unique tenant_id), and every child table already keys off `camp_id` (`rooms_new` → `projects(id)`, `meal_schedules`/`plans_new` → projects, `pos_products.camp_id`). The ONLY blocker was the API 409 guard + the single-project frontend UX.
+
+**Subtasks (all merged into working tree, all tests green)**:
+- **A1** `camps.js` `POST /api/camps`: removed the "Tenant already has a camp" 409 guard (replaced stale 0053 comment noting `idx_camps_one_per_tenant` was dropped by the 0063 rename); slug 409 (UNIQUE(tenant_id,slug)) retained as the per-tenant uniqueness guarantee. Updated `camps-unit.test.js` (was asserting the 409).
+- **A2** `marketplace.js`: fixed real SQL bug — `p.type as project_type` (list) and `type` (tenant-slug) referenced a non-existent `projects.type` column; → `p.project_type`. This was 500ing the marketplace directory endpoints.
+- **A3** `camps.js` `productsRoutes.post`: product (room-type) camp fallback no longer `LIMIT 1`-picks an arbitrary project; now requires `camp_id` (400) when the tenant has >1 active projects, keeps the single-project convenience + 0-project `null` cases. Updated/added tests.
+- **A4** `camp/[id]/index.astro`: fixed the broken `ssrFetch('/projects')` (404 — backend serves project list at `/api/camps`) → `/camps`; also made the marketplace back-link local-aware for dev/E2E.
+- **A5** `camps.js` status enums now `['active','inactive','planning','completed']` (added `planning` to match the frontend combobox — no DB change, `projects.status` is free TEXT); `tenants.js` `type` enum unioned to `['camp','supermarket','transportation','restaurant','custom','other']` so a tenant built from any `PROJECT_TYPES` never 400s.
+- **B** `CampsPanel.tsx`: added an always-visible "Add Project" button (header toolbar, when ≥1 project exists) that opens the create form in POST mode with full state reset; removed the "single-camp admin / no add-another button" doc text. 4 new tests.
+
+**Also verified/caught in C**: full-suite run surfaced 2 failures in `products-unit.test.js` asserting the OLD `LIMIT 1` SQL (same coupling as camps-unit) — updated those assertions to the new query (no `LIMIT 1`). Reinforces the AGENT_LOGBOOK rule: when changing a prepare in a handler, audit EVERY test file asserting that SQL, not just the primary one.
+
+**Final verification**: backend 1824 tests / 61 files green; app 2757 tests / 119 files green; root integration 156 tests / 10 files green.
+
+**Gotchas / notes for future work**:
+- There is NO schema-level unique index on `projects.tenant_id` — uniqueness is `UNIQUE(tenant_id, slug)` only. Multiple slugs per tenant are valid; distinct projects require distinct slugs.
+- Room-type (product) creation now requires `camp_id` for multi-project tenants — the client `saveProduct` in `ListingWizard`/CampsPanel must pass `campIds:[campId]` (it already does for the first project; follow-up agents creating products for a SECOND project must pass the new project's `camp_id`).
+- `rate_plans_new` reaches its camp only through the product's `camp_id` — no direct project FK; scoping rate plans per project = scope by product.
+- POS `pos_products.camp_id` drives the POS grid (organization_id + camp_id) — multi-project POS grid scoping is a follow-up consideration.
+- The marketplace directory now works again (A2 was a production 500).
+
+---
+
+## 2026-08-29 — C2: ProjectItemsPanel (type-aware project_items UI)
+
+**Completed** `ProjectItemsPanel` for the `project_items` inventory table (backend `project-items.js` at `/api/projects/items`, server normalizes camelCase→snake):
+- `app/src/components/admin/ProjectItemsPanel.tsx` (new): props `{ projectId, operation?, itemType?, campIds?, camps? }`; header with C1 operation label/icon + live count; DataTable (name/type/price/qty/status + Edit/Delete); add/edit FormModal (name, description, basePrice, quantity, status, metaData as JSON text with warning toast on invalid JSON); delete ConfirmDialog; client-side itemType filter as defense-in-depth. `campIds`/`camps` accepted for sibling parity but unused — do NOT destructure unused props or `noUnusedLocals` strict flags trip.
+- `app/src/lib/api.ts`: added `ProjectItem` + `ProjectItemInput` interfaces and `getProjectItems(params)` / `saveProjectItem(payload, id?)` / `deleteProjectItem(id)` via the `apiFetch` helper (camelCase bodies OK — backend `toSnake` handles them). Mounted route is `/projects/items` (admin `resolveScope()` — scoped by tenant header, NOT by projectId in the path).
+- `app/src/hooks/useQueryHooks.ts`: `useProjectItemsQuery(projectId?, itemType?)`, `useSaveProjectItemMutation(editId?)`, `useDeleteProjectItemMutation()` (useCrudMutation). Query keys: `projectItems` prefix `['admin','projects','items']` + `projectItemsList(projectId, itemType)` (filters out undefined segments). UseQueryHooks is the established home for admin CRUD hooks — NOT useAdminData.
+- Test `app/tests/unit/ProjectItemsPanel.test.tsx`: 14 tests green (mirrors RoomsPanel test mocks: `vi.hoisted` state, mocked Toast/useQueryHooks/`@/lib/api`/`@/lib/utils`). Covers empty state, filtering by itemType (incl. rerender), add payload, edit prefill, delete confirm/cancel, required-name + JSON validations.
+- **Verification**: full app suite **2771 tests / 120 files** green; targeted `tsc --noEmit` on the 3 touched source files clean. `astro check` OOMs in this workspace even before my change (huge generated Storybook bundle) — use targeted tsc instead.
+- Did NOT touch AdminApp/TenantDrilldown/CampsPanel — C3 wires this panel in (passes `operation` from the C1 manifest and the project's `projectType`).
+
+---
+
+## 2026-08-29 — C4: Cross-project connections UI (CampsPanel)
+
+**Completed** the cross-project "Connections" section in `CampsPanel.tsx`, backed by `/api/projects/links`:
+- `app/src/components/admin/CampsPanel.tsx`: inline `ProjectConnections({ projectId, camps })` component rendered inside the edit-mode FormModal after the DynamicForm block (`{showForm && editingId && <ProjectConnections .../>}` — hidden in CREATE mode). Lists existing links (shows the OTHER project's name/slug/type via the `a`/`b` sides), an "Add connection" row with a project select (excludes self + both sides of already-linked projects) + link type select (connection/serves/supplies/transports), and per-link Remove via ConfirmDialog (`confirmLabel="Yes, Remove"` to avoid label collision with per-row Remove buttons). Edit modal size bumped to `lg`. Data-testids: `project-connections`, `connections-list`, `connections-empty`, `add-link-button`, `remove-link-<id>`.
+- `app/src/lib/api.ts`: `ProjectLink` + `ProjectLinkInput` interfaces and `getProjectLinks(projectId?)` (defensive `Array.isArray` fallback), `createProjectLink(payload)`, `deleteProjectLink(id)` — placed after `deleteProjectItem`, before the `// ─── Tags` section.
+- `app/src/hooks/useQueryHooks.ts`: query keys `projectLinks: ['admin','projects','links']` + `projectLinksList(projectId?)` (filters undefined/null — same pattern as `projectItemsList`); hooks `useProjectLinksQuery`, `useCreateProjectLinkMutation`, `useDeleteProjectLinkMutation` placed after `useDeleteProjectItemMutation` (mutations invalidate `queryKeys.projectLinks`).
+- Test `app/tests/unit/CampsPanel.test.tsx`: +7 tests (`describe('CampsPanel Connections (cross-project links)')`) — render links, empty state, hidden in CREATE mode, add flow (`createProjectLink({projectIdA:'c1', projectIdB:'c2', linkType:'supplies'})`), add select excludes self + already-linked, remove with confirm, guard without selected project. `vi.mock('@/hooks/useQueryHooks')` now also mocks the 3 link hooks (`mockLinks`, `mockLinksLoading`, `mockCreateLinkMutate`, `mockDeleteLinkMutate`) — required because vi.mock replaces the whole module.
+- **Verification**: full app suite **2778 tests / 120 files** green (+7); targeted `tsc --noEmit` on all 4 touched files clean (remaining 402 errors are the pre-existing baseline in other files).
+- Did NOT touch AdminApp/TenantDrilldown/ProjectItemsPanel/backend/migrations.
+
+---
+
+## 2026-08-29 — Type-aware operations + cross-project connections (orchestrated feature: A1/A2/B1/B2/C1/C3)
+
+**Feature goal**: each `projects` row is "aware" of its operation — `project_type` determines which inventory it manages — and same-tenant projects can be connected to each other. Camp keeps its rich rooms spine; non-camp types get a generic typed-inventory spine; a new links table enables cross-project connections. Schema migrations 0085 + 0086 landed (NOT yet applied — applied at deploy).
+
+**A1** `backend/migrations/0085_project_links.sql` (new): `project_links` — id, tenant_id, project_id_a/b, link_type (default 'connection'), meta_data, created_at, created_by; FKs to tenants + projects (both CASCADE); `UNIQUE(project_id_a, project_id_b, link_type)` = ordered pair + type = one link; 3 indexes. Adapted to codebase conventions: `id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16)))` and `TEXT DEFAULT (datetime('now'))` (0081–0084 style), inline REFERENCES.
+
+**A2** `backend/src/api/project-links.js` (new) + mount at `/api/projects/links` (admin `resolveScope()`) + `backend/tests/project-links.test.js` (15 tests): GET list (optional `?projectId=` matches either side; self-join projects twice → `{a:{...}, b:{...}}`), POST validates both projects exist in the caller's tenant (cross-tenant 400, self-link 400, default linkType), DELETE tenant-scoped. `z.any()` for metaData — a strict union silently strips object keys. id generated in JS (`pl_`+uuid) — matches meta.js pattern even though DB has a default.
+
+**B1** `backend/migrations/0086_project_items.sql` (new): `project_items` — id, tenant_id, project_id (CASCADE), item_type (default 'product'), name, description, base_price, quantity, meta_data, status NOT NULL default 'active', created_at/updated_at; indexes on tenant + (project_id, item_type). Generic per-project typed-inventory spine for non-camp types; `item_type` discriminates vehicle / product / menu_item / service / custom.
+
+**B2** `backend/src/api/project-items.js` (new) + mount at `/api/projects/items` (admin `resolveScope()`) + `backend/tests/project-items.test.js` (19 tests): GET list (projectId/itemType/status filters, LEFT JOIN projects → project {id,name,slug,projectType}), POST validates project belongs to tenant (itemType enum `['vehicle','product','menu_item','service','custom']`), PUT dynamic SET, DELETE. Uses `pi_` id prefix, `getScope()`/`assertWriteAccess`, `all('*')` 405 fallback — mirrors project-links.js exactly.
+
+**C1** `app/src/lib/project-types/` — added `ProjectTypeOperation` interface (`{itemTypes, label, icon, primary}`) and `operations` on `ProjectTypeSchema`; each type declares its operation: camp→Rooms(room), supermarket→Products(product), transportation→Vehicles(vehicle), restaurant→Menu(menu_item). New exports: `getProjectOperations(type)`, `getPrimaryOperation(type)`; fallback `operations: []`. All existing exports preserved.
+
+**C3** `AdminApp.tsx` + `TenantDrilldown.tsx`: type-aware inventory tab. `getInventoryNav(activeProjectType)` derives the nav label (Rooms/Products/Vehicles/Menu) without mutating static TENANT_NAV; the `rooms` tab renders `ProjectItemsPanel` (lazy, `projectId={activeCamp.id}`, `operation` from `getPrimaryOperation`, `itemType: itemTypes[0]`) whenever the primary operation's itemType !== 'room'; camp/custom keep RoomsPanel. Mobile bottom nav shows the same dynamic label (driven by the same per-render `tenantNavItems`). TenantDrilldown does the same for the drill view (eager import, `roomsLabel` in the tab list).
+
+**Verification (final)**: backend **1858 / 63 files** green; app **2778 / 120 files** green; root integration **156 / 10 files** green. New test files: project-links (15), project-items (19), ProjectItemsPanel (14), CampsPanel +7. `astro check` OOMs in this workspace (generated Storybook bundle) — use targeted `tsc --noEmit` per file instead.
+
+**Gotchas / notes for future work**:
+- The two new tables (project_links, project_items) exist in migrations only until the next `./deploy.sh` applies them; the backend routes will 500/error the moment they hit a DB without those tables. Test suites use in-memory harnesses (mountRouter) so they pass pre-deploy.
+- `project_links` API is admin-only (no public GET — marketplace exposure of connections is a follow-up if needed).
+- Non-camp "operation" panels (ProjectItemsPanel) are generic; per-type extra fields flow through `meta_data` JSON — the C1 manifest can later drive a DynamicForm for these instead of raw JSON text.
+- Rooms/rate plans for camp remain on the legacy rich spine untouched (deliberate lowest-risk choice); only non-camp types use project_items today.
+
+---
+
+## 2026-08-29 — Tenant→project hierarchy + deletion 404 fix (D1/D2)
+
+**Reported**: DELETE `https://sinaicamps.com/api/v1/camps/camp_*` → 404 (twice). User clarified the hierarchy: **tenant = business entity that owns project(s)** — admins belong to tenants, projects belong to tenants.
+
+**Root cause (verified, two-sided)**:
+1. Frontend `getTenantId()` (`app/src/lib/api.ts`) returned `'marketplace'` FIRST on sinaicamps.com — before checking the authenticated admin's session tenant, localStorage, or `?tenant=` param. So every API call from the platform host sent `x-tenant-id: marketplace`.
+2. Backend `camps.js` GET handlers had the P0-1 convention `user?.tenantId || scope.tenantId`, but **POST/PUT/DELETE used only `getScope(c).tenantId`** — i.e. the marketplace hint. On sinaicamps.com a super_admin (token tenantId `'marketplace'`) got the cross-tenant directory listing (GETs "worked") but every project write scoped to the marketplace tenant → DELETE 404, PUT silently no-op'd, POST would create under the wrong tenant.
+
+**D1 — backend (`backend/src/api/camps.js` + `camps-unit.test.js`)**
+- POST/PUT/DELETE now resolve `const user = getScope(c).user; const tenantId = user?.tenantId || getScope(c).tenantId || null;` (mirrors GET exactly).
+- PUT/DELETE additionally: when the effective tenant is marketplace AND `user.role === 'super_admin'`, resolve the project's OWNING tenant (`SELECT tenant_id FROM projects WHERE id = ? AND deleted_at IS NULL`; 404 if absent) and scope the UPDATE/soft-delete to that tenant. Super_admin can now act on any project visible in the marketplace directory; the owning tenant stays authoritative.
+- Tests: `tenant-scope hierarchy (user beats marketplace hint)` + `super_admin resolves owning tenant from marketplace` suites. Targeted 90 passed; full backend 1864 / 63 files.
+
+**D2 — frontend (`app/src/lib/api.ts`, `useQueryHooks.ts`, `CampsPanel.tsx`, tests)**
+- `getTenantId()` priority reordered: `_tenantScopeOverride` → authenticated admin's real `tenantId` (from `session.getUser('admin')`, !== 'marketplace') → host/subdomain/`?tenant=`/localStorage fallbacks. Tenant admins on any host now operate on THEIR business tenant (hierarchy correct); anonymous browsing unchanged.
+- `deleteCamp(id, opts?)` appends `?tenantId=` (the backend super_admin query override) when supplied; `useDeleteCampMutation` forwards `{ id, tenantId }` vars; CampsPanel passes the row's `tenant_id` on delete (marketplace rows carry it via `c.*`).
+- Tests: +8 (getTenantId priority ×4, deleteCamp passthrough ×2, CampsPanel delete ×2). Full app 2786 / 120 files.
+
+**Verification**: backend 1864 / 63, app 2786 / 120, root integration 156 / 10 — all green.
+
+**Notes / gotchas**:
+- `getScope(c).user` === `c.get('user')` in production (resolveScope sets both), but ONLY the former works in the `mountRouter` test harness — use `getScope(c).user` in handlers under test.
+- Super_admin creating a project on the marketplace host with no `?tenantId=`/drill-down still creates under the marketplace tenant — the T9 drill-down (`setTenantScope`) or the backend query override remains the correct path for tenant-owner creation.
+- Plausible script error in the console is environmental (ad-blocker/extension) — no code change; loader already guarded + production-only in AdminLayout.
+
+## Task Log — 2026-08-30: E2E coverage for tenant→project hierarchy (T0–T4, B1, B2) — orchestrator + general agents
+
+**Objective**: full E2E coverage of "super admin creates tenant → tenant admin adds camp project + subjects (rooms) → second (transportation) project → cross-project connections → super admin drill-down/directory control", plus regression gates.
+
+**E2E specs authored (all green: 17/17 in isolated trio, repeatedly)**:
+- `tests/e2e/specs/admin/tenant-project-lifecycle.spec.ts` (6) — super admin creates camp tenant via UI → tenant admin ListingWizard creates first camp project → add room → add second (transportation) project via Add Project → link camp↔transportation then remove link → rename camp (location required) + dashboard/settings verify.
+- `tests/e2e/specs/admin/project-type-subjects.spec.ts` (5) — type-aware subjects: camp→RoomsPanel, transportation→ProjectItemsPanel (vehicles) + item create; second project via Add Project; connect transportation↔camp via links UI (either side lists both).
+- `tests/e2e/specs/admin/tenant-project-isolation.spec.ts` (6) — marketplace directory groups by tenant; super-admin drilldown scoped to drill tenant; tenant-admin camps/links/items API strictly scoped; cross-tenant link rejected 400; UI: acacia admin hides other tenant project; fresh tenant shows only own project.
+
+**Real backend bugs the E2E work found and fixed**:
+- **B1 (camps.js tenant precedence)**: super admin's `user.tenantId='marketplace'` won over the drilldown `x-tenant-id` hint (`user?.tenantId || scope.tenantId`) → drilldown showed the marketplace directory instead of the drill tenant's rows. `resolveTenantId` + `getScope(c).user` at all 5 sites; GETs switched from `c.get('user')` (harness gotcha). +4 unit tests. Backend 1868/63 green.
+- **B2 (cache Vary leak)**: `cachedJsonResponse` had NO `Vary` → same-URL cached responses crossed tenants in browser AND shared caches. Added `Vary: x-tenant-id`. +1 unit test. Backend 1869/63 green.
+- T0: applied local D1 migrations 0085/0086 (tracker synced 0077; 0078–0086 executed) so project_links/project_items endpoints work in E2E. **Local-only — NOT yet applied to the deployed DB.**
+
+**Full-gate findings (NOT regressions from this work)**: three `--project=admin` runs (218 tests) were sunk by (a) wrangler dev crashing after ~15–17 min of load, (b) no globalTeardown → 70 leaked tenants + 49 leaked admins broke paginated/count assertions, (c) cold-boot 10s `content-area` waits. Purged the dev DB pollution (3 tenants, 2 projects, 2 admins remain). Collateral regression (10 specs, 65 passed / 19 failed) confirmed the same env signatures; trio + targeted API probes remain green.
+
+**Verification**: backend 1869 / 63 (unit); trio E2E 17/17 (35.8s on warm servers after purge); live probes: super admin + `x-tenant-id: acaciacamp → 2 rows`, `marketplace → 1 row (GROUP BY tenant)`, `Vary: x-tenant-id` present.
+
+**Notes / gotchas**: see Persistent Learnings (wrangler dev crash, scope precedence, Vary, pollution purge runbook, directory GROUP BY). Migrations 0085/0086 still awaiting deploy-time application; all changes uncommitted.

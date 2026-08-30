@@ -460,6 +460,21 @@ describe('camp endpoints', () => {
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/camps/3');
   });
+
+  it('deleteCamp appends ?tenantId= when the owning tenant is provided', async () => {
+    await deleteCamp(3, { tenantId: 'tenant-alpha' });
+    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    expect(opts.method).toBe('DELETE');
+    expect(url).toContain('/camps/3?tenantId=tenant-alpha');
+    // The tenant id must stay readable as a single query param (URI-encoded).
+    expect(url).not.toContain('/camps/3?tenantId=tenant-alpha&');
+  });
+
+  it('deleteCamp URI-encodes the tenant id in the query override', async () => {
+    await deleteCamp(9, { tenantId: 'my tenant/ä' });
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain('/camps/9?tenantId=my%20tenant%2F%C3%A4');
+  });
 });
 
 describe('product endpoints', () => {

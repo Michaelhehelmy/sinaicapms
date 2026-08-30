@@ -53,7 +53,7 @@ export const campPostSchema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   capacity: z.number().min(0).optional(),
-  status: z.enum(['active', 'inactive', 'completed']).optional(),
+  status: z.enum(['active', 'inactive', 'planning', 'completed']).optional(),
   notes: z.string().optional(), // legacy field → stored as project_meta 'notes'
   description: z.string().nullable().optional(),
   gallery_images: z.union([z.array(z.string()), z.string()]).nullable().optional(),
@@ -69,7 +69,7 @@ export const campPutSchema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   capacity: z.number().min(0).optional(),
-  status: z.enum(['active', 'inactive', 'completed']).optional(),
+  status: z.enum(['active', 'inactive', 'planning', 'completed']).optional(),
   notes: z.string().optional(),
   description: z.string().nullable().optional(),
   gallery_images: z.union([z.array(z.string()), z.string()]).nullable().optional(),
@@ -124,6 +124,17 @@ export const ratePlanPostSchema = z.object({
 // Marketplace host (no tenant context): 'marketplace', '', null, or undefined
 // → cross-tenant queries with owning-tenant info instead of tenant-scoped ones.
 const isMarketplaceTenant = (tenantId) => !tenantId || tenantId === 'marketplace' || tenantId === '';
+
+// Tenant-scope precedence (B1): a REAL tenant admin's own tenant always wins
+// (cannot escape via the x-tenant-id hint). Marketplace-scoped super admins
+// honor an EXPLICIT real-tenant scope hint (TenantDrilldown), falling back to
+// the marketplace directory. Unauthenticated requests keep the scope hint
+// (public tenant host).
+const resolveTenantId = (user, scopeTenantId) => {
+  const userTenantId = user?.tenantId;
+  if (userTenantId && userTenantId !== 'marketplace') return userTenantId;
+  return scopeTenantId || userTenantId || null;
+};
 
 // Projects table (0063 rename of `camps`) has a `status` TEXT column
 // ('active' | 'inactive' | 'completed'), NOT `is_active`/`active`.
@@ -183,8 +194,8 @@ campsRoutes.get('/', async (c) => {
   // P0-1: If a user is authenticated, always use their tenant_id regardless
   // of the scope hint. This prevents admins from seeing other tenants' camps
   // when the public scope fails to resolve the tenant hint.
-  const user = c.get('user');
-  const tenantId = user?.tenantId || scope.tenantId;
+  const user = getScope(c).user;
+  const tenantId = resolveTenantId(user, scope.tenantId);
   const marketplace = isMarketplaceTenant(tenantId);
   const limit = c.req.query('limit');
   const offset = c.req.query('offset');
@@ -208,8 +219,8 @@ campsRoutes.get('/', async (c) => {
 campsRoutes.get('/:id', async (c) => {
   const env = c.env;
   const scope = getScope(c);
-  const user = c.get('user');
-  const tenantId = user?.tenantId || scope.tenantId;
+  const user = getScope(c).user;
+  const tenantId = resolveTenantId(user, scope.tenantId);
   const campId = c.req.param('id');
   const marketplace = isMarketplaceTenant(tenantId);
   const query = marketplace
@@ -229,7 +240,11 @@ campsRoutes.get('/:id', async (c) => {
 
 campsRoutes.post('/', async (c) => {
   try {
-    const tenantId = getScope(c).tenantId;
+    // P0-1: an authenticated admin's tenantId is authoritative over the scope
+    // hint. Prevents POSTs on the marketplace host (sinaicamps.com, hint
+    // resolves to 'marketplace') from creating projects in the wrong tenant.
+    const user = getScope(c).user;
+    const tenantId = resolveTenantId(user, getScope(c).tenantId);
     const parsed = campPostSchema.safeParse(toSnake(await c.req.json()));
     if (!parsed.success) {
       return validationError(parsed);
@@ -240,15 +255,10 @@ campsRoutes.post('/', async (c) => {
     if (start_date && end_date && new Date(start_date) >= new Date(end_date)) {
       return errorResponse('Start date must be before end date', 400);
     }
-    // One-camp-per-tenant (migration 0053): a tenant may have at most one camp.
-    // Guard with a clean 409 before the unique index on projects.tenant_id throws.
-    // Kept FIRST in the flow — tests depend on this ordering.
-    const { results: existingProjects } = await c.env.DB.prepare(
-      "SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL"
-    ).bind(tenantId).all();
-    if (existingProjects.length > 0) {
-      return errorResponse('Tenant already has a camp', 409);
-    }
+    // Multiple projects per tenant are supported. The original one-camp-per-tenant
+    // unique index (idx_camps_one_per_tenant, migration 0053) was dropped when the
+    // `camps` table was renamed to `projects` in migration 0063. The per-tenant
+    // uniqueness guarantee is now UNIQUE(tenant_id, slug), enforced below.
     // Slug: explicit override wins, otherwise derived from the name.
     const finalSlug = slugify(slug || name);
     if (!finalSlug) {
@@ -290,8 +300,20 @@ campsRoutes.post('/', async (c) => {
 
 campsRoutes.put('/:id', async (c) => {
   try {
-    const tenantId = getScope(c).tenantId;
+    // P0-1: an authenticated admin's tenantId is authoritative over the scope
+    // hint. A super_admin operating on the marketplace host (hint resolves to
+    // 'marketplace') resolves the project's owning tenant by id so the update
+    // lands on the correct tenant row (fixes PUT on sinaicamps.com).
+    const user = getScope(c).user;
+    let tenantId = resolveTenantId(user, getScope(c).tenantId);
     const campId = c.req.param('id');
+    if (isMarketplaceTenant(tenantId) && user?.role === 'super_admin') {
+      const { results: owner } = await c.env.DB.prepare(
+        'SELECT tenant_id FROM projects WHERE id = ? AND deleted_at IS NULL'
+      ).bind(campId).all();
+      if (owner.length === 0) return errorResponse('Camp not found', 404);
+      tenantId = owner[0].tenant_id;
+    }
     const parsed = campPutSchema.safeParse(toSnake(await c.req.json()));
     if (!parsed.success) {
       return validationError(parsed);
@@ -359,8 +381,20 @@ campsRoutes.put('/:id', async (c) => {
 
 campsRoutes.delete('/:id', async (c) => {
   try {
-    const tenantId = getScope(c).tenantId;
+    // P0-1: an authenticated admin's tenantId is authoritative over the scope
+    // hint. A super_admin operating on the marketplace host (hint resolves to
+    // 'marketplace') resolves the project's owning tenant by id so the soft
+    // delete reaches the correct tenant row (fixes DELETE 404 on sinaicamps.com).
+    const user = getScope(c).user;
+    let tenantId = resolveTenantId(user, getScope(c).tenantId);
     const campId = c.req.param('id');
+    if (isMarketplaceTenant(tenantId) && user?.role === 'super_admin') {
+      const { results: owner } = await c.env.DB.prepare(
+        'SELECT tenant_id FROM projects WHERE id = ? AND deleted_at IS NULL'
+      ).bind(campId).all();
+      if (owner.length === 0) return errorResponse('Camp not found', 404);
+      tenantId = owner[0].tenant_id;
+    }
     // Soft delete (unified architecture): tombstone the row instead of cascading
     // hard deletes. The ownership pre-check stays the single source of the 404.
     const { results: check } = await c.env.DB.prepare(
@@ -445,9 +479,10 @@ productsRoutes.post('/', async (c) => {
     const { id, name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids, camp_id } = parsed.data;
     const pid = id || 'prod_' + crypto.randomUUID().slice(0, 12); // L1 fix
 
-    // One-camp-per-tenant (0053): room types belong to a camp. Use the provided
-    // camp_id when given (must belong to this tenant) or resolve the tenant's
-    // single camp when omitted.
+    // Room types belong to a camp/project. Use the provided camp_id when given
+    // (must belong to this tenant). When omitted, a tenant may own multiple
+    // projects, so only fall back to the tenant's single active project when
+    // there is exactly one; return an explicit 400 when ambiguous.
     let productCampId = null;
     if (camp_id) {
       const { results: campCheck } = await c.env.DB.prepare(
@@ -459,9 +494,12 @@ productsRoutes.post('/', async (c) => {
       productCampId = camp_id;
     } else {
       const { results: tenantProjects } = await c.env.DB.prepare(
-        "SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT 1"
+        "SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL"
       ).bind(tenantId).all();
-      productCampId = tenantProjects.length > 0 ? tenantProjects[0].id : null;
+      if (tenantProjects.length > 1) {
+        return errorResponse('camp_id is required when a tenant has multiple projects', 400);
+      }
+      productCampId = tenantProjects.length === 1 ? tenantProjects[0].id : null;
     }
 
     // The product must belong to the tenant's POS organization so it shows

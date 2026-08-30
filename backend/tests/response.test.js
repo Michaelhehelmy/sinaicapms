@@ -52,6 +52,11 @@ describe('response utils', () => {
       expect(res.headers.get('Cache-Control')).toContain('max-age=300');
     });
 
+    it('varies the cache on x-tenant-id to prevent cross-tenant cache leaks', () => {
+      const res = cachedJsonResponse({ items: [] });
+      expect(res.headers.get('Vary')).toBe('x-tenant-id');
+    });
+
     it('accepts custom maxAge', () => {
       const res = cachedJsonResponse({ items: [] }, 60);
       expect(res.headers.get('Cache-Control')).toContain('max-age=60');

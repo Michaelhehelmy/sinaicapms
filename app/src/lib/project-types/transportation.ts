@@ -61,4 +61,5 @@ export const transportationProjectType: ProjectTypeSchema = {
       helpText: 'Comma-separated list of onboard amenities.',
     },
   ],
+  operations: [{ itemTypes: ['vehicle'], label: 'Vehicles', icon: '🚌', primary: true }],
 };

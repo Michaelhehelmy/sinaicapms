@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import SuperTenantsPanel from '@/components/admin/SuperTenantsPanel';
 
 const mockShowToast = vi.fn();
@@ -7,6 +7,9 @@ const mockGetAdminTenants = vi.fn();
 const mockUpdateAdminTenant = vi.fn();
 const mockGetAdmins = vi.fn();
 const mockUpdateAdminUser = vi.fn();
+const mockCreateAdminUser = vi.fn();
+const mockDeleteAdminUser = vi.fn();
+const mockCreateTenant = vi.fn();
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -21,6 +24,9 @@ vi.mock('@/lib/api', () => ({
   updateAdminTenant: (...args: unknown[]) => mockUpdateAdminTenant(...args),
   getAdmins: (...args: unknown[]) => mockGetAdmins(...args),
   updateAdminUser: (...args: unknown[]) => mockUpdateAdminUser(...args),
+  createAdminUser: (...args: unknown[]) => mockCreateAdminUser(...args),
+  deleteAdminUser: (...args: unknown[]) => mockDeleteAdminUser(...args),
+  createTenant: (...args: unknown[]) => mockCreateTenant(...args),
 }));
 
 vi.mock('@/components/ui/LoadingSpinner', () => ({
@@ -441,6 +447,317 @@ describe('SuperTenantsPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Tenant Directory')).toBeInTheDocument();
       expect(screen.queryByTestId('tenant-drilldown-stub')).not.toBeInTheDocument();
+    });
+  });
+
+  it('create tenant: shows validation error when fields missing', async () => {
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByTestId('create-tenant-btn'));
+    });
+    fireEvent.click(screen.getByText('Create Tenant'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Name, subdomain, and admin password are required', 'error');
+    });
+    expect(mockCreateTenant).not.toHaveBeenCalled();
+  });
+
+  it('create tenant: success', async () => {
+    mockCreateTenant.mockResolvedValue({ id: 't9' });
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByTestId('create-tenant-btn'));
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g., Acacia Camp'), { target: { value: 'New Camp' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g., acaciacamp'), { target: { value: 'newcamp' } });
+    fireEvent.change(screen.getByPlaceholderText('Min 8 characters'), { target: { value: 'secret123' } });
+    fireEvent.change(screen.getByPlaceholderText('admin@example.com'), { target: { value: 'admin@new.com' } });
+    fireEvent.change(screen.getByPlaceholderText('First name'), { target: { value: 'First' } });
+    fireEvent.change(screen.getByPlaceholderText('Last name'), { target: { value: 'Last' } });
+    fireEvent.change(screen.getByPlaceholderText('Google Maps link or address'), { target: { value: 'Sinai' } });
+    fireEvent.click(screen.getByText('Create Tenant'));
+    await waitFor(() => {
+      expect(mockCreateTenant).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'New Camp',
+        subdomain: 'newcamp',
+        adminPassword: 'secret123',
+        adminEmail: 'admin@new.com',
+        adminFirstName: 'First',
+        adminLastName: 'Last',
+        location: 'Sinai',
+      }));
+    });
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Tenant created successfully', 'success');
+      expect(mockGetAdminTenants).toHaveBeenCalled();
+      expect(screen.queryByTestId('create-tenant-form')).not.toBeInTheDocument();
+    });
+  });
+
+  it('create tenant: error', async () => {
+    mockCreateTenant.mockRejectedValue(new Error('Create failed'));
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByTestId('create-tenant-btn'));
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g., Acacia Camp'), { target: { value: 'New Camp' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g., acaciacamp'), { target: { value: 'newcamp' } });
+    fireEvent.change(screen.getByPlaceholderText('Min 8 characters'), { target: { value: 'secret123' } });
+    fireEvent.click(screen.getByText('Create Tenant'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Error: Create failed', 'error');
+    });
+  });
+
+  it('cancel create tenant hides the form', async () => {
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByTestId('create-tenant-btn'));
+    });
+    expect(screen.getByTestId('create-tenant-form')).toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId('create-tenant-form')).getByText('Cancel'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-tenant-form')).not.toBeInTheDocument();
+    });
+  });
+
+  it('create admin: shows validation error when email/password missing', async () => {
+    mockGetAdmins.mockResolvedValue([]);
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    fireEvent.click(screen.getByTestId('create-admin-btn'));
+    fireEvent.click(screen.getByText('Create Admin'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Email and password are required', 'error');
+    });
+  });
+
+  it('create admin: success', async () => {
+    mockGetAdmins.mockResolvedValue([]);
+    mockCreateAdminUser.mockResolvedValue({ id: 'a9' });
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    fireEvent.click(screen.getByTestId('create-admin-btn'));
+    fireEvent.change(screen.getByPlaceholderText('admin@example.com'), { target: { value: 'newadmin@test.com' } });
+    fireEvent.change(screen.getByPlaceholderText('Min 8 characters'), { target: { value: 'secret123' } });
+    fireEvent.click(screen.getByText('Create Admin'));
+    await waitFor(() => {
+      expect(mockCreateAdminUser).toHaveBeenCalledWith(expect.objectContaining({
+        email: 'newadmin@test.com',
+        password: 'secret123',
+        role: 'admin',
+      }));
+      expect(mockShowToast).toHaveBeenCalledWith('Admin user created', 'success');
+    });
+  });
+
+  it('create admin: error', async () => {
+    mockGetAdmins.mockResolvedValue([]);
+    mockCreateAdminUser.mockRejectedValue(new Error('Create admin failed'));
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    fireEvent.click(screen.getByTestId('create-admin-btn'));
+    fireEvent.change(screen.getByPlaceholderText('admin@example.com'), { target: { value: 'newadmin@test.com' } });
+    fireEvent.change(screen.getByPlaceholderText('Min 8 characters'), { target: { value: 'secret123' } });
+    fireEvent.click(screen.getByText('Create Admin'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Error: Create admin failed', 'error');
+    });
+  });
+
+  it('edit admin: opens inline edit and saves', async () => {
+    mockGetAdmins.mockResolvedValue(sampleAdmins);
+    mockUpdateAdminUser.mockResolvedValue({});
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('edit-admin-a1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('edit-admin-a1'));
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(mockUpdateAdminUser).toHaveBeenCalledWith('a1', expect.objectContaining({ firstName: 'Admin', lastName: 'One', role: 'tenant_admin' }));
+      expect(mockShowToast).toHaveBeenCalledWith('Admin user updated', 'success');
+    });
+  });
+
+  it('edit admin: error', async () => {
+    mockGetAdmins.mockResolvedValue(sampleAdmins);
+    mockUpdateAdminUser.mockRejectedValue(new Error('Edit failed'));
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('edit-admin-a1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('edit-admin-a1'));
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Error: Edit failed', 'error');
+    });
+  });
+
+  it('edit admin: cancel inline edit', async () => {
+    mockGetAdmins.mockResolvedValue(sampleAdmins);
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('edit-admin-a1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('edit-admin-a1'));
+    fireEvent.click(screen.getAllByText('Cancel').pop() as HTMLElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('edit-admin-a1')).toBeInTheDocument();
+    });
+  });
+
+  it('delete admin: confirms and deletes', async () => {
+    mockGetAdmins.mockResolvedValue(sampleAdmins);
+    mockDeleteAdminUser.mockResolvedValue({});
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('delete-admin-a1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('delete-admin-a1'));
+    await waitFor(() => {
+      expect(screen.getByText('Delete Admin User')).toBeInTheDocument();
+    });
+    // ConfirmDialog renders its "Delete" confirm last after the per-row Delete buttons
+    const deleteButtons = screen.getAllByText('Delete');
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+    await waitFor(() => {
+      expect(mockDeleteAdminUser).toHaveBeenCalledWith('a1');
+      expect(mockShowToast).toHaveBeenCalledWith('Admin user deleted', 'success');
+    });
+  });
+
+  it('delete admin: error', async () => {
+    mockGetAdmins.mockResolvedValue(sampleAdmins);
+    mockDeleteAdminUser.mockRejectedValue(new Error('Delete failed'));
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('delete-admin-a1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('delete-admin-a1'));
+    await waitFor(() => {
+      expect(screen.getByText('Delete Admin User')).toBeInTheDocument();
+    });
+    const deleteButtons = screen.getAllByText('Delete');
+    fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Error: Delete failed', 'error');
+    });
+  });
+
+  it('delete admin: cancel dialog', async () => {
+    mockGetAdmins.mockResolvedValue(sampleAdmins);
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('delete-admin-a1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('delete-admin-a1'));
+    await waitFor(() => {
+      expect(screen.getByText('Delete Admin User')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => {
+      expect(mockDeleteAdminUser).not.toHaveBeenCalled();
+      expect(screen.queryByText('Delete Admin User')).not.toBeInTheDocument();
+    });
+  });
+
+  it('create admin: captures firstName/lastName/role/tenantId fields', async () => {
+    mockGetAdminTenants.mockResolvedValue(sampleTenants);
+    mockGetAdmins.mockResolvedValue([]);
+    mockCreateAdminUser.mockResolvedValue({ id: 'a10' });
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    fireEvent.click(screen.getByTestId('create-admin-btn'));
+    // firstName / lastName (create-tenant form is closed, so these are the create-admin ones)
+    const firstNameInputs = screen.getAllByPlaceholderText('First name');
+    fireEvent.change(firstNameInputs[0], { target: { value: 'NewFirst' } });
+    const lastNameInputs = screen.getAllByPlaceholderText('Last name');
+    fireEvent.change(lastNameInputs[0], { target: { value: 'NewLast' } });
+    // role select -> super_admin
+    fireEvent.change(screen.getByDisplayValue('Admin'), { target: { value: 'super_admin' } });
+    // tenantId select -> t1 (tenants loaded)
+    fireEvent.change(screen.getByDisplayValue('No tenant (global)'), { target: { value: 't1' } });
+    fireEvent.change(screen.getByPlaceholderText('admin@example.com'), { target: { value: 'new@test.com' } });
+    fireEvent.change(screen.getByPlaceholderText('Min 8 characters'), { target: { value: 'secret123' } });
+    fireEvent.click(screen.getByText('Create Admin'));
+    await waitFor(() => {
+      expect(mockCreateAdminUser).toHaveBeenCalledWith(expect.objectContaining({
+        firstName: 'NewFirst',
+        lastName: 'NewLast',
+        role: 'super_admin',
+        tenantId: 't1',
+      }));
+    });
+  });
+
+  it('edit admin: captures firstName/lastName/role fields', async () => {
+    mockGetAdmins.mockResolvedValue(sampleAdmins);
+    mockUpdateAdminUser.mockResolvedValue({});
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('edit-admin-a1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('edit-admin-a1'));
+    // Inline edit mode: one role <select>
+    const selects = screen.getAllByRole('combobox');
+    const roleSelect = selects[selects.length - 1];
+    fireEvent.change(roleSelect, { target: { value: 'admin' } });
+    const inputs = screen.getAllByRole('textbox');
+    fireEvent.change(inputs[0], { target: { value: 'EditedFirst' } });
+    fireEvent.change(inputs[1], { target: { value: 'EditedLast' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(mockUpdateAdminUser).toHaveBeenCalledWith('a1', expect.objectContaining({
+        firstName: 'EditedFirst',
+        lastName: 'EditedLast',
+        role: 'admin',
+      }));
+    });
+  });
+
+  it('create tenant: captures type select value', async () => {
+    mockCreateTenant.mockResolvedValue({ id: 't11' });
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByTestId('create-tenant-btn'));
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g., Acacia Camp'), { target: { value: 'New Camp' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g., acaciacamp'), { target: { value: 'camp1' } });
+    fireEvent.change(screen.getByPlaceholderText('Min 8 characters'), { target: { value: 'secret123' } });
+    fireEvent.change(screen.getByDisplayValue('Camp'), { target: { value: 'supermarket' } });
+    fireEvent.click(screen.getByText('Create Tenant'));
+    await waitFor(() => {
+      expect(mockCreateTenant).toHaveBeenCalledWith(expect.objectContaining({ type: 'supermarket' }));
     });
   });
 });

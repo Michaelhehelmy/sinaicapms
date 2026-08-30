@@ -2,58 +2,173 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  useCampsQuery, useProductsQuery, useRoomsQuery,
-  useOrdersQuery, useRatePlansQuery, usePlansQuery,
-  useMealsQuery, useCategoriesQuery, useMealCategoriesQuery,
-  useMealSchedulesQuery, useSettingsQuery, useAdminStatsQuery, useTenantsQuery,
-  useSaveCampMutation, useDeleteCampMutation,
-  useSaveRoomMutation,
-  useSaveOrderMutation, useDeleteOrderMutation,
-  useSaveRatePlanMutation, useDeleteRatePlanMutation,
-  useSaveMealMutation, useDeleteMealMutation,
-  useSaveMealCategoryMutation, useDeleteMealCategoryMutation,
-  useCreateMealScheduleMutation, useDeleteMealScheduleMutation,
-  useSavePlanMutation, useDeletePlanMutation,
-  useChangePasswordMutation,
-  useOccupancyReportQuery, useRevenueReportQuery, useBookingsReportQuery,
-  useAdminsQuery,
-  useAvailabilityQuery, usePriceOverridesQuery,
-  useSetPriceOverrideMutation, useDeletePriceOverrideMutation,
-  queryKeys,
-} from '@/hooks/useQueryHooks';
 
 const mockShowToast = vi.fn();
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
 
-const api = vi.hoisted(() => ({
-  getCamps: vi.fn(), getProducts: vi.fn(), getRooms: vi.fn(), getOrders: vi.fn(),
-  getRatePlans: vi.fn(), getPlans: vi.fn(), getMeals: vi.fn(), getCategories: vi.fn(),
-  getMealCategories: vi.fn(), getMealSchedules: vi.fn(), getMe: vi.fn(),
-  getAdminStats: vi.fn(), getTenants: vi.fn(), getAdminTenants: vi.fn(), getAdmins: vi.fn(),
-  getOccupancyReport: vi.fn(), getRevenueReport: vi.fn(), getBookingsReport: vi.fn(),
-  saveCamp: vi.fn(), deleteCamp: vi.fn(),
-  saveRoom: vi.fn(),
-  saveOrder: vi.fn(), deleteOrder: vi.fn(),
-  saveRatePlan: vi.fn(), deleteRatePlan: vi.fn(),
-  saveMeal: vi.fn(), deleteMeal: vi.fn(),
-  saveMealCategory: vi.fn(), deleteMealCategory: vi.fn(),
-  createMealSchedule: vi.fn(), deleteMealSchedule: vi.fn(),
-  savePlan: vi.fn(), deletePlan: vi.fn(),
-  getAvailability: vi.fn(), getPriceOverrides: vi.fn(),
-  setPriceOverrides: vi.fn(), deletePriceOverride: vi.fn(),
-  updateBranding: vi.fn(), changePassword: vi.fn(),
-}));
+// Mock every API function referenced by the hooks under test.
+// NOTE: factory must be fully self-contained (no external refs — it is hoisted).
+vi.mock('@/lib/api', () => {
+  const mk = () => vi.fn().mockResolvedValue([]);
+  const mkObj = () => vi.fn().mockResolvedValue({ ok: true });
+  return {
+    __esModule: true,
+    apiFetch: vi.fn().mockResolvedValue([]),
+    request: vi.fn().mockResolvedValue([]),
+    // project meta
+    getProjectMeta: mk(),
+    setProjectMeta: vi.fn().mockResolvedValue(undefined),
+    updateProjectMeta: vi.fn().mockResolvedValue(undefined),
+    deleteProjectMeta: vi.fn().mockResolvedValue(undefined),
+    // top products / kitchen / analytics reports
+    getTopProducts: mk(),
+    getKitchenPerformance: mk(),
+    getAnalyticsLowStock: mk(),
+    getRevenueBreakdown: mk(),
+    getCustomerMetrics: mk(),
+    getSeasonalComparison: mk(),
+    getPromotions: mk(),
+    // services
+    getServiceDefinitions: mk(),
+    getServiceItems: mk(),
+    getServiceBookings: mk(),
+    getPosUsers: mkObj(),
+    // HR
+    getHrEmployees: mk(),
+    getHrLeaveTypes: mk(),
+    getHrLeaveRequests: mk(),
+    getHrPayrollRuns: mk(),
+    getHrJobPosts: mk(),
+    // Financial
+    getFinancialAccounts: mk(),
+    getFinancialJournals: mk(),
+    getJournalEntries: mk(),
+    getFinancialInvoices: mk(),
+    getTaxRates: mk(),
+    // Supply
+    getSupplyWarehouses: mk(),
+    getSupplyStock: mk(),
+    getSupplyTransfers: mk(),
+    getSupplyPurchaseOrders: mk(),
+    getSupplyBoms: mk(),
+    getSupplyManufacturingOrders: mk(),
+    // CRM
+    getCrmContacts: mk(),
+    getCrmLeads: mk(),
+    getCrmOpportunities: mk(),
+    getCrmTasks: mk(),
+    getCrmTickets: mk(),
+    getCrmKnowledgeArticles: mk(),
+    // Storefront
+    getStorefrontPages: mk(),
+    getStorefrontBlogPosts: mk(),
+    getStorefrontOrders: mk(),
+    // AI
+    getAiPredictions: mk(),
+    getAiPriceRules: mk(),
+    getAiAutomationRules: mk(),
+    getAiAutomationLogs: mk(),
+    // Super admin
+    getSuperFinancialsOverview: mkObj(),
+    getSuperInvoices: mkObj(),
+    getSuperHROverview: mkObj(),
+    getSuperEmployees: mkObj(),
+    getSuperSupplyOverview: mkObj(),
+    getSuperPurchaseOrders: mkObj(),
+    getSuperCRMOverview: mkObj(),
+    getSuperContacts: mkObj(),
+    getSuperOpportunities: mkObj(),
+    getSuperStorefrontOverview: mkObj(),
+    getSuperStorefrontProducts: mkObj(),
+    getSuperAIOverview: mkObj(),
+    getSuperPredictions: mkObj(),
+    // Admin / billing
+    getTenantBilling: mkObj(),
+    getAdmins: mk(),
+    getAdminSettings: mkObj(),
+  };
+});
 
-vi.mock('@/lib/api', () => api);
+import {
+  useProjectMetaQuery,
+  useSaveProjectMetaMutation,
+  useTopProductsQuery,
+  useKitchenPerformanceQuery,
+  useAnalyticsLowStockQuery,
+  useRevenueBreakdownQuery,
+  useCustomerMetricsQuery,
+  useSeasonalComparisonQuery,
+  usePromotionsQuery,
+  useServiceDefinitionsQuery,
+  useServiceItemsQuery,
+  useServiceBookingsQuery,
+  usePosUsersQuery,
+  useHrEmployeesQuery,
+  useHrLeaveTypesQuery,
+  useHrLeaveRequestsQuery,
+  useHrPayrollRunsQuery,
+  useHrJobPostsQuery,
+  useFinancialAccountsQuery,
+  useFinancialJournalsQuery,
+  useFinancialJournalEntriesQuery,
+  useFinancialInvoicesQuery,
+  useFinancialPaymentsQuery,
+  useFinancialTaxRatesQuery,
+  useSupplyWarehousesQuery,
+  useSupplyStockQuery,
+  useSupplyTransfersQuery,
+  useSupplyPurchaseOrdersQuery,
+  useSupplyBomsQuery,
+  useSupplyManufacturingOrdersQuery,
+  useCrmContactsQuery,
+  useCrmLeadsQuery,
+  useCrmOpportunitiesQuery,
+  useCrmTasksQuery,
+  useCrmTicketsQuery,
+  useCrmKnowledgeArticlesQuery,
+  useStorefrontPagesQuery,
+  useStorefrontBlogPostsQuery,
+  useStorefrontBlogCategoriesQuery,
+  useStorefrontCartsQuery,
+  useStorefrontOrdersQuery,
+  useAIPredictionsQuery,
+  useAIPriceRulesQuery,
+  useAIAutomationRulesQuery,
+  useAIAutomationLogsQuery,
+  useSuperFinancialsOverviewQuery,
+  useSuperInvoicesQuery,
+  useSuperHROverviewQuery,
+  useSuperEmployeesQuery,
+  useSuperSupplyOverviewQuery,
+  useSuperPurchaseOrdersQuery,
+  useSuperCRMOverviewQuery,
+  useSuperContactsQuery,
+  useSuperOpportunitiesQuery,
+  useSuperStorefrontOverviewQuery,
+  useSuperStorefrontProductsQuery,
+  useSuperAIOverviewQuery,
+  useSuperPredictionsQuery,
+  useTenantBillingQuery,
+  useAdminUsersQuery,
+  useAdminAuditQuery,
+  useAdminHealthQuery,
+  useAdminHealthMetricsQuery,
+  useAdminPerformanceQuery,
+  useAdminReportsQuery,
+  useAdminScheduledReportsQuery,
+  useAdminSettingsQuery,
+  useAdminSubscriptionsQuery,
+} from '@/hooks/useQueryHooks';
 
-function createWrapper(opts?: { gcTime?: number }) {
+import * as api from '@/lib/api';
+
+function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: opts?.gcTime ?? 0 },
-      mutations: { retry: false },
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false, gcTime: 0 },
     },
   });
   const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -61,494 +176,195 @@ function createWrapper(opts?: { gcTime?: number }) {
   return { wrapper, queryClient };
 }
 
-beforeEach(() => {
-  mockShowToast.mockClear();
-  Object.values(api).forEach((fn) => {
-    (fn as ReturnType<typeof vi.fn>).mockReset();
+/** Render a query hook and wait until its data resolves. */
+async function mountQuery<H extends (...a: never[]) => unknown>(hook: H, ...args: never[]) {
+  const { wrapper } = createWrapper();
+  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  return result;
+}
+
+/** Render a query hook whose api getter rejects — covers throwOnError error path. */
+async function mountQueryError<H extends (...a: never[]) => unknown>(
+  hook: H,
+  apiFn: () => unknown,
+  ...args: never[]
+) {
+  vi.mocked(apiFn).mockRejectedValue(new Error('boom'));
+  const { wrapper } = createWrapper();
+  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  return result;
+}
+
+describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM/storefront/AI/super-admin)', () => {
+  beforeEach(() => {
+    mockShowToast.mockClear();
+    vi.mocked(api.apiFetch).mockClear();
+    vi.mocked(api.request).mockClear();
   });
-});
 
-describe('query hook error handlers', () => {
-  const cases: Array<[string, () => { wrapper: React.ComponentType<{ children: React.ReactNode }>; queryClient: QueryClient }, string]> = [
-    ['useCampsQuery', () => createWrapper(), 'Failed to load camps'],
-    ['useProductsQuery', () => createWrapper(), 'Failed to load products'],
-    ['useRoomsQuery', () => createWrapper(), 'Failed to load rooms'],
-    ['useOrdersQuery', () => createWrapper(), 'Failed to load orders'],
-    ['useRatePlansQuery', () => createWrapper(), 'Failed to load rate plans'],
-    ['usePlansQuery', () => createWrapper(), 'Failed to load plans'],
-    ['useMealsQuery', () => createWrapper(), 'Failed to load meals'],
-    ['useCategoriesQuery', () => createWrapper(), 'Failed to load categories'],
-    ['useMealCategoriesQuery', () => createWrapper(), 'Failed to load meal categories'],
-    ['useMealSchedulesQuery', () => createWrapper(), 'Failed to load meal schedules'],
-    ['useSettingsQuery', () => createWrapper(), 'Failed to load settings'],
-    ['useAdminStatsQuery', () => createWrapper(), 'Failed to load platform stats'],
-    ['useTenantsQuery', () => createWrapper(), 'Failed to load tenants'],
-  ];
-
-  it.each(cases)('%s shows error toast on failure', async (_name, makeWrapper, message) => {
-    const { wrapper } = makeWrapper();
-    const fail = new Error('boom');
-    Object.values(api).forEach((fn) => {
-      (fn as ReturnType<typeof vi.fn>).mockRejectedValue(fail);
+  describe('project meta', () => {
+    it('useProjectMetaQuery resolves with enabled projectId', async () => {
+      vi.mocked(api.getProjectMeta).mockResolvedValue([{ id: 'm1' } as never]);
+      const result = await mountQuery(useProjectMetaQuery as never, 'p1');
+      expect(api.getProjectMeta).toHaveBeenCalledWith('p1');
+      expect(result.current.data).toEqual([{ id: 'm1' }]);
     });
-    // Need at least one hook to exercise — instantiate every hook
-    renderHook(() => useCampsQuery(), { wrapper });
-    renderHook(() => useProductsQuery(), { wrapper });
-    renderHook(() => useRoomsQuery(), { wrapper });
-    renderHook(() => useOrdersQuery(), { wrapper });
-    renderHook(() => useRatePlansQuery(), { wrapper });
-    renderHook(() => usePlansQuery(), { wrapper });
-    renderHook(() => useMealsQuery(), { wrapper });
-    renderHook(() => useCategoriesQuery(), { wrapper });
-    renderHook(() => useMealCategoriesQuery(), { wrapper });
-    renderHook(() => useMealSchedulesQuery(), { wrapper });
-    renderHook(() => useSettingsQuery(), { wrapper });
-    renderHook(() => useAdminStatsQuery(), { wrapper });
-    renderHook(() => useTenantsQuery(), { wrapper });
-    await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith(`${message}: boom`, 'error');
+
+    it('useSaveProjectMetaMutation runs creates/updates/deletes and clears cache', async () => {
+      const { wrapper, queryClient } = createWrapper();
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
+      const { result } = renderHook(() => useSaveProjectMetaMutation('p1'), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync({
+          creates: [{ key: 'color', value: 'red' }],
+          updates: [{ id: 'u1', value: 'blue' }],
+          deletes: ['d1'],
+        });
+      });
+      expect(api.setProjectMeta).toHaveBeenCalledWith('p1', 'color', 'red');
+      expect(api.updateProjectMeta).toHaveBeenCalledWith('p1', 'u1', 'blue');
+      expect(api.deleteProjectMeta).toHaveBeenCalledWith('p1', 'd1');
+      expect(invalidateSpy).toHaveBeenCalled();
+      expect(mockShowToast).toHaveBeenCalled();
+    });
+
+    it('useSaveProjectMetaMutation throws without projectId', async () => {
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => useSaveProjectMetaMutation(null), { wrapper });
+      await act(async () => {
+        await expect(
+          result.current.mutateAsync({ creates: [], updates: [], deletes: [] } as never)
+        ).rejects.toThrow('No project selected');
+      });
     });
   });
-});
 
-describe('optimistic camp mutation cache paths', () => {
-  it('adds a new camp when cache exists', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.camps, [{ id: '1', name: 'Old' }]);
-    api.saveCamp.mockResolvedValue({ id: '2' });
-    const { result } = renderHook(() => useSaveCampMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'New' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.camps)).toEqual([
-      { id: '1', name: 'Old' },
-      expect.objectContaining({ name: 'New', id: expect.stringMatching(/^temp_/) }),
-    ]);
+  describe('queries that resolve', () => {
+    const queryCases: Array<[string, never, unknown[]]> = [
+      ['useTopProductsQuery', useTopProductsQuery as never, [300, 10]],
+      ['useKitchenPerformanceQuery', useKitchenPerformanceQuery as never, [7]],
+      ['useAnalyticsLowStockQuery', useAnalyticsLowStockQuery as never, []],
+      ['useRevenueBreakdownQuery', useRevenueBreakdownQuery as never, [30]],
+      ['useCustomerMetricsQuery', useCustomerMetricsQuery as never, [30]],
+      ['useSeasonalComparisonQuery', useSeasonalComparisonQuery as never, []],
+      ['usePromotionsQuery', usePromotionsQuery as never, [true]],
+      ['useServiceDefinitionsQuery', useServiceDefinitionsQuery as never, []],
+      ['useServiceItemsQuery', useServiceItemsQuery as never, []],
+      ['useServiceBookingsQuery', useServiceBookingsQuery as never, ['CONFIRMED']],
+      ['usePosUsersQuery', usePosUsersQuery as never, [{ page: 1, pageSize: 10 }]],
+      ['useHrEmployeesQuery', useHrEmployeesQuery as never, []],
+      ['useHrLeaveTypesQuery', useHrLeaveTypesQuery as never, []],
+      ['useHrLeaveRequestsQuery', useHrLeaveRequestsQuery as never, []],
+      ['useHrPayrollRunsQuery', useHrPayrollRunsQuery as never, []],
+      ['useHrJobPostsQuery', useHrJobPostsQuery as never, []],
+      ['useFinancialAccountsQuery', useFinancialAccountsQuery as never, []],
+      ['useFinancialJournalsQuery', useFinancialJournalsQuery as never, []],
+      ['useFinancialJournalEntriesQuery', useFinancialJournalEntriesQuery as never, []],
+      ['useFinancialInvoicesQuery', useFinancialInvoicesQuery as never, []],
+      ['useFinancialPaymentsQuery', useFinancialPaymentsQuery as never, []],
+      ['useFinancialTaxRatesQuery', useFinancialTaxRatesQuery as never, []],
+      ['useSupplyWarehousesQuery', useSupplyWarehousesQuery as never, []],
+      ['useSupplyStockQuery', useSupplyStockQuery as never, []],
+      ['useSupplyTransfersQuery', useSupplyTransfersQuery as never, []],
+      ['useSupplyPurchaseOrdersQuery', useSupplyPurchaseOrdersQuery as never, []],
+      ['useSupplyBomsQuery', useSupplyBomsQuery as never, []],
+      ['useSupplyManufacturingOrdersQuery', useSupplyManufacturingOrdersQuery as never, []],
+      ['useCrmContactsQuery', useCrmContactsQuery as never, []],
+      ['useCrmLeadsQuery', useCrmLeadsQuery as never, []],
+      ['useCrmOpportunitiesQuery', useCrmOpportunitiesQuery as never, []],
+      ['useCrmTasksQuery', useCrmTasksQuery as never, []],
+      ['useCrmTicketsQuery', useCrmTicketsQuery as never, []],
+      ['useCrmKnowledgeArticlesQuery', useCrmKnowledgeArticlesQuery as never, []],
+      ['useStorefrontPagesQuery', useStorefrontPagesQuery as never, []],
+      ['useStorefrontBlogPostsQuery', useStorefrontBlogPostsQuery as never, []],
+      ['useStorefrontBlogCategoriesQuery', useStorefrontBlogCategoriesQuery as never, []],
+      ['useStorefrontCartsQuery', useStorefrontCartsQuery as never, []],
+      ['useStorefrontOrdersQuery', useStorefrontOrdersQuery as never, []],
+      ['useAIPredictionsQuery', useAIPredictionsQuery as never, []],
+      ['useAIPriceRulesQuery', useAIPriceRulesQuery as never, []],
+      ['useAIAutomationRulesQuery', useAIAutomationRulesQuery as never, []],
+      ['useAIAutomationLogsQuery', useAIAutomationLogsQuery as never, []],
+      ['useSuperFinancialsOverviewQuery', useSuperFinancialsOverviewQuery as never, []],
+      ['useSuperHROverviewQuery', useSuperHROverviewQuery as never, []],
+      ['useSuperSupplyOverviewQuery', useSuperSupplyOverviewQuery as never, []],
+      ['useSuperCRMOverviewQuery', useSuperCRMOverviewQuery as never, []],
+      ['useSuperStorefrontOverviewQuery', useSuperStorefrontOverviewQuery as never, []],
+      ['useSuperAIOverviewQuery', useSuperAIOverviewQuery as never, []],
+      ['useTenantBillingQuery', useTenantBillingQuery as never, []],
+      ['useAdminUsersQuery', useAdminUsersQuery as never, []],
+      ['useAdminAuditQuery', useAdminAuditQuery as never, [{}]],
+      ['useAdminHealthQuery', useAdminHealthQuery as never, []],
+      ['useAdminHealthMetricsQuery', useAdminHealthMetricsQuery as never, []],
+      ['useAdminPerformanceQuery', useAdminPerformanceQuery as never, []],
+      ['useAdminReportsQuery', useAdminReportsQuery as never, []],
+      ['useAdminScheduledReportsQuery', useAdminScheduledReportsQuery as never, []],
+      ['useAdminSettingsQuery', useAdminSettingsQuery as never, []],
+      ['useAdminSubscriptionsQuery', useAdminSubscriptionsQuery as never, [{}]],
+    ];
+
+    for (const [name, hook, args] of queryCases) {
+      it(`${name} resolves`, async () => {
+        const result = await mountQuery(hook, ...args);
+        expect(result.current.isSuccess).toBe(true);
+      });
+    }
   });
 
-  it('updates an existing camp in the cache', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.camps, [{ id: '5', name: 'Before' }]);
-    api.saveCamp.mockResolvedValue({ id: '5' });
-    const { result } = renderHook(() => useSaveCampMutation('5'), { wrapper });
-    act(() => { result.current.mutate({ name: 'After' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.camps)).toEqual([{ id: '5', name: 'After' }]);
-  });
+  describe('throwOnError error paths (toast + return false)', () => {
+    const errorCases: Array<[string, never, () => unknown, never[]]> = [
+      ['useTopProductsQuery', useTopProductsQuery as never, api.getTopProducts, [300, 10]],
+      ['useKitchenPerformanceQuery', useKitchenPerformanceQuery as never, api.getKitchenPerformance, [7]],
+      ['useAnalyticsLowStockQuery', useAnalyticsLowStockQuery as never, api.getAnalyticsLowStock, []],
+      ['useRevenueBreakdownQuery', useRevenueBreakdownQuery as never, api.getRevenueBreakdown, [30]],
+      ['useCustomerMetricsQuery', useCustomerMetricsQuery as never, api.getCustomerMetrics, [30]],
+      ['useSeasonalComparisonQuery', useSeasonalComparisonQuery as never, api.getSeasonalComparison, []],
+      ['usePromotionsQuery', usePromotionsQuery as never, api.getPromotions, [true]],
+      ['useServiceDefinitionsQuery', useServiceDefinitionsQuery as never, api.getServiceDefinitions, []],
+      ['useServiceItemsQuery', useServiceItemsQuery as never, api.getServiceItems, []],
+      ['useServiceBookingsQuery', useServiceBookingsQuery as never, api.getServiceBookings, ['CONFIRMED']],
+      ['usePosUsersQuery', usePosUsersQuery as never, api.getPosUsers, [{ page: 1, pageSize: 10 }]],
+      ['useHrEmployeesQuery', useHrEmployeesQuery as never, api.getHrEmployees, []],
+      ['useHrLeaveTypesQuery', useHrLeaveTypesQuery as never, api.getHrLeaveTypes, []],
+      ['useHrLeaveRequestsQuery', useHrLeaveRequestsQuery as never, api.getHrLeaveRequests, []],
+      ['useHrPayrollRunsQuery', useHrPayrollRunsQuery as never, api.getHrPayrollRuns, []],
+      ['useHrJobPostsQuery', useHrJobPostsQuery as never, api.getHrJobPosts, []],
+      ['useFinancialAccountsQuery', useFinancialAccountsQuery as never, api.getFinancialAccounts, []],
+      ['useFinancialJournalsQuery', useFinancialJournalsQuery as never, api.getFinancialJournals, []],
+      ['useFinancialJournalEntriesQuery', useFinancialJournalEntriesQuery as never, api.getJournalEntries, []],
+      ['useFinancialInvoicesQuery', useFinancialInvoicesQuery as never, api.getFinancialInvoices, []],
+      ['useFinancialPaymentsQuery', useFinancialPaymentsQuery as never, api.request, []],
+      ['useFinancialTaxRatesQuery', useFinancialTaxRatesQuery as never, api.getTaxRates, []],
+      ['useSupplyWarehousesQuery', useSupplyWarehousesQuery as never, api.getSupplyWarehouses, []],
+      ['useSupplyStockQuery', useSupplyStockQuery as never, api.getSupplyStock, []],
+      ['useSupplyTransfersQuery', useSupplyTransfersQuery as never, api.getSupplyTransfers, []],
+      ['useSupplyPurchaseOrdersQuery', useSupplyPurchaseOrdersQuery as never, api.getSupplyPurchaseOrders, []],
+      ['useSupplyBomsQuery', useSupplyBomsQuery as never, api.getSupplyBoms, []],
+      ['useSupplyManufacturingOrdersQuery', useSupplyManufacturingOrdersQuery as never, api.getSupplyManufacturingOrders, []],
+      ['useCrmContactsQuery', useCrmContactsQuery as never, api.getCrmContacts, []],
+      ['useCrmLeadsQuery', useCrmLeadsQuery as never, api.getCrmLeads, []],
+      ['useCrmOpportunitiesQuery', useCrmOpportunitiesQuery as never, api.getCrmOpportunities, []],
+      ['useCrmTasksQuery', useCrmTasksQuery as never, api.getCrmTasks, []],
+      ['useCrmTicketsQuery', useCrmTicketsQuery as never, api.getCrmTickets, []],
+      ['useCrmKnowledgeArticlesQuery', useCrmKnowledgeArticlesQuery as never, api.getCrmKnowledgeArticles, []],
+      ['useStorefrontPagesQuery', useStorefrontPagesQuery as never, api.getStorefrontPages, []],
+      ['useStorefrontBlogPostsQuery', useStorefrontBlogPostsQuery as never, api.getStorefrontBlogPosts, []],
+      ['useStorefrontBlogCategoriesQuery', useStorefrontBlogCategoriesQuery as never, api.apiFetch, []],
+      ['useStorefrontCartsQuery', useStorefrontCartsQuery as never, api.apiFetch, []],
+      ['useStorefrontOrdersQuery', useStorefrontOrdersQuery as never, api.getStorefrontOrders, []],
+      ['useAIPredictionsQuery', useAIPredictionsQuery as never, api.getAiPredictions, []],
+      ['useAIPriceRulesQuery', useAIPriceRulesQuery as never, api.getAiPriceRules, []],
+      ['useAIAutomationRulesQuery', useAIAutomationRulesQuery as never, api.getAiAutomationRules, []],
+      ['useAIAutomationLogsQuery', useAIAutomationLogsQuery as never, api.getAiAutomationLogs, []],
+    ];
 
-  it('rolls back camp cache when save fails with prior cache', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.camps, [{ id: '5', name: 'Before' }]);
-    api.saveCamp.mockRejectedValue(new Error('nope'));
-    const { result } = renderHook(() => useSaveCampMutation('5'), { wrapper });
-    act(() => { result.current.mutate({ name: 'After' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.camps)).toEqual([{ id: '5', name: 'Before' }]);
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save camp: nope', 'error');
-  });
-
-  it('deletes a camp optimistically when cache exists', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.camps, [{ id: '1', name: 'A' }, { id: '2', name: 'B' }]);
-    api.deleteCamp.mockResolvedValue({});
-    const { result } = renderHook(() => useDeleteCampMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.camps)).toEqual([{ id: '2', name: 'B' }]);
-  });
-
-  it('rolls back camp deletion when delete fails with prior cache', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.camps, [{ id: '1', name: 'A' }, { id: '2', name: 'B' }]);
-    api.deleteCamp.mockRejectedValue(new Error('nope'));
-    const { result } = renderHook(() => useDeleteCampMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.camps)).toEqual([{ id: '1', name: 'A' }, { id: '2', name: 'B' }]);
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to delete camp: nope', 'error');
-  });
-});
-
-describe('optimistic room mutation cache paths', () => {
-  it('adds a new room when cache exists', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.rooms, [{ id: '1', name: 'R1' }]);
-    api.saveRoom.mockResolvedValue({ id: '2' });
-    const { result } = renderHook(() => useSaveRoomMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'R2' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.rooms)).toEqual([
-      { id: '1', name: 'R1' },
-      expect.objectContaining({ name: 'R2', id: expect.stringMatching(/^temp_/) }),
-    ]);
-  });
-
-  it('updates an existing room in the cache', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.rooms, [{ id: '7', name: 'Before' }]);
-    api.saveRoom.mockResolvedValue({ id: '7' });
-    const { result } = renderHook(() => useSaveRoomMutation('7'), { wrapper });
-    act(() => { result.current.mutate({ name: 'After' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.rooms)).toEqual([{ id: '7', name: 'After' }]);
-  });
-
-  it('rolls back room cache when save fails with prior cache', async () => {
-    const { wrapper, queryClient } = createWrapper({ gcTime: 60_000 });
-    queryClient.setQueryData(queryKeys.rooms, [{ id: '7', name: 'Before' }]);
-    api.saveRoom.mockRejectedValue(new Error('nope'));
-    const { result } = renderHook(() => useSaveRoomMutation('7'), { wrapper });
-    act(() => { result.current.mutate({ name: 'After' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(queryClient.getQueryData(queryKeys.rooms)).toEqual([{ id: '7', name: 'Before' }]);
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save room: nope', 'error');
-  });
-});
-
-describe('order mutations', () => {
-  it('shows error toast when saving an order fails', async () => {
-    const { wrapper } = createWrapper();
-    api.saveOrder.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useSaveOrderMutation(), { wrapper });
-    act(() => { result.current.mutate({ total: 1 }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save order: bad', 'error');
-  });
-
-  it('shows error toast when deleting an order fails', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteOrder.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useDeleteOrderMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to delete order: bad', 'error');
-  });
-});
-
-describe('rate plan mutations', () => {
-  it('shows error toast when saving a rate plan fails', async () => {
-    const { wrapper } = createWrapper();
-    api.saveRatePlan.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useSaveRatePlanMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'P' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save rate plan: bad', 'error');
-  });
-
-  it('shows success toast when deleting a rate plan', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteRatePlan.mockResolvedValue({});
-    const { result } = renderHook(() => useDeleteRatePlanMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Rate plan deleted', 'success');
-  });
-
-  it('shows error toast when deleting a rate plan fails', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteRatePlan.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useDeleteRatePlanMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to delete rate plan: bad', 'error');
-  });
-});
-
-describe('meal mutations', () => {
-  it('shows error toast when saving a meal fails', async () => {
-    const { wrapper } = createWrapper();
-    api.saveMeal.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useSaveMealMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'M' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save meal: bad', 'error');
-  });
-
-  it('shows error toast when deleting a meal fails', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteMeal.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useDeleteMealMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to delete meal: bad', 'error');
-  });
-});
-
-describe('meal category mutations', () => {
-  it('creates a meal category', async () => {
-    const { wrapper } = createWrapper();
-    api.saveMealCategory.mockResolvedValue({ id: '1' });
-    const { result } = renderHook(() => useSaveMealCategoryMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'Breakfast' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.saveMealCategory).toHaveBeenCalledWith({ name: 'Breakfast' }, undefined);
-    expect(mockShowToast).toHaveBeenCalledWith('Category created', 'success');
-  });
-
-  it('updates a meal category', async () => {
-    const { wrapper } = createWrapper();
-    api.saveMealCategory.mockResolvedValue({ id: '1' });
-    const { result } = renderHook(() => useSaveMealCategoryMutation('1'), { wrapper });
-    act(() => { result.current.mutate({ name: 'Lunch' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Category updated', 'success');
-  });
-
-  it('shows error toast when saving a meal category fails', async () => {
-    const { wrapper } = createWrapper();
-    api.saveMealCategory.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useSaveMealCategoryMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'X' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save category: bad', 'error');
-  });
-
-  it('deletes a meal category', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteMealCategory.mockResolvedValue({});
-    const { result } = renderHook(() => useDeleteMealCategoryMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Category deleted', 'success');
-  });
-
-  it('shows error toast when deleting a meal category fails', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteMealCategory.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useDeleteMealCategoryMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to delete category: bad', 'error');
-  });
-});
-
-describe('meal schedule mutations', () => {
-  it('creates a meal schedule', async () => {
-    const { wrapper } = createWrapper();
-    api.createMealSchedule.mockResolvedValue({ id: '1' });
-    const payload = { campId: 'c1', date: '2025-01-01', mealId: 'm1' };
-    const { result } = renderHook(() => useCreateMealScheduleMutation(), { wrapper });
-    act(() => { result.current.mutate(payload); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.createMealSchedule).toHaveBeenCalledWith(payload);
-    expect(mockShowToast).toHaveBeenCalledWith('Meal scheduled', 'success');
-  });
-
-  it('shows error toast when creating a meal schedule fails', async () => {
-    const { wrapper } = createWrapper();
-    api.createMealSchedule.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useCreateMealScheduleMutation(), { wrapper });
-    act(() => { result.current.mutate({ campId: 'c1', date: '2025-01-01', mealId: 'm1' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to schedule meal: bad', 'error');
-  });
-
-  it('deletes a meal schedule', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteMealSchedule.mockResolvedValue({});
-    const { result } = renderHook(() => useDeleteMealScheduleMutation(), { wrapper });
-    act(() => { result.current.mutate('s1'); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Meal removed', 'success');
-  });
-
-  it('shows error toast when deleting a meal schedule fails', async () => {
-    const { wrapper } = createWrapper();
-    api.deleteMealSchedule.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useDeleteMealScheduleMutation(), { wrapper });
-    act(() => { result.current.mutate('s1'); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to remove meal: bad', 'error');
-  });
-});
-
-describe('plan mutations', () => {
-  it('creates a plan', async () => {
-    const { wrapper } = createWrapper();
-    api.savePlan.mockResolvedValue({ id: '1' });
-    const { result } = renderHook(() => useSavePlanMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'Plan' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.savePlan).toHaveBeenCalledWith({ name: 'Plan' }, undefined);
-    expect(mockShowToast).toHaveBeenCalledWith('Plan created', 'success');
-  });
-
-  it('shows error toast when saving a plan fails', async () => {
-    const { wrapper } = createWrapper();
-    api.savePlan.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useSavePlanMutation(), { wrapper });
-    act(() => { result.current.mutate({ name: 'Plan' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save plan: bad', 'error');
-  });
-
-  it('deletes a plan', async () => {
-    const { wrapper } = createWrapper();
-    api.deletePlan.mockResolvedValue({});
-    const { result } = renderHook(() => useDeletePlanMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Plan deleted', 'success');
-  });
-
-  it('shows error toast when deleting a plan fails', async () => {
-    const { wrapper } = createWrapper();
-    api.deletePlan.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useDeletePlanMutation(), { wrapper });
-    act(() => { result.current.mutate('1'); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to delete plan: bad', 'error');
-  });
-});
-
-describe('change password mutation', () => {
-  it('shows success toast on success', async () => {
-    const { wrapper } = createWrapper();
-    api.changePassword.mockResolvedValue({});
-    const { result } = renderHook(() => useChangePasswordMutation(), { wrapper });
-    act(() => { result.current.mutate({ currentPassword: 'a', newPassword: 'b' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.changePassword).toHaveBeenCalledWith('a', 'b');
-    expect(mockShowToast).toHaveBeenCalledWith('Password changed successfully', 'success');
-  });
-
-  it('shows error toast on failure', async () => {
-    const { wrapper } = createWrapper();
-    api.changePassword.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useChangePasswordMutation(), { wrapper });
-    act(() => { result.current.mutate({ currentPassword: 'a', newPassword: 'b' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to change password: bad', 'error');
-  });
-});
-
-describe('report queries', () => {
-  it('useOccupancyReportQuery fetches and shows error toast on failure', async () => {
-    const { wrapper } = createWrapper();
-    api.getOccupancyReport.mockRejectedValue(new Error('boom'));
-    const { result } = renderHook(() => useOccupancyReportQuery(), { wrapper });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to load occupancy report: boom', 'error');
-  });
-
-  it('useRevenueReportQuery fetches with opts and shows error toast on failure', async () => {
-    const { wrapper } = createWrapper();
-    api.getRevenueReport.mockRejectedValue(new Error('boom'));
-    const { result } = renderHook(() => useRevenueReportQuery({ days: 7 }), { wrapper });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(api.getRevenueReport).toHaveBeenCalledWith({ days: 7 });
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to load revenue report: boom', 'error');
-  });
-
-  it('useBookingsReportQuery fetches and shows error toast on failure', async () => {
-    const { wrapper } = createWrapper();
-    api.getBookingsReport.mockRejectedValue(new Error('boom'));
-    const { result } = renderHook(() => useBookingsReportQuery(), { wrapper });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(api.getBookingsReport).toHaveBeenCalledWith(undefined);
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to load bookings report: boom', 'error');
-  });
-});
-
-describe('useAdminsQuery', () => {
-  it('fetches admins', async () => {
-    const { wrapper } = createWrapper();
-    api.getAdmins.mockResolvedValue([{ id: '1', email: 'a@b.com' }]);
-    const { result } = renderHook(() => useAdminsQuery(), { wrapper });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([{ id: '1', email: 'a@b.com' }]);
-  });
-
-  it('shows error toast on failure', async () => {
-    const { wrapper } = createWrapper();
-    api.getAdmins.mockRejectedValue(new Error('boom'));
-    const { result } = renderHook(() => useAdminsQuery(), { wrapper });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to load admins: boom', 'error');
-  });
-});
-
-describe('availability query', () => {
-  it('fetches availability with params', async () => {
-    const { wrapper } = createWrapper();
-    const data = { availability: [{ productId: 'p1', availableCount: 2, rooms: [] }] };
-    api.getAvailability.mockResolvedValue(data);
-    const { result } = renderHook(
-      () => useAvailabilityQuery({ checkIn: '2026-01-01', checkOut: '2026-01-05' }),
-      { wrapper },
-    );
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.getAvailability).toHaveBeenCalledWith({ checkIn: '2026-01-01', checkOut: '2026-01-05' });
-    expect(result.current.data).toEqual(data);
-  });
-
-  it('shows error toast on failure', async () => {
-    const { wrapper } = createWrapper();
-    api.getAvailability.mockRejectedValue(new Error('boom'));
-    const { result } = renderHook(() => useAvailabilityQuery({}), { wrapper });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to load availability: boom', 'error');
-  });
-});
-
-describe('price override query', () => {
-  it('fetches overrides with params', async () => {
-    const { wrapper } = createWrapper();
-    const data = { overrides: [{ id: 1, productId: 'p1', date: '2026-01-01', price: 120, updatedAt: null }] };
-    api.getPriceOverrides.mockResolvedValue(data);
-    const { result } = renderHook(
-      () => usePriceOverridesQuery({ productId: 'p1', from: '2026-01-01', to: '2026-01-31' }),
-      { wrapper },
-    );
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.getPriceOverrides).toHaveBeenCalledWith({ productId: 'p1', from: '2026-01-01', to: '2026-01-31' });
-    expect(result.current.data).toEqual(data);
-  });
-
-  it('shows error toast on failure', async () => {
-    const { wrapper } = createWrapper();
-    api.getPriceOverrides.mockRejectedValue(new Error('boom'));
-    const { result } = renderHook(() => usePriceOverridesQuery({ productId: 'p1' }), { wrapper });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to load price overrides: boom', 'error');
-  });
-});
-
-describe('price override mutations', () => {
-  it('shows success toast when saving price overrides', async () => {
-    const { wrapper } = createWrapper();
-    api.setPriceOverrides.mockResolvedValue({ success: true, productId: 'p1', count: 1 });
-    const { result } = renderHook(() => useSetPriceOverrideMutation(), { wrapper });
-    act(() => { result.current.mutate({ productId: 'p1', overrides: [{ date: '2026-01-01', price: 120 }] }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.setPriceOverrides).toHaveBeenCalledWith({ productId: 'p1', overrides: [{ date: '2026-01-01', price: 120 }] });
-    expect(mockShowToast).toHaveBeenCalledWith('Price override saved', 'success');
-  });
-
-  it('shows error toast when saving price overrides fails', async () => {
-    const { wrapper } = createWrapper();
-    api.setPriceOverrides.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useSetPriceOverrideMutation(), { wrapper });
-    act(() => { result.current.mutate({ productId: 'p1', overrides: [{ date: '2026-01-01', price: 120 }] }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to save price override: bad', 'error');
-  });
-
-  it('shows success toast when clearing a price override', async () => {
-    const { wrapper } = createWrapper();
-    api.deletePriceOverride.mockResolvedValue({ success: true });
-    const { result } = renderHook(() => useDeletePriceOverrideMutation(), { wrapper });
-    act(() => { result.current.mutate({ productId: 'p1', date: '2026-01-01' }); });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.deletePriceOverride).toHaveBeenCalledWith('p1', '2026-01-01');
-    expect(mockShowToast).toHaveBeenCalledWith('Price override cleared', 'success');
-  });
-
-  it('shows error toast when clearing a price override fails', async () => {
-    const { wrapper } = createWrapper();
-    api.deletePriceOverride.mockRejectedValue(new Error('bad'));
-    const { result } = renderHook(() => useDeletePriceOverrideMutation(), { wrapper });
-    act(() => { result.current.mutate({ productId: 'p1', date: '2026-01-01' }); });
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Failed to clear price override: bad', 'error');
+    for (const [name, hook, apiFn, args] of errorCases) {
+      it(`${name} shows an error toast when the request fails`, async () => {
+        mockShowToast.mockClear();
+        await mountQueryError(hook, apiFn, ...args);
+        expect(mockShowToast).toHaveBeenCalled();
+      });
+    }
   });
 });

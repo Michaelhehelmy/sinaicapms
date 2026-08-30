@@ -55,4 +55,5 @@ export const restaurantProjectType: ProjectTypeSchema = {
       helpText: 'Comma-separated list of dietary accommodations.',
     },
   ],
+  operations: [{ itemTypes: ['menu_item'], label: 'Menu', icon: '🍽️', primary: true }],
 };

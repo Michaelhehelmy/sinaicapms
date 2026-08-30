@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { setTenantScope } from '@/lib/api';
+import { getPrimaryOperation } from '@/lib/project-types';
 import { useCampsQuery, queryKeys } from '@/hooks/useQueryHooks';
 import type { Camp } from '@/hooks/useAdminData';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import CampsPanel from './CampsPanel';
 import RoomsPanel from './RoomsPanel';
+import ProjectItemsPanel from './ProjectItemsPanel';
 import RatePlansPanel from './RatePlansPanel';
 import OrdersPanel from './OrdersPanel';
 import MenuPanel from './MenuPanel';
@@ -80,6 +82,14 @@ function DrilldownContent({ tenant, onBack }: TenantDrilldownProps) {
   const campIds = useMemo(() => (activeCamp ? [activeCamp.id] : []), [activeCamp]);
   const activeCamps = useMemo<Camp[]>(() => (activeCamp ? [activeCamp] : []), [activeCamp]);
 
+  // Type-aware inventory (C3): mirrors AdminApp — the active project's
+  // project_type picks the primary operation, which drives the rooms-view
+  // label and panel (camp→Rooms, supermarket→Products, transportation→Vehicles,
+  // restaurant→Menu, custom→Rooms).
+  const activeProjectType = activeCamp?.projectType || 'camp';
+  const inventoryOperation = getPrimaryOperation(activeProjectType);
+  const roomsLabel = inventoryOperation?.label || VIEW_LABELS.rooms;
+
   const typeLabel = (value?: string) => {
     const v = value || 'camp';
     return TENANT_TYPE_LABELS[v] ?? v;
@@ -122,7 +132,7 @@ function DrilldownContent({ tenant, onBack }: TenantDrilldownProps) {
             data-testid={`drilldown-tab-${v}`}
             className={tabClass(view === v)}
           >
-            {VIEW_LABELS[v]}
+            {v === 'rooms' ? roomsLabel : VIEW_LABELS[v]}
           </button>
         ))}
       </div>
@@ -132,7 +142,18 @@ function DrilldownContent({ tenant, onBack }: TenantDrilldownProps) {
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           {view === 'camp' && <CampsPanel onRefreshCamps={refreshCamps} />}
-          {view === 'rooms' && <RoomsPanel campIds={campIds} camps={activeCamps} />}
+          {view === 'rooms' &&
+            (inventoryOperation && activeCamp && inventoryOperation.itemTypes[0] !== 'room' ? (
+              <ProjectItemsPanel
+                projectId={activeCamp.id}
+                operation={inventoryOperation}
+                itemType={inventoryOperation.itemTypes[0]}
+                campIds={campIds}
+                camps={activeCamps}
+              />
+            ) : (
+              <RoomsPanel campIds={campIds} camps={activeCamps} />
+            ))}
           {view === 'rateplans' && <RatePlansPanel campIds={campIds} camps={activeCamps} />}
           {view === 'orders' && <OrdersPanel campIds={campIds} camps={activeCamps} />}
           {view === 'menu' && <MenuPanel campIds={campIds} camps={activeCamps} />}

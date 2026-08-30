@@ -21,6 +21,7 @@
  *   ['inventory', 'low-stock'] — low-stock inventory items
  *   ['adminStats']       — super admin stats
  *   ['tenants']          — super admin tenants list
+ *   ['projects', 'items'] — project child-inventory items (project_items)
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/Toast';
@@ -73,6 +74,16 @@ export const queryKeys = {
   inbox: (params?: Record<string, string>) => ['admin', 'inbox', params] as const,
   inboxUnread: ['admin', 'inbox', 'unread'] as const,
   projectMeta: (id: string) => ['admin', 'projects', id, 'meta'] as const,
+  projectItems: ['admin', 'projects', 'items'] as const,
+  projectItemsList: (projectId?: string, itemType?: string) =>
+    ['admin', 'projects', 'items', projectId, itemType].filter(
+      (v): v is string => typeof v === 'string',
+    ) as readonly string[],
+  projectLinks: ['admin', 'projects', 'links'] as const,
+  projectLinksList: (projectId?: string) =>
+    ['admin', 'projects', 'links', projectId].filter(
+      (v): v is string => typeof v === 'string',
+    ) as readonly string[],
   tenantBilling: ['admin', 'tenantBilling'] as const,
   // HR (tenant-level)
   hrEmployees: ['admin', 'hr', 'employees'] as const,
@@ -380,6 +391,20 @@ export function useSaveCampMutation(editId?: string | number) {
   });
 }
 
+/**
+ * Delete-camp mutation variable. Cross-tenant (marketplace directory) deletes
+ * carry the owning tenant so the backend super_admin `?tenantId=` override
+ * scopes the request; regular tenant-scoped deletes stay a bare id.
+ */
+export type DeleteCampVars = { id: string | number; tenantId?: string };
+
+/** Normalize a bare id or `{ id, tenantId }` variable to the structured form. */
+function normalizeDeleteVars(vars: string | number | DeleteCampVars): DeleteCampVars {
+  return typeof vars === 'object' && vars !== null
+    ? vars
+    : { id: vars, tenantId: undefined };
+}
+
 /** Delete a camp — with optimistic update */
 export function useDeleteCampMutation() {
   const queryClient = useQueryClient();
@@ -387,14 +412,19 @@ export function useDeleteCampMutation() {
   const { showToast } = useToast();
 
   return useMutation({
-    mutationFn: (id: string | number) => api.deleteCamp(id),
-    onMutate: async (deletedId) => {
+    mutationFn: (vars: string | number | DeleteCampVars) => {
+      const { id, tenantId } = normalizeDeleteVars(vars);
+      // Bare ids keep the exact single-arg call; tenant passthrough adds opts.
+      return tenantId ? api.deleteCamp(id, { tenantId }) : api.deleteCamp(id);
+    },
+    onMutate: async (vars) => {
+      const { id } = normalizeDeleteVars(vars);
       const previousCamps = queryClient.getQueryData(queryKeys.camps);
 
       // Optimistically remove camp from cache
       queryClient.setQueryData(queryKeys.camps, (old: Camp[] | undefined) => {
         if (!old) return old;
-        return old.filter((c) => String(c.id) !== String(deletedId));
+        return old.filter((c) => String(c.id) !== String(id));
       });
 
       return { previousCamps };
@@ -456,6 +486,90 @@ export function useSaveProjectMetaMutation(projectId: string | null | undefined)
       showToast('Custom fields saved', 'success');
     },
   });
+}
+
+// ─── Project Items hooks (type-aware child inventory) ─────────────────
+
+/** Fetch a project's child-inventory items (optional item-type filter). */
+export function useProjectItemsQuery(projectId?: string, itemType?: string) {
+  const toastError = useErrorToast();
+  return useQuery<api.ProjectItem[]>({
+    queryKey: queryKeys.projectItemsList(projectId, itemType),
+    queryFn: () => api.getProjectItems({ projectId, itemType }) as Promise<api.ProjectItem[]>,
+    enabled: !!projectId,
+    throwOnError: (err) => {
+      toastError('Failed to load project items', err);
+      return false;
+    },
+  });
+}
+
+/** Save (create/update) a project item — invalidates all item lists. */
+export function useSaveProjectItemMutation(editId?: string | number) {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: (data: api.ProjectItemInput) => api.saveProjectItem(data, editId ? String(editId) : undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectItems });
+      showToast(editId ? 'Item updated' : 'Item created', 'success');
+    },
+    onError: (err) => toastError('Failed to save item', err),
+  });
+}
+
+/** Delete a project item — invalidates all item lists. */
+export function useDeleteProjectItemMutation() {
+  return useCrudMutation(
+    (id: string | number) => api.deleteProjectItem(String(id)),
+    queryKeys.projectItems,
+    'Item deleted',
+    'Failed to delete item',
+  );
+}
+
+// ─── Project Links hooks (cross-project connections) ─────────────────
+
+/** Fetch a project's cross-project links (all links touching the project). */
+export function useProjectLinksQuery(projectId?: string) {
+  const toastError = useErrorToast();
+  return useQuery<api.ProjectLink[]>({
+    queryKey: queryKeys.projectLinksList(projectId),
+    queryFn: () => api.getProjectLinks(projectId) as Promise<api.ProjectLink[]>,
+    enabled: !!projectId,
+    throwOnError: (err) => {
+      toastError('Failed to load project connections', err);
+      return false;
+    },
+  });
+}
+
+/** Create a cross-project link — invalidates all link lists. */
+export function useCreateProjectLinkMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: (payload: api.ProjectLinkInput) => api.createProjectLink(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectLinks });
+      showToast('Connection added', 'success');
+    },
+    onError: (err) => toastError('Failed to add connection', err),
+  });
+}
+
+/** Delete a cross-project link — invalidates all link lists. */
+export function useDeleteProjectLinkMutation() {
+  return useCrudMutation(
+    (id: string | number) => api.deleteProjectLink(String(id)),
+    queryKeys.projectLinks,
+    'Connection removed',
+    'Failed to remove connection',
+  );
 }
 
 /** Save (create/update) a product */

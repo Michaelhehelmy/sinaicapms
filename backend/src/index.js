@@ -8,8 +8,10 @@ import { handleAuthRoute } from './api/auth';
 import { handleTenants } from './api/tenants';
 import meRoutes from './api/tenants';
 import { handleAdminRoute } from './api/admin';
-import { handleAdminStatsRoute } from './api/admin-stats.js';
-import { handleAdminUsersList, handleAdminUserUpdate, handleAdminUserDelete } from './api/admin-users.js';
+// NOTE: admin-stats.js and admin-users.js handlers are NOT mounted.
+// Stats work via the legacy admin.js catch-all (/api/admin/stats).
+// User management works via /api/admin/admins (also legacy admin.js).
+// These files exist for reference but are dead code — do not import.
 import { handleAdminReportsRoute } from './api/admin-reports.js';
 import { handleAdminHealthRoute } from './api/admin-health.js';
 import { handleAdminPerformanceRoute } from './api/admin-performance.js';
@@ -24,6 +26,8 @@ import adminCrmRoutes from './api/admin-crm.js';
 import adminStorefrontRoutes from './api/admin-storefront.js';
 import adminAiRoutes from './api/admin-ai.js';
 import campsRoutes, { productsRoutes, roomsRoutes, ratePlansRoutes } from './api/camps';
+import projectLinksRoutes from './api/project-links.js';
+import projectItemsRoutes from './api/project-items.js';
 import ordersRoutes, { availabilityRoutes } from './api/orders';
 import uploadRoutes, { mediaRoutes } from './api/upload';
 import { handleMealSchedulesRoute } from './api/meal-schedules';
@@ -308,6 +312,8 @@ app.post('/api/payments/webhook', async (c) => {
 // ── POS routes (self-contained auth, before catch-all;
 //    login + general POS limits live in the policy table) ────
 app.route('/api/pos', posRoutes);
+// POS barcode lookup — resolveScope resolves tenantId from POS or admin JWT.
+app.use('/api/pos/products/barcode/*', resolveScope({ dualRealm: true }));
 app.route('/api/pos/products/barcode', posBarcodeRoutes);
 
 // ── Contact form (public; POST /api/contact 10/min via policy table).
@@ -585,6 +591,22 @@ const ratePlansScope = async (c, next) =>
 app.use('/api/rateplans', ratePlansScope);
 app.use('/api/rateplans/*', ratePlansScope);
 app.route('/api/rateplans', ratePlansRoutes);
+
+// ── Cross-project connections (project_links, migration 0085). Internal admin
+// feature only — no public surface; resolveScope() admin realm enforces the
+// same-tenant relationship per request.
+const projectLinksAdminScope = resolveScope();
+app.use('/api/projects/links', projectLinksAdminScope);
+app.use('/api/projects/links/*', projectLinksAdminScope);
+app.route('/api/projects/links', projectLinksRoutes);
+
+// ── Project items (project_items, migration 0086). Type-aware per-project
+// typed-inventory spine (vehicles / products / menu items / services / custom).
+// Same internal admin feature as project links — no public surface.
+const projectItemsAdminScope = resolveScope();
+app.use('/api/projects/items', projectItemsAdminScope);
+app.use('/api/projects/items/*', projectItemsAdminScope);
+app.route('/api/projects/items', projectItemsRoutes);
 
 // ── Orders. Mixed visibility by path+method: public are GET /api/orders/status/:ref
 // and GET /api/orders/calculate-price (price preview widget); kitchen-status PATCH

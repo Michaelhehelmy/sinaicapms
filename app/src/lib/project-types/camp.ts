@@ -58,4 +58,5 @@ export const campProjectType: ProjectTypeSchema = {
       placeholder: 'e.g., 12:00',
     },
   ],
+  operations: [{ itemTypes: ['room'], label: 'Rooms', icon: '🛏️', primary: true }],
 };

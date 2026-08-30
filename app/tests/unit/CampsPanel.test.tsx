@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import CampsPanel from '@/components/admin/CampsPanel';
 
 const mockShowToast = vi.fn();
@@ -10,11 +10,16 @@ const mockCampMutateAsync = vi.fn();
 const mockProductMutateAsync = vi.fn();
 const mockRatePlanMutateAsync = vi.fn();
 const mockMetaMutate = vi.fn();
+const mockCreateLinkMutate = vi.fn();
+const mockDeleteLinkMutate = vi.fn();
 let mockCamps: unknown[] = [];
 let mockCampsLoading = false;
 // project-meta query state driven per-test
 let mockMetaRows: unknown[] = [];
 let mockMetaSuccess = true;
+// project-links query state driven per-test
+let mockLinks: unknown[] = [];
+let mockLinksLoading = false;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -32,6 +37,9 @@ vi.mock('@/hooks/useQueryHooks', () => ({
     isPending: false,
   }),
   useSaveProjectMetaMutation: () => ({ mutate: mockMetaMutate, isPending: false }),
+  useProjectLinksQuery: () => ({ data: mockLinks, isLoading: mockLinksLoading, isPending: false }),
+  useCreateProjectLinkMutation: () => ({ mutate: mockCreateLinkMutate, isPending: false }),
+  useDeleteProjectLinkMutation: () => ({ mutate: mockDeleteLinkMutate, isPending: false }),
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -51,6 +59,26 @@ const singleCamp = {
   notes: '',
 };
 
+const secondCamp = {
+  id: 'c2',
+  name: 'Second Camp',
+  location: 'Sharm',
+  startDate: '2025-06-01',
+  endDate: '2025-09-30',
+  capacity: 30,
+  status: 'active',
+  notes: '',
+};
+
+/** Canonical link fixture — c1 (Test Camp) linked to c2 (Second Camp). */
+const linkC1toC2 = {
+  id: 'pl1',
+  linkType: 'supplies',
+  metaData: null,
+  a: { id: 'c1', name: 'Test Camp', slug: 'test-camp', projectType: 'camp' },
+  b: { id: 'c2', name: 'Second Camp', slug: 'second', projectType: 'supermarket' },
+};
+
 describe('CampsPanel (single-camp admin)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,6 +86,8 @@ describe('CampsPanel (single-camp admin)', () => {
     mockCampsLoading = false;
     mockMetaRows = [];
     mockMetaSuccess = true;
+    mockLinks = [];
+    mockLinksLoading = false;
   });
 
   it('renders with empty state and create action when no camp exists', () => {
@@ -238,6 +268,45 @@ describe('CampsPanel (single-camp admin)', () => {
     });
   });
 
+  it('passes { id, tenantId } when deleting a marketplace cross-tenant row', async () => {
+    mockCamps = [{ ...singleCamp, tenant_id: 'tenant-alpha' }];
+    mockMutateDelete.mockImplementation((_id: any, options: any) => {
+      options.onSuccess();
+    });
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    fireEvent.click(screen.getAllByText('Delete')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Delete Project')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getAllByText('Delete')[1]);
+    await waitFor(() => {
+      expect(mockMutateDelete).toHaveBeenCalledWith(
+        { id: 'c1', tenantId: 'tenant-alpha' },
+        expect.anything(),
+      );
+      expect(mockRefreshCamps).toHaveBeenCalled();
+    });
+  });
+
+  it('falls back to tenantId (camelCase) on marketplace rows without tenant_id', async () => {
+    mockCamps = [{ ...singleCamp, id: 'c9', tenantId: 'tenant-beta' }];
+    mockMutateDelete.mockImplementation((_id: any, options: any) => {
+      options.onSuccess();
+    });
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    fireEvent.click(screen.getAllByText('Delete')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Delete Project')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getAllByText('Delete')[1]);
+    await waitFor(() => {
+      expect(mockMutateDelete).toHaveBeenCalledWith(
+        { id: 'c9', tenantId: 'tenant-beta' },
+        expect.anything(),
+      );
+    });
+  });
+
   it('cancels the delete dialog', async () => {
     mockCamps = [singleCamp];
     render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
@@ -250,6 +319,64 @@ describe('CampsPanel (single-camp admin)', () => {
       expect(screen.queryByText('Delete Project')).not.toBeInTheDocument();
     });
   });
+
+  it('shows an Add Project button when at least one camp exists', () => {
+    mockCamps = [singleCamp];
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    expect(screen.getByTestId('add-project-button')).toBeInTheDocument();
+    expect(screen.getByText('Add Project')).toBeInTheDocument();
+  });
+
+  it('does not show the Add Project button in the empty state (uses the wizard instead)', () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    expect(screen.queryByTestId('add-project-button')).not.toBeInTheDocument();
+  });
+
+  it('opens the create form in CREATE mode via Add Project and triggers the POST save mutation', async () => {
+    mockCamps = [singleCamp];
+    mockMutate.mockImplementation((_data: any, options: any) => options.onSuccess());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+
+    fireEvent.click(screen.getByTestId('add-project-button'));
+    await waitFor(() => {
+      expect(screen.getByText('Create Project')).toBeInTheDocument();
+    });
+    // CREATE mode → "Save Project" submit label (not "Update Project").
+    expect(screen.getByText('Save Project')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Project name'), { target: { value: 'Second Camp' } });
+    fireEvent.change(screen.getByPlaceholderText('Paste Google Maps link or type address'), { target: { value: 'Sinai' } });
+    fireEvent.click(screen.getByText('Save Project'));
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Second Camp', location: 'Sinai' }),
+        expect.anything(),
+      );
+      expect(mockRefreshCamps).toHaveBeenCalled();
+    });
+  });
+
+  it('resets the create form so a previously edited project does not leak into Add Project', async () => {
+    mockCamps = [singleCamp];
+    mockMutate.mockImplementation((_data: any, options: any) => options.onSuccess());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+
+    // Edit the existing camp first.
+    fireEvent.click(screen.getAllByText('Edit')[0]);
+    await waitFor(() => expect(screen.getByText('Edit Project')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Project Type'), { target: { value: 'supermarket' } });
+    fireEvent.change(screen.getByDisplayValue('Test Camp'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByText('Update Project'));
+    await waitFor(() => expect(mockRefreshCamps).toHaveBeenCalled());
+
+    // Now open Add Project — name/type must be reset to the create defaults.
+    fireEvent.click(screen.getByTestId('add-project-button'));
+    await waitFor(() => expect(screen.getByText('Create Project')).toBeInTheDocument());
+    expect(screen.getByTestId('add-project-button')).toBeInTheDocument();
+    expect(screen.getByLabelText('Project Type')).toHaveValue('camp');
+    expect((screen.getByPlaceholderText('Project name') as HTMLInputElement).value).toBe('');
+  });
 });
 
 describe('CampsPanel unified-schema editing', () => {
@@ -258,6 +385,8 @@ describe('CampsPanel unified-schema editing', () => {
     mockCamps = [singleCamp];
     mockMetaRows = [];
     mockMetaSuccess = true;
+    mockLinks = [];
+    mockLinksLoading = false;
     // Meta mutation resolves like TanStack would (drives onSuccess → close).
     mockMetaMutate.mockImplementation((_ops: unknown, options: any) => options?.onSuccess?.());
   });
@@ -375,5 +504,98 @@ describe('CampsPanel unified-schema editing', () => {
     await openEditModal();
     const updateBtn = screen.getByText('Update Project').closest('button');
     expect(updateBtn).toBeDisabled();
+  });
+});
+
+describe('CampsPanel Connections (cross-project links)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCamps = [singleCamp, secondCamp];
+    mockMetaRows = [];
+    mockMetaSuccess = true;
+    mockLinks = [];
+    mockLinksLoading = false;
+  });
+
+  const openEditModal = async () => {
+    fireEvent.click(screen.getAllByText('Edit')[0]);
+    await waitFor(() => expect(screen.getByText('Edit Project')).toBeInTheDocument());
+  };
+
+  it('renders the Connections section for the edited project with its links', async () => {
+    mockLinks = [linkC1toC2];
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    expect(screen.getByTestId('project-connections')).toBeInTheDocument();
+    // The OTHER side of the link (c2) name + its project type + the link type.
+    const list = within(screen.getByTestId('connections-list'));
+    expect(list.getByText('Second Camp')).toBeInTheDocument();
+    expect(list.getByText(/supermarket · supplies/i)).toBeInTheDocument();
+  });
+
+  it('shows an empty state when the project has no links yet', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    expect(screen.getByTestId('connections-empty')).toBeInTheDocument();
+    expect(screen.getByText('No connections yet.')).toBeInTheDocument();
+  });
+
+  it('does not render Connections in CREATE mode (no project to link yet)', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    fireEvent.click(screen.getByTestId('add-project-button'));
+    await waitFor(() => expect(screen.getByText('Create Project')).toBeInTheDocument());
+    expect(screen.queryByTestId('project-connections')).not.toBeInTheDocument();
+  });
+
+  it('adds a connection via the add form', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    fireEvent.change(screen.getByLabelText('Link to project'), { target: { value: 'c2' } });
+    fireEvent.change(screen.getByLabelText('Link type'), { target: { value: 'supplies' } });
+    fireEvent.click(screen.getByTestId('add-link-button'));
+
+    await waitFor(() => {
+      expect(mockCreateLinkMutate).toHaveBeenCalledWith(
+        { projectIdA: 'c1', projectIdB: 'c2', linkType: 'supplies' },
+        expect.anything(),
+      );
+    });
+  });
+
+  it('excludes self and already-linked projects from the add select', async () => {
+    mockLinks = [linkC1toC2];
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    const select = screen.getByLabelText('Link to project') as HTMLSelectElement;
+    const values = Array.from(select.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value);
+    // Only the disabled placeholder remains — c1 (self) and c2 (linked) are gone.
+    expect(values).toEqual(['']);
+    expect(screen.getByTestId('add-link-button')).toBeDisabled();
+  });
+
+  it('removes a connection after confirmation', async () => {
+    mockLinks = [{ ...linkC1toC2, a: { ...linkC1toC2.a }, b: { ...linkC1toC2.b } }];
+    mockDeleteLinkMutate.mockImplementation((_id: any, options: any) => options?.onSuccess?.());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    fireEvent.click(screen.getByTestId('remove-link-pl1'));
+    await waitFor(() => expect(screen.getByText('Remove Connection')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Yes, Remove'));
+
+    await waitFor(() => {
+      expect(mockDeleteLinkMutate).toHaveBeenCalledWith('pl1', expect.anything());
+      expect(screen.queryByText('Remove Connection')).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not call createProjectLink without a selected project', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+    fireEvent.click(screen.getByTestId('add-link-button'));
+    expect(mockCreateLinkMutate).not.toHaveBeenCalled();
   });
 });

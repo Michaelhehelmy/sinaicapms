@@ -23,6 +23,18 @@ export type FieldType =
   | 'image-gallery'
   | 'json';
 
+/** One child-inventory operation a project type can operate on. */
+export interface ProjectTypeOperation {
+  /** project_items.item_type values this operation manages. */
+  itemTypes: string[];
+  /** Default panel label shown for this operation. */
+  label: string;
+  /** Emoji or icon name shown next to the operation. */
+  icon: string;
+  /** Whether this is the default/primary operation for the type. */
+  primary: boolean;
+}
+
 /** One custom-field definition rendered from (and persisted to) project_meta. */
 export interface MetaFieldDef {
   key: string;
@@ -50,6 +62,8 @@ export interface ProjectTypeSchema {
   /** Which shared core columns to show in the form (see CORE_FIELD_DEFS). */
   coreFields: string[];
   metaFields: MetaFieldDef[];
+  /** Child-inventory operations this type operates on (rooms, products, …). */
+  operations: ProjectTypeOperation[];
 }
 
 /** What the tenant IS at the business level (drives tenant-level meta). */
@@ -98,11 +112,28 @@ export function getProjectType(type: string | null | undefined): ProjectTypeSche
     description: 'Custom project type.',
     coreFields: ['name', 'location', 'description', 'status'],
     metaFields: [],
+    operations: [],
   };
 }
 
 /** Deterministic display order for project-type pickers (registry order). */
 export const PROJECT_TYPE_ORDER: string[] = ['camp', 'supermarket', 'transportation', 'restaurant'];
+
+/** Resolve the operations manifest for a project type (empty for unknown types). */
+export function getProjectOperations(type: string | null | undefined): ProjectTypeOperation[] {
+  const s = getProjectType(type);
+  return s.operations || [];
+}
+
+/**
+ * Resolve the primary operation for a project type — the first manifest entry
+ * flagged `primary`, falling back to the first entry (or null for unknown
+ * types with no operations).
+ */
+export function getPrimaryOperation(type: string | null | undefined): ProjectTypeOperation | null {
+  const ops = getProjectOperations(type);
+  return ops.find((o) => o.primary === true) || ops[0] || null;
+}
 
 // ─── Meta value serialization ────────────────────────────────────────
 // project_meta.meta_value is a TEXT column and the backend Zod schema enforces

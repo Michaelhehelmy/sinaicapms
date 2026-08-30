@@ -66,6 +66,17 @@ export function getTenantId(): string {
 
   if (_tenantScopeOverride) return _tenantScopeOverride;
 
+  // Tenant hierarchy: the authenticated admin's real tenant (the business
+  // entity) wins over the marketplace-host fallback. Admin tokens carry their
+  // tenant id in the cached user blob; super-admin/marketplace-tenant tokens
+  // fall through so anonymous and marketplace-scoped visitors still resolve
+  // via host/subdomain/query/localStorage below. Sync on purpose — no async
+  // auth fetching may ever gate a scoping decision.
+  const adminUser = session.getUser<{ tenantId?: string }>('admin');
+  if (adminUser?.tenantId && adminUser.tenantId !== 'marketplace') {
+    return adminUser.tenantId;
+  }
+
   const host = window.location.hostname;
 
   if (host === 'sinaicamps.com' || host === 'www.sinaicamps.com') {
@@ -268,8 +279,12 @@ export function saveCamp(data: Schemas['CampCreateRequest'] | Schemas['CampUpdat
   });
 }
 
-export function deleteCamp(id: number | string) {
-  return apiFetch<Schemas['SuccessResponse']>(`/camps/${id}`, { method: 'DELETE' });
+export function deleteCamp(id: number | string, opts?: { tenantId?: string }) {
+  // Super-admin cross-tenant override: when the owning tenant is known (e.g.
+  // marketplace directory rows carry tenant_id), append ?tenantId= so the
+  // backend resolveScope queryOverride scopes the delete correctly.
+  const query = opts?.tenantId ? `?tenantId=${encodeURIComponent(opts.tenantId)}` : '';
+  return apiFetch<Schemas['SuccessResponse']>(`/camps/${id}${query}`, { method: 'DELETE' });
 }
 
 // ─── Products (Room Types) ────────────────────────────────────────────
@@ -986,6 +1001,125 @@ export async function reorderProjectMeta(
     method: 'PATCH',
     body: JSON.stringify({ items }),
   });
+}
+
+// ─── Project Items (type-aware child inventory) ───────────────────────
+// Backed by /api/projects/items (admin-scoped, backend/src/api/project-items.js).
+// The wire payload uses camelCase keys ({ projectId, itemType, basePrice,
+// metaData … }) — the backend normalizes to snake_case server-side.
+// item_type is one of: vehicle | product | menu_item | service | custom.
+
+/** A project child-inventory item, as returned by GET /api/projects/items. */
+export interface ProjectItem {
+  id: string;
+  /** Item's owning project id (some list responses surface it via `project`). */
+  projectId?: string;
+  itemType: string;
+  name: string;
+  description?: string | null;
+  basePrice?: number;
+  quantity?: number;
+  /** Free-form JSON metadata (e.g. plate numbers, dimensions, specs). */
+  metaData?: unknown;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Denormalized project lookup attached by the API when joined. */
+  project?: { id: string; name: string; slug: string | null; projectType: string | null } | null;
+}
+
+/** Create/update payload for a project item (camelCase on the wire). */
+export interface ProjectItemInput {
+  projectId: string;
+  itemType: string;
+  name: string;
+  description?: string | null;
+  basePrice?: number;
+  quantity?: number;
+  metaData?: unknown;
+  status?: string;
+}
+
+/**
+ * List project items. All filters are optional:
+ *  - projectId scopes to one project (the primary use case for this panel)
+ *  - itemType scopes to one item_type (vehicle, product, menu_item, …)
+ *  - status scopes to one status (active, inactive, archived, …)
+ */
+export async function getProjectItems(
+  params: { projectId?: string; itemType?: string; status?: string } = {},
+): Promise<ProjectItem[]> {
+  const qs = new URLSearchParams();
+  if (params.projectId) qs.set('projectId', params.projectId);
+  if (params.itemType) qs.set('itemType', params.itemType);
+  if (params.status) qs.set('status', params.status);
+  const query = qs.toString();
+  const data = await apiFetch<unknown>(`/projects/items${query ? `?${query}` : ''}`);
+  return Array.isArray(data) ? (data as ProjectItem[]) : [];
+}
+
+/** Create (no id) or update (with id) a project item. Returns the saved item. */
+export async function saveProjectItem(payload: ProjectItemInput, id?: string): Promise<ProjectItem> {
+  return apiFetch(id ? `/projects/items/${encodeURIComponent(id)}` : '/projects/items', {
+    method: id ? 'PUT' : 'POST',
+    body: JSON.stringify(payload),
+  }) as Promise<ProjectItem>;
+}
+
+/** Delete a project item by id. */
+export async function deleteProjectItem(id: string): Promise<{ success: boolean }> {
+  return apiFetch(`/projects/items/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  }) as Promise<{ success: boolean }>;
+}
+
+// ─── Project Links (cross-project connections) ───────────────────────
+// Backed by /api/projects/links (admin-scoped, backend/src/api/project-links.js).
+// The wire payload uses camelCase keys ({ projectIdA, projectIdB, linkType,
+// metaData … }) and the list endpoint returns a plain array of joined rows.
+
+/** A cross-project connection between two of this tenant's projects. */
+export interface ProjectLink {
+  id: string;
+  linkType: string;
+  /** Free-form JSON metadata attached to the link (e.g. notes, terms). */
+  metaData?: unknown;
+  a: { id: string; name: string; slug: string | null; projectType: string | null };
+  b: { id: string; name: string; slug: string | null; projectType: string | null };
+}
+
+/** Create/update payload for a project link (camelCase on the wire). */
+export interface ProjectLinkInput {
+  projectIdA: string;
+  projectIdB: string;
+  linkType?: string;
+  metaData?: unknown;
+}
+
+/**
+ * List links for the tenant, optionally filtered to those touching one
+ * project (the primary use case for the Connections section). The backend
+ * returns a plain array; defensive empty fallback for envelope shapes.
+ */
+export async function getProjectLinks(projectId?: string): Promise<ProjectLink[]> {
+  const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+  const data = await apiFetch<unknown>(`/projects/links${qs}`);
+  return Array.isArray(data) ? (data as ProjectLink[]) : [];
+}
+
+/** Create a same-tenant link between two distinct projects. Returns the created link. */
+export async function createProjectLink(payload: ProjectLinkInput): Promise<ProjectLink> {
+  return apiFetch('/projects/links', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }) as Promise<ProjectLink>;
+}
+
+/** Delete a project link by id. */
+export async function deleteProjectLink(id: string): Promise<{ success: boolean }> {
+  return apiFetch(`/projects/links/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  }) as Promise<{ success: boolean }>;
 }
 
 // ─── Tags (taxonomy) ──────────────────────────────────────────────────

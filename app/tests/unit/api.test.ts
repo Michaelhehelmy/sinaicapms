@@ -7,6 +7,7 @@ global.fetch = vi.fn();
 describe('getTenantId', () => {
   beforeEach(() => {
     localStorage.clear();
+    setTenantScope(null);
   });
 
   it('returns subdomain as tenant', () => {
@@ -36,6 +37,37 @@ describe('getTenantId', () => {
       value: { hostname: 'sinaicamps.com', origin: 'https://sinaicamps.com', search: '' },
     });
     expect(getTenantId()).toBe('marketplace');
+  });
+
+  it('returns the authenticated admin real tenant on the marketplace host', () => {
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'sinaicamps.com', origin: 'https://sinaicamps.com', search: '' },
+    });
+    localStorage.setItem('sinaicamps_user', JSON.stringify({ id: 1, tenantId: 'michaelshouse' }));
+    expect(getTenantId()).toBe('michaelshouse');
+  });
+
+  it('keeps marketplace scope for a marketplace-tenant admin session on the platform host', () => {
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'sinaicamps.com', origin: 'https://sinaicamps.com', search: '' },
+    });
+    localStorage.setItem('sinaicamps_user', JSON.stringify({ id: 2, tenantId: 'marketplace' }));
+    expect(getTenantId()).toBe('marketplace');
+  });
+
+  it('returns marketplace on the platform host when no session exists', () => {
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'sinaicamps.com', origin: 'https://sinaicamps.com', search: '' },
+    });
+    expect(getTenantId()).toBe('marketplace');
+  });
+
+  it('returns empty string when the admin session lacks a real tenant', () => {
+    Object.defineProperty(window, 'location', {
+      value: { hostname: 'localhost', origin: 'http://localhost', search: '' },
+    });
+    localStorage.setItem('sinaicamps_user', JSON.stringify({ id: 3, tenantId: '' }));
+    expect(getTenantId()).toBe('');
   });
 
   it('returns empty string when nothing else matches', () => {
