@@ -99,7 +99,9 @@ test.describe('Multi-Tenancy Isolation', () => {
 
   test.describe('Cross-Tenant API Isolation', () => {
     test('API products for tenant A returns valid data', async ({ request }) => {
-      const response = await request.get(`${API_BASE}/api/products/${TENANT_A}`);
+      const response = await request.get(`${API_BASE}/api/products`, {
+        headers: { 'x-tenant-id': TENANT_A },
+      });
       const status = response.status();
       expect([200, 404]).toContain(status);
       if (status === 200) {
@@ -109,7 +111,9 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('API products for nonexistent tenant returns 404 or empty', async ({ request }) => {
-      const response = await request.get(`${API_BASE}/api/products/${TENANT_B}`);
+      const response = await request.get(`${API_BASE}/api/products`, {
+        headers: { 'x-tenant-id': TENANT_B },
+      });
       const status = response.status();
       expect([200, 404]).toContain(status);
     });

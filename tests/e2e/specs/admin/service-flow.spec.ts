@@ -62,6 +62,12 @@ test.describe.serial('Service Flow — end-to-end', () => {
     await expectPanelReady(page);
     await expectPanelContentReady(page, 'services-panel');
 
+    // The services panel defaults to the definitions tab, where only the
+    // "Add Service Type" button shows. Switch to the items tab first so the
+    // item-level "Add Service" button (add-item-btn) is rendered.
+    await page.locator('[data-testid="tab-items"]').click();
+    await expectPanelContentReady(page, 'services-panel');
+
     const addItemBtn = page.locator('[data-testid="add-item-btn"]');
     await expect(addItemBtn).toBeVisible();
     await addItemBtn.click();

@@ -2,6 +2,8 @@ import { jsonResponse, errorResponse } from '../utils/response';
 import { parsePagination, paginationEnvelope } from '../utils/pagination';
 import { requireAuth } from '../middleware/requireAuth.js';
 
+// DEAD CODE — not mounted in index.js (see note there). Retained for reference.
+
 /**
  * GET /api/admin/users — List all admin users across tenants.
  * PUT /api/admin/users/:id — Update a user's role.

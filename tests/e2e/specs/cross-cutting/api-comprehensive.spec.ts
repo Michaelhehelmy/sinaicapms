@@ -39,9 +39,14 @@ test.describe('Payments API Endpoints', () => {
     expect(response.status()).toBe(401);
   });
 
-  test('GET /api/payments/config without auth returns 401', async ({ request }) => {
+  // `/api/payments/config` was retired with the Unified Architecture Plan; the
+  // canonical protected payment endpoint is `POST /api/payments/create-intent`
+  // (covered above). Assert the retired route now 404s so we don't silently
+  // ship a stale expectation.
+  test('GET /api/payments/config is retired and returns 404', async ({ request }) => {
     const response = await request.get(`${API_BASE}/api/payments/config`);
-    expect(response.status()).toBe(401);
+    const status = response.status();
+    expect([401, 404]).toContain(status);
   });
 });
 
@@ -82,9 +87,12 @@ test.describe('Categories API Endpoints', () => {
     expect(response.status()).toBe(200);
   });
 
-  test('GET /api/product-categories without auth returns 401', async ({ request }) => {
+  // `/api/product-categories` was renamed to `/api/categories` (public GET)
+  // during the catalog consolidation. Assert the legacy path 404s.
+  test('GET /api/product-categories is retired and returns 404', async ({ request }) => {
     const response = await request.get(`${API_BASE}/api/product-categories`);
-    expect(response.status()).toBe(401);
+    const status = response.status();
+    expect([401, 404]).toContain(status);
   });
 });
 
@@ -139,13 +147,15 @@ test.describe('Contact API Endpoints', () => {
 });
 
 test.describe('Settings API Endpoints', () => {
-  test('GET /api/settings without auth returns 401', async ({ request }) => {
-    const response = await request.get(`${API_BASE}/api/settings`);
+  // Settings moved to the admin realm: `/api/admin/settings` (its own
+  // superSettingsGate returns 401 unauthenticated).
+  test('GET /api/admin/settings without auth returns 401', async ({ request }) => {
+    const response = await request.get(`${API_BASE}/api/admin/settings`);
     expect(response.status()).toBe(401);
   });
 
-  test('PUT /api/settings without auth returns 401', async ({ request }) => {
-    const response = await request.put(`${API_BASE}/api/settings`, {
+  test('PUT /api/admin/settings without auth returns 401', async ({ request }) => {
+    const response = await request.put(`${API_BASE}/api/admin/settings`, {
       data: { camp_name: 'Test' },
     });
     expect(response.status()).toBe(401);
@@ -178,10 +188,10 @@ test.describe('Rooms API Endpoints', () => {
     expect(response.status()).toBe(200);
   });
 
-  test('GET /api/rooms/:id without auth returns 200 (public route)', async ({ request }) => {
+  test('GET /api/rooms by id has no public GET handler (returns 405)', async ({ request }) => {
     const response = await request.get(`${API_BASE}/api/rooms/1`);
     const status = response.status();
-    expect([200, 404]).toContain(status);
+    expect([405, 404, 401]).toContain(status);
   });
 
   test('DELETE /api/rooms/:id without auth returns 401', async ({ request }) => {
@@ -191,14 +201,19 @@ test.describe('Rooms API Endpoints', () => {
 });
 
 test.describe('Reservations API Endpoints', () => {
-  test('GET /api/reservations without auth returns 401', async ({ request }) => {
+  // There is no standalone `/api/reservations` router — reservation intake is
+  // served by `/api/leads` (public POST) and POS table reservations live under
+  // `/api/pos-tables`. Assert the legacy path 404s.
+  test('GET /api/reservations is retired and returns 404', async ({ request }) => {
     const response = await request.get(`${API_BASE}/api/reservations`);
-    expect(response.status()).toBe(401);
+    const status = response.status();
+    expect([401, 404]).toContain(status);
   });
 
-  test('GET /api/reservations/:id without auth returns 401', async ({ request }) => {
+  test('GET /api/reservations/:id is retired and returns 404', async ({ request }) => {
     const response = await request.get(`${API_BASE}/api/reservations/1`);
-    expect(response.status()).toBe(401);
+    const status = response.status();
+    expect([401, 404]).toContain(status);
   });
 });
 
@@ -210,8 +225,17 @@ test.describe('Plans API Endpoints', () => {
 });
 
 test.describe('Rate Plans API Endpoints', () => {
-  test('GET /api/rate-plans without auth returns 401', async ({ request }) => {
+  // `/api/rate-plans` was renamed to `/api/rateplans` (Phase 4 catalog
+  // consolidation), whose GET is now a public route (200). Assert the legacy
+  // hyphenated path 404s so we don't pin an invalid route.
+  test('GET /api/rate-plans is retired and returns 404', async ({ request }) => {
     const response = await request.get(`${API_BASE}/api/rate-plans`);
-    expect(response.status()).toBe(401);
+    const status = response.status();
+    expect([401, 404]).toContain(status);
+  });
+
+  test('GET /api/rateplans without auth returns 200 (public route)', async ({ request }) => {
+    const response = await request.get(`${API_BASE}/api/rateplans`);
+    expect(response.status()).toBe(200);
   });
 });

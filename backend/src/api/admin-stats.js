@@ -1,5 +1,7 @@
 import { jsonResponse, errorResponse } from '../utils/response';
 
+// DEAD CODE — not mounted in index.js (see note there). Retained for reference.
+
 /**
  * GET /api/admin/stats — Enhanced super-admin platform statistics.
  *

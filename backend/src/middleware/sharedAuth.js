@@ -230,9 +230,11 @@ export async function getUserById(userId, env) {
 // ─── Auth Middleware (Hono) ────────────────────────────────
 
 /**
- * Hono middleware: verifies JWT, sets c.set('user', {...}).
- * Checks is_active in DB and rejects tokens without role.
+ * DEPRECATED: This middleware is exported but never mounted as Hono middleware.
+ * All auth is handled by requireAuth.js / resolveScope.js instead.
+ * Kept for reference only — remove in next cleanup pass.
  */
+// eslint-disable-next-line no-unused-vars
 export const authMiddleware = async (c, next) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -273,6 +275,7 @@ export const authMiddleware = async (c, next) => {
   await next();
 };
 
+// DEPRECATED: auth is an alias for authMiddleware — never mounted, kept for reference.
 export const auth = authMiddleware;
 
 // ─── Role Checking ────────────────────────────────────────

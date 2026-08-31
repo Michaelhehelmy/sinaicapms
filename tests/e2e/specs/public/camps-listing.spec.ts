@@ -131,7 +131,9 @@ test.describe('Camps Listing Page — Client-Side Filtering', () => {
 
   test('location filter narrows results', async ({ page }) => {
     const grid = page.locator('[data-testid="camps-grid"]');
-    await page.locator('[data-testid="location-filter"]').selectOption('Sinai');
+    const locSel = page.locator('[data-testid="location-filter"]');
+    await locSel.locator('option[value="Sinai Peninsula, Egypt"]').waitFor({ state: 'attached' });
+    await locSel.selectOption('Sinai Peninsula, Egypt');
     await page.locator('[data-testid="search-submit"]').click();
     await expect(grid.locator('[data-testid="camp-card"]').first()).toBeVisible();
     const locations = grid.locator('[data-testid="camp-location"]');
@@ -214,7 +216,8 @@ test.describe('Camps Listing Page — Error Handling', () => {
 
   test('filter API failure shows error state', async ({ page }) => {
     await page.goto('/camps', { waitUntil: 'domcontentloaded' });
-    await page.route('**/api/tenants/public*', route => route.abort());
+    // The camps filter fetches from the versioned path /api/v1/tenants/public.
+    await page.route('**/api/v1/tenants/public*', route => route.abort());
     await page.locator('[data-testid="search-submit"]').click();
     await expect(page.locator('[data-testid="camps-grid"]')).toContainText('Could not load camps');
   });

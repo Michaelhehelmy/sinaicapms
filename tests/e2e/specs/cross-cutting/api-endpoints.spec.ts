@@ -13,8 +13,8 @@ test.describe('Public API Endpoints', () => {
     }
   });
 
-  test('GET /api/products/:tenantId returns room types for valid tenant', async ({ request }) => {
-    const response = await request.get(`${API_BASE}/api/products/${TEST_TENANT.id}`);
+  test('GET /api/products returns room types (public route)', async ({ request }) => {
+    const response = await request.get(`${API_BASE}/api/products`);
     const status = response.status();
     expect([200, 404]).toContain(status);
     if (status === 200) {
@@ -23,8 +23,13 @@ test.describe('Public API Endpoints', () => {
     }
   });
 
-  test('GET /api/products/nonexistent returns 404 or empty', async ({ request }) => {
-    const response = await request.get(`${API_BASE}/api/products/nonexistent-tenant-id-xyz`);
+  // Products are read from the unified pos_products source and the list GET is
+  // public/cross-tenant — an unknown tenant header still yields 200 (empty set),
+  // not a 404.
+  test('GET /api/products with unknown tenant header returns 200 or empty', async ({ request }) => {
+    const response = await request.get(`${API_BASE}/api/products`, {
+      headers: { 'x-tenant-id': 'nonexistent-tenant-id-xyz' },
+    });
     const status = response.status();
     expect([200, 404]).toContain(status);
   });
@@ -104,8 +109,8 @@ test.describe('Public API Endpoints', () => {
     expect(response.status()).toBe(401);
   });
 
-  test('PUT /api/settings without auth returns 401', async ({ request }) => {
-    const response = await request.put(`${API_BASE}/api/settings`, {
+  test('PUT /api/admin/settings without auth returns 401', async ({ request }) => {
+    const response = await request.put(`${API_BASE}/api/admin/settings`, {
       data: { camp_name: 'Test' },
     });
     expect(response.status()).toBe(401);

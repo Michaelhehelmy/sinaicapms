@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { jsonResponse, errorResponse } from '../utils/response.js';
+import { getScope } from '../middleware/resolveScope.js';
 
 const barcode = new Hono();
 
@@ -10,10 +11,10 @@ const barcode = new Hono();
  */
 barcode.get('/:code', async (c) => {
   const code = c.req.param('code');
-  if (!code) return errorResponse(c, 'Barcode/SKU is required', 400);
+  if (!code) return errorResponse('Barcode/SKU is required', 400);
 
-  const tenantId = c.get('tenantId');
-  if (!tenantId) return errorResponse(c, 'Tenant not resolved', 400);
+  const tenantId = getScope(c).tenantId;
+  if (!tenantId) return errorResponse('Tenant not resolved', 400);
 
   try {
     const { results } = await c.env.DB.prepare(
@@ -21,11 +22,11 @@ barcode.get('/:code', async (c) => {
     ).bind(code, code, tenantId).all();
 
     if (results.length === 0) {
-      return errorResponse(c, 'Product not found', 404);
+      return errorResponse('Product not found', 404);
     }
 
     const row = results[0];
-    return jsonResponse(c, {
+    return jsonResponse({
       id: row.id,
       sku: row.sku,
       name: row.name,
@@ -40,7 +41,7 @@ barcode.get('/:code', async (c) => {
     });
   } catch (err) {
     console.error('[POS BARCODE] lookup failed:', err.message);
-    return errorResponse(c, 'Failed to look up product', 500);
+    return errorResponse('Failed to look up product', 500);
   }
 });
 

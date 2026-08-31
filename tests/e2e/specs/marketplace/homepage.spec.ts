@@ -128,11 +128,11 @@ test.describe('Marketplace Homepage', () => {
     }
   });
 
-  test('filter by location: select "Sinai" -> apply -> verify results', async ({ page }) => {
+  test('filter by location: select "Sinai Peninsula, Egypt" -> apply -> verify results', async ({ page }) => {
     const locationSelect = page.locator('[data-testid="location-filter"]');
     await expect(locationSelect).toBeVisible();
 
-    await home.filterByLocation('Sinai');
+    await home.filterByLocation('Sinai Peninsula, Egypt');
     await home.applyFilters();
 
     try {
@@ -184,7 +184,7 @@ test.describe('Marketplace Homepage', () => {
 
   test('combined filters: search + location -> verify intersection', async ({ page }) => {
     await home.searchCamps('Camp');
-    await home.filterByLocation('Sinai');
+    await home.filterByLocation('Sinai Peninsula, Egypt');
     await home.applyFilters();
 
     try {

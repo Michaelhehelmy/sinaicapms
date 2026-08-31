@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'neutral';
+  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   dot?: boolean;
   removable?: boolean;
@@ -42,6 +42,15 @@ const variantStyles: Record<string, { bg: string; text: string; dot: string }> =
     text: 'text-gray-600',
     dot: 'bg-gray-400',
   },
+  // `danger` is accepted across many admin panels (ServicesPanel, CRMPanel,
+  // HRPanel, FinancialPanel, etc.) — alias it to the error palette. This
+  // prevents a TypeError (`variantStyles['danger']` was undefined) whenever a
+  // status like `canceled` / `overdue` / `blocked` / `danger` rendered a Badge.
+  danger: {
+    bg: 'bg-error-100',
+    text: 'text-error-700',
+    dot: 'bg-error-500',
+  },
 };
 
 const sizeStyles: Record<string, string> = {
@@ -60,6 +69,9 @@ const sizeStyles: Record<string, string> = {
  * <Badge variant="error" dot removable onRemove={() => handleRemove()}>
  *   Failed
  * </Badge>
+ *
+ * @example
+ * <Badge variant="danger" dot>Blocked</Badge>
  */
 export function Badge({
   children,

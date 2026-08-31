@@ -49,7 +49,7 @@ router.get('/', async (c) => {
     const dataSql = `SELECT DISTINCT t.id as tenant_id, t.name as tenant_name, t.subdomain,
         t.description as tenant_description, t.primary_color, t.location,
         p.id as project_id, p.name as project_name, p.description as project_description,
-        p.type as project_type, p.capacity, p.slug,
+        p.project_type as project_type, p.capacity, p.slug,
         (SELECT COUNT(*) FROM marketplace_reviews mr WHERE mr.project_id = p.id AND mr.is_approved = 1) as review_count,
         (SELECT COALESCE(AVG(mr.rating), 0) FROM marketplace_reviews mr WHERE mr.project_id = p.id AND mr.is_approved = 1) as avg_rating
       FROM tenants t
@@ -105,7 +105,7 @@ router.get('/:tenantSlug', async (c) => {
 
     // Get projects
     const { results: projects } = await env.DB.prepare(
-      `SELECT id, name, description, type, capacity, slug
+      `SELECT id, name, description, project_type, capacity, slug
        FROM projects WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY name`
     ).bind(tenant.id).all();
 

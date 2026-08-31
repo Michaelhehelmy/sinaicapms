@@ -133,7 +133,7 @@ inventoryRoutes.post('/adjustments', async (c) => {
     return errorResponse('Adjustment would result in negative stock', 400);
   }
   // Re-read actual stock after atomic update
-  const updated = await env.DB.prepare('SELECT stock_quantity FROM pos_products WHERE id = ?').bind(product_id).first();
+  const updated = await env.DB.prepare('SELECT stock_quantity FROM pos_products WHERE id = ? AND tenant_id = ?').bind(product_id, tenantId).first();
   return jsonResponse({ id, success: true, new_stock: updated?.stock_quantity ?? 0 }, 201);
 });
 

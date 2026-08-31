@@ -119,8 +119,11 @@ test.describe('Contact Page — Form Submission', () => {
 
     const btn = page.locator('button[type="submit"]');
 
-    // Intercept the API call so we can hold it open and inspect button text mid-flight
-    await page.route('**/api/contact', async (route) => {
+    // Intercept the real submission endpoint (/api/v1/leads) so we can hold it
+    // open and inspect button text mid-flight. Legacy `**/api/contact` no longer
+    // matches the request the form actually issues (contact.astro POSTs to
+    // /api/v1/leads).
+    await page.route('**/api/v1/leads', async (route) => {
       // Button should show "Sending..." while the request is pending
       await expect(btn).toHaveText('Sending...');
       // Now let the request through
@@ -174,8 +177,11 @@ test.describe('Contact Page — Error Handling', () => {
     const url = await tenantUrl(page, TENANT_ID, '/contact');
     await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-    // Block the contact API so the submission always fails
-    await page.route('**/api/contact', (route) => route.abort());
+    // Block the contact submission API so the request always fails. The form
+    // posts to the canonical Phase 9 endpoint `/api/v1/leads` (see
+    // contact.astro) — blocking `**/api/contact` would no-op because the
+    // legacy contact path is no longer called.
+    await page.route('**/api/v1/leads', (route) => route.abort());
 
     await page.locator('[data-testid="contact-name"]').fill('Error Test');
     await page.locator('[data-testid="contact-email"]').fill('error@test.com');

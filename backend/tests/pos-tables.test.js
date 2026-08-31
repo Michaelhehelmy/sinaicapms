@@ -505,7 +505,7 @@ describe('POS order flow — dine-in table integration', () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.order.tableId).toBe('tbl_x');
-    expect(body.order.kitchenStatus).toBe('confirmed');
+    expect(body.order.kitchenStatus).toBe('pending');
 
     // The transaction INSERT carries the table reference (last bound param).
     const txCalls = db.prepare.mock.calls;
@@ -551,7 +551,7 @@ describe('POS order flow — dine-in table integration', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.order.tableId).toBeNull();
-    expect(body.order.kitchenStatus).toBe('confirmed');
+    expect(body.order.kitchenStatus).toBe('pending');
 
     const sqls = db.prepare.mock.calls.map(([sql]) => String(sql));
     expect(sqls.some((s) => s.includes('FROM pos_tables'))).toBe(false);

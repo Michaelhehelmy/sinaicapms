@@ -29,8 +29,11 @@ test.describe.serial('Restaurant Flow — end-to-end', () => {
     await expectPanelContentReady(page, 'services-panel');
 
     await expect(page.locator('[data-testid="services-panel"]')).toBeVisible();
-    // Should have Add Definition and Add Item buttons
+    // Definitions tab: Add Service Type button shows here.
     await expect(page.locator('[data-testid="add-def-btn"]')).toBeVisible();
+    // Item-level Add Service button lives on the items tab — switch to it.
+    await page.locator('[data-testid="tab-items"]').click();
+    await expectPanelContentReady(page, 'services-panel');
     await expect(page.locator('[data-testid="add-item-btn"]')).toBeVisible();
   });
 

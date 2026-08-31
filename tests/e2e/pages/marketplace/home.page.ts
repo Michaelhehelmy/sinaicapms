@@ -29,15 +29,24 @@ export class MarketplaceHomePage {
   }
 
   async filterByLocation(location: string) {
-    await this.page.locator('[data-testid="location-filter"]').selectOption(location);
+    const sel = this.page.locator('[data-testid="location-filter"]');
+    // The location options are derived from the server-rendered tenants list,
+    // so wait for the exact option to exist before selecting (avoids a race
+    // where selectOption runs before the dropdown is populated).
+    await sel.locator(`option[value="${location}"]`).waitFor({ state: 'attached' });
+    await sel.selectOption(location);
   }
 
   async filterByCapacity(capacity: string) {
-    await this.page.locator('[data-testid="capacity-filter"]').selectOption(capacity);
+    const sel = this.page.locator('[data-testid="capacity-filter"]');
+    await sel.locator(`option[value="${capacity}"]`).waitFor({ state: 'attached' });
+    await sel.selectOption(capacity);
   }
 
   async filterByActivity(activity: string) {
-    await this.page.locator('[data-testid="activity-filter"]').selectOption(activity);
+    const sel = this.page.locator('[data-testid="activity-filter"]');
+    await sel.locator(`option[value="${activity}"]`).waitFor({ state: 'attached' });
+    await sel.selectOption(activity);
   }
 
   async applyFilters() {

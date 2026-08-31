@@ -1,7 +1,20 @@
 ---
 import '@/styles/global.css';
+import { resolveDataDomain } from '@/lib/plausible';
 const { user } = Astro.props;
 const isLoggedIn = !!user;
+
+// Plausible analytics loader is production-only: skip localhost so dev/E2E
+// runs never fire dead analytics requests. The admin SPA records admin events
+// (DashboardView, Promotion/Price updates) via `trackEvent`, which requires
+// this loader to have injected `window.plausible` — the same guarded loader
+// used by PublicLayout, so those events actually fire.
+const analyticsHostname = Astro.url.hostname;
+const isLocalAnalyticsHost =
+  analyticsHostname === 'localhost' ||
+  analyticsHostname === '127.0.0.1' ||
+  analyticsHostname.endsWith('.localhost') ||
+  analyticsHostname.endsWith('.127.0.0.1');
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -47,6 +60,14 @@ const isLoggedIn = !!user;
     window.$RefreshSig$ = function(type) { return type; };
     window.__vite_plugin_react_preamble_installed__ = true;
   </script>
+
+  <!-- Plausible analytics loader (production-only, skipped on localhost so
+       dev/E2E never fire dead analytics requests). Same guarded loader as
+       PublicLayout — injects `window.plausible` so admin `trackEvent` calls
+       (Dashboard View, Promotion/Price updates) actually fire. -->
+  {!isLocalAnalyticsHost && (
+    <script defer data-domain={resolveDataDomain(analyticsHostname)} src="https://plausible.io/js/script.tagged-events.js"></script>
+  )}
 </head>
 <body>
   <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-[9999] focus:bg-white focus:p-2 focus:text-blue-600">Skip to content</a>

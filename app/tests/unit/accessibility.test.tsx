@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -186,28 +186,34 @@ describe('A11y: DataTable aria-sort', () => {
     { id: '2', name: 'Bob', email: 'bob@test.com' },
   ];
 
+  /* The mobile card view also renders in jsdom, so header queries are scoped
+     to the desktop table (`data-testid="data-table"`). */
+  function table() {
+    return within(screen.getByTestId('data-table'));
+  }
+
   it('sortable column has aria-sort="none" initially', () => {
     render(<DataTable columns={columns} data={data} />);
-    const nameHeader = screen.getByText('Name').closest('th');
+    const nameHeader = table().getByText('Name').closest('th');
     expect(nameHeader).toHaveAttribute('aria-sort', 'none');
   });
 
   it('non-sortable column does not have aria-sort', () => {
     render(<DataTable columns={columns} data={data} />);
-    const emailHeader = screen.getByText('Email').closest('th');
+    const emailHeader = table().getByText('Email').closest('th');
     expect(emailHeader).not.toHaveAttribute('aria-sort');
   });
 
   it('clicking sortable header sets aria-sort="ascending"', () => {
     render(<DataTable columns={columns} data={data} />);
-    const nameHeader = screen.getByText('Name').closest('th')!;
+    const nameHeader = table().getByText('Name').closest('th')!;
     fireEvent.click(nameHeader);
     expect(nameHeader).toHaveAttribute('aria-sort', 'ascending');
   });
 
   it('clicking again toggles to aria-sort="descending"', () => {
     render(<DataTable columns={columns} data={data} />);
-    const nameHeader = screen.getByText('Name').closest('th')!;
+    const nameHeader = table().getByText('Name').closest('th')!;
     fireEvent.click(nameHeader);
     fireEvent.click(nameHeader);
     expect(nameHeader).toHaveAttribute('aria-sort', 'descending');

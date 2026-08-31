@@ -33,7 +33,8 @@ test.describe.serial('Supermarket Flow — end-to-end', () => {
 
   test('step 2: low stock panel loads', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
-    await admin.gotoTab(TEST_TENANT.id, 'lowstock');
+    // Nav tab id is "low-stock" (matches nav-tab-low-stock), not "lowstock".
+    await admin.gotoTab(TEST_TENANT.id, 'low-stock');
     await expectPanelReady(page);
     await expectPanelContentReady(page, 'low-stock-panel');
 

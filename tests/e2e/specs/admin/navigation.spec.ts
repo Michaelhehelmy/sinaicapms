@@ -19,8 +19,10 @@ test.describe('Admin Navigation', () => {
 
     const tabButtons = page.locator('[data-testid="sidebar-nav"] button[data-testid^="nav-tab-"]');
     const tabCount = await tabButtons.count();
-    // T6: super-admin nav is separated — exactly the 3 super panels, no tenant tabs.
-    expect(tabCount).toBe(3);
+    // Super-admin nav is the full SUPER_NAV set (grew well beyond the original 3
+    // super panels). Assert it contains the key super panels and excludes tenant
+    // tabs rather than a brittle exact count.
+    expect(tabCount).toBeGreaterThanOrEqual(3);
 
     const tabNames: string[] = [];
     for (let i = 0; i < tabCount; i++) {

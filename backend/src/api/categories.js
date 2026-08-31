@@ -163,8 +163,8 @@ categoriesRoutes.delete('/:id', async (c) => {
     ).bind(catId, tenantId).all();
     if (refs.length > 0) return errorResponse('Cannot delete category with linked products', 400);
 
-    await c.env.DB.prepare("DELETE FROM category_lang WHERE category_id = ?").bind(catId).run();
-    await c.env.DB.prepare("DELETE FROM categories WHERE id = ?").bind(catId).run();
+    await c.env.DB.prepare("DELETE FROM category_lang WHERE category_id = ? AND tenant_id = ?").bind(catId, tenantId).run();
+    await c.env.DB.prepare("DELETE FROM categories WHERE id = ? AND tenant_id = ?").bind(catId, tenantId).run();
     return jsonResponse({ success: true });
   } catch (e) {
     return errorResponse('Failed to delete category');

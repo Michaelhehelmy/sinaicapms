@@ -30,6 +30,9 @@ const posOrderSchema = z.object({
   // cashier's tenant; the referenced table is flipped to 'occupied' in the
   // commit batch below.
   tableId: z.string({ message: 'Table ID must be text' }).max(64, 'Table ID is too long').optional(),
+  // Client-side tip display — accepted so it's not silently stripped.
+  // TODO: Add tip_amount column to pos_transactions and persist it.
+  tipAmount: z.number().min(0).optional(),
 }).strip();
 
 const posRefreshSchema = z.object({
@@ -312,7 +315,7 @@ pos.post('/orders', async (c) => {
     const posUser = c.get('posUser');
     const tenantId = posUser.tenantId;
     const organizationId = posUser.organizationId;
-    const { items, paymentMethod, notes, amountCash, amountCard } = parsed.data;
+    const { items, paymentMethod, notes, amountCash, amountCard, tipAmount } = parsed.data;
     const idempotencyKeyRaw = typeof parsed.data.idempotencyKey === 'string' ? parsed.data.idempotencyKey.trim() : '';
     const idempotencyKey = idempotencyKeyRaw.length > 0 && idempotencyKeyRaw.length <= 64 ? idempotencyKeyRaw : null;
     // 0069: optional dine-in table — empty string normalizes to null.
@@ -324,8 +327,8 @@ pos.post('/orders', async (c) => {
         `SELECT id, order_number, subtotal, tax_amount, total_amount, payment_method,
                 amount_cash, amount_card, status, table_id, kitchen_status, created_at
          FROM pos_transactions
-         WHERE idempotency_key = ? AND tenant_id = ?`
-      ).bind(key, tenantId).all();
+         WHERE idempotency_key = ? AND tenant_id = ? AND cashier_id = ?`
+      ).bind(key, tenantId, String(posUser.userId)).all();
 
       if (existing.length === 0) return null;
 
@@ -611,9 +614,9 @@ pos.post('/orders', async (c) => {
           (id, tenant_id, organization_id, store_id, order_number, cashier_id,
            status, subtotal, tax_amount, tax_rate, total_amount,
            paid_amount, payment_method, payment_status, notes,
-           amount_cash, amount_card, idempotency_key, table_id, kitchen_status,
-           created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, 'confirmed', datetime('now'), datetime('now'))`
+            amount_cash, amount_card, idempotency_key, table_id, kitchen_status,
+            created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))`
       ).bind(
         orderId, tenantId, organizationId, storeId, orderNumber,
         String(posUser.userId),
@@ -768,7 +771,8 @@ pos.post('/orders', async (c) => {
         amountCard: finalAmountCard,
         status: 'completed',
         tableId,
-        kitchenStatus: 'confirmed',
+        kitchenStatus: 'pending',
+        tipAmount: tipAmount || 0,
         appliedPromotions: discountRows.map((d) => ({
           promotionId: d.promotionId,
           promotionName: d.promotionName,
@@ -804,8 +808,8 @@ pos.get('/orders', async (c) => {
       'SELECT COUNT(*) AS total FROM pos_transactions WHERE tenant_id = ?'
     ).bind(tenantId).all();
     const { results } = await env.DB.prepare(
-      `SELECT t.id, t.order_number, t.status, t.subtotal, t.tax_amount, t.total_amount,
-              t.payment_method, t.payment_status, t.created_at,
+       `SELECT t.id, t.order_number, t.status, t.subtotal, t.tax_amount, t.total_amount,
+              t.payment_method, t.payment_status, t.table_id, t.kitchen_status, t.created_at,
               u.username AS cashier_name
        FROM pos_transactions t
        LEFT JOIN pos_users u ON u.id = t.cashier_id

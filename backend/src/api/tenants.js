@@ -11,7 +11,12 @@ export const tenantPostSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, 'Name is required'),
   subdomain: z.string().min(1, 'Subdomain is required'),
-  type: z.enum(['camp', 'supermarket', 'transportation', 'other']).optional(),
+  // Shared/reconciled tenant-type vocabulary — union of PROJECT_TYPES
+  // (backend/src/api/camps.js 'camp'|'supermarket'|'transportation'|'restaurant'|'custom')
+  // plus the legacy 'other'. `type` and `project_type` must stay in sync so a
+  // tenant built from a project type never 400s on this schema.
+  // Default stays 'camp' (backward compatible).
+  type: z.enum(['camp', 'supermarket', 'transportation', 'restaurant', 'custom', 'other']).optional(),
   custom_domain: z.string().optional(),
   logo_url: z.string().optional(),
   favicon_url: z.string().optional(),

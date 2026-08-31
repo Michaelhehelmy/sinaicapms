@@ -49,8 +49,10 @@ test.describe('Admin CRUD Execution — Camps', () => {
     const editBtn = page.locator('[data-testid="camps-panel"] button:has-text("Edit")').first();
     await editBtn.click();
     await expect(page.locator('[data-testid="modal-overlay"]')).toBeVisible({ timeout: 5000 });
+    // The camps edit modal is titled "Edit Project" (see CampsPanel), not
+    // "Edit Camp".
     await expect(
-      page.locator('[data-testid="modal-overlay"]', { hasText: 'Edit Camp' }).first()
+      page.locator('[data-testid="modal-overlay"]', { hasText: 'Edit Project' }).first()
     ).toBeVisible({ timeout: 5000 });
   });
 });
