@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { DataTable } from '@/components/ui/DataTable';
 
 const columns = [
@@ -13,14 +13,21 @@ const data = [
   { name: 'Charlie', age: 35 },
 ];
 
+/* The desktop table and the mobile card view both render in jsdom (media-query
+   CSS is not evaluated), so desktop-only assertions are scoped to the table. */
+function desktopTable() {
+  return within(screen.getByTestId('data-table'));
+}
+
 describe('DataTable', () => {
   it('renders table headers and data rows', () => {
     render(<DataTable columns={columns} data={data} />);
-    expect(screen.getByText('Name')).toBeInTheDocument();
-    expect(screen.getByText('Age')).toBeInTheDocument();
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.getByText('Bob')).toBeInTheDocument();
-    expect(screen.getByText('Charlie')).toBeInTheDocument();
+    const table = desktopTable();
+    expect(table.getByText('Name')).toBeInTheDocument();
+    expect(table.getByText('Age')).toBeInTheDocument();
+    expect(table.getByText('Alice')).toBeInTheDocument();
+    expect(table.getByText('Bob')).toBeInTheDocument();
+    expect(table.getByText('Charlie')).toBeInTheDocument();
   });
 
   it('shows empty message when data is empty', () => {
@@ -37,14 +44,15 @@ describe('DataTable', () => {
 
   it('sorts data when sortable column header is clicked', () => {
     render(<DataTable columns={columns} data={data} />);
-    const nameHeader = screen.getByText('Name');
+    const table = desktopTable();
+    const nameHeader = table.getByText('Name');
     fireEvent.click(nameHeader);
-    const cells = screen.getAllByRole('row');
+    let cells = table.getAllByRole('row');
     expect(cells[1].textContent).toContain('Alice');
     expect(cells[2].textContent).toContain('Bob');
     expect(cells[3].textContent).toContain('Charlie');
     fireEvent.click(nameHeader);
-    const cellsDesc = screen.getAllByRole('row');
+    const cellsDesc = table.getAllByRole('row');
     expect(cellsDesc[1].textContent).toContain('Charlie');
     expect(cellsDesc[2].textContent).toContain('Bob');
     expect(cellsDesc[3].textContent).toContain('Alice');
@@ -148,13 +156,14 @@ describe('DataTable', () => {
         onSelectionChange={onSelectionChange}
       />,
     );
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select row Alice' }));
+    const table = desktopTable();
+    fireEvent.click(table.getByRole('checkbox', { name: 'Select row Alice' }));
     expect(onSelectionChange).toHaveBeenCalledWith(['Alice']);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select row Alice' }));
+    fireEvent.click(table.getByRole('checkbox', { name: 'Select row Alice' }));
     expect(onSelectionChange).toHaveBeenLastCalledWith([]);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all rows' }));
+    fireEvent.click(table.getByRole('checkbox', { name: 'Select all rows' }));
     expect(onSelectionChange).toHaveBeenLastCalledWith(['Alice', 'Bob', 'Charlie']);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all rows' }));
+    fireEvent.click(table.getByRole('checkbox', { name: 'Select all rows' }));
     expect(onSelectionChange).toHaveBeenLastCalledWith([]);
     expect(container.querySelectorAll('tr[data-testid="data-table-row"]').length).toBe(3);
   });
@@ -172,11 +181,12 @@ describe('DataTable', () => {
         )}
       />,
     );
-    fireEvent.click(screen.getByRole('row', { name: /Alice/ }));
+    const table = desktopTable();
+    fireEvent.click(table.getByRole('row', { name: /Alice/ }));
     expect(onRowClick).toHaveBeenLastCalledWith({ name: 'Alice', age: 30 });
-    fireEvent.click(screen.getAllByRole('button', { name: 'View' })[0]);
+    fireEvent.click(table.getAllByRole('button', { name: 'View' })[0]);
     expect(onRowClick).toHaveBeenLastCalledWith('action:Alice');
-    expect(screen.getByText('Actions')).toBeInTheDocument();
+    expect(table.getByText('Actions')).toBeInTheDocument();
   });
 
   it('sorts rows with null values and numeric columns in both directions', () => {
@@ -191,14 +201,15 @@ describe('DataTable', () => {
       { name: 'Delta' },
     ];
     render(<DataTable columns={sortableCols} data={mixedData} />);
-    fireEvent.click(screen.getByText('Age'));
-    let cells = screen.getAllByRole('row').map((r) => r.textContent);
+    const table = desktopTable();
+    fireEvent.click(table.getByText('Age'));
+    let cells = table.getAllByRole('row').map((r) => r.textContent);
     expect(cells[1]).toContain('Gamma');
     expect(cells[2]).toContain('Delta');
     expect(cells[3]).toContain('Beta');
     expect(cells[4]).toContain('Alpha');
-    fireEvent.click(screen.getByText('Age'));
-    cells = screen.getAllByRole('row').map((r) => r.textContent);
+    fireEvent.click(table.getByText('Age'));
+    cells = table.getAllByRole('row').map((r) => r.textContent);
     expect(cells[1]).toContain('Alpha');
     expect(cells[2]).toContain('Beta');
     expect(cells[3]).toContain('Gamma');
@@ -220,8 +231,9 @@ describe('DataTable', () => {
         ]}
       />,
     );
-    fireEvent.click(screen.getByText('Age'));
-    const cells = screen.getAllByRole('row').map((r) => r.textContent);
+    const table = desktopTable();
+    fireEvent.click(table.getByText('Age'));
+    const cells = table.getAllByRole('row').map((r) => r.textContent);
     expect(cells[1]).toContain('First');
     expect(cells[2]).toContain('Third');
     expect(cells[3]).toContain('Second');
@@ -275,11 +287,12 @@ describe('DataTable', () => {
         onSelectionChange={onSelectionChange}
       />,
     );
-    expect(screen.getByRole('checkbox', { name: 'Select row Alice' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Select row Bob' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Select row Charlie' })).not.toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Select all rows' })).not.toBeChecked();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select row Charlie' }));
+    const table = desktopTable();
+    expect(table.getByRole('checkbox', { name: 'Select row Alice' })).toBeChecked();
+    expect(table.getByRole('checkbox', { name: 'Select row Bob' })).toBeChecked();
+    expect(table.getByRole('checkbox', { name: 'Select row Charlie' })).not.toBeChecked();
+    expect(table.getByRole('checkbox', { name: 'Select all rows' })).not.toBeChecked();
+    fireEvent.click(table.getByRole('checkbox', { name: 'Select row Charlie' }));
     expect(onSelectionChange).toHaveBeenCalled();
   });
 
@@ -294,10 +307,11 @@ describe('DataTable', () => {
         onSelectionChange={vi.fn()}
       />,
     );
-    expect(screen.getByRole('checkbox', { name: 'Select all rows' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Select row Alice' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Select row Bob' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Select row Charlie' })).toBeChecked();
+    const table = desktopTable();
+    expect(table.getByRole('checkbox', { name: 'Select all rows' })).toBeChecked();
+    expect(table.getByRole('checkbox', { name: 'Select row Alice' })).toBeChecked();
+    expect(table.getByRole('checkbox', { name: 'Select row Bob' })).toBeChecked();
+    expect(table.getByRole('checkbox', { name: 'Select row Charlie' })).toBeChecked();
   });
 
   it('select-all fires onSelectionChange in controlled mode', () => {
@@ -312,7 +326,7 @@ describe('DataTable', () => {
         onSelectionChange={onSelectionChange}
       />,
     );
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all rows' }));
+    fireEvent.click(desktopTable().getByRole('checkbox', { name: 'Select all rows' }));
     expect(onSelectionChange).toHaveBeenCalledWith(['Alice', 'Bob', 'Charlie']);
   });
 
@@ -328,10 +342,11 @@ describe('DataTable', () => {
   it('toggles sort direction back to asc on third click', () => {
     const nameCol = [{ key: 'name', header: 'Name', sortable: true }];
     render(<DataTable columns={nameCol} data={data} />);
-    fireEvent.click(screen.getByText('Name'));
-    fireEvent.click(screen.getByText('Name'));
-    fireEvent.click(screen.getByText('Name'));
-    const cells = screen.getAllByRole('row').map((r) => r.textContent);
+    const table = desktopTable();
+    fireEvent.click(table.getByText('Name'));
+    fireEvent.click(table.getByText('Name'));
+    fireEvent.click(table.getByText('Name'));
+    const cells = table.getAllByRole('row').map((r) => r.textContent);
     expect(cells[1]).toContain('Alice');
     expect(cells[2]).toContain('Bob');
     expect(cells[3]).toContain('Charlie');
@@ -351,9 +366,10 @@ describe('DataTable', () => {
         ]}
       />,
     );
-    fireEvent.click(screen.getByText('Age'));
-    fireEvent.click(screen.getByText('Age'));
-    const cells = screen.getAllByRole('row').map((r) => r.textContent);
+    const table = desktopTable();
+    fireEvent.click(table.getByText('Age'));
+    fireEvent.click(table.getByText('Age'));
+    const cells = table.getAllByRole('row').map((r) => r.textContent);
     expect(cells[1]).toContain('A');
     expect(cells[2]).toContain('B');
   });
@@ -372,7 +388,7 @@ describe('DataTable', () => {
         onSelectionChange={onSelectionChange}
       />,
     );
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select row Alice' }));
+    fireEvent.click(desktopTable().getByRole('checkbox', { name: 'Select row Alice' }));
     expect(onSelectionChange).toHaveBeenCalledWith(['Alice']);
   });
 });

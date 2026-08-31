@@ -7,6 +7,8 @@ interface Column<T> {
   render?: (item: T) => React.ReactNode;
   sortable?: boolean;
   width?: string;
+  /** Drop this column from the mobile (below `lg`) card view. Desktop table is never affected. */
+  hideOnMobile?: boolean;
 }
 
 interface Pagination {
@@ -43,6 +45,8 @@ interface DataTableProps<T> {
   stickyHeader?: boolean;
 }
 
+const MOBILE_MEDIA_QUERY = '(max-width: 1023.98px)';
+
 /* ─── Size tokens ─── */
 const cellPad = { sm: 'px-3 py-2', md: 'px-4 py-3', lg: 'px-5 py-4' };
 const headerPad = { sm: 'px-3 py-2', md: 'px-4 py-3', lg: 'px-5 py-4' };
@@ -57,6 +61,21 @@ function SkeletonRow({ cols, size = 'md' }: { cols: number; size?: 'sm' | 'md' |
         </td>
       ))}
     </tr>
+  );
+}
+
+function SkeletonCard({ cols }: { cols: number }) {
+  return (
+    <div className="animate-pulse rounded-xl border border-warm-200 bg-white p-4 shadow-sm">
+      <div className="grid gap-3">
+        {Array.from({ length: Math.min(cols, 3) }).map((_, i) => (
+          <div key={i} className="min-w-0">
+            <div className="h-3 rounded bg-warm-200 w-1/3" />
+            <div className="mt-1.5 h-4 rounded bg-warm-200 w-3/4" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -84,6 +103,22 @@ export function DataTable<T extends Record<string, unknown>>({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [searchQuery, setSearchQuery] = useState('');
   const [internalSelected, setInternalSelected] = useState<Set<string>>(new Set());
+
+  /*
+   * Mobile card view detection. Defaults to `false` both server-side and on the
+   * first client render so SSR/no-JS always shows the classic (scrollable) table;
+   * once hydrated, a matchMedia listener switches to stacked cards below `lg`.
+   */
+  const [isMobileView, setIsMobileView] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(MOBILE_MEDIA_QUERY);
+    const update = () => setIsMobileView(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
+  }, []);
 
   /* Use controlled selection if provided, otherwise internal */
   const selectedKeys = controlledSelected ?? Array.from(internalSelected);
@@ -198,6 +233,36 @@ export function DataTable<T extends Record<string, unknown>>({
     sortedData.length > 0 &&
     sortedData.every((d) => selectedSet.has(String(d[rowKey] ?? '')));
 
+  /* Columns shown in the mobile card view; hideOnMobile columns are filtered out. */
+  const mobileColumns = useMemo(() => columns.filter((col) => !col.hideOnMobile), [columns]);
+  const mobileCols = mobileColumns.length + (actions ? 1 : 0) + (selectable ? 1 : 0);
+
+  const mobileEmptyState = (
+    <div className="px-6 py-20 text-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="rounded-2xl bg-warm-100 p-4">
+          <svg
+            className="h-10 w-10 text-warm-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+            />
+          </svg>
+        </div>
+        <p className="text-sm font-medium text-warm-700">{emptyMessage}</p>
+        {emptyDescription && (
+          <p className="text-xs text-warm-600 max-w-xs">{emptyDescription}</p>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="w-full">
       {searchable && (
@@ -235,7 +300,13 @@ export function DataTable<T extends Record<string, unknown>>({
       )}
 
       <div className={cn('overflow-x-auto rounded-xl border border-warm-200 bg-white')} aria-busy={loading || undefined}>
-        <table data-testid="data-table" className="min-w-full divide-y divide-warm-200" aria-busy={loading || undefined}>
+        {/* Desktop table — always rendered for SSR/no-JS; hidden below `lg` only while
+            the client-side mobile card view is active. */}
+        <table
+          data-testid="data-table"
+          className={cn('min-w-full divide-y divide-warm-200', isMobileView && 'hidden lg:table')}
+          aria-busy={loading || undefined}
+        >
           <thead
             className={cn(
               'bg-warm-50',
@@ -397,6 +468,84 @@ export function DataTable<T extends Record<string, unknown>>({
             )}
           </tbody>
         </table>
+
+        {/* Mobile card list — rendered client-side below `lg` (matchMedia); the desktop
+            table stays visible for SSR/no-JS and at/above `lg`. */}
+        {isMobileView && (
+          <div data-testid="data-table-cards" className="lg:hidden" aria-busy={loading || undefined}>
+            {loading ? (
+              <div className="space-y-3 p-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <SkeletonCard key={i} cols={mobileCols} />
+                ))}
+              </div>
+            ) : sortedData.length === 0 ? (
+              mobileEmptyState
+            ) : (
+              <ul className="space-y-3 p-4">
+                {sortedData.map((item, idx) => {
+                  const itemKey = String(item[rowKey] ?? idx);
+                  const isSelected = selectedSet.has(itemKey);
+                  return (
+                    <li
+                      key={itemKey}
+                      data-testid="data-table-card"
+                      className={cn(
+                        'rounded-xl border bg-white p-4 shadow-sm transition-colors',
+                        variant === 'bordered' ? 'border-warm-300' : 'border-warm-200',
+                        variant === 'striped' && idx % 2 === 1 && 'bg-warm-50/40',
+                        onRowClick && 'cursor-pointer hover:border-brand-300 hover:bg-brand-50/40',
+                        !onRowClick && 'hover:border-warm-300',
+                        isSelected && 'border-brand-300 bg-brand-50/60',
+                      )}
+                      onClick={onRowClick ? () => onRowClick(item) : undefined}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {mobileColumns.map((col) => (
+                              <div key={col.key} className="min-w-0">
+                                <div className="text-sm font-bold uppercase tracking-wider text-warm-500">
+                                  {col.header}
+                                </div>
+                                <div
+                                  className={cn(
+                                    'mt-0.5 font-medium text-warm-800 break-words',
+                                    size === 'lg' ? 'text-base' : 'text-sm',
+                                  )}
+                                >
+                                  {col.render ? col.render(item) : String(item[col.key] ?? '')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {selectable && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRow(itemKey)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Select row ${itemKey}`}
+                            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-warm-300 text-brand-600 accent-brand-600 focus:ring-brand-500"
+                          />
+                        )}
+                      </div>
+                      {actions && (
+                        <div
+                          className="mt-3 flex items-center justify-end gap-2 border-t border-warm-100 pt-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {actions(item)}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       {pagination && (

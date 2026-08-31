@@ -160,13 +160,13 @@ export default function UsersPanel() {
           <div className="flex gap-1.5">
             <button
               onClick={() => { setEditingUser(u); setEditRole(u.role); }}
-              className="px-2 py-1 rounded text-[10px] font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer"
+              className="px-2.5 py-2 rounded-lg text-[10px] font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer min-h-10 inline-flex items-center"
             >
               Edit Role
             </button>
             <button
               onClick={() => setDeletingUser(u)}
-              className="px-2 py-1 rounded text-[10px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
+              className="px-2.5 py-2 rounded-lg text-[10px] font-semibold bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer min-h-10 inline-flex items-center"
             >
               Deactivate
             </button>
@@ -199,7 +199,7 @@ export default function UsersPanel() {
               <span className="text-sm text-gray-500">{filteredUsers.length} of {users.length} user{users.length !== 1 ? 's' : ''}</span>
               <button
                 onClick={exportCSV}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer"
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer min-h-10 inline-flex items-center"
               >
                 <span className="flex items-center gap-1.5">
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>

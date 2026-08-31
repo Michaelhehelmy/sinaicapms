@@ -142,8 +142,13 @@ function POSAppShell() {
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
+  const cartCount = cart.reduce((sum, i) => sum + i.quantity, 0);
   // Shift opened in this tab (overrides the server probe until invalidated).
   const [openedShift, setOpenedShift] = useState<Shift | null>(null);
+  // Mobile (<lg) cart bottom-sheet open state — products stay primary on phones
+  // and the cart is reached through a floating "Cart (n)" button instead of
+  // squeezing three panes together.
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
   // Active-shift probe — failed checks are non-fatal (cashier can open manually).
   const shiftProbe = usePosActiveShift(Boolean(user && token));
@@ -183,6 +188,7 @@ function POSAppShell() {
 
   const navigate = useCallback((v: string) => {
     setView(v);
+    setMobileCartOpen(false);
     const target = v === 'login' ? '/pos/login' : `/pos/${v}`;
     push(posUrl(target));
   }, []);
@@ -205,10 +211,12 @@ function POSAppShell() {
     setUser(null);
     setCart([]);
     setOpenedShift(null);
+    setMobileCartOpen(false);
     navigate('login');
   }
 
   function handleCheckout() {
+    setMobileCartOpen(false);
     queryClient.invalidateQueries({ queryKey: posKeys.all });
   }
 
@@ -280,10 +288,43 @@ function POSAppShell() {
                 setCart={setCart}
                 user={user}
                 onCheckout={handleCheckout}
+                mobileOpen={mobileCartOpen}
+                onClose={() => setMobileCartOpen(false)}
               />
             </Suspense>
           )}
         </main>
+
+        {/* Mobile cart affordances — only on the products view and below `lg`. */}
+        {view === 'products' && (
+          <>
+            {/* Dimmed backdrop behind the open bottom sheet */}
+            {mobileCartOpen && (
+              <div
+                data-testid="mobile-cart-backdrop"
+                onClick={() => setMobileCartOpen(false)}
+                className="fixed inset-0 z-20 bg-black/40 lg:hidden"
+                aria-hidden="true"
+              />
+            )}
+            {/* Floating "Cart (n)" toggle — always visible on phones so the cart
+                is never trapped behind a squeezed third pane. Hidden while the
+                bottom sheet is open (the sheet has its own close control). */}
+            {!mobileCartOpen && (
+              <button
+                type="button"
+                onClick={() => setMobileCartOpen((v) => !v)}
+                data-testid="mobile-cart-toggle"
+                className="fixed bottom-4 right-4 z-40 lg:hidden inline-flex items-center gap-2 rounded-full bg-brand-600 text-white font-semibold px-5 h-14 shadow-lg hover:bg-brand-700 active:scale-95 transition-transform border-none cursor-pointer"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.2 4.8A2 2 0 008 20h8a2 2 0 002-1.8L18 13M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z" />
+                </svg>
+                <span data-testid="mobile-cart-count">Cart ({cartCount})</span>
+              </button>
+            )}
+          </>
+        )}
       </div>
     </ErrorBoundary>
   );

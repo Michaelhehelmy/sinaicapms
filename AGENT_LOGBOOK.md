@@ -23,6 +23,7 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 - **wrangler dev crashes under sustained E2E load (2026-08-30)**: local `npx wrangler dev --port 8787 --local` (miniflare workerd) dies after ~15–17 minutes of continuous Playwright traffic (no error in log — it just stops; ports go dead). Symptom: mid-run `TypeError: fetch failed` at `apiRequest` login + waves of `content-area` 10s waits + mass cascades. The full 218-test `--project=admin` local gate CANNOT reliably finish in one shot. Mitigations: run targeted specs (<10 min) on warm servers; warm with curl login + `GET /api/camps` + `GET /admin`; use `setsid ... </dev/null >log 2>&1 &` to keep dev servers alive across tool sessions; when a run dies, KILL orphaned `workerd` processes before rerunning (they wedge — accept TCP, never respond → `UND_ERR_HEADERS_TIMEOUT`). CI (fresh DB, workers=1, retries=2) is the real full-gate environment.
 - **E2E test data pollution (2026-08-30)**: `playwright.config.ts` has ONLY `globalSetup` (creates a test tenant + admin per run) and NO `globalTeardown` → every run leaks tenants/admins; killed runs leak more. ~70 tenants + 49 admins accumulated. `/api/admin/tenants` and `/api/admin/admins` are PAGINATED (pageSize default 50) → seed rows (acaciacamp) fall off page 1 and DOM-content assertions (`content.toContain(email)`) break at scale. Purge runbook (dev D1 sqlite at `backend/.wrangler/state/v3/d1/miniflare-D1DatabaseObject/*.sqlite`): delete tenants except `acaciacamp`/`michaelshouse`/`marketplace`, delete `admins` NOT IN (`admin@sinaicamps.com`,`e2e-admin@test.com`) AND email LIKE e2e-%/iso-%/double-%/edge-%/crud-%/lifecycle-%/diag-%, delete their `projects`. State-dependent spec known-fragile on a truly clean DB: `crud-execution.spec.ts:33` "no create button for tenant with existing camp" relies on leftover camps pollution; it targets TEST_TENANT (acacia), which HAS camps — it fails only when the backend is down/empty-state renders.
 - **Marketplace camps directory groups by tenant (2026-08-30)**: `GET /api/camps` cross-tenant (marketplace) SELECT is `... GROUP BY c.tenant_id` (one row per tenant); the tenant-scoped SELECT returns ALL of that tenant's projects. Directory presence assertions must not expect every project of every tenant.
+- **`throwOnError` + `showToast` = super-admin render-loop crash (2026-08-31, T3 admin sweep) — FIXED by T5**: In `app/src/hooks/useQueryHooks.ts`, `useErrorToast()` calls `showToast(...)` (a setState on the Toast provider), and ~90 report query hooks invoke it from TanStack Query v5 `throwOnError: (err) => { toastError(...); return false }`. `throwOnError` runs during the query-observer RENDER phase, so on any error this is a `setState` during render on a different component → React "Cannot update a component while rendering a different component" → infinite sync-re-render loop → chromium dies (`There was an error during concurrent rendering...` repeated). Triggered specifically by the tenantless SUPER admin (admin@sinaicamps.com) hitting tenant-scoped report endpoints that 400 for no tenant (e.g. `/api/v1/reports/kitchen-performance`), so `/admin/analytics`, `/admin/storefront`, `/admin/billing` crash the browser for super admins only. Tenant admins render those panels fine. To test those admin panels in a mobile audit, log in as `e2e-admin@test.com`/`TestPass123!` (tenant admin), NOT the super admin. **FIX (T5, single shared change in `useErrorToast`)**: wrap the `showToast(...)` call in `setTimeout(() => {...}, 0)` — deferring the setState out of the render phase to the next macrotask. Because the toast helper is shared by BOTH query `throwOnError` AND mutation `onError`, the whole app now defers error toasts by one tick, which is harmless in production. Trade-off for tests: any test that asserted a `useErrorToast`-driven toast synchronously after `await waitFor(isError)` (or after a rejected `mutateAsync`) must wrap its toast assertion in `waitFor` (made the mutation error assertions + query error-toast assertions async-aware in `useQueryHooks-extra*.test.tsx` and added a dedicated "render-phase toast deferral" regression test). `useApiError.ts` is dead code (imported nowhere) and was NOT touched, so `useApiError.test.ts`'s synchronous `showToast` assertions remain valid.
 
 - **Initial Setup**: Universal OpenCode workspace successfully configured and bootstrapped.
 - **Backend Merge**: Main backend and POS backend merged into a single Hono-based Cloudflare Worker at `backend/src/index.js`. POS routes inlined under `/api/pos/*` — no more `fetch()` proxy.
@@ -139,6 +140,31 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 ---
 
 ## Task Logs
+
+### [2026-08-31] T5 render-phase toast deferral — fix super-admin panel crash (frontend agent)
+
+**Task**: Fix the React infinite-render crash that white-screened `/admin/analytics`, `/admin/storefront`, and `/admin/billing` for the tenantless super admin (`admin@sinaicamps.com`) whenever a tenant-scoped report endpoint returned 400.
+
+**Root cause (confirmed)**: `useErrorToast()` (`app/src/hooks/useQueryHooks.ts`) calls `showToast(...)` → `setToasts` (a setState) directly from TanStack Query v5 `throwOnError`, which runs synchronously DURING the query-observer render phase. On error → setState on a different component while rendering → "Cannot update a component while rendering a different component" → infinite re-render → white screen.
+
+**Fix (ONE shared location)**: Wrapped the `showToast(...)` call inside `useErrorToast()` in `setTimeout(() => {...}, 0)` to defer the setState safely out of the render phase to the next macrotask. Since ALL 90+ query hooks AND all mutation `onError` handlers share this one helper, the whole app benefits. User-facing toast behavior is unchanged.
+
+**Files changed**:
+- `app/src/hooks/useQueryHooks.ts` — deferred `showToast` via `setTimeout(0)` in `useErrorToast` (the only production change).
+- `app/tests/unit/useQueryHooks-extra.test.tsx` — query error-toast assertions now async-aware (`waitFor`).
+- `app/tests/unit/useQueryHooks-extra2.test.tsx` — mutation + query error-toast assertions async-aware; added dedicated "render-phase toast deferral (throwOnError)" regression test.
+- `AGENT_LOGBOOK.md` — updated the T3 persistent learning to record the resolution.
+
+**Not touched** (per constraint): `app/src/components/admin/**`, `app/src/components/pos/**`, `app/src/components/ui/DataTable.tsx`, backend, `tests/e2e`. Also left `app/src/hooks/useApiError.ts` untouched (dead code, imported nowhere — changing it would break its synchronous `useApiError.test.ts` assertions).
+
+**Test/deferral trade-off**: `useErrorToast` is shared by query `throwOnError` (render-phase, must defer) AND mutation `onError` (safe). Both now defer by one tick — harmless in prod. Tests that asserted a toast synchronously right after `waitFor(isError)` or a rejected `mutateAsync` needed to wrap in `waitFor`.
+
+**Verification**:
+- `cd app && npx vitest run` → **2797 passed / 121 files** (baseline was 2796 + 1 new regression test). Green.
+- `npx vitest run` (repo root) → **156 passed / 10 files**. Green.
+- Playwright (repo node_modules + puppeteer-cached chromium at `/home/michael/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome` via `executablePath`) logged in as super admin `admin@sinaicamps.com`/`sinairoot` on :4320 and loaded all 3 panels at BOTH 390px and 1280px: **6/6 OK, 0 render-crash console events**, substantial content rendered (17k–24k chars each) — no white screen, no "Cannot update a component while rendering".
+
+**Lesson**: Never call a toast setState from a `throwOnError` callback — defer it. `setTimeout(0)` is the minimal, well-established fix; it also applies to any shared error-toast helper reachable from a render-phase context.
 
 ### [2026-08-29] B1 super-admin drilldown tenant-scope fix — `camps.js` (backend agent)
 
@@ -8018,3 +8044,129 @@ The old fallback query changed from `SELECT id FROM projects WHERE tenant_id = ?
 **Auth gotcha re-confirmed**: env/`.env` holds a stale `CLOUDFLARE_API_TOKEN` (`cfat_…`, invalid 9109). `deploy.sh` self-heals (validates Path 1 → 9109 → falls back to wrangler OAuth Path 2, which is still valid). Do NOT set a new token in `.env`; OAuth is the working path. Ad-hoc `wrangler whoami`/`d1` commands: run with `unset CLOUDFLARE_API_TOKEN` first.
 
 **State**: commit is local (NOT pushed — user hasn't requested push); production is live with both fixes; deployments of 0085/0086 no longer pending locally (remote already had them).
+
+---
+
+## Task Log — 2026-08-31: DataTable mobile card-mode below `lg` (frontend agent)
+
+**Objective**: Give `app/src/components/ui/DataTable.tsx` a responsive card-mode layout below the `lg` breakpoint so every admin table reads as stacked label/value cards on phones/tablets, add a `hideOnMobile` column flag, keep the desktop table pixel-identical, and keep the full app vitest suite green.
+
+### Files changed
+- `app/src/components/ui/DataTable.tsx` (modified, +153/−0 net region) — added `hideOnMobile?: boolean` to `Column<T>`; desktop `<table data-testid="data-table">` markup/behavior unchanged (sort, selection, sizes, stripes, bordered, sticky header, searchable, pagination all preserved); added a client-side mobile card list `<div data-testid="data-table-cards">` with per-row `<li data-testid="data-table-card">` (label = `col.header` in `text-sm font-bold uppercase tracking-wider`, value ≥ `text-sm`, `text-base` on size lg), per-card checkbox (aria-label lt`Select row ${itemKey}`), actions section (stopPropagation), and card onClick → `onRowClick`; simplified `SkeletonCard` loading (3 placeholders); shared empty-state markup.
+- `app/tests/unit/DataTable-mobile.test.tsx` (NEW, 10 tests) — card render, matchMedia-false fallback to table, hideOnMobile honored in cards but kept in table, actions don't bubble, selection in cards without row-click, controlled selectedRows, loading skeleton with no data text, empty message in card mode, sort order applied to cards, card text never < `text-sm` (size sm) while desktop keeps `text-xs`.
+- `app/tests/unit/DataTable.test.tsx` (modified) — no functional change needed; suite stayed green.
+- `app/tests/unit/accessibility.test.tsx` (modified) — no functional change; green.
+
+### Approach (IMPORTANT — differs from the CSS dual-render in the task file)
+Used `window.matchMedia('(max-width: 1023.98px)')` (via a `useEffect` + `addEventListener('change')`) to drive card mode, NOT pure CSS `hidden lg:table`. Rationale:
+- `app/vitest.config.ts` runs jsdom, which cannot evaluate Tailwind/media-query CSS → when BOTH table and cards are in the DOM, every panel unit test that renders the real DataTable hit `Found multiple elements with the text` (10 files / 53 tests failed on the CSS approach: CampsPanel, MealsPanel, MenuPanel, LowStockPanel, RoomsPanel, ProjectItemsPanel, BookingCalendar, POSApp, ai-analytics, ai-panel-extra — all in `app/src/components/admin/**` and `app/src/components/pos/**`, which the task forbade touching).
+- With matchMedia, the default setup mock (`matches:false`) means only the desktop table renders in jsdom → the full existing suite is unchanged-greeen. Card-mode tests override `window.matchMedia` to `matches:true` per-test.
+- SSR/no-JS safety is PRESERVED: `isMobileView` starts `false` (server + first client render), so the classic scrollable table shows before hydration; once hydrated and below lg, the cards take over and the table becomes `hidden lg:table`. No hydration mismatch, no matchMedia on the server.
+
+### Test results (full suite)
+- `cd app && npx vitest run` → **121 files / 2796 tests, ALL passing** (baseline was 121 files / 2795 tests; +9 new DataTable-mobile + adjustments). Targeted: 92/92 (DataTable 23, DataTable-mobile 10, accessibility 49, stories 10).
+
+### Live spot-check (astro :4320, backend :8787; Playwright + cached puppeteer Chrome binary)
+- 390px: `matchMedia` true → cards region visible, 11 cards / 55 label+value pairs, desktop table visually hidden (`hidden lg:table`), zero console errors. First card: `Name Acacia Camp · Location Sinai Peninsula, Egypt · Capacity 80 · Status active` with Edit/Delete actions.
+- 1280px: table visible, cards hidden (clean switch both ways via the resize listener).
+
+### Gotchas / learnings
+- jsdom can't evaluate Tailwind/media-query CSS — any dual-render that keeps both variants in the DOM duplicates every text/role for `getByText`/`getByRole` in the ~18 admin/pos unit tests that render the real DataTable. matchMedia gating lets those tests keep targeting the desktop table unchanged.
+- `playwright install` could NOT download Chromium in this sandbox (network-blocked). Use the cached puppeteer binary: `/home/michael/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome` via `chromium.launch({ executablePath })`. (Note: puppeteer's `~/.cache/puppeteer` vs `~/.cache/ms-playwright` are separate stores.)
+- The empty-state test must use `queryAllByTestId` (not `getAllByTestId`) — `getAllBy*` throws on zero matches.
+- All changes uncommitted (working tree also holds unrelated in-flight work from other agents — leave untouched).
+
+### [2026-08-31] @smoke mobile regression E2E spec — `mobile-responsive.spec.ts` (tmp agent t4)
+**Task**: Author `tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts` (NEW, `@smoke`) — no horizontal overflow at 390×844 across marketplace + tenant + admin + POS, plus the admin mobile sidebar drawer toggle.
+**Files changed**: `tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts` (new, 10 tests). No config/utils/other-spec/app/backend changes.
+**Test result**: `npx playwright test tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts --workers=1` → **10 passed**. `npx playwright test --grep "@smoke" --list` → the 10 tests now match (was "No tests found" → fixes CI e2e.yml).
+**Key design decisions (deviations from the brief to report)**:
+- **Route/scoping**: marketplace routes `/`, `/camps`, `/camp/:id` are asserted WITHOUT `?tenant=` (verified: on localhost `/camps`/`/camp/…` return 200 marketplace-only, but 404 when `?tenant=` forces the tenant zone). Tenant routes `/book` `/menu` `/rooms` use `?tenant=${TEST_TENANT.id}`. POS uses `/pos?tenant=…`.
+- **"Projects panel" → Tenants panel**: the brief's "one panel (e.g. Projects)" — Projects (`camps` tab) only exists for TENANT admins; super admin (admin@sinaicamps.com) has no camps nav item, so the admin post-login panel assert uses the guaranteed super `Tenants` panel instead. Logged in with `SUPER_ADMIN` (admin@sinaicamps.com/sinairoot from fixtures).
+- **Mobile nav**: at 390px the admin sidebar is an off-canvas drawer, so navigation to the panel uses the **mobile bottom nav** (`mobile-nav-super_tenants`, not `nav-tab-super_tenants` which is the desktop sidebar item).
+- **Drawer toggle**: asserts open via hamburger (`mobile-toggle`) and close via the **backdrop scrim** (`sidebar-backdrop`) clicked at position `{x:380,y:400}` (clear of the open 240px aside). The hamburger itself isn't clickable while open (open drawer's `z-[100]` covers it), and clicking the backdrop center is intercepted by the aside nav (`z-[100]` > backdrop `z-[90]`).
+- **Astro dev toolbar overlay**: `<astro-dev-toolbar>` overlays the mobile bottom nav in dev → navigation clicks use `force: true` (dev-only overlay; CI production build has no toolbar).
+- **Off-canvas drawer assertion**: `toBeHidden()` does NOT work for the `-translate-x-full` off-canvas sidebar (offscreen but still "visible" to Playwright). Assert via `boundingBox().x >= 0` instead.
+**Browser-run workaround (critical, supersedes/extends the DataTable agent's note at 8049)**: `npx playwright test` fails on launch because ms-playwright chromium + ffmpeg are NOT installed and network is blocked. Fix: symlink the cached puppeteer chrome and system ffmpeg into the ms-playwright cache:
+```
+mkdir -p ~/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64
+ln -sf ~/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome ~/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+mkdir -p ~/.cache/ms-playwright/ffmpeg-1011
+ln -sf /usr/bin/ffmpeg ~/.cache/ms-playwright/ffmpeg-1011/ffmpeg-linux
+```
+Playwright needs `video: 'retain-on-failure'` (config) → ffmpeg, and headless → chrome-headless-shell; both symlinked. NOTE: these symlinks get WIPED (Playwright cleans invalid/registry mismatches) — recreate before each session. All changes uncommitted (working tree holds other agents' in-flight work — leave untouched).
+
+### 2026-08-31 — T2: POS phone layout (mobile cart bottom sheet + touch targets)
+
+**Task**: Make the POS terminal genuinely usable on a 390×844 phone. Convert ProductsView+CartPanel from a squeezed multi-pane layout into a mobile pattern (floating "Cart (n)" button → bottom-sheet slide-over) while keeping the static right-rail cart at `lg`+. Bump touch targets ≥40px across POS views. Do NOT touch admin/DataTable/backend/tests-e2e.
+
+#### Files modified
+- `app/src/components/pos/POSApp.tsx` — added `mobileCartOpen` state + `cartCount`; pass `mobileOpen`/`onClose` to CartPanel; close sheet on navigate/logout/checkout; render `lg:hidden` floating "Cart (n)" pill (`[data-testid="mobile-cart-toggle"]` + `mobile-cart-count`), a dim `mobile-cart-backdrop` (z-20) behind the open sheet, toggle hidden while sheet open.
+- `app/src/components/pos/views/CartPanel.tsx` — added optional `mobileOpen`/`onClose` props + `cn` import; root now a mobile bottom sheet (`fixed inset-x-0 bottom-0 z-30 max-h-[85vh] rounded-t-2xl translate-y-full` closed / `translate-y-0` open) that restores to the static right rail on `lg` (`lg:static lg:translate-y-0 lg:w-80`); added `lg:hidden` × close button in header; bumped tip buttons `min-h-[36px]`→`min-h-[40px]`. Markup stays mounted always (jsdom keeps asserting "Current Order"/"Click products…"; E2E desktop `pos-cart` stays visible).
+- `app/src/components/pos/views/TableView.tsx` — action/add-table/toggle buttons + AddTableForm inputs bumped to `min-h-[40px]`; inputs full-width on mobile (`w-full sm:w-*`).
+- `app/src/components/pos/views/KitchenView.tsx` — kitchen advance buttons `py-1.5`→`min-h-[40px]`.
+
+#### Verification (all green)
+- `cd app && npx vitest run` → **121 files / 2796 tests pass**.
+- `cd backend && npx vitest run` → **63 files / 1869 tests pass**; POS-focused (pos-unit/pos-tables/pos-barcode/pos-users-unit) → 168 pass.
+- Root `npx vitest run` → **10 files / 156 tests pass**.
+- Manual 390px (cached puppeteer Chrome exe + repo `playwright`): `document.documentElement.scrollWidth === innerWidth` (no overflow) on login/products/orders/tables/kitchen/dashboard; product grid 2 cols (x=16/x=201, w=173, h≥120); "Cart (1)" updates after tap; sheet slides open (top 844→356, bottom-anchored 844) and closes off-screen; cart search/pay accessible.
+
+#### Key gotchas / decisions
+- **Do NOT conditionally render CartPanel on mobile** — `app/tests/unit/POSApp.test.tsx` and PosViews assert "Current Order"/empty-cart text in the DOM (jsdom ignores Tailwind classes). Mobile hiding must be pure CSS (`translate-y-full`/`translate-y-0`), with desktop regression via `lg:translate-y-0`. This also keeps E2E `[data-testid="pos-cart"]` `toBeVisible()` at the default 1280×720 viewport.
+- **Floating cart toggle is `lg:hidden`** so it never overlays the desktop rail in E2E (`order-payment-flow.spec.ts` asserts `pos-cart` visible at desktop width).
+- **Deliberately did NOT add a mobile POS bottom-nav** — the task's Scope/Done-Condition omits it, and a nav duplicating sidebar labels ("Shift", "Dashboard"…) would blow up `POSApp.test.tsx` `getByText('Shift')` (singular → throws on duplicates) which I'm forbidden to touch. Product-sidebar remains `hidden sm:flex`; flagged for a future mobile-nav task if the product wants phone navigation.
+- `isLocal` API_BASE in `app/src/lib/api.ts` routes dev frontend to `http://localhost:8787/api/v1` — start backend with `setsid npx wrangler dev --port 8787 --local` for manual checks; astro dev is :4320.
+- Live check in this sandbox: temp `.mjs` scripts must live in the REPO ROOT (ESM can't resolve `playwright` from /tmp/opencode), use cached puppeteer Chrome `executablePath` + `--no-sandbox`.
+
+### 2026-08-31 — T3: Admin-panel mobile density sweep (frontend agent)
+
+**Task**: Make the 20 files under `app/src/components/admin/` usable at 390px — eliminate hard-width/cramped patterns (no `min-w-[…]`>280px on display containers, no fixed `grid-cols-[…]` without responsive fallback, primary buttons/tappable rows ≥40px, keep shell padding `p-3 sm:p-6`, allow tables to scroll inside a bounded card via `overflow-x-auto` not page squeeze). Do NOT touch `DataTable.tsx`, `pos/**`, backend, tests/e2e.
+
+**State found**: 13 of the 20 files were ALREADY modified (not 8 as the task file guessed): AIPanel, AnalyticsPanel, CRMPanel, SuperAIPanel, SuperCRMPanel, SuperFinancialsPanel, SuperHRPanel, SuperReportsPanel, SuperStorefrontPanel, SuperSupplyPanel, SupplyPanel, TenantPerformancePanel, UsersPanel. I reviewed all 13 diffs — correct (grid-cols-2 → `grid-cols-1 md:grid-cols-2`/`sm:`, Badge `danger`→`error`, buttons `min-h-10`/`py-2`).
+
+**Files I changed this run**:
+- `app/src/components/admin/BillingPanel.tsx` — billing-history `<table>` wrapped in a bounded `overflow-x-auto` card (`rounded-xl border border-gray-200`), upsized th/td header padding + `text-xs uppercase` headers.
+
+**Audited & left as-is (already correct)**:
+- `AdminApp.tsx` (only `w-[240px]` sidebar shell — acceptable), `HRPanel`, `MenuPlanner` (grid wrapped in `overflow-x-auto` — bounded-scroll OK), `ReportsPanel` (tables already `overflow-x-auto`), `StaffPanel` (`min-w-[220px]` OK), `SuperOrdersPanel` (`min-w-[220px]`, `flex-wrap` OK).
+
+**Verification**:
+- `cd app && npx vitest run` → **121 files / 2796 tests, ALL passing.**
+- Manual 390×844 (cached puppeteer Chrome exe + repo `playwright`): **all 14 admin panels render with `document.documentElement.scrollWidth === innerWidth` (no horizontal overflow) and ZERO pageerrors** under a **tenant admin** (`e2e-admin@test.com` / `TestPass123!`): Dashboard, Projects(rooms), Orders, Reports, Financials(billing), HR, Supply, Settings, Analytics, AI, Users, MenuPlanner, Storefront, Performance.
+
+**Key deviation / pre-existing blocker to report**:
+- **Super-admin login (admin@sinaicamps.com) then navigating to `/admin/analytics`, `/admin/storefront`, or `/admin/billing` CRASHES chromium** with a React "Cannot update a component while rendering a different component" infinite-render loop (`There was an error during concurrent rendering but React was able to recover…` repeated until the browser dies). **PROVEN not caused by the density sweep**: stashing ALL my admin changes (baseline) still reproduced it on `/admin/billing`. Root cause: those panels call tenant-scoped report endpoints (`/api/v1/reports/kitchen-performance` 400s for a tenantless super admin), and `throwOnError: (err) => { toastError(err); return false }` in `useQueryHooks.ts` (line ~1065) calls `showToast` — a setState on the Toast provider — DURING the query-observer render phase → React loop. This is a pre-existing frontend bug shipped at some earlier point, affects only the SUPER-admin view of those 3 panels; tenant-admins render them fine (verified zero errors). Fix (deferring the toast out of the render phase in `useErrorToast`) is out of the density task's scope and would touch the shared 90+-query hook — tracked for whoever owns the query/error layer.
+
+### 2026-08-31 — T5: Fix render-phase toast setState crash (frontend agent)
+
+**Task**: Fix the React infinite-render crash that white-screened `/admin/analytics`, `/admin/storefront`, and `/admin/billing` for the super admin (`admin@sinaicamps.com` / sinairoot). Root cause: `useErrorToast()` in `app/src/hooks/useQueryHooks.ts` calls `showToast(...)` (setState) synchronously from TanStack Query v5's `throwOnError` callback, which runs during the query-observer render phase.
+
+**Fix**: Wrapped `showToast(...)` in `setTimeout(() => {…}, 0)` in the shared `useErrorToast()` helper — defers the setState to the next macrotask, out of the render phase. Single shared location benefits all ~90 query hooks and all mutation `onError` handlers.
+
+**Files changed**:
+- `app/src/hooks/useQueryHooks.ts` — production deferral (the fix)
+- `app/tests/unit/useQueryHooks-extra.test.tsx` & `useQueryHooks-extra2.test.tsx` — async-aware error-toast assertions + new regression test
+
+**Verification**:
+- `cd app && npx vitest run` → **121 files / 2797 tests, ALL passing** (baseline 2796 + 1 regression test).
+- `npx vitest run` → **10 files / 156 tests, ALL passing**.
+- Playwright (super admin `admin@sinaicamps.com` / `sinairoot` on dev :4320): loaded all 3 panels at **390px AND 1280px → 6/6 OK, zero render-crash console events**.
+
+---
+
+### 2026-08-31 — Full mobile responsiveness pass: commit summary
+
+**Wave**: User requested "full" responsiveness pass. Orchestrator decomposed into 5 atomic agents, run in dependency order (T1 → T2+T3+T4 → T5), all verified independently.
+
+| Agent | Scope | Key Deliverable | Tests |
+|-------|-------|-----------------|-------|
+| T1 | DataTable card-mode | `hideOnMobile` column flag; stacked cards below `lg` via `matchMedia` gate (dual-render, SSR-safe) | 10 new → 2796 total |
+| T2 | POS phone layout | CartPanel → mobile bottom-sheet + floating "Cart (n)" toggle; touch-target ≥40px across POS views | 2796 app / 1869 backend / 156 root |
+| T3 | Admin panel density sweep | 20 admin panels: responsive grids, overflow-x-auto bounded cards, ≥40px touch targets | 2796 all pass |
+| T4 | @smoke mobile regression E2E | 10 Playwright @smoke tests (390×844, zero-overflow assertion across all zones + admin drawer toggle) — fixes CI "No tests found" | 10/10 |
+| T5 | Toast render-phase crash fix | `setTimeout` deferral in shared `useErrorToast()` — super admin panels load crash-free at both viewports | 2797 app / 156 root |
+
+**Final verified state**: `app && vitest` = 2797/2797 all green; root integration = 156/156; E2E @smoke = 10/10 (verified by QA agent via puppeteer symlink workaround; CI installs browsers natively).
+
+**Not yet committed** — awaiting user confirmation to commit + push this wave.

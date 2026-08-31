@@ -150,7 +150,7 @@ export default function AnalyticsPanel() {
       {/* ── Overview Tab ──────────────────────────────── */}
       {tab === 'overview' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard label="Total Revenue" value={revenue ? formatCurrency(revenue.summary.totalRevenue) : '-'} sub={`${period} day period`} />
             <StatCard label="Collected" value={revenue ? formatCurrency(revenue.summary.totalCollected) : '-'} color="text-emerald-600" />
             <StatCard label="Outstanding" value={revenue ? formatCurrency(revenue.summary.totalOutstanding) : '-'} color={revenue && revenue.summary.totalOutstanding > 0 ? 'text-amber-600' : 'text-gray-900'} />
@@ -194,7 +194,7 @@ export default function AnalyticsPanel() {
           <Card>
             <h3 className="text-sm font-semibold text-gray-700 mb-4">Kitchen Status ({period} day summary)</h3>
             {kitchen?.by_status?.length ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 {kitchen.by_status.map((s) => {
                   const lbl = kitchenStatusLabel[s.status] || { text: s.status, variant: 'neutral' as const };
                   return (
@@ -312,7 +312,7 @@ export default function AnalyticsPanel() {
       {/* ── Kitchen Tab ───────────────────────────────── */}
       {tab === 'kitchen' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             {kitchen?.by_status?.map((s) => {
               const lbl = kitchenStatusLabel[s.status] || { text: s.status, variant: 'neutral' as const };
               return (
@@ -348,7 +348,7 @@ export default function AnalyticsPanel() {
       {/* ── Inventory Tab ─────────────────────────────── */}
       {tab === 'inventory' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <StatCard label="Low Stock Items" value={lowStock.filter((i) => i.status === 'low').length} color="text-amber-600" />
             <StatCard label="Out of Stock" value={lowStock.filter((i) => i.status === 'out_of_stock').length} color="text-rose-600" />
             <StatCard label="Total Products Low" value={lowStock.length} />
@@ -374,7 +374,7 @@ export default function AnalyticsPanel() {
                         <td className="py-2.5 pr-4 text-right text-gray-700">{p.stock_quantity} {p.unit || ''}</td>
                         <td className="py-2.5 pr-4 text-right text-gray-500">{p.min_stock_level}</td>
                         <td className="py-2.5">
-                          <Badge variant={p.status === 'out_of_stock' ? 'danger' : 'warning'} dot size="sm">
+                          <Badge variant={p.status === 'out_of_stock' ? 'error' : 'warning'} dot size="sm">
                             {p.status === 'out_of_stock' ? 'Out of Stock' : 'Low Stock'}
                           </Badge>
                         </td>
@@ -434,7 +434,7 @@ export default function AnalyticsPanel() {
       {/* ── Customer Metrics Tab ──────────────────────── */}
       {tab === 'customers' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard label="Total Customers" value={customerMetrics?.total_customers ?? '-'} />
             <StatCard label="New Customers" value={customerMetrics?.new_customers ?? '-'} color="text-emerald-600" sub={customerMetrics ? `${Math.round((customerMetrics.new_customers / Math.max(customerMetrics.total_customers, 1)) * 100)}% of total` : undefined} />
             <StatCard label="Repeat Customers" value={customerMetrics?.repeat_customers ?? '-'} color="text-blue-600" sub={customerMetrics ? `${Math.round((customerMetrics.repeat_customers / Math.max(customerMetrics.total_customers, 1)) * 100)}% of total` : undefined} />

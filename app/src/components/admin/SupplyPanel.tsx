@@ -542,7 +542,7 @@ export default function SupplyPanel() {
           <div className="border-t pt-3 mt-3">
             <p className="text-sm font-medium text-gray-700 mb-2">Lines</p>
             {poForm.lines.map((line, i) => (
-              <div key={i} className="grid grid-cols-3 gap-2 mb-2">
+              <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
                 <Input label="" type="text" value={line.productId} onChange={(e) => { const lines = [...poForm.lines]; lines[i] = { ...lines[i], productId: e.target.value }; setPOForm((p) => ({ ...p, lines })); }} placeholder="Product ID" />
                 <Input label="" type="number" value={line.quantity} onChange={(e) => { const lines = [...poForm.lines]; lines[i] = { ...lines[i], quantity: e.target.value }; setPOForm((p) => ({ ...p, lines })); }} placeholder="Qty" min="1" />
                 <Input label="" type="number" value={line.unitPrice} onChange={(e) => { const lines = [...poForm.lines]; lines[i] = { ...lines[i], unitPrice: e.target.value }; setPOForm((p) => ({ ...p, lines })); }} placeholder="Unit Price" min="0" step="0.01" />
@@ -561,7 +561,7 @@ export default function SupplyPanel() {
           <div className="border-t pt-3 mt-3">
             <p className="text-sm font-medium text-gray-700 mb-2">Components</p>
             {bomForm.lines.map((line, i) => (
-              <div key={i} className="grid grid-cols-3 gap-2 mb-2">
+              <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
                 <Input label="" type="text" value={line.componentId} onChange={(e) => { const lines = [...bomForm.lines]; lines[i] = { ...lines[i], componentId: e.target.value }; setBOMForm((p) => ({ ...p, lines })); }} placeholder="Component ID" />
                 <Input label="" type="number" value={line.quantity} onChange={(e) => { const lines = [...bomForm.lines]; lines[i] = { ...lines[i], quantity: e.target.value }; setBOMForm((p) => ({ ...p, lines })); }} placeholder="Qty" min="0.01" step="0.01" />
                 <Input label="" type="text" value={line.unit} onChange={(e) => { const lines = [...bomForm.lines]; lines[i] = { ...lines[i], unit: e.target.value }; setBOMForm((p) => ({ ...p, lines })); }} placeholder="Unit" />

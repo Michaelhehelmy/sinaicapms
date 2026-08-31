@@ -89,7 +89,7 @@ export default function SuperReportsPanel() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard title="Report Templates" value={templates.length} color="blue" />
         <StatCard title="Scheduled Reports" value={scheduled.length} color="green" />
         <StatCard title="Categories" value={categories.size} color="purple" />

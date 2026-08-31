@@ -390,7 +390,7 @@ export default function AIPanel() {
               { key: 'ruleName', header: 'Rule', render: (l) => <strong className="text-gray-900">{String(l.ruleName || 'Unknown')}</strong> },
               { key: 'triggerEvent', header: 'Event', render: (l) => <span className="text-sm text-gray-600">{String(l.triggerEvent || '-')}</span> },
               { key: 'result', header: 'Result', render: (l) => {
-                const variant = l.result === 'success' ? 'success' : 'danger';
+                const variant = l.result === 'success' ? 'success' : 'error';
                 return <Badge variant={variant} dot size="sm">{String(l.result)}</Badge>;
               }},
               { key: 'error', header: 'Error', render: (l) => <span className="text-xs text-red-500 truncate max-w-[200px] block">{String(l.error || '-')}</span> },
@@ -458,7 +458,7 @@ export default function AIPanel() {
           <Input label="Name *" type="text" value={priceRuleForm.name} onChange={(e) => setPriceRuleForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Summer Pricing" />
           <Input label="Product ID" type="text" value={priceRuleForm.productId} onChange={(e) => setPriceRuleForm((p) => ({ ...p, productId: e.target.value }))} placeholder="Leave empty for all products" />
           <Select label="Rule Type *" options={RULE_TYPE_OPTIONS} value={priceRuleForm.ruleType} onChange={(e) => setPriceRuleForm((p) => ({ ...p, ruleType: e.target.value }))} />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Min Price" type="number" value={priceRuleForm.minPrice} onChange={(e) => setPriceRuleForm((p) => ({ ...p, minPrice: e.target.value }))} min="0" step="0.01" />
             <Input label="Max Price" type="number" value={priceRuleForm.maxPrice} onChange={(e) => setPriceRuleForm((p) => ({ ...p, maxPrice: e.target.value }))} min="0" step="0.01" />
           </div>

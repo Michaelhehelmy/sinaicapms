@@ -131,7 +131,16 @@ function useErrorToast() {
   const { showToast } = useToast();
   return (message: string, err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
-    showToast(`${message}: ${msg}`, 'error');
+    // Defer the toast out of the current render phase. `throwOnError` (TanStack Query
+    // v5) runs synchronously during the query-observer render; calling `showToast`
+    // (a setState) there triggers "Cannot update a component while rendering a
+    // different component" and an infinite re-render loop (white screen for
+    // tenantless super-admin on tenant-scoped reports). Deferring to the next
+    // macrotask moves the setState safely out of the render pass without changing
+    // the user-facing behavior.
+    setTimeout(() => {
+      showToast(`${message}: ${msg}`, 'error');
+    }, 0);
   };
 }
 

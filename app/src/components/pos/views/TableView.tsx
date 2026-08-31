@@ -84,14 +84,14 @@ function AddTableForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} data-testid="add-table-form" className="flex flex-wrap items-end gap-3">
-      <label className="text-sm">
+      <label className="text-sm flex-1 basis-full sm:basis-auto sm:flex-none">
         <span className="block text-gray-600 mb-1">Name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="T5"
           aria-label="Table name"
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="border border-gray-300 rounded-md px-3 py-2 text-sm w-full sm:w-28 min-h-[40px] focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </label>
       <label className="text-sm">
@@ -101,23 +101,23 @@ function AddTableForm({ onDone }: { onDone: () => void }) {
           onChange={(e) => setCapacity(e.target.value)}
           inputMode="numeric"
           aria-label="Table capacity"
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm w-20 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="border border-gray-300 rounded-md px-3 py-2 text-sm w-full sm:w-20 min-h-[40px] focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </label>
-      <label className="text-sm">
+      <label className="text-sm flex-1 basis-full sm:basis-auto sm:flex-none">
         <span className="block text-gray-600 mb-1">Section</span>
         <input
           value={section}
           onChange={(e) => setSection(e.target.value)}
           placeholder="Terrace"
           aria-label="Table section"
-          className="border border-gray-300 rounded-md px-3 py-2 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="border border-gray-300 rounded-md px-3 py-2 text-sm w-full sm:w-32 min-h-[40px] focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </label>
       <button
         type="submit"
         disabled={createTable.isPending}
-        className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-md cursor-pointer border-none"
+        className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium px-4 min-h-[40px] rounded-md cursor-pointer border-none"
       >
         {createTable.isPending ? 'Adding…' : 'Add Table'}
       </button>
@@ -195,7 +195,7 @@ function TableCard({
                 onStatusChange(a.next);
               }}
               data-testid={a.testid}
-              className="text-xs font-semibold bg-white/90 hover:bg-white text-gray-900 rounded-lg px-3 py-1.5 border border-black/10 cursor-pointer"
+              className="text-xs font-semibold bg-white/90 hover:bg-white text-gray-900 rounded-lg px-3 min-h-[40px] border border-black/10 cursor-pointer"
             >
               {a.label}
             </button>
@@ -257,7 +257,7 @@ export default function TableView() {
         <button
           onClick={() => setShowAddForm((v) => !v)}
           data-testid="toggle-add-table"
-          className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-md cursor-pointer border-none"
+          className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 min-h-[40px] rounded-md cursor-pointer border-none"
         >
           {showAddForm ? 'Close' : '+ Add Table'}
         </button>

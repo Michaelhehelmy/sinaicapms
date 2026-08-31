@@ -165,6 +165,11 @@ interface KanbanBoardProps {
   onStageChange: (opp: Record<string, unknown>, newStage: string) => void;
 }
 
+// Shared humanizer used by KanbanBoard/GanttChart (module scope) AND inside
+// CRMPanel. Must live at module scope — it is referenced by the two module-level
+// sub-components above, so declaring it inside CRMPanel caused a ReferenceError.
+const formatLabel = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
 const KANBAN_STAGES = ['qualification', 'proposal', 'negotiation', 'closed_won', 'closed_lost'];
 
 const STAGE_COLORS: Record<string, string> = {
@@ -624,7 +629,6 @@ export default function CRMPanel() {
   }, [deleteTarget, showToast, invalidateCrm]);
 
   const badgeVariant = (status: string) => STATUS_BADGE[status]?.variant || 'neutral' as const;
-  const formatLabel = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
   if (loading) return <LoadingSpinner text="Loading CRM..." />;
 
@@ -831,7 +835,7 @@ export default function CRMPanel() {
         <div className="space-y-4">
           <Select label="Type" options={CONTACT_TYPE_OPTIONS} value={contactForm.type} onChange={(e) => setContactForm((p) => ({ ...p, type: e.target.value }))} />
           <Input label="Name *" type="text" value={contactForm.name} onChange={(e) => setContactForm((p) => ({ ...p, name: e.target.value }))} placeholder="Full name or company" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Email" type="email" value={contactForm.email} onChange={(e) => setContactForm((p) => ({ ...p, email: e.target.value }))} />
             <Input label="Phone" type="tel" value={contactForm.phone} onChange={(e) => setContactForm((p) => ({ ...p, phone: e.target.value }))} />
           </div>
@@ -903,7 +907,7 @@ export default function CRMPanel() {
         <div className="space-y-4">
           <Input label="Title *" type="text" value={taskForm.title} onChange={(e) => setTaskForm((p) => ({ ...p, title: e.target.value }))} placeholder="Task title" />
           <Input label="Description" type="text" value={taskForm.description} onChange={(e) => setTaskForm((p) => ({ ...p, description: e.target.value }))} />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select label="Priority" options={TASK_PRIORITY_OPTIONS} value={taskForm.priority} onChange={(e) => setTaskForm((p) => ({ ...p, priority: e.target.value }))} />
             <Input label="Due Date" type="date" value={taskForm.dueDate} onChange={(e) => setTaskForm((p) => ({ ...p, dueDate: e.target.value }))} />
           </div>
@@ -932,7 +936,7 @@ export default function CRMPanel() {
         <div className="space-y-4">
           <Input label="Subject *" type="text" value={ticketForm.subject} onChange={(e) => setTicketForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Ticket subject" />
           <Input label="Description" type="text" value={ticketForm.description} onChange={(e) => setTicketForm((p) => ({ ...p, description: e.target.value }))} />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select label="Priority" options={TASK_PRIORITY_OPTIONS} value={ticketForm.priority} onChange={(e) => setTicketForm((p) => ({ ...p, priority: e.target.value }))} />
             <Input label="Assigned To" type="text" value={ticketForm.assignedTo} onChange={(e) => setTicketForm((p) => ({ ...p, assignedTo: e.target.value }))} />
           </div>
@@ -955,7 +959,7 @@ export default function CRMPanel() {
         <div className="space-y-4">
           <Input label="Title *" type="text" value={kbForm.title} onChange={(e) => setKbForm((p) => ({ ...p, title: e.target.value }))} placeholder="Article title" />
           <Input label="Content *" type="text" value={kbForm.content} onChange={(e) => setKbForm((p) => ({ ...p, content: e.target.value }))} placeholder="Article content" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="Category" type="text" value={kbForm.category} onChange={(e) => setKbForm((p) => ({ ...p, category: e.target.value }))} />
             <Input label="Tags" type="text" value={kbForm.tags} onChange={(e) => setKbForm((p) => ({ ...p, tags: e.target.value }))} placeholder="comma-separated" />
           </div>

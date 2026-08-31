@@ -104,7 +104,7 @@ function KitchenCard({
             onClick={onAdvance}
             disabled={busy}
             data-testid={`kitchen-advance-${order.id}`}
-            className="text-xs font-semibold bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-md px-3 py-1.5 border-none cursor-pointer"
+            className="text-xs font-semibold bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-md px-3 min-h-[40px] border-none cursor-pointer"
           >
             {busy ? '…' : column.action}
           </button>

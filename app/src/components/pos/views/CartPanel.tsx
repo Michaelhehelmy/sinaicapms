@@ -6,6 +6,7 @@ import * as apiClient from '@/lib/api';
 import type { PromotionApplyResult } from '@/lib/api';
 import { posUrl } from '@/lib/posUrl';
 import { push } from '@/lib/navigation';
+import { cn } from '@/lib/utils';
 import ReceiptModal from './ReceiptModal';
 import type { CartItem, Order, PosUser } from '../types';
 import type { components } from '@/lib/api-types';
@@ -13,7 +14,26 @@ import type { components } from '@/lib/api-types';
 type PosOrderCreateRequest = components['schemas']['PosOrderCreateRequest'];
 
 // ─── Cart Panel ────────────────────────────────────────────
-export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: CartItem[]; setCart: React.Dispatch<React.SetStateAction<CartItem[]>>; onCheckout: () => void; user: PosUser }) {
+// Responsive cart: on `lg`+ it is a static right rail beside the product grid;
+// below `lg` (phones) it becomes a fixed bottom sheet that slides in from the
+// bottom when `mobileOpen` is true, toggled by a visible floating "Cart (n)"
+// button rendered by POSApp. The full markup stays mounted so jsdom/E2E
+// desktop assertions against `pos-cart` keep passing.
+export default function CartPanel({
+  cart,
+  setCart,
+  onCheckout,
+  user,
+  mobileOpen = false,
+  onClose,
+}: {
+  cart: CartItem[];
+  setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
+  onCheckout: () => void;
+  user: PosUser;
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}) {
   const [paying, setPaying] = useState(false);
   const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'split'>('cash');
   const [splitCash, setSplitCash] = useState('');
@@ -105,10 +125,36 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
   }
 
   return (
-    <div className="w-full sm:w-80 bg-white border-t sm:border-t-0 sm:border-l border-gray-200 flex flex-col shrink-0 max-h-[50vh] sm:max-h-none" data-testid="pos-cart">
-      <div className="px-5 py-4 border-b border-gray-200">
-        <h3 className="font-bold text-gray-900">Current Order</h3>
-        <div className="text-xs text-gray-500 mt-0.5">{cart.length} item(s)</div>
+    <div
+      data-testid="pos-cart"
+      className={cn(
+        'bg-white border-gray-200 flex flex-col shrink-0',
+        // Desktop (lg+): static right rail next to the product grid.
+        'lg:w-80 lg:border-t-0 lg:border-l lg:static lg:translate-y-0 lg:max-h-none lg:z-auto',
+        // Mobile (<lg): fixed bottom sheet that slides up/down via translate.
+        'fixed inset-x-0 bottom-0 z-30 border-t max-h-[85vh] will-change-transform transition-transform duration-300 ease-out',
+        'rounded-t-2xl lg:rounded-none shadow-[0_-8px_30px_rgba(0,0,0,0.14)] lg:shadow-none',
+        mobileOpen ? 'translate-y-0' : 'translate-y-full lg:translate-y-0',
+      )}
+    >
+      <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-2">
+        <div>
+          <h3 className="font-bold text-gray-900">Current Order</h3>
+          <div className="text-xs text-gray-500 mt-0.5" data-testid="cart-count">{cart.length} item(s)</div>
+        </div>
+        {/* Mobile close — hidden on desktop (the rail is always visible there). */}
+        {onClose && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onClose}
+            data-testid="mobile-cart-close"
+            aria-label="Close cart"
+            className="lg:hidden min-h-[40px] w-10 p-0 shrink-0 justify-center text-lg"
+          >
+            ×
+          </Button>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3">
         {cart.length === 0 && (
@@ -185,7 +231,7 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
                     variant={isActive ? 'primary' : 'secondary'}
                     size="sm"
                     onClick={() => handleTipSelect(tipAmount)}
-                    className="flex-1 min-h-[36px] text-xs"
+                    className="flex-1 min-h-[40px] text-xs"
                   >
                     {label}
                   </Button>
@@ -195,7 +241,7 @@ export default function CartPanel({ cart, setCart, onCheckout, user }: { cart: C
                 variant={showCustomTip ? 'primary' : 'secondary'}
                 size="sm"
                 onClick={() => { setShowCustomTip(!showCustomTip); if (!showCustomTip) { setTip(0); } }}
-                className="flex-1 min-h-[36px] text-xs"
+                className="flex-1 min-h-[40px] text-xs"
               >
                 Custom
               </Button>

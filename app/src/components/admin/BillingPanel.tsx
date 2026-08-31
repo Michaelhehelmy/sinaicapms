@@ -168,23 +168,23 @@ export default function BillingPanel() {
           <CardHeader>
             <h3 className="text-base font-bold text-gray-800">Billing History</h3>
           </CardHeader>
-          <div className="px-6 pb-4">
-            <table className="w-full text-sm">
+          <div className="px-6 pb-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
+            <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 font-semibold text-gray-700">Date</th>
-                  <th className="text-left py-2 font-semibold text-gray-700">Description</th>
-                  <th className="text-right py-2 font-semibold text-gray-700">Amount</th>
-                  <th className="text-right py-2 font-semibold text-gray-700">Status</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Date</th>
+                  <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Description</th>
+                  <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Amount</th>
+                  <th className="text-right py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {billingHistory.map((entry) => (
-                  <tr key={entry.id} className="border-b border-gray-100">
-                    <td className="py-2 text-gray-600">{new Date(entry.date).toLocaleDateString()}</td>
-                    <td className="py-2 text-gray-700">{entry.description}</td>
-                    <td className="py-2 text-right font-medium text-gray-800">${entry.amount}</td>
-                    <td className={`py-2 text-right font-medium ${entry.status === 'active' ? 'text-green-700' : 'text-gray-500'}`}>{entry.status}</td>
+                  <tr key={entry.id} className="border-b border-gray-50 last:border-0">
+                    <td className="py-2 px-2 text-gray-600">{new Date(entry.date).toLocaleDateString()}</td>
+                    <td className="py-2 px-2 text-gray-700">{entry.description}</td>
+                    <td className="py-2 px-2 text-right font-medium text-gray-800">${entry.amount}</td>
+                    <td className={`py-2 px-2 text-right font-medium ${entry.status === 'active' ? 'text-green-700' : 'text-gray-500'}`}>{entry.status}</td>
                   </tr>
                 ))}
               </tbody>

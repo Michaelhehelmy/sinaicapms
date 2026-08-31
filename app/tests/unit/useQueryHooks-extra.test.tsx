@@ -363,7 +363,7 @@ describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM
       it(`${name} shows an error toast when the request fails`, async () => {
         mockShowToast.mockClear();
         await mountQueryError(hook, apiFn, ...args);
-        expect(mockShowToast).toHaveBeenCalled();
+        await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
       });
     }
   });

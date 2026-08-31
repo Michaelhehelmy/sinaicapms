@@ -76,7 +76,7 @@ export default function TenantPerformancePanel() {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <StatCard title="Total Tenants" value={tenants.length} color="blue" />
         <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} color="green" />
         <StatCard title="Total Bookings" value={totalBookings.toLocaleString()} color="yellow" />
