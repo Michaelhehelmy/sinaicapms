@@ -19,6 +19,7 @@ import {
   useFinancialInvoicesQuery,
   useFinancialPaymentsQuery,
   useFinancialTaxRatesQuery,
+  useFinancialPayoutsQuery,
   queryKeys,
 } from '@/hooks/useQueryHooks';
 
@@ -31,6 +32,20 @@ interface EntryLine { id: string; account_id: string; account_name: string; acco
 interface Invoice { id: string; invoice_number: string; type: string; contact_id: string | null; issue_date: string; due_date: string | null; total_amount: number; paid_amount: number; status: string; currency: string; }
 interface Payment { id: string; invoice_id: string | null; amount: number; payment_date: string; method: string; status: string; reference: string | null; }
 interface TaxRate { id: string; name: string; rate: number; jurisdiction: string | null; is_default: number | boolean; }
+// Read-only marketplace payout history (collected by the marketplace on this
+// tenant's behalf). Mirrors the TenantPayout contract in @/lib/api.
+interface TenantPayout {
+  id: string;
+  amount: number;
+  currency: string;
+  method: string;
+  status: 'pending' | 'paid' | 'failed' | 'cancelled';
+  reference: string | null;
+  notes: string | null;
+  itemCount: number;
+  createdAt: string;
+  paidAt: string | null;
+}
 
 // ─── Account Form ───────────────────────────────────────────
 interface AccountForm { code: string; name: string; type: string; parentId: string; }
@@ -104,6 +119,7 @@ export default function FinancialPanel() {
   const invoicesQuery = useFinancialInvoicesQuery();
   const paymentsQuery = useFinancialPaymentsQuery();
   const taxRatesQuery = useFinancialTaxRatesQuery();
+  const payoutsQuery = useFinancialPayoutsQuery();
 
   const accounts = (accountsQuery.data as any[]) || [];
   const journals = (journalsQuery.data as any[]) || [];
@@ -111,7 +127,13 @@ export default function FinancialPanel() {
   const invoices = (invoicesQuery.data as any[]) || [];
   const payments = (paymentsQuery.data as any[]) || [];
   const taxRates = (taxRatesQuery.data as any[]) || [];
-  const loading = accountsQuery.isLoading || journalsQuery.isLoading || entriesQuery.isLoading || invoicesQuery.isLoading || paymentsQuery.isLoading || taxRatesQuery.isLoading;
+  const payouts = (payoutsQuery.data as any[]) || [];
+  // Client-side outstanding: sum of amounts still pending payout from the marketplace.
+  const outstanding = (payouts as TenantPayout[]).reduce(
+    (sum, p) => sum + (p.status === 'pending' ? Number(p.amount) : 0),
+    0,
+  );
+  const loading = accountsQuery.isLoading || journalsQuery.isLoading || entriesQuery.isLoading || invoicesQuery.isLoading || paymentsQuery.isLoading || taxRatesQuery.isLoading || payoutsQuery.isLoading;
 
   const invalidateFinancial = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['admin', 'financials'] });
@@ -469,6 +491,37 @@ export default function FinancialPanel() {
           />
         )
       )}
+
+      {/* ── Marketplace Payouts (read-only) ───────────────── */}
+      <div className="mt-8 border-t border-gray-200 pt-6" data-testid="marketplace-payouts">
+        <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
+          <h3 className="text-lg font-bold text-gray-800">Marketplace Payouts</h3>
+          {outstanding > 0 && (
+            <p className="text-sm font-medium text-amber-700" data-testid="payouts-outstanding">
+              Total outstanding (collected by marketplace, not yet paid): {formatCurrency(outstanding)}
+            </p>
+          )}
+        </div>
+        <p className="mb-3 text-sm text-gray-500">
+          Payouts from the marketplace for orders collected on your behalf.
+        </p>
+        {payouts.length === 0 ? (
+          <p className="text-sm text-gray-500" data-testid="payouts-empty">No marketplace payouts yet.</p>
+        ) : (
+          <DataTable<TenantPayout & Record<string, unknown>>
+            columns={[
+              { key: 'createdAt', header: 'Date', sortable: true, render: (p) => <span className="text-sm">{String(p.createdAt).slice(0, 10)}</span> },
+              { key: 'reference', header: 'Reference', render: (p) => <span className="text-sm text-gray-600">{String(p.reference || '-')}</span> },
+              { key: 'method', header: 'Method', render: (p) => <span className="text-sm capitalize">{String(p.method).replace('_', ' ')}</span> },
+              { key: 'amount', header: 'Amount', render: (p) => <span className="font-medium">{formatCurrency(Number(p.amount))}</span> },
+              { key: 'status', header: 'Status', render: (p) => { const s = TYPE_BADGE[String(p.status)] || { variant: 'neutral' as const }; return <Badge variant={s.variant} dot size="sm">{String(p.status)}</Badge>; } },
+              { key: 'paidAt', header: 'Paid at', render: (p) => <span className="text-sm text-gray-600">{p.paidAt ? String(p.paidAt).slice(0, 10) : '-'}</span> },
+            ]}
+            data={payouts as (TenantPayout & Record<string, unknown>)[]}
+            emptyMessage="No marketplace payouts yet."
+          />
+        )}
+      </div>
 
       {/* ── Account Form Modal ────────────────────────────── */}
       <FormModal open={showAccountForm} title={editingAccountId ? 'Edit Account' : 'New Account'} onClose={() => { setShowAccountForm(false); setEditingAccountId(null); }} onSubmit={handleSaveAccount} submitLabel={saving ? 'Saving...' : editingAccountId ? 'Update' : 'Create'} submitDisabled={saving}>

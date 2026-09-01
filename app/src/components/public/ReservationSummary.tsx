@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { createPublicReservation } from '@/lib/api';
 
 interface ReservationItem {
   roomType: { id: string; name: string; capacity: number; basePrice: number };
@@ -116,6 +117,11 @@ const T = {
   summaryTitle: 'Booking Summary',
   newBooking: 'New Booking at {name}',
   waTotal: 'Total',
+  payOnline: 'Confirm & Pay Online',
+  processing: 'Processing...',
+  paymentUnavailable: 'Online payment is not available for this booking. Please use WhatsApp instead.',
+  roomUnavailable: 'This room is no longer available. Please try WhatsApp to contact the camp directly.',
+  paymentError: 'Something went wrong. Please try again or use WhatsApp.',
 } as const;
 
 export default function ReservationSummaryPage(props: Props) {
@@ -130,6 +136,8 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
   const [items, setItems] = useState<ReservationItem[]>([]);
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  const [payLoading, setPayLoading] = useState(false);
+  const [payError, setPayError] = useState('');
   const { showToast } = useToast();
 
   const t = T;
@@ -207,6 +215,58 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
     window.open(`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
     submitLead();
   };
+
+  const submitReservation = useCallback(async () => {
+    if (!guestName || items.length === 0) return;
+
+    // Only send if exactly one room item (backend takes a single room booking)
+    if (items.length !== 1) {
+      setPayError(t.paymentUnavailable);
+      return;
+    }
+
+    const item = items[0];
+    const mealPlanItems = item.mealPlans?.map(mp => ({
+      productId: mp.productId,
+      quantity: mp.quantity,
+    }));
+
+    setPayLoading(true);
+    setPayError('');
+
+    try {
+      const res = await createPublicReservation({
+        roomId: item.roomType.id,
+        checkInDate: item.checkIn,
+        checkOutDate: item.checkOut,
+        numberOfPeople: item.guests,
+        guestName,
+        guestPhone: guestPhone || undefined,
+        items: mealPlanItems && mealPlanItems.length > 0 ? mealPlanItems : undefined,
+      });
+
+      if (res.paymobEnabled && res.paymobIntention?.clientSecret && res.publicKey) {
+        window.location.href =
+          `https://accept.paymob.com/unifiedcheckout/?publicKey=${res.publicKey}&clientSecret=${res.paymobIntention.clientSecret}`;
+        return;
+      }
+
+      // Paymob not enabled or no intention — surface error, lead still captured below
+      setPayError(t.paymentUnavailable);
+      submitLead();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('409') || msg.toLowerCase().includes('unavailable') || msg.toLowerCase().includes('no longer available')) {
+        setPayError(t.roomUnavailable);
+      } else {
+        setPayError(t.paymentError);
+      }
+      // Capture the lead server-side even when the online path fails
+      submitLead();
+    } finally {
+      setPayLoading(false);
+    }
+  }, [items, guestName, guestPhone, t, submitLead]);
 
   const copySummary = () => {
     navigator.clipboard.writeText(buildMessage()).then(() => showToast(t.copied, 'success'));
@@ -355,6 +415,22 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
       {items.length > 0 && (
         <div className="fixed bottom-0 inset-x-0 z-40 bg-white/90 backdrop-blur-lg border-t border-gray-100 px-4 py-3 sm:px-5 sm:py-4">
           <div className="max-w-2xl mx-auto space-y-2">
+            {/* Online payment button */}
+            <Button
+              onClick={submitReservation}
+              disabled={!guestName || payLoading || items.length !== 1}
+              fullWidth
+              className="!rounded-xl !min-h-[48px] !py-3 !text-sm sm:!text-base hover:!opacity-90 active:!scale-[0.98]"
+              style={{ background: primaryColor }}
+            >
+              {payLoading ? t.processing : t.payOnline}
+            </Button>
+            {payError && (
+              <p className="text-xs text-center text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                {escHtml(payError)}
+              </p>
+            )}
+            {/* WhatsApp fallback button */}
             <Button
               onClick={sendWhatsApp}
               disabled={!whatsappNumber || !guestName}

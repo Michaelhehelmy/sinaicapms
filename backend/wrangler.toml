@@ -69,6 +69,18 @@ FEATURE_TWO_FACTOR_AUTH = "false"
 FEATURE_MULTI_LOCATION = "false"
 FEATURE_AI_FEATURES = "false"
 
+# Paymob (marketplace online reservations) — https://accept.paymob.com
+# PM_ENABLED must be "true" to activate; real PM_SECRET_KEY / PM_HMAC_SECRET /
+# PM_INTEGRATION_IDS are set via `wrangler secret put` (never commit).
+PM_ENABLED = "false"
+PM_BASE_URL = "https://accept.paymob.com"
+PM_PUBLIC_KEY = ""
+PM_CURRENCY = "EGP"
+# REQUIRED SECRETS (set via `wrangler secret put`):
+#   PM_SECRET_KEY        — Paymob API secret key (auth token for server-to-server calls)
+#   PM_HMAC_SECRET       — Paymob HMAC signing secret (used to verify webhook POST body integrity)
+#   PM_INTEGRATION_IDS   — Comma-separated integration IDs (e.g. "478568,518693") for online card payments
+
 # ─────────────────────────────────────────────
 # Staging environment (./deploy.sh --staging)
 # Isolated resources — never shares prod D1/KV/R2.

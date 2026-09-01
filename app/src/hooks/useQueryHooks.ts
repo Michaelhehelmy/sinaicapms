@@ -98,6 +98,7 @@ export const queryKeys = {
   financialInvoices: ['admin', 'financials', 'invoices'] as const,
   financialPayments: ['admin', 'financials', 'payments'] as const,
   financialTaxRates: ['admin', 'financials', 'taxRates'] as const,
+  financialPayouts: ['admin', 'financials', 'payouts'] as const,
   // Supply Chain (tenant-level)
   supplyWarehouses: ['admin', 'supply', 'warehouses'] as const,
   supplyStock: ['admin', 'supply', 'stock'] as const,
@@ -1343,6 +1344,19 @@ export function useFinancialTaxRatesQuery() {
     queryFn: () => api.getTaxRates(),
     throwOnError: (err) => {
       toastError('Failed to load tax rates', err);
+      return false;
+    },
+  });
+}
+
+/** Fetch marketplace payouts (tenant view, read-only payout history) */
+export function useFinancialPayoutsQuery() {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: queryKeys.financialPayouts,
+    queryFn: () => api.getTenantPayouts(),
+    throwOnError: (err) => {
+      toastError('Failed to load payouts', err);
       return false;
     },
   });

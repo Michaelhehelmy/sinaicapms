@@ -42,6 +42,16 @@ const settingsUpdateSchema = z.object({
     faviconUrl: z.string().nullable().optional(),
     primaryColor: z.string().optional(),
   }).optional(),
+  payment: z.object({
+    enabled: z.boolean().optional(),
+    secretKey: z.string().optional(),
+    hmacSecret: z.string().optional(),
+    integrationIds: z.string().optional(),
+    baseUrl: z.string().optional(),
+    publicKey: z.string().optional(),
+    currency: z.string().optional(),
+    marketplaceFeePct: z.number().min(0).max(100).optional(),
+  }).optional(),
 }).strip();
 
 const DEFAULT_SETTINGS = {
@@ -53,6 +63,16 @@ const DEFAULT_SETTINGS = {
   },
   defaults: { taxRate: 0, currency: 'USD', timezone: 'UTC', dateFormat: 'YYYY-MM-DD' },
   branding: { platformName: 'SinaiCamps', logoUrl: null, faviconUrl: null, primaryColor: '#16a34a' },
+  payment: {
+    enabled: false,
+    secretKey: '',
+    hmacSecret: '',
+    integrationIds: '',
+    baseUrl: 'https://accept.paymob.com',
+    publicKey: '',
+    currency: 'EGP',
+    marketplaceFeePct: 0,
+  },
 };
 
 /**
@@ -62,24 +82,36 @@ async function ensureSettingsRow(DB) {
   const existing = await DB.prepare('SELECT id FROM platform_settings WHERE id = 1').first();
   if (!existing) {
     await DB.prepare(
-      `INSERT INTO platform_settings (id, feature_flags, email_templates, defaults, branding, updated_at)
-       VALUES (1, ?, ?, ?, ?, datetime('now'))`
+      `INSERT INTO platform_settings (id, feature_flags, email_templates, defaults, branding, payment, updated_at)
+       VALUES (1, ?, ?, ?, ?, ?, datetime('now'))`
     ).bind(
       JSON.stringify(DEFAULT_SETTINGS.featureFlags),
       JSON.stringify(DEFAULT_SETTINGS.emailTemplates),
       JSON.stringify(DEFAULT_SETTINGS.defaults),
       JSON.stringify(DEFAULT_SETTINGS.branding),
+      JSON.stringify(DEFAULT_SETTINGS.payment),
     ).run();
   }
 }
 
 function parseSettingsRow(row) {
   if (!row) return DEFAULT_SETTINGS;
+  const paymentRaw = safeParse(row.payment, DEFAULT_SETTINGS.payment);
   return {
     featureFlags: safeParse(row.feature_flags, DEFAULT_SETTINGS.featureFlags),
     emailTemplates: safeParse(row.email_templates, DEFAULT_SETTINGS.emailTemplates),
     defaults: safeParse(row.defaults, DEFAULT_SETTINGS.defaults),
     branding: safeParse(row.branding, DEFAULT_SETTINGS.branding),
+    payment: {
+      enabled: paymentRaw.enabled,
+      secretKeySet: !!paymentRaw.secretKey,
+      hmacSecretSet: !!paymentRaw.hmacSecret,
+      integrationIds: paymentRaw.integrationIds,
+      baseUrl: paymentRaw.baseUrl,
+      publicKey: paymentRaw.publicKey,
+      currency: paymentRaw.currency,
+      marketplaceFeePct: paymentRaw.marketplaceFeePct,
+    },
   };
 }
 
@@ -111,7 +143,8 @@ adminSettingsRoutes.put('/', async (c) => {
 
   try {
     await ensureSettingsRow(c.env.DB);
-    const body = toSnake(await c.req.json());
+    const rawBody = await c.req.json();
+    const body = toSnake(rawBody);
     const parsed = settingsUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return jsonResponse({ success: false, error: 'Invalid settings data', errors: parsed.error.issues }, 400);
@@ -135,15 +168,42 @@ adminSettingsRoutes.put('/', async (c) => {
       currentSettings.branding = { ...currentSettings.branding, ...updates.branding };
     }
 
+    // Merge payment section — read raw secrets from DB (parseSettingsRow masks them)
+    const currentPayment = safeParse(current?.payment, DEFAULT_SETTINGS.payment);
+    const paymentRaw = rawBody.payment || rawBody.payment_config;
+    if (paymentRaw && typeof paymentRaw === 'object') {
+      const mergedPayment = { ...currentPayment };
+      for (const [key, value] of Object.entries(paymentRaw)) {
+        if ((key === 'secretKey' || key === 'secret_key') && value !== undefined) {
+          mergedPayment.secretKey = value === '' ? '' : value;
+        } else if ((key === 'hmacSecret' || key === 'hmac_secret') && value !== undefined) {
+          mergedPayment.hmacSecret = value === '' ? '' : value;
+        } else if (value !== undefined) {
+          const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+          mergedPayment[camelKey] = value;
+        }
+      }
+      currentSettings.payment = mergedPayment;
+    }
+
     await c.env.DB.prepare(
-      `UPDATE platform_settings SET feature_flags = ?, email_templates = ?, defaults = ?, branding = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
+      `UPDATE platform_settings SET feature_flags = ?, email_templates = ?, defaults = ?, branding = ?, payment = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
     ).bind(
       JSON.stringify(currentSettings.featureFlags),
       JSON.stringify(currentSettings.emailTemplates),
       JSON.stringify(currentSettings.defaults),
       JSON.stringify(currentSettings.branding),
+      JSON.stringify(currentSettings.payment),
       auth.user?.id || 'system',
     ).run();
+
+    // Mask payment secrets before returning
+    const maskedPayment = { ...currentSettings.payment };
+    maskedPayment.secretKeySet = !!maskedPayment.secretKey;
+    maskedPayment.hmacSecretSet = !!maskedPayment.hmacSecret;
+    delete maskedPayment.secretKey;
+    delete maskedPayment.hmacSecret;
+    currentSettings.payment = maskedPayment;
 
     return jsonResponse({ success: true, ...currentSettings });
   } catch (e) {

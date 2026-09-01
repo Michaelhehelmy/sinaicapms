@@ -3,6 +3,7 @@ import { handleCreatePaymentIntent, handleConfirmPayment } from '../src/api/paym
 
 function createMockEnv(order = null) {
   return {
+    PM_ENABLED: 'true',
     DB: {
       prepare: vi.fn(() => ({
         bind: vi.fn(() => ({
@@ -22,6 +23,15 @@ function makeRequest(body) {
 
 describe('handleCreatePaymentIntent', () => {
   const tenantId = 't1';
+
+  it('returns 503 when PM_ENABLED is not true', async () => {
+    const env = createMockEnv();
+    delete env.PM_ENABLED;
+    const res = await handleCreatePaymentIntent(makeRequest({ orderId: 'order_1', amount: 100 }), env, tenantId);
+    const data = await res.json();
+    expect(res.status).toBe(503);
+    expect(data.error).toBe('Payment gateway disabled');
+  });
 
   it('returns 400 when orderId is missing', async () => {
     const res = await handleCreatePaymentIntent(makeRequest({ amount: 100 }), createMockEnv(), tenantId);
@@ -105,6 +115,15 @@ describe('handleCreatePaymentIntent', () => {
 
 describe('handleConfirmPayment', () => {
   const tenantId = 't1';
+
+  it('returns 503 when PM_ENABLED is not true', async () => {
+    const env = createMockEnv();
+    delete env.PM_ENABLED;
+    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), env, tenantId);
+    const data = await res.json();
+    expect(res.status).toBe(503);
+    expect(data.error).toBe('Payment gateway disabled');
+  });
 
   it('returns 400 when paymentIntentId is missing', async () => {
     const res = await handleConfirmPayment(makeRequest({ orderId: 'order_1' }), createMockEnv(), tenantId);

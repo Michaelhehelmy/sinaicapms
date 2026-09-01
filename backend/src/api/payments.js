@@ -1,3 +1,16 @@
+/**
+ * payments.js — Mock-Stripe payment handlers (DISABLED).
+ *
+ * ⚠️  NON-AUTHORITATIVE: These handlers are OFF by default (PM_ENABLED !== 'true').
+ *     Orders must be paid ONLY via:
+ *       (a) An authenticated admin order_state transition to a paid state
+ *           (existing orders.js logic).
+ *       (b) The HMAC-verified Paymob webhook (paymob-webhook.js, T4).
+ *
+ *     The mock confirm path here must stay disabled unless a real payment
+ *     provider is wired behind PM_ENABLED. Do NOT enable in production.
+ */
+
 import { jsonResponse, errorResponse } from '../utils/response';
 import { validationError } from '../utils/errors';
 import { z } from 'zod';
@@ -19,6 +32,9 @@ export const confirmPaymentSchema = z.object({
  * Body: { orderId: string, amount: number, currency?: string }
  */
 export async function handleCreatePaymentIntent(request, env, tenantId) {
+  if (env.PM_ENABLED !== 'true') {
+    return errorResponse('Payment gateway disabled', 503);
+  }
   try {
     const parsed = paymentIntentSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -38,8 +54,9 @@ export async function handleCreatePaymentIntent(request, env, tenantId) {
       return errorResponse('Cannot create payment for a cancelled order', 400);
     }
 
+    // Unreachable when PM_ENABLED is false (guard above returns 503).
     const paymentIntentId = 'pi_mock_' + Date.now();
-    const clientSecret = paymentIntentId + '_secret_' + Math.random().toString(36).substr(2, 16);
+    const clientSecret = paymentIntentId + '_secret_' + Date.now().toString(36);
 
     return jsonResponse({
       success: true,
@@ -60,6 +77,9 @@ export async function handleCreatePaymentIntent(request, env, tenantId) {
  * Body: { paymentIntentId: string, orderId: string }
  */
 export async function handleConfirmPayment(request, env, tenantId) {
+  if (env.PM_ENABLED !== 'true') {
+    return errorResponse('Payment gateway disabled', 503);
+  }
   try {
     const parsed = confirmPaymentSchema.safeParse(await request.json());
     if (!parsed.success) {

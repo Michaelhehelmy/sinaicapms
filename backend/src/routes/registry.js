@@ -94,6 +94,43 @@ export const errorEnvelopeSchema = z
   })
   .openapi('ErrorEnvelope');
 
+// ─── Public reservation schemas (camelCase wire contract — T10) ────────────
+
+const publicReservationRequestSchema = z
+  .object({
+    roomId: z.string(),
+    checkInDate: z.string(),
+    checkOutDate: z.string(),
+    numberOfPeople: z.number(),
+    guestName: z.string(),
+    guestPhone: z.string().optional(),
+    guestEmail: z.string().optional(),
+    items: z
+      .array(z.object({ productId: z.string(), quantity: z.number() }))
+      .optional(),
+  })
+  .openapi('PublicReservationRequest');
+
+const publicReservationResponseSchema = z
+  .object({
+    orderId: z.string(),
+    reference: z.string(),
+    totalAmount: z.number(),
+    currency: z.string(),
+    paymobEnabled: z.boolean(),
+    paymobIntention: z
+      .object({ clientSecret: z.string(), id: z.string() })
+      .nullable(),
+    paymentMethods: z.array(z.number()).optional(),
+    publicKey: z.string().optional(),
+    fallbackWhatsApp: z.boolean(),
+  })
+  .openapi('PublicReservationResponse');
+
+const paymobWebhookResponseSchema = z
+  .object({ received: z.boolean() })
+  .openapi('PaymobWebhookResponse');
+
 // Shared error responses for routes that use the T4 structured-error envelope.
 export const errorResponses = (extra = {}) => ({
   400: { description: 'Bad request / validation error', content: { 'application/json': { schema: errorEnvelopeSchema } } },
@@ -2083,6 +2120,211 @@ export const adminRoutes = [
   }),
 ];
 
+// ─── Super-admin financials (/api/admin/financials): marketplace payments ledger ───
+// GET /public-payments returns the T6 pagination envelope; each row is a
+// marketplace_payments ledger entry camelized by jsonResponse (toCamel).
+const publicPaymentSchema = z
+  .object({
+    id: z.number(),
+    orderId: z.string().nullable().optional(),
+    orderReference: z.string().nullable().optional(),
+    tenantId: z.string().nullable().optional(),
+    tenantName: z.string().nullable().optional(),
+    channel: z.string().nullable().optional(),
+    grossAmount: z.number().nullable().optional(),
+    marketplaceFee: z.number().nullable().optional(),
+    netAmount: z.number().nullable().optional(),
+    currency: z.string().nullable().optional(),
+    paymentStatus: z.string().nullable().optional(),
+    capturedAt: z.string().nullable().optional(),
+    settledAt: z.string().nullable().optional(),
+    payoutId: z.string().nullable().optional(), // PA: assigned payout batch (NULL until batched)
+    checkInDate: z.string().nullable().optional(),
+    checkOutDate: z.string().nullable().optional(),
+    customerId: z.string().nullable().optional(),
+  })
+  .openapi('PublicPayment');
+
+const paginatedPublicPaymentsSchema = paginatedEnvelope(publicPaymentSchema, 'PaginatedPublicPayments');
+
+export const adminFinancialsRoutes = [
+  createRoute({
+    method: 'get',
+    path: '/api/admin/financials/public-payments',
+    tags: ['admin-financials', 'financials'],
+    summary: 'Super-admin cross-tenant marketplace payments ledger (T6 pagination envelope; optional tenantId/status/channel filters)',
+    request: {
+      query: z.object({
+        page: z.string().optional(),
+        pageSize: z.string().optional(),
+        tenantId: z.string().optional(),
+        status: z.string().optional(),
+        channel: z.string().optional(),
+      }),
+    },
+    responses: {
+      200: { description: 'Paginated public payments ledger', content: { 'application/json': { schema: paginatedPublicPaymentsSchema } } },
+      ...errorResponses(),
+    },
+  }),
+];
+
+// ─── Marketplace payouts (PA): admin lifecycle + tenant read-only history ─────
+// Admin routes mount admin-payouts.js at /api/admin/payouts (super-admin gate);
+// the tenant financials route adds GET /api/financials/payouts (auth + tenant
+// scoped). Wire rows are camelized by jsonResponse (toCamel): the list row is
+// `p.* + tenants.name AS tenant_name + payout items COUNT AS item_count`, so the
+// canonical MarketplacePayout carries tenantName/itemCount alongside the payout
+// columns. Detail/pay/cancel wrap the payout under `{ payout }` with optional
+// `items` (PublicPayment ledger rows).
+const marketplacePayoutSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.number(),
+    tenantName: z.string().nullable().optional(),
+    amount: z.number(),
+    currency: z.string(),
+    method: z.string().nullable().optional(),
+    status: z.string(),
+    reference: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    itemCount: z.number().int(),
+    createdAt: z.string(),
+    paidAt: z.string().nullable().optional(),
+    cancelledAt: z.string().nullable().optional(),
+  })
+  .openapi('MarketplacePayout');
+
+const marketplacePayoutListSchema = z.array(marketplacePayoutSchema).openapi('MarketplacePayoutList');
+
+const marketplacePayoutDetailSchema = z
+  .object({
+    payout: marketplacePayoutSchema,
+    items: z.array(publicPaymentSchema),
+  })
+  .openapi('MarketplacePayoutDetail');
+
+const createPayoutRequestSchema = z
+  .object({
+    tenantId: z.number(),
+    paymentIds: z.array(z.string()).min(1),
+    method: z.string(),
+    reference: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .openapi('CreatePayoutRequest');
+
+const paginatedMarketplacePayoutsSchema = paginatedEnvelope(marketplacePayoutSchema, 'PaginatedMarketplacePayouts');
+
+const eligiblePayoutPaymentsSchema = z
+  .object({
+    data: z.array(publicPaymentSchema),
+    total: z.number(),
+    totalNet: z.number(),
+  })
+  .openapi('EligiblePayoutPayments');
+
+export const adminPayoutsRoutes = [
+  // Static /eligible registered BEFORE /{id} so the literal segment never
+  // collides with the param route (registry registers exact paths, not globs).
+  createRoute({
+    method: 'get',
+    path: '/api/admin/payouts/eligible',
+    tags: ['admin-payouts', 'financials'],
+    summary: 'Super-admin eligible captured marketplace payments for payout (optional tenantId filter)',
+    request: {
+      query: z.object({
+        tenantId: z.string().optional(),
+        limit: z.string().optional(),
+      }),
+    },
+    responses: {
+      200: { description: 'Eligible payments', content: { 'application/json': { schema: eligiblePayoutPaymentsSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/api/admin/payouts',
+    tags: ['admin-payouts', 'financials'],
+    summary: 'Super-admin paginated payout list (optional tenantId/status filters)',
+    request: {
+      query: z.object({
+        page: z.string().optional(),
+        pageSize: z.string().optional(),
+        tenantId: z.string().optional(),
+        status: z.string().optional(),
+      }),
+    },
+    responses: {
+      200: { description: 'Paginated payouts', content: { 'application/json': { schema: paginatedMarketplacePayoutsSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/admin/payouts',
+    tags: ['admin-payouts', 'financials'],
+    summary: 'Create a payout from selected captured marketplace payments (super-admin)',
+    request: { body: { content: { 'application/json': { schema: createPayoutRequestSchema } } } },
+    responses: {
+      201: { description: 'Payout created', content: { 'application/json': { schema: marketplacePayoutDetailSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/api/admin/payouts/{id}',
+    tags: ['admin-payouts', 'financials'],
+    summary: 'Get a payout with its marketplace payment items (super-admin)',
+    request: { params: z.object({ id: z.string() }) },
+    responses: {
+      200: { description: 'Payout detail', content: { 'application/json': { schema: marketplacePayoutDetailSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/admin/payouts/{id}/pay',
+    tags: ['admin-payouts', 'financials'],
+    summary: 'Mark a pending payout as paid and settle its ledger rows (super-admin)',
+    request: { params: z.object({ id: z.string() }) },
+    responses: {
+      200: { description: 'Payout paid', content: { 'application/json': { schema: marketplacePayoutDetailSchema } } },
+      ...errorResponses({
+        409: { description: 'Payout is already settled or cancelled', content: { 'application/json': { schema: errorEnvelopeSchema } } },
+      }),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/admin/payouts/{id}/cancel',
+    tags: ['admin-payouts', 'financials'],
+    summary: 'Cancel a pending payout and clear payout_id on its ledger rows (super-admin)',
+    request: { params: z.object({ id: z.string() }) },
+    responses: {
+      200: { description: 'Payout cancelled', content: { 'application/json': { schema: marketplacePayoutDetailSchema } } },
+      ...errorResponses({
+        409: { description: 'Only pending payouts can be cancelled', content: { 'application/json': { schema: errorEnvelopeSchema } } },
+      }),
+    },
+  }),
+];
+
+// Tenant financials — GET /api/financials/payouts (auth + tenant scoped).
+export const financialsRoutes = [
+  createRoute({
+    method: 'get',
+    path: '/api/financials/payouts',
+    tags: ['financials'],
+    summary: 'Tenant payout history (auth + tenant scoped)',
+    responses: {
+      200: { description: 'Tenant payouts', content: { 'application/json': { schema: marketplacePayoutListSchema } } },
+      ...errorResponses(),
+    },
+  }),
+];
+
 // ─── POS Users (staff management): /api/pos-users/* ─────────────────────────────
 // Wire rows from pos_users (SELECT in pos-users.js): id, username, email,
 // first_name, last_name, name, phone, role, is_active, status, department,
@@ -2275,6 +2517,32 @@ export const paymentRoutes = [
     responses: {
       200: { description: 'Webhook acknowledged', content: { 'application/json': { schema: webhookResponseSchema } } },
       ...errorResponses({ 401: { description: 'Invalid webhook secret', content: { 'application/json': { schema: errorEnvelopeSchema } } } }),
+    },
+  }),
+];
+
+// ─── Public reservation routes (T10) ─────────────────────────────────────────
+
+export const publicReservationRoutes = [
+  createRoute({
+    method: 'post',
+    path: '/api/public/reservations',
+    tags: ['reservations'],
+    summary: 'Create a public marketplace pre-reservation and a Paymob online-payment intention',
+    request: { body: { content: { 'application/json': { schema: publicReservationRequestSchema } } } },
+    responses: {
+      200: { description: 'Reservation created', content: { 'application/json': { schema: publicReservationResponseSchema } } },
+      ...errorResponses({ 409: { description: 'Room not available for selected dates', content: { 'application/json': { schema: errorEnvelopeSchema } } } }),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/public/paymob/webhook',
+    tags: ['paymob'],
+    summary: 'Paymob server-to-server callback (HMAC verified) — marks the order paid',
+    responses: {
+      200: { description: 'Webhook acknowledged', content: { 'application/json': { schema: paymobWebhookResponseSchema } } },
+      ...errorResponses({ 401: { description: 'Invalid webhook signature', content: { 'application/json': { schema: errorEnvelopeSchema } } } }),
     },
   }),
 ];
@@ -2857,6 +3125,10 @@ export const openApiRoutes = [
   ...inventoryRoutes,
   ...posTablesRoutes,
   ...inboxRoutes,
+  ...publicReservationRoutes,
+  ...adminFinancialsRoutes,
+  ...adminPayoutsRoutes,
+  ...financialsRoutes,
 ];
 
 // ─── Document assembly ────────────────────────────────────────────────────────

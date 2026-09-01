@@ -533,4 +533,20 @@ router.get('/exchange-rates', async (c) => {
   return jsonResponse(rows.results || []);
 });
 
+// ── Marketplace Payouts (tenant read-only) ────────────────────────────────
+
+router.get('/payouts', async (c) => {
+  const scope = getScope(c);
+  const tenantId = scope.tenantId;
+  if (!tenantId) return errorResponse('Tenant ID required', 400);
+  const rows = await c.env.DB.prepare(
+    `SELECT p.id, p.amount, p.currency, p.method, p.status, p.reference, p.notes, p.created_at, p.paid_at,
+            (SELECT COUNT(*) FROM marketplace_payments mp WHERE mp.payout_id = p.id) AS item_count
+     FROM marketplace_payouts p
+     WHERE p.tenant_id = ?
+     ORDER BY p.created_at DESC`
+  ).bind(tenantId).all();
+  return jsonResponse(rows.results || []);
+});
+
 export default router;

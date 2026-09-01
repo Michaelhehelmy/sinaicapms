@@ -25,6 +25,7 @@ import adminSupplyRoutes from './api/admin-supply.js';
 import adminCrmRoutes from './api/admin-crm.js';
 import adminStorefrontRoutes from './api/admin-storefront.js';
 import adminAiRoutes from './api/admin-ai.js';
+import adminPayoutsRoutes from './api/admin-payouts.js';
 import campsRoutes, { productsRoutes, roomsRoutes, ratePlansRoutes } from './api/camps';
 import projectLinksRoutes from './api/project-links.js';
 import projectItemsRoutes from './api/project-items.js';
@@ -64,6 +65,8 @@ import supplyRoutes from './api/supply.js';
 import crmRoutes from './api/crm.js';
 import storefrontRoutes from './api/storefront.js';
 import aiRoutes from './api/ai.js';
+import reservationsRoutes from './api/reservations';
+import { handlePaymobWebhook } from './api/paymob-webhook';
 
 // Durable Object class export — required so `wrangler deploy` can register the
 // BROADCASTER binding (`class_name = "Broadcaster"`) from the entrypoint.
@@ -248,6 +251,7 @@ async function superAdminAuth(c, next) {
 
 for (const [prefix, handler] of [
   ['/admin/financials', adminFinancialsRoutes],
+  ['/admin/payouts', adminPayoutsRoutes],
   ['/admin/hr', adminHrRoutes],
   ['/admin/supply', adminSupplyRoutes],
   ['/admin/crm', adminCrmRoutes],
@@ -634,6 +638,20 @@ app.route('/api/orders', ordersRoutes);
 const availabilityPublicScope = resolveScope({ public: true });
 app.use('/api/availability', availabilityPublicScope);
 app.route('/api/availability', availabilityRoutes);
+
+// ── Public reservations + Paymob webhook (marketplace online payments) ──────
+// POST /api/public/reservations — public reservation submission endpoint;
+// tenant-scoped via the public resolveScope (matches /api/availability pattern).
+// POST /api/public/paymob/webhook — Paymob callback endpoint; HMAC signature
+// verification is performed INSIDE handlePaymobWebhook (the signature IS the auth).
+const publicReservationsScope = resolveScope({ public: true });
+app.use('/api/public/reservations', publicReservationsScope);
+app.use('/api/public/reservations/*', publicReservationsScope);
+app.route('/api/public/reservations', reservationsRoutes);
+
+app.use('/api/public/paymob/webhook', publicReservationsScope);
+app.use('/api/public/paymob/webhook/*', publicReservationsScope);
+app.post('/api/public/paymob/webhook', async (c) => handlePaymobWebhook(c.req.raw, c.env));
 
 // ── Upload + media (Phase 4 T1). POST /api/upload is tenant-admin only
 // (resolveScope admin realm); GET/HEAD /api/media/* is fully public and

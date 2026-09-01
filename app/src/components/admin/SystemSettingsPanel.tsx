@@ -10,14 +10,38 @@ import { useAdminSettingsQuery, queryKeys } from '@/hooks/useQueryHooks';
 import { getAdminSettings, updateAdminSettings } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 
-type SettingsTab = 'features' | 'emails' | 'defaults' | 'branding';
+type SettingsTab = 'features' | 'emails' | 'defaults' | 'branding' | 'payments';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'features', label: 'Feature Flags' },
   { id: 'emails', label: 'Email Templates' },
   { id: 'defaults', label: 'Defaults' },
   { id: 'branding', label: 'Branding' },
+  { id: 'payments', label: 'Payments' },
 ];
+
+interface PaymentConfig {
+  enabled: boolean;
+  secretKeySet: boolean;
+  hmacSecretSet: boolean;
+  integrationIds: string;
+  baseUrl: string;
+  publicKey: string;
+  currency: string;
+  marketplaceFeePct: number;
+}
+
+// Local typed view of the GET /api/admin/settings response. The generated
+// api-types.ts may not describe every section yet (P1-CONTRACT regenerates it
+// in parallel), so we model the shape here and cast — matching the panel's
+// existing pattern of reading `settings.featureFlags` etc. off the query data.
+interface AdminSettingsShape {
+  featureFlags?: Record<string, boolean>;
+  emailTemplates?: Record<string, { subject: string; body: string }>;
+  defaults?: { taxRate: number; currency: string; timezone: string; dateFormat: string };
+  branding?: { platformName: string; logoUrl: string | null; faviconUrl: string | null; primaryColor: string };
+  payment?: Partial<PaymentConfig>;
+}
 
 const FEATURE_FLAGS = [
   { key: 'financials', label: 'Financial Management', description: 'Double-entry accounting, invoicing, payments, tax reporting' },
@@ -71,13 +95,45 @@ export default function SystemSettingsPanel() {
   const [branding, setBranding] = useState({ platformName: 'SinaiCamps', logoUrl: null as string | null, faviconUrl: null as string | null, primaryColor: '#16a34a' });
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [emailDraft, setEmailDraft] = useState({ subject: '', body: '' });
+  const [payment, setPayment] = useState<PaymentConfig>({
+    enabled: false,
+    secretKeySet: false,
+    hmacSecretSet: false,
+    integrationIds: '',
+    baseUrl: 'https://accept.paymob.com',
+    publicKey: '',
+    currency: 'EGP',
+    marketplaceFeePct: 0,
+  });
+  // Secret fields — only sent when user types a NEW value (omission = keep)
+  const [secretKeyValue, setSecretKeyValue] = useState('');
+  const [hmacSecretValue, setHmacSecretValue] = useState('');
 
   useEffect(() => {
     if (settings) {
-      setFeatureFlags(settings.featureFlags || {});
-      setEmailTemplates(settings.emailTemplates || {});
-      setDefaults(settings.defaults);
-      setBranding(settings.branding);
+      const s = settings as AdminSettingsShape;
+      setFeatureFlags(s.featureFlags || {});
+      setEmailTemplates(s.emailTemplates || {});
+      setDefaults(s.defaults || { taxRate: 0, currency: 'USD', timezone: 'UTC', dateFormat: 'YYYY-MM-DD' });
+      setBranding(
+        s.branding || {
+          platformName: 'SinaiCamps',
+          logoUrl: null as string | null,
+          faviconUrl: null as string | null,
+          primaryColor: '#16a34a',
+        },
+      );
+      setPayment((prev) => ({
+        ...prev,
+        ...(s.payment || {}),
+        integrationIds: s.payment?.integrationIds || prev.integrationIds,
+        baseUrl: s.payment?.baseUrl || 'https://accept.paymob.com',
+        publicKey: s.payment?.publicKey || prev.publicKey,
+        currency: s.payment?.currency || 'EGP',
+      }));
+      // Reset secret input buffers on fresh data (kept for keep-existing behavior)
+      setSecretKeyValue('');
+      setHmacSecretValue('');
     }
   }, [settings]);
 
@@ -89,6 +145,20 @@ export default function SystemSettingsPanel() {
       else if (activeTab === 'emails') payload.emailTemplates = emailTemplates;
       else if (activeTab === 'defaults') payload.defaults = defaults;
       else if (activeTab === 'branding') payload.branding = branding;
+      else if (activeTab === 'payments') {
+        const paymentPayload: Record<string, unknown> = {
+          enabled: payment.enabled,
+          integrationIds: payment.integrationIds,
+          baseUrl: payment.baseUrl,
+          publicKey: payment.publicKey,
+          currency: payment.currency,
+          marketplaceFeePct: payment.marketplaceFeePct,
+        };
+        // Only send a secret if the user typed a NEW value; omission keeps the stored one
+        if (secretKeyValue.trim() !== '') paymentPayload.secretKey = secretKeyValue;
+        if (hmacSecretValue.trim() !== '') paymentPayload.hmacSecret = hmacSecretValue;
+        payload.payment = paymentPayload;
+      }
 
       await updateAdminSettings(payload);
       queryClient.invalidateQueries({ queryKey: queryKeys.adminSettings });
@@ -98,7 +168,7 @@ export default function SystemSettingsPanel() {
     } finally {
       setSaving(false);
     }
-  }, [activeTab, featureFlags, emailTemplates, defaults, branding, queryClient, showToast]);
+  }, [activeTab, featureFlags, emailTemplates, defaults, branding, payment, secretKeyValue, hmacSecretValue, queryClient, showToast]);
 
   const toggleFlag = (key: string) => {
     setFeatureFlags((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -370,6 +440,145 @@ export default function SystemSettingsPanel() {
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono"
                   />
                 </div>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Payments Tab */}
+      {activeTab === 'payments' && (
+        <Card>
+          <CardHeader>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">Paymob Payments</h3>
+              <p className="text-sm text-gray-500 mt-0.5">Configure Paymob gateway credentials for online reservations</p>
+            </div>
+          </CardHeader>
+          <CardBody>
+            {/* Enabled toggle */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-6">
+              <div>
+                <span className="font-medium text-gray-800">Paymob enabled (PM_ENABLED)</span>
+                <p className="text-sm text-gray-500 mt-0.5">Allow tenants to accept online card payments via Paymob</p>
+              </div>
+              <button
+                onClick={() => setPayment((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+                  payment.enabled ? 'bg-green-600' : 'bg-gray-300'
+                }`}
+                role="switch"
+                aria-checked={payment.enabled}
+                data-testid="payment-enabled-toggle"
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    payment.enabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* PM_SECRET_KEY */}
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-sm font-medium text-gray-700">PM_SECRET_KEY</label>
+                  {payment.secretKeySet && <Badge variant="success" size="sm">Configured ✓</Badge>}
+                </div>
+                <input
+                  type="password"
+                  value={secretKeyValue}
+                  onChange={(e) => setSecretKeyValue(e.target.value)}
+                  placeholder={payment.secretKeySet ? '•••••••• (set — leave blank to keep)' : 'Enter secret key'}
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="payment-secret-key"
+                />
+              </div>
+
+              {/* PM_HMAC_SECRET */}
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-sm font-medium text-gray-700">PM_HMAC_SECRET</label>
+                  {payment.hmacSecretSet && <Badge variant="success" size="sm">Configured ✓</Badge>}
+                </div>
+                <input
+                  type="password"
+                  value={hmacSecretValue}
+                  onChange={(e) => setHmacSecretValue(e.target.value)}
+                  placeholder={payment.hmacSecretSet ? '•••••••• (set — leave blank to keep)' : 'Enter HMAC secret'}
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="payment-hmac-secret"
+                />
+              </div>
+
+              {/* PM_INTEGRATION_IDS */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">PM_INTEGRATION_IDS</label>
+                <input
+                  type="text"
+                  value={payment.integrationIds}
+                  onChange={(e) => setPayment((prev) => ({ ...prev, integrationIds: e.target.value }))}
+                  placeholder="Comma-separated IDs"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="payment-integration-ids"
+                />
+              </div>
+
+              {/* PM_BASE_URL */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">PM_BASE_URL</label>
+                <input
+                  type="text"
+                  value={payment.baseUrl}
+                  onChange={(e) => setPayment((prev) => ({ ...prev, baseUrl: e.target.value }))}
+                  placeholder="https://accept.paymob.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="payment-base-url"
+                />
+              </div>
+
+              {/* PM_PUBLIC_KEY */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">PM_PUBLIC_KEY</label>
+                <input
+                  type="text"
+                  value={payment.publicKey}
+                  onChange={(e) => setPayment((prev) => ({ ...prev, publicKey: e.target.value }))}
+                  placeholder="Public key"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="payment-public-key"
+                />
+              </div>
+
+              {/* PM_CURRENCY */}
+              <div>
+                <Select
+                  label="PM_CURRENCY"
+                  options={CURRENCIES}
+                  value={payment.currency}
+                  onChange={(e) => setPayment((prev) => ({ ...prev, currency: e.target.value }))}
+                  data-testid="payment-currency"
+                />
+              </div>
+
+              {/* Marketplace Fee % */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Marketplace commission (%) on online reservations
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={payment.marketplaceFeePct}
+                  onChange={(e) => setPayment((prev) => ({ ...prev, marketplaceFeePct: parseFloat(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  data-testid="payment-marketplace-fee"
+                />
               </div>
             </div>
           </CardBody>

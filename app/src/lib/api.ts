@@ -763,6 +763,15 @@ export function confirmPayment(data: { paymentIntentId: string; orderId: string 
   });
 }
 
+// ─── Public Reservations (Paymob flow) ────────────────────────────────
+/** Create a public reservation (no auth required). Returns Paymob intention if enabled. */
+export function createPublicReservation(data: Schemas['PublicReservationRequest']) {
+  return apiFetch<Schemas['PublicReservationResponse']>('/public/reservations', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // ─── POS (Point of Sale) ──────────────────────────────────────────────
 // POS endpoints use /api/pos/* prefix. The centralized apiFetch handles
 // tenant isolation and auth headers automatically.
@@ -1782,6 +1791,28 @@ export function createTaxRate(data: { name: string; rate: number; jurisdiction?:
   return apiFetch<{ id: string; success: boolean }>('/financials/tax-rates', { method: 'POST', body: JSON.stringify(data) });
 }
 
+// ─── Marketplace Payouts (tenant view) ──────────────────────────────────────
+// Read-only payout history for the tenant (populated by the marketplace
+// operator). GET /financials/payouts returns a PLAIN ARRAY — matching the
+// tenant financials module's list convention (jsonResponse(results) in
+// backend financials.js) — NOT a paginated envelope.
+export interface TenantPayout {
+  id: string;
+  amount: number;
+  currency: string;
+  method: string;
+  status: 'pending' | 'paid' | 'failed' | 'cancelled';
+  reference: string | null;
+  notes: string | null;
+  itemCount: number;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+export function getTenantPayouts() {
+  return apiFetch<TenantPayout[]>('/financials/payouts');
+}
+
 // ─── Payment Gateway (Stub) ─────────────────────────────────────────────────
 export function processPayment(data: { invoiceId?: string; amount: number; method: string; currency?: string; customerEmail?: string }) {
   return apiFetch<{ id: string; paymentIntentId: string; clientSecret: string; amount: number; currency: string; status: string; message: string; success: boolean }>('/financials/process-payment', { method: 'POST', body: JSON.stringify(data) });
@@ -2131,6 +2162,128 @@ export function getSuperFinancialsOverview() {
 
 export function getSuperInvoices(page = 1, limit = 20) {
   return apiFetch<Paginated<{ id: number; tenantId: number; campId: number; campName: string; guestName: string; amount: number; currency: string; status: string; dueDate: string; paidDate: string | null; invoiceNumber: string; createdAt: string }>>(`/admin/financials/invoices?page=${page}&limit=${limit}`);
+}
+
+// P2: Marketplace payments ledger (cross-tenant) — reconciliation view of every
+// online capture: which tenant, for which order/reference, gross → fee → net.
+export interface PublicPayment {
+  id: string;
+  orderId: string;
+  tenantId: string;
+  orderReference: string;
+  channel: string;
+  grossAmount: number;
+  marketplaceFee: number;
+  netAmount: number;
+  currency: string;
+  paymobTransactionId: string | null;
+  paymobIntentionId: string | null;
+  paymentStatus: 'captured' | 'settled' | 'refunded' | 'failed';
+  capturedAt: string;
+  settledAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  tenantName: string;
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  customerId: string | null;
+}
+
+export function getAdminPublicPayments(params: {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  tenantId?: string;
+  channel?: string;
+} = {}) {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  if (params.status) qs.set('status', params.status);
+  if (params.tenantId) qs.set('tenantId', params.tenantId);
+  if (params.channel) qs.set('channel', params.channel);
+  const query = qs.toString();
+  return apiFetch<{ data: PublicPayment[]; total: number; page: number; pageSize: number; hasMore: boolean }>(
+    `/admin/financials/public-payments${query ? `?${query}` : ''}`
+  );
+}
+
+// ─── Super Admin: Marketplace Payouts ──────────────────────────────────────
+// NOTE: A tenant-scoped payout helper is added by a separate task later. Keep
+// this block tightly scoped to ADMIN payout management so the seam stays clean.
+
+export interface MarketplacePayout {
+  id: string;
+  tenantId: number;
+  tenantName: string;
+  amount: number;
+  currency: string;
+  method: 'bank_transfer' | 'cash' | 'paymob' | 'other';
+  status: 'pending' | 'paid' | 'failed' | 'cancelled';
+  reference: string | null;
+  notes: string | null;
+  itemCount: number;
+  createdAt: string;
+  paidAt: string | null;
+  cancelledAt: string | null;
+}
+
+export interface MarketplacePayoutDetail extends MarketplacePayout {
+  items: PublicPayment[];
+}
+
+export interface CreatePayoutRequest {
+  tenantId: number;
+  paymentIds: string[];
+  method: string;
+  reference?: string;
+  notes?: string;
+}
+
+/** Eligible captured payments that can be grouped into a payout. */
+export function getAdminPayoutEligible(params: { tenantId?: number; limit?: number } = {}) {
+  const qs = new URLSearchParams();
+  if (params.tenantId) qs.set('tenantId', String(params.tenantId));
+  if (params.limit) qs.set('limit', String(params.limit));
+  const query = qs.toString();
+  return apiFetch<{ data: PublicPayment[]; total: number; totalNet: number }>(
+    `/admin/financials/payouts/eligible${query ? `?${query}` : ''}`
+  );
+}
+
+export function getAdminPayouts(params: { page?: number; pageSize?: number; tenantId?: number; status?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  if (params.tenantId) qs.set('tenantId', String(params.tenantId));
+  if (params.status) qs.set('status', params.status);
+  const query = qs.toString();
+  return apiFetch<Paginated<MarketplacePayout>>(
+    `/admin/financials/payouts${query ? `?${query}` : ''}`
+  );
+}
+
+export function getAdminPayout(id: string) {
+  return apiFetch<MarketplacePayoutDetail>(`/admin/financials/payouts/${encodeURIComponent(id)}`);
+}
+
+export function createAdminPayout(body: CreatePayoutRequest) {
+  return apiFetch<MarketplacePayoutDetail>('/admin/financials/payouts', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function markAdminPayoutPaid(id: string) {
+  return apiFetch<MarketplacePayoutDetail>(`/admin/financials/payouts/${encodeURIComponent(id)}/paid`, {
+    method: 'POST',
+  });
+}
+
+export function cancelAdminPayout(id: string) {
+  return apiFetch<MarketplacePayoutDetail>(`/admin/financials/payouts/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+  });
 }
 
 export function getSuperHROverview() {

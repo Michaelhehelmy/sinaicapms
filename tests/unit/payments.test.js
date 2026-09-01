@@ -34,12 +34,23 @@ function createMockRequest(body, headers = {}) {
 describe('handleCreatePaymentIntent', () => {
   const tenantId = 'tenant_1';
 
+  it('returns 503 when PM_ENABLED is not set', async () => {
+    const { DB } = createMockDb();
+    const req = createMockRequest({ orderId: 'ord_1', amount: 500 });
+
+    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const data = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(data.error).toBe('Payment gateway disabled');
+  });
+
   it('creates payment intent for valid order', async () => {
     const orderRow = { id: 'ord_1', tenant_id: tenantId, total_amount: 500, order_state_id: 'confirmed' };
     const { DB } = createMockDb(orderRow);
     const req = createMockRequest({ orderId: 'ord_1', amount: 500 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(200);
@@ -56,7 +67,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb(orderRow);
     const req = createMockRequest({ orderId: 'ord_2', amount: 100 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(data.currency).toBe('egp');
@@ -67,7 +78,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb(orderRow);
     const req = createMockRequest({ orderId: 'ord_3', amount: 100, currency: 'usd' });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(data.currency).toBe('usd');
@@ -77,7 +88,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb();
     const req = createMockRequest({ amount: 500 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -89,7 +100,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb();
     const req = createMockRequest({ orderId: 'ord_1' });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -101,7 +112,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb();
     const req = createMockRequest({ orderId: 'ord_1', amount: 0 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     // amount: 0 is falsy, so !amount matches the first guard before amount <= 0
@@ -113,7 +124,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb();
     const req = createMockRequest({ orderId: 'ord_1', amount: -50 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -124,7 +135,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb(null); // order not found
     const req = createMockRequest({ orderId: 'ord_nonexistent', amount: 500 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(404);
@@ -136,7 +147,7 @@ describe('handleCreatePaymentIntent', () => {
     const { DB } = createMockDb(orderRow);
     const req = createMockRequest({ orderId: 'ord_cancel', amount: 200 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -148,7 +159,7 @@ describe('handleCreatePaymentIntent', () => {
     DB.prepare.mockImplementation(() => { throw new Error('DB failure'); });
     const req = createMockRequest({ orderId: 'ord_1', amount: 500 });
 
-    const res = await handleCreatePaymentIntent(req, { DB }, tenantId);
+    const res = await handleCreatePaymentIntent(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(500);
@@ -160,12 +171,23 @@ describe('handleCreatePaymentIntent', () => {
 describe('handleConfirmPayment', () => {
   const tenantId = 'tenant_1';
 
+  it('returns 503 when PM_ENABLED is not set', async () => {
+    const { DB } = createMockDb();
+    const req = createMockRequest({ paymentIntentId: 'pi_mock_123', orderId: 'ord_1' });
+
+    const res = await handleConfirmPayment(req, { DB }, tenantId);
+    const data = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(data.error).toBe('Payment gateway disabled');
+  });
+
   it('confirms payment and updates order to paid', async () => {
     const orderRow = { id: 'ord_1', tenant_id: tenantId, total_amount: 500, order_state_id: 'confirmed', room_id: 'room_1', check_in_date: '2026-08-01' };
     const { DB } = createMockDb(orderRow);
     const req = createMockRequest({ paymentIntentId: 'pi_mock_123', orderId: 'ord_1' });
 
-    const res = await handleConfirmPayment(req, { DB }, tenantId);
+    const res = await handleConfirmPayment(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(200);
@@ -179,7 +201,7 @@ describe('handleConfirmPayment', () => {
     const { DB } = createMockDb();
     const req = createMockRequest({ orderId: 'ord_1' });
 
-    const res = await handleConfirmPayment(req, { DB }, tenantId);
+    const res = await handleConfirmPayment(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -190,7 +212,7 @@ describe('handleConfirmPayment', () => {
     const { DB } = createMockDb();
     const req = createMockRequest({ paymentIntentId: 'pi_mock_123' });
 
-    const res = await handleConfirmPayment(req, { DB }, tenantId);
+    const res = await handleConfirmPayment(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -201,7 +223,7 @@ describe('handleConfirmPayment', () => {
     const { DB } = createMockDb(null);
     const req = createMockRequest({ paymentIntentId: 'pi_mock_123', orderId: 'ord_nonexistent' });
 
-    const res = await handleConfirmPayment(req, { DB }, tenantId);
+    const res = await handleConfirmPayment(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(404);
@@ -212,7 +234,7 @@ describe('handleConfirmPayment', () => {
     const { DB } = createMockDb(orderRow);
     const req = createMockRequest({ paymentIntentId: 'pi_mock_123', orderId: 'ord_cancel' });
 
-    const res = await handleConfirmPayment(req, { DB }, tenantId);
+    const res = await handleConfirmPayment(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(400);
@@ -224,7 +246,7 @@ describe('handleConfirmPayment', () => {
     DB.prepare.mockImplementation(() => { throw new Error('DB failure'); });
     const req = createMockRequest({ paymentIntentId: 'pi_mock_123', orderId: 'ord_1' });
 
-    const res = await handleConfirmPayment(req, { DB }, tenantId);
+    const res = await handleConfirmPayment(req, { DB, PM_ENABLED: 'true' }, tenantId);
     const data = await res.json();
 
     expect(res.status).toBe(500);

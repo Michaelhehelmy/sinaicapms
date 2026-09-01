@@ -14,6 +14,7 @@ const { mockApi, hookState, mockShowToast } = vi.hoisted(() => {
     invoices: [] as unknown[],
     payments: [] as unknown[],
     taxRates: [] as unknown[],
+    payouts: [] as unknown[],
     loading: false,
   };
   return {
@@ -28,6 +29,7 @@ const { mockApi, hookState, mockShowToast } = vi.hoisted(() => {
       updateInvoiceStatus: vi.fn(),
       createPayment: vi.fn(),
       createTaxRate: vi.fn(),
+      getTenantPayouts: vi.fn(),
     },
     hookState: {
       state,
@@ -38,6 +40,7 @@ const { mockApi, hookState, mockShowToast } = vi.hoisted(() => {
         state.invoices = [];
         state.payments = [];
         state.taxRates = [];
+        state.payouts = [];
         state.loading = false;
       },
       set: (patch: Record<string, unknown>) => Object.assign(state, patch),
@@ -64,6 +67,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
       financialInvoices: ['admin', 'financials', 'invoices'],
       financialPayments: ['admin', 'financials', 'payments'],
       financialTaxRates: ['admin', 'financials', 'taxRates'],
+      financialPayouts: ['admin', 'financials', 'payouts'],
     },
     useFinancialAccountsQuery: () => ({ data: s.accounts, isLoading: s.loading }),
     useFinancialJournalsQuery: () => ({ data: s.journals, isLoading: s.loading }),
@@ -71,6 +75,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
     useFinancialInvoicesQuery: () => ({ data: s.invoices, isLoading: s.loading }),
     useFinancialPaymentsQuery: () => ({ data: s.payments, isLoading: s.loading }),
     useFinancialTaxRatesQuery: () => ({ data: s.taxRates, isLoading: s.loading }),
+    useFinancialPayoutsQuery: () => ({ data: s.payouts, isLoading: s.loading }),
   };
 });
 
@@ -85,6 +90,7 @@ vi.mock('@/lib/api', () => ({
   updateInvoiceStatus: mockApi.updateInvoiceStatus,
   createPayment: mockApi.createPayment,
   createTaxRate: mockApi.createTaxRate,
+  getTenantPayouts: mockApi.getTenantPayouts,
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -276,6 +282,11 @@ const mockInvoices = [
   { id: 'inv_1', invoice_number: 'INV-0001', type: 'sales', contact_id: null, issue_date: '2025-06-01', due_date: '2025-07-01', total_amount: 100, paid_amount: 0, status: 'draft', currency: 'USD' },
 ];
 
+const mockPayouts = [
+  { id: 'po_1', amount: 150, currency: 'USD', method: 'bank_transfer', status: 'pending', reference: null, notes: null, itemCount: 3, createdAt: '2025-06-01T10:00:00Z', paidAt: null },
+  { id: 'po_2', amount: 200, currency: 'USD', method: 'stripe', status: 'paid', reference: 'PO-REF-2', notes: null, itemCount: 5, createdAt: '2025-05-20T09:00:00Z', paidAt: '2025-05-22T09:00:00Z' },
+];
+
 let invalidateSpy: ReturnType<typeof vi.fn>;
 
 function renderWithClient(ui: React.ReactNode) {
@@ -445,6 +456,40 @@ describe('FinancialPanel extra coverage', () => {
       expect(mockShowToast).toHaveBeenCalledWith('Journal entry created.', 'success');
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'financials'] });
+  });
+
+  it('renders the marketplace payouts section with pending outstanding and row data', () => {
+    setData({ accounts: mockAccounts, payouts: mockPayouts });
+    renderWithClient(<FinancialPanel />);
+
+    // Section + outstanding line (only pending amounts are summed).
+    expect(screen.getByTestId('marketplace-payouts')).toBeInTheDocument();
+    expect(screen.getByTestId('payouts-outstanding')).toHaveTextContent('$150.00');
+
+    // Status badges appear for both rows.
+    expect(screen.getByText('pending')).toBeInTheDocument();
+    expect(screen.getByText('paid')).toBeInTheDocument();
+
+    // Reference, paid-at date, and amounts render (Bank Transfer is the only
+    // pending row; reference '-' shown when null).
+    expect(screen.getByText('PO-REF-2')).toBeInTheDocument();
+    expect(screen.getByText('2025-05-22')).toBeInTheDocument();
+    expect(screen.getByText('$200.00')).toBeInTheDocument();
+    // Method column: CSS `capitalize` only styles the visual text, textContent
+    // stays lowercased after replace('_', ' ').
+    expect(screen.getByText('bank transfer')).toBeInTheDocument();
+  });
+
+  it('does not show an outstanding line and shows the empty copy when there are no payouts', () => {
+    setData({ accounts: mockAccounts, payouts: [] });
+    renderWithClient(<FinancialPanel />);
+
+    expect(screen.getByText('No marketplace payouts yet.')).toBeInTheDocument();
+    expect(screen.queryByTestId('payouts-outstanding')).not.toBeInTheDocument();
+    // The payouts empty state is a plain copy line, never the shared EmptyState
+    // component (so the panel keeps exactly one data-testid="empty-state" on the
+    // active tab's empty state).
+    expect(screen.getByTestId('payouts-empty')).toHaveTextContent('No marketplace payouts yet.');
   });
 });
 

@@ -33,6 +33,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
     invoices: [] as unknown[],
     payments: [] as unknown[],
     taxRates: [] as unknown[],
+    payouts: [] as unknown[],
     loading: false,
   };
   return {
@@ -48,6 +49,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
       financialInvoices: ['admin', 'financials', 'invoices'],
       financialPayments: ['admin', 'financials', 'payments'],
       financialTaxRates: ['admin', 'financials', 'taxRates'],
+      financialPayouts: ['admin', 'financials', 'payouts'],
     },
     useHrEmployeesQuery: () => ({ data: state.employees, isLoading: state.loading }),
     useHrLeaveTypesQuery: () => ({ data: state.leaveTypes, isLoading: state.loading }),
@@ -60,6 +62,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
     useFinancialInvoicesQuery: () => ({ data: state.invoices, isLoading: state.loading }),
     useFinancialPaymentsQuery: () => ({ data: state.payments, isLoading: state.loading }),
     useFinancialTaxRatesQuery: () => ({ data: state.taxRates, isLoading: state.loading }),
+    useFinancialPayoutsQuery: () => ({ data: state.payouts, isLoading: state.loading }),
     __reset: () => {
       state.employees = [];
       state.leaveTypes = [];
@@ -72,6 +75,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
       state.invoices = [];
       state.payments = [];
       state.taxRates = [];
+      state.payouts = [];
       state.loading = false;
     },
     __setData: (patch: Record<string, unknown>) => { Object.assign(state, patch); },
@@ -116,11 +120,20 @@ vi.mock('@/lib/api', () => ({
   updateInvoiceStatus: vi.fn(),
   createPayment: vi.fn(),
   createTaxRate: vi.fn(),
+  getTenantPayouts: vi.fn(),
+  getAdminPublicPayments: vi.fn(),
+  getAdminPayoutEligible: vi.fn(),
+  getAdminPayouts: vi.fn(),
+  getAdminPayout: vi.fn(),
+  createAdminPayout: vi.fn(),
+  markAdminPayoutPaid: vi.fn(),
+  cancelAdminPayout: vi.fn(),
 }));
 
 import * as api from '@/lib/api';
 const mockApiFetch = vi.mocked(api.apiFetch);
 const mockGetAdminTenants = vi.mocked(api.getAdminTenants);
+const mockGetAdminPublicPayments = vi.mocked(api.getAdminPublicPayments);
 const mockCreateHrEmployee = vi.mocked(api.createHrEmployee);
 const mockUpdateHrEmployee = vi.mocked(api.updateHrEmployee);
 const mockDeleteHrEmployee = vi.mocked(api.deleteHrEmployee);
@@ -139,6 +152,12 @@ const mockCreateFinancialInvoice = vi.mocked(api.createFinancialInvoice);
 const mockUpdateInvoiceStatus = vi.mocked(api.updateInvoiceStatus);
 const mockCreatePayment = vi.mocked(api.createPayment);
 const mockCreateTaxRate = vi.mocked(api.createTaxRate);
+const mockGetAdminPayoutEligible = vi.mocked(api.getAdminPayoutEligible);
+const mockGetAdminPayouts = vi.mocked(api.getAdminPayouts);
+const mockGetAdminPayout = vi.mocked(api.getAdminPayout);
+const mockCreateAdminPayout = vi.mocked(api.createAdminPayout);
+const mockMarkAdminPayoutPaid = vi.mocked(api.markAdminPayoutPaid);
+const mockCancelAdminPayout = vi.mocked(api.cancelAdminPayout);
 
 vi.mock('@/lib/utils', () => ({
   formatCurrency: (v: number) => `$${Number(v).toFixed(2)}`,
@@ -457,11 +476,51 @@ const mockFinancialOverview = {
     { tenant_id: 't1', tenant_name: 'Acacia Camp', invoice_count: 5, total_revenue: 2000, total_collected: 1000 },
     { tenant_id: 't2', tenant_name: 'Sinai Lodge', invoice_count: 7, total_revenue: 3000, total_collected: 2000 },
   ],
+  // P2: marketplace settlement totals + per-tenant breakdown
+  totalGross: 1000,
+  totalFees: 100,
+  totalNet: 900,
+  marketplaceBreakdown: [
+    { tenantId: 't1', tenantName: 'Acacia Camp', paymentCount: 3, gross: 600, fees: 60, net: 540 },
+    { tenantId: 't2', tenantName: 'Sinai Lodge', paymentCount: 2, gross: 400, fees: 40, net: 360 },
+  ],
 };
 
 const mockSuperInvoices = [
   { id: 'i1', invoice_number: 'INV-100', type: 'sales', status: 'paid', total_amount: 150, tenant_name: 'Acacia Camp', issue_date: '2025-06-01' },
   { id: 'i2', invoice_number: 'INV-101', type: 'purchase', status: 'overdue', total_amount: 250, tenant_name: 'Sinai Lodge', issue_date: '2025-05-01' },
+];
+
+// P2: marketplace payments ledger rows (camelCase per the jsonResponse choke point)
+const mockPublicPayments = [
+  {
+    id: 'mp1',
+    orderId: 'o1',
+    tenantId: 't1',
+    orderReference: 'REF-1001',
+    channel: 'marketplace',
+    grossAmount: 600,
+    marketplaceFee: 60,
+    netAmount: 540,
+    currency: 'EGP',
+    paymentStatus: 'captured',
+    capturedAt: '2025-07-01T10:00:00Z',
+    tenantName: 'Acacia Camp',
+  },
+  {
+    id: 'mp2',
+    orderId: 'o2',
+    tenantId: 't2',
+    orderReference: 'REF-1002',
+    channel: 'pos',
+    grossAmount: 400,
+    marketplaceFee: 40,
+    netAmount: 360,
+    currency: 'EGP',
+    paymentStatus: 'settled',
+    capturedAt: '2025-07-02T12:00:00Z',
+    tenantName: 'Sinai Lodge',
+  },
 ];
 
 function mockSuperHrApi() {
@@ -473,8 +532,56 @@ function mockSuperHrApi() {
   }) as never);
 }
 
+// P2: payout ledger rows (MarketplacePayout shape — camelCase)
+const mockPayouts = [
+  {
+    id: 'po_1',
+    tenantId: 1,
+    tenantName: 'Acacia Camp',
+    amount: 540,
+    currency: 'EGP',
+    method: 'bank_transfer',
+    status: 'pending',
+    reference: null,
+    notes: null,
+    itemCount: 2,
+    createdAt: '2025-07-03T09:00:00Z',
+    paidAt: null,
+    cancelledAt: null,
+  },
+  {
+    id: 'po_2',
+    tenantId: 2,
+    tenantName: 'Sinai Lodge',
+    amount: 360,
+    currency: 'EGP',
+    method: 'cash',
+    status: 'paid',
+    reference: 'PAY-2025-001',
+    notes: '',
+    itemCount: 1,
+    createdAt: '2025-07-02T08:00:00Z',
+    paidAt: '2025-07-04T10:00:00Z',
+    cancelledAt: null,
+  },
+];
+
 function mockSuperFinancialApi() {
   mockGetAdminTenants.mockResolvedValue(mockSuperTenants as never);
+  mockGetAdminPublicPayments.mockResolvedValue({
+    data: mockPublicPayments,
+    total: mockPublicPayments.length,
+    page: 1,
+    pageSize: 20,
+    hasMore: false,
+  } as never);
+  mockGetAdminPayouts.mockResolvedValue({
+    data: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+    hasMore: false,
+  } as never);
   mockApiFetch.mockImplementation(((url: string) => {
     if (url === '/admin/financials/overview') return Promise.resolve(mockFinancialOverview);
     if (url.startsWith('/admin/financials/invoices')) return Promise.resolve({ data: mockSuperInvoices, total: 2 });
@@ -1656,14 +1763,22 @@ describe('SuperFinancialsPanel', () => {
     await waitFor(() => expect(screen.getByText('INV-100')).toBeInTheDocument());
     expect(screen.getByText('Financial Overview')).toBeInTheDocument();
     expect(screen.getByTestId('super-financials-panel')).toBeInTheDocument();
-    expect(screen.getAllByTestId('stat-card')).toHaveLength(4);
+    expect(screen.getAllByTestId('stat-card')).toHaveLength(7);
     expect(screen.getByText('Total Revenue')).toBeInTheDocument();
     expect(screen.getByText('$5000.00')).toBeInTheDocument();
     expect(screen.getByText('Revenue by Tenant')).toBeInTheDocument();
     expect(screen.getByText('5 invoices')).toBeInTheDocument();
-    expect(screen.getByTestId('data-table')).toBeInTheDocument();
+    expect(screen.getAllByTestId('data-table').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('INV-101')).toBeInTheDocument();
     expect(screen.getByText('overdue')).toBeInTheDocument();
+
+    // P2: marketplace payments section — summary strip, per-tenant breakdown, ledger
+    expect(screen.getByText('Marketplace Payments')).toBeInTheDocument();
+    expect(screen.getByText('Total Gross')).toBeInTheDocument();
+    expect(screen.getByText('$1000.00')).toBeInTheDocument();
+    expect(screen.getByText('Settlement by Tenant')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('REF-1001')).toBeInTheDocument());
+    expect(screen.getByText('REF-1002')).toBeInTheDocument();
   });
 
   it('does not render revenue breakdown when empty', async () => {
@@ -1737,5 +1852,198 @@ describe('SuperFinancialsPanel', () => {
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to load invoices'), 'error');
     });
+  });
+
+  // ── P2: payout management ──
+
+  it('renders payouts table with statuses and pending-only actions', async () => {
+    mockGetAdminPayouts.mockResolvedValue({
+      data: mockPayouts,
+      total: mockPayouts.length,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByText('PAY-2025-001')).toBeInTheDocument());
+    expect(screen.getByText('bank_transfer')).toBeInTheDocument();
+    expect(screen.getByText('pending')).toBeInTheDocument();
+    expect(screen.getAllByText('paid').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Mark Paid')).toHaveLength(1);
+    expect(screen.getAllByText('Cancel')).toHaveLength(1);
+    // The paid payout is not actionable.
+    expect(screen.queryByTestId('mark-paid-po_2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cancel-payout-po_2')).not.toBeInTheDocument();
+  });
+
+  it('shows empty state when no payouts exist', async () => {
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByText('Payouts')).toBeInTheDocument());
+    expect(screen.getByText('No payouts found')).toBeInTheDocument();
+  });
+
+  it('renders payout summary stats when overview exposes payoutSummary', async () => {
+    mockApiFetch.mockImplementation(((url: string) => {
+      if (url === '/admin/financials/overview') {
+        return Promise.resolve({ ...mockFinancialOverview, payoutSummary: { totalOutstanding: 540, totalPaidOut: 360 } });
+      }
+      if (url.startsWith('/admin/financials/invoices')) return Promise.resolve({ data: mockSuperInvoices, total: 2 });
+      return Promise.resolve(null);
+    }) as never);
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByText('Outstanding (owed to tenants)')).toBeInTheDocument());
+    expect(screen.getByText('Paid Out')).toBeInTheDocument();
+    expect(screen.getAllByText('$540.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$360.00').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not render payout summary stats when overview lacks payoutSummary', async () => {
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByText('Financial Overview')).toBeInTheDocument());
+    expect(screen.queryByText('Outstanding (owed to tenants)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Paid Out')).not.toBeInTheDocument();
+  });
+
+  it('mark paid calls markAdminPayoutPaid for a pending payout', async () => {
+    mockGetAdminPayouts.mockResolvedValue({
+      data: mockPayouts,
+      total: mockPayouts.length,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    mockMarkAdminPayoutPaid.mockResolvedValue({ id: 'po_1', status: 'paid' } as never);
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByTestId('mark-paid-po_1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mark-paid-po_1'));
+    await waitFor(() => {
+      expect(mockMarkAdminPayoutPaid).toHaveBeenCalledWith('po_1');
+      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('paid'), 'success');
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'financials', 'payouts'] });
+  });
+
+  it('mark paid API error shows error toast', async () => {
+    mockGetAdminPayouts.mockResolvedValue({
+      data: mockPayouts,
+      total: mockPayouts.length,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    mockMarkAdminPayoutPaid.mockRejectedValue(new Error('nope'));
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByTestId('mark-paid-po_1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mark-paid-po_1'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to mark payout paid'), 'error');
+    });
+  });
+
+  it('cancel calls cancelAdminPayout for a pending payout', async () => {
+    mockGetAdminPayouts.mockResolvedValue({
+      data: mockPayouts,
+      total: mockPayouts.length,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    mockCancelAdminPayout.mockResolvedValue({ id: 'po_1', status: 'cancelled' } as never);
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByTestId('cancel-payout-po_1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('cancel-payout-po_1'));
+    await waitFor(() => {
+      expect(mockCancelAdminPayout).toHaveBeenCalledWith('po_1');
+      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('cancelled'), 'success');
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'financials', 'payouts'] });
+  });
+
+  it('cancel payout API error shows error toast', async () => {
+    mockGetAdminPayouts.mockResolvedValue({
+      data: mockPayouts,
+      total: mockPayouts.length,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    mockCancelAdminPayout.mockRejectedValue(new Error('nope'));
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByTestId('cancel-payout-po_1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('cancel-payout-po_1'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to cancel payout'), 'error');
+    });
+  });
+
+  it('create payout modal opens from captured selection and submits paymentIds', async () => {
+    mockCreateAdminPayout.mockResolvedValue({ id: 'po_new', items: [] } as never);
+    mockGetAdminPublicPayments.mockResolvedValue({
+      data: [{ ...mockPublicPayments[0], tenantId: '5', tenantName: 'Acacia Camp' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByText('REF-1001')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('select-payment-mp1'));
+    expect(screen.getByTestId('payout-selection-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('payout-selection-summary').textContent).toContain('1 selected');
+    fireEvent.click(screen.getByTestId('create-payout-btn'));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Create Payout' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('modal-submit'));
+    await waitFor(() => {
+      expect(mockCreateAdminPayout).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 5, paymentIds: ['mp1'], method: 'bank_transfer' }),
+      );
+      expect(mockShowToast).toHaveBeenCalledWith('Payout created.', 'success');
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'financials', 'public-payments'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'financials', 'payouts'] });
+  });
+
+  it('create payout API error shows error toast', async () => {
+    mockCreateAdminPayout.mockRejectedValue(new Error('nope'));
+    mockGetAdminPublicPayments.mockResolvedValue({
+      data: [{ ...mockPublicPayments[0], tenantId: '5', tenantName: 'Acacia Camp' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByText('REF-1001')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('select-payment-mp1'));
+    fireEvent.click(screen.getByTestId('create-payout-btn'));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Create Payout' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('modal-submit'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to create payout'), 'error');
+    });
+  });
+
+  it('blocks create payout for a mixed-tenant selection', async () => {
+    mockGetAdminPublicPayments.mockResolvedValue({
+      data: [
+        { ...mockPublicPayments[0], tenantId: '1', tenantName: 'Acacia Camp' },
+        { ...mockPublicPayments[1], tenantId: '2', tenantName: 'Sinai Lodge', paymentStatus: 'captured' },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    } as never);
+    renderWithClient(<SuperFinancialsPanel />);
+    await waitFor(() => expect(screen.getByText('REF-1001')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('select-payment-mp1'));
+    fireEvent.click(screen.getByTestId('select-payment-mp2'));
+    expect(screen.getByTestId('payout-selection-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('mixed-tenant-warning')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('create-payout-btn'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('single tenant'), 'warning');
+    });
+    expect(mockCreateAdminPayout).not.toHaveBeenCalled();
   });
 });

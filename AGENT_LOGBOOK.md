@@ -141,6 +141,41 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 
 ## Task Logs
 
+### [2026-09-01] PA-BE super-admin payout module — `admin-payouts.js` (backend tmp agent)
+
+**Task**: Build `backend/src/api/admin-payouts.js` — super-admin endpoints that batch 'captured' marketplace-payment ledger rows into a payout to a tenant, move them through `pending → paid` (settling ledger rows), plus cancel. Mounted at `/api/admin/payouts` in the EXISTING `superAdminAuth` loop (one import + one array entry, no separate `app.use`). Domain rules: eligible = `payment_status='captured'` + `payout_id IS NULL` + `channel='marketplace'`; all payments in a payout share one `tenant_id` == body `tenantId`; amount = `SUM(net_amount)` (marketplace keeps the fee); create sets `payout_id` only (payments stay 'captured'); Pay flips members to 'settled' with `settled_at = paid_at`; Cancel reverts `payout_id` to NULL (payments stay captured); paid/cancelled are terminal → 409 on re-transition.
+
+**Files changed**:
+- `backend/src/api/admin-payouts.js` (new) — Hono router: `GET /eligible` (captured/unbatched/marketplace, optional `tenantId`, `{ data, total, totalNet }`), `POST /` (zod `.strip()` body, one `WHERE id IN (...)` validation SELECT, INSERT with app-generated `lower(hex(randomblob(16)))`-style id, `Promise.all` per-payment `payout_id` UPDATE), `GET /` (paginationEnvelope, tenantId/status filters, LEFT JOIN tenants `tenant_name`, correlated subquery `item_count`), `GET /:id` (payout + items), `POST /:id/pay` (pending→paid, batch settled UPDATE), `POST /:id/cancel` (pending→cancelled, batch `payout_id=NULL` UPDATE). `created_by` from `c.env.user?.id ?? NULL`. `jsonResponse` camelizes snake_case aliases at the choke point.
+- `backend/src/index.js` — one import + `['/admin/payouts', adminPayoutsRoutes]` in the `superAdminAuth` loop (next to `/admin/financials`).
+- `backend/tests/unit/admin-payouts.test.js` (new) — 19 tests using the admin-financials SQL-routing mock DB + `mountRouter` harness: eligible list (tenant filter, captured-only, totals), create happy path (2 payments → amount=sum net, payout_id set, stays captured), all 5 create 400s (mixed-tenant, non-existent id, already-settled, pos-channel, empty paymentIds), pay (pending→paid, settled+settled_at, pay-again 409), cancel (pending→cancelled, payout_id cleared, cancel-after-paid/cancelled 409), paginated list (tenantId/status filters, tenant_name, item_count), detail (payout + items, 404).
+
+**Not touched** (per constraint): `backend/src/api/financials.js`, `admin-financials.js`, `registry.js`, migrations (0087–0090 final), `app/**`.
+
+**Verification**:
+- `cd backend && npx vitest run tests/unit/admin-payouts.test.js` → **19 passed (1 file)**.
+- `cd backend && npx vitest run` → **71 files, 1943 passed** — ALL green (includes other wave agents' concurrent changes).
+
+**Lesson**: The SQL-routing mock DB matches handlers with regex `.test()` WITHOUT dotAll — multi-line SQL template literals break `.*`-spanning patterns (`.` doesn't match `\n`). Use the `s` (dotAll) flag in test regexes that span lines, and assert query-param binds as the STRINGS they arrive as (`'5'`, not `5`).
+
+### [2026-09-01] PA-contract — payout endpoints/schemas registered in OpenAPI + contracts regenerated (backend tmp agent)
+
+**Task**: Register the payout wire contract in `backend/src/routes/registry.js` (the middle-path OpenAPI source of truth), regenerate `backend/openapi.json` + `app/src/lib/api-types.ts`. Purely contract-sync — no route-handler source, no app components.
+
+**Files changed**:
+- `backend/src/routes/registry.js` — added `payoutId: z.string().nullable().optional()` to `publicPaymentSchema` (ledger row now carries its batch); new schemas `MarketplacePayout` (id, tenantId(number), tenantName?, amount, currency, method, status, reference?, notes?, itemCount, createdAt, paidAt?, cancelledAt?), `MarketplacePayoutList`, `MarketplacePayoutDetail` ({ payout, items: PublicPayment[] }), `CreatePayoutRequest` (tenantId, paymentIds[].min(1), method, reference?, notes?), `PaginatedMarketplacePayouts` (paginatedEnvelope), `EligiblePayoutPayments` ({ data, total, totalNet }). New `adminPayoutsRoutes` (tags `['admin-payouts','financials']`, static `GET /eligible` registered BEFORE `GET /{id}`), new `financialsRoutes` (tenant `GET /api/financials/payouts`, tags `['financials']`). Both arrays appended to `openApiRoutes`.
+- `backend/openapi.json` (regenerated) — **84 paths / 139 schemas** (up from 77), now carries all 6 admin payout paths + tenant payout path.
+- `app/src/lib/api-types.ts` (regenerated via `app npm run gen:types`) — **9528 → 10092 lines**; adds `MarketplacePayout`, `MarketplacePayoutList`, `MarketplacePayoutDetail`, `PaginatedMarketplacePayouts`, `EligiblePayoutPayments`, `CreatePayoutRequest`, and `payoutId?: string | null` on `PublicPayment`.
+
+**Verification**:
+- `cd backend && npx vitest run tests/openapi-doc.test.js tests/openapi-no-snake.test.js` → **9 passed (2 files)** (artifact-vs-generated equality + zero snake_case contract).
+- `cd backend && npx vitest run` → **71 files, 1943 passed** — ALL green.
+
+**Lessons**:
+- `gen:openapi` lives in `backend/` (`npm run gen:openapi`); `gen:types` lives in `app/` (`npm run gen:types`) — NOT both on the backend (prior-wave gotcha, confirmed again).
+- The static sub-route BOOKLET applies here: register `GET /eligible` before `GET /{id}` in the array; zod-to-openapi emits paths in registration order.
+- Re-regenerating openapi.json after a gap absorbs ALL un-regenerated registry additions at once (the diff also picked up the P-wave `publicPaymentSchema`/`adminFinancialsRoutes`) — the artifact-equality tests are the safety net that proves it matches the build-time doc.
+
 ### [2026-08-31] T5 render-phase toast deferral — fix super-admin panel crash (frontend agent)
 
 **Task**: Fix the React infinite-render crash that white-screened `/admin/analytics`, `/admin/storefront`, and `/admin/billing` for the tenantless super admin (`admin@sinaicamps.com`) whenever a tenant-scoped report endpoint returned 400.
@@ -8170,3 +8205,273 @@ Playwright needs `video: 'retain-on-failure'` (config) → ffmpeg, and headless 
 **Final verified state**: `app && vitest` = 2797/2797 all green; root integration = 156/156; E2E @smoke = 10/10 (verified by QA agent via puppeteer symlink workaround; CI installs browsers natively).
 
 **Not yet committed** — awaiting user confirmation to commit + push this wave.
+
+### 2026-09-01 — T4: Public HMAC-verified Paymob webhook (backend agent)
+
+**Task**: Create `POST /api/public/paymob/webhook` (module `backend/src/api/paymob-webhook.js`) — public, signature-verified Paymob s2s callback that marks a marketplace order `payment_status='paid'`, transitions `pending → confirmed`, and fires the `new-booking` SSE broadcast (replacement for the mock Stripe webhook in `payments.js`, which T7 retires).
+
+**Created**: `backend/src/api/paymob-webhook.js` — exports `handlePaymobWebhook(request, env)` (fail-closed: 503 if `PM_ENABLED !== 'true'` or no `PM_HMAC_SECRET`; 401 on bad HMAC; fast 200 `{ received: true }` ack otherwise). No edits to `index.js` (T5 mounts), `payments.js` (T7), or `orders.js` (read-only).
+
+**Key decisions**:
+- Raw body read via `request.text()` exactly once; HMAC computed over those exact bytes by `verifyPaymobWebhookSignature` (T2 service). Paymob sends the hmac INSIDE the body → `hmacHeader = extractPaymobTransaction(...).hmac`.
+- orderRef → order mapping: T3 embeds `orderRef:<ref>` in the intention item description; the webhook scans `order.items[].description/name` (plus `merchant_order_id` fallback) with `/orderRef:([A-Za-z0-9_-]+)/`.
+- Cross-tenant protection: `SELECT ... WHERE reference = ?` to derive `tenant_id`, then EVERY write is `WHERE reference = ? AND tenant_id = ?` (or `WHERE id = ? AND tenant_id = ?`). Never updates by reference/id alone.
+- State transition mirrors orders.js `LEGAL_TRANSITIONS`: `pending → confirmed`, guarded with `AND order_state_id = 'pending'` so Paymob retries are idempotent; `room_status → 'reserved'` side-effect fires only when the transition actually landed (`meta.changes`).
+- Idempotent away-acks: returns 200 on `success !== true`, missing orderRef, or no matching order (stops Paymob retries); falsified/HMAC rejections logged in non-prod.
+
+**Verify**: `node --check` OK; `cd backend && npx vitest run` → 63 files / 1869 tests, ALL passing.
+
+### 2026-09-01 — T6: Frontend Paymob Unified Checkout redirect (frontend agent)
+
+**Task**: Add a "Confirm & Pay Online" path to `ReservationSummary.tsx` that calls `createPublicReservation`, redirects to Paymob Unified Checkout, and falls back to WhatsApp on failure.
+
+**File changed**: `app/src/components/public/ReservationSummary.tsx` only (no other files touched).
+
+**Changes**:
+1. Added `import { createPublicReservation } from '@/lib/api'` (line 9).
+2. Added new T keys: `payOnline`, `processing`, `paymentUnavailable`, `roomUnavailable`, `paymentError` (lines 120-124).
+3. Added `payLoading` + `payError` state variables (lines 139-140).
+4. Added `submitReservation` async function (lines 219-269):
+   - Guards: returns early if no guest name or no items; shows error if `items.length !== 1` (backend takes a single room booking).
+   - Builds `PublicReservationRequest` from the first item: `roomId` = `item.roomType.id`, `checkInDate`/`checkOutDate`/`numberOfPeople`/`guestName`/`guestPhone`, plus optional `items[]` for meal plans (`productId`/`quantity`).
+   - Calls `createPublicReservation(...)` with loading state.
+   - On success with `paymobEnabled && paymobIntention.clientSecret && publicKey`: redirects via `window.location.href` to Paymob Unified Checkout.
+   - On Paymob disabled/no intention: shows `paymentUnavailable` error, calls `submitLead()`.
+   - On catch (409/unavailable or other): shows appropriate error, calls `submitLead()` as safety net.
+5. Added "Confirm & Pay Online" primary button (lines 419-427) above the existing WhatsApp button, styled with `primaryColor` background, disabled when no name / loading / multi-item. Error message rendered inline below (lines 428-432) with amber styling, using `escHtml()`.
+
+**Key decisions**:
+- Single-item guard: `items.length !== 1` disables the Pay button and shows a message directing to WhatsApp. The backend reservation endpoint accepts one room per call; multi-room bookings are not supported yet.
+- `roomId` = `roomType.id`: the UI stores the room type ID in `roomType.id`; the backend expects a `roomId` which it treats as a room-type reference.
+- `api.ts` was NOT modified — `createPublicReservation` already existed.
+- No new public island — ReservationSummary was already `client:load` in `BookPage.astro`.
+- `submitLead()` is called on every failure/degradation path so the lead is never lost.
+
+**Verify**:
+- `cd app && npx tsc --noEmit` → 403 errors (unchanged from baseline — zero new errors).
+- `cd app && npx vitest run` → 121 files / 2797 tests, ALL passing.
+### 2026-09-01 — T9: Tests for Paymob service, webhook HMAC, public reservation, and mock-payments guard
+
+**Task**: Add Vitest unit tests locking the Paymob flow security invariants + G8 mock-payments disabled guard.
+
+**Files created** (all under `backend/tests/unit/`):
+- `paymob.test.js` (16 tests) — `verifyPaymobWebhookSignature` (valid canonical payload → true; tampered amount / flipped-success → false; empty/undefined hmac → false; wrong secret → false; non-JSON → false), `buildHmacSignedString` field order/missing-field behavior, `extractPaymobTransaction` (top-level + obj-wrapper shapes, null-safe on garbage). Signs with `node:crypto` HMAC-SHA512 over `buildHmacSignedString` output to cross-check the service's `crypto.subtle` implementation.
+- `paymob-webhook.test.js` (7 tests) — valid signed success → order marked paid scoped by resolved tenant; writes tenant-scoped (`AND tenant_id = ?`) so a different tenant's order can't be flipped (cross-tenant prevention); tampered/missing hmac → 401 with NO db write; missing `PM_HMAC_SECRET` / `PM_ENABLED !== 'true'` → 503; pending/non-success callback → no paid update even with valid signature.
+- `payments-disabled.test.js` (5 tests) — `handleCreatePaymentIntent`/`handleConfirmPayment` return 503 when `PM_ENABLED` missing or `'false'`, with NO db access; enabled path still marks a matching-tenant order paid; 404 for another tenant.
+- `reservations.test.js` (4 passed + 1 skipped) — 404 unknown/invalid tenant; 409 advisory-overlap ("Room is not available for the selected dates"); 409 guarded-INSERT race guard ("Room no longer available"); Paymob-unconfigured → WhatsApp fallback envelope. Happy-path `clientSecret` spec is SKIPPED (see bug below).
+
+**Confirmed source bug (STOP & report — reservation happy path blocked)**:
+`backend/src/api/reservations.js` step 10 reads `c.req.raw.text()` AFTER step 1 consumed the body via `c.req.json()`. Hono caches its own body but `c.req.raw.text()` bypasses the cache and throws `Body is unusable: Body has already been read`, which the surrounding try/catch silently swallows → the handler ALWAYS returns the WhatsApp fallback (`paymobEnabled:false, paymobIntention:null`) and NEVER calls `createPaymobIntention` in real router requests. So `paymobIntention.clientSecret` is never returned in production. The `rawBody` const is dead code. Fix suggestion: recompute origin from `new URL(c.req.url).origin` and drop `c.req.raw.text()` (or use `c.req.text()`). The happy-path reservation test depends on this fix — do NOT ship the clientSecret assertion against the buggy source.
+
+**Run**: `cd backend && npx vitest run` → 67 files / 1903 passed / 1 skipped (1904 total). New tests: 32 passing + 1 skipped. No existing assertions weakened.
+
+---
+
+### 2026-09-01 — T-source-fix: dead `c.req.raw.text()` read removed in reservations.js + happy-path enabled
+
+**Task**: Resolve the source bug T9 reported (which had left the public-reservation happy-path spec SKIPPED), then verify the full payment wave.
+
+**Bug found by T9**: `backend/src/api/reservations.js` step 10 read `c.req.raw.text()` AFTER step 1 already consumed the request body via `c.req.json()`. Hono caches `c.req.json()` but `c.req.raw.text()` bypasses the cache and throws `Body is unusable: Body has already been read`, which the surrounding try/catch silently swallowed → the handler ALWAYS returned the WhatsApp fallback (`paymobEnabled:false, paymobIntention:null`) and NEVER called `createPaymobIntention` in real router requests. The `rawBody` const was dead code.
+
+**Fix**: Removed the single dead line `const rawBody = await c.req.raw.text();` from `backend/src/api/reservations.js` (the handler now reads the body exactly once via `c.req.json()`; origin is recomputed from `new URL(c.req.url).origin`). No behavior change other than un-blocking the Paymob intention path. Syntax checked (`node --check`).
+
+**Test enablement**: In `backend/tests/unit/reservations.test.js`:
+- Added `vi.mock('../../src/services/paymob.js')` stubbing `createPaymobIntention` → `{ clientSecret, id }` (so the happy path never makes a real network call) plus no-op stubs for the other exports.
+- Changed the previously `it.skip(...)` happy-path spec to a live `it(...)`: valid body + mocked Paymob → 200 with `orderId`, `paymobEnabled:true`, `paymobIntention.clientSecret`.
+- Updated the file header comment (removed the "DEFERRED" note).
+
+**Verify** (both suites green):
+- `cd backend && npx vitest run` → **67 files / 1904/1904 passed** (was 1903/1-skip from T9).
+- `cd app && npx vitest run` → **121 files / 2797/2797 passed**.
+- `cd app && npx tsc --noEmit` → 403 errors, unchanged from the pre-existing admin-panel baseline (zero new).
+
+**Wave status**: The full marketplace-Paymob payment wave is now complete and green — T1 migration, T2 Paymob service, T3 public reservation endpoint, T4 HMAC webhook, T5 wiring + secrets config, T6 frontend Unified Checkout redirect, T7 EOL mock-payments guard, T8 contract, T9 tests, T10 registry/OpenAPI sync, plus this source fix. POS was already structurally correct (manual/on-the-spot confirmation) and was confirmed in scope. Remaining from the prior deep audit: Wave 1 P0 fixes (tenant-billing deleted_at, categories tenant_id, orders.js:755 tenant filter, StorefrontPanel/AIPanel endpoint alignment, ReceiptModal wiring) and Wave 2 P1 security fixes — still pending.
+
+---
+
+### 2026-09-01 — P2-BE: marketplace_payments ledger INSERT in Paymob webhook
+
+**Task**: In the success branch of `handlePaymobWebhook` (`backend/src/api/paymob-webhook.js`), after the paid UPDATE, insert a `marketplace_payments` ledger row capturing what the payment is for (order reference) + where it came from (tenant/channel) + gross/fee/net split.
+
+**Change** (file: `backend/src/api/paymob-webhook.js` ONLY): After `broadcastNewBooking`, added a `try/catch` that:
+- Computes `gross = order.total_amount`, `fee = round(gross * pm.marketplaceFeePct/100, 2)`, `net = gross - fee`.
+- Runs an idempotent `INSERT INTO marketplace_payments ... SELECT ?,?,?,'marketplace',?,?,?,?,?,?, 'captured', 'Paymob webhook capture' WHERE NOT EXISTS (SELECT 1 FROM marketplace_payments WHERE order_reference = ?)` scoped with the DB-resolved `tenantId` (never a client value).
+- On ledger failure: `console.error` and continues → still returns the 200 `{received:true}` ack; the order is already paid. Ledger never blocks the ack.
+- `paymob_intention_id` read from `payloadObj.intention_id || payloadObj.order?.intention_id` (else NULL).
+
+**Test** (`backend/tests/unit/paymob-webhook.test.js`, +1 = 8): "inserts a marketplace_payments ledger row on a valid signed success callback" — asserts the `INSERT INTO marketplace_payments` statement ran, bound binds = `[ord_1, tenant-a, ORD-ABC123, 200, 0, 200, 'EGP', '123456', null, ORD-ABC123]` (tenant-scoped, fee=0 since `marketplaceFeePct`=0 in test env), and SQL has the `WHERE NOT EXISTS` idempotency guard.
+
+**Verify**: `node --check` clean. `cd backend && npx vitest run` → **68 files / 1914/1914 passed** (baseline 1913 + 1 new). All existing webhook tests green (rejection tests keep the "no UPDATE|INSERT prepared" assertion style — the ledger INSERT only fires on verified success).
+
+---
+
+### 2026-09-01 — P1-CONTRACT: api.ts/api-types OpenAPI sync for payment settings + PublicPayment types
+
+**Task**: Sync the OpenAPI registry + generated types to cover the marketplace-payments ledger read endpoint (`GET /api/admin/financials/public-payments`) and the admin-settings `payment` shape without hand-editing the generated artifacts.
+
+**Change** (`backend/src/routes/registry.js` — source of truth):
+- Added `publicPaymentSchema` (`.openapi('PublicPayment')`) — camelCase wire mirror of the `marketplace_payments` ledger row (id, orderId, orderReference, tenantId, tenantName, channel, grossAmount, marketplaceFee, netAmount, currency, paymentStatus, capturedAt, settledAt, checkInDate?, checkOutDate?, customerId?).
+- Added `paginatedPublicPaymentsSchema` via the existing `paginatedEnvelope` helper (data/total/page/pageSize/hasMore — matches the real `paginationEnvelope` wire output).
+- Added `adminFinancialsRoutes` with a single `GET /api/admin/financials/public-payments` route, tags `['admin-financials','financials']`, query filters (page/pageSize/tenantId/status/channel) — the registry previously had ZERO `/api/admin/financials/*` routes, so this is the first; the `/overview` and `/invoices` paths are intentionally left unregistered (out of scope of the public-payments ledger task).
+- Registered `...adminFinancialsRoutes` in `openApiRoutes`.
+- Settings `payment` shape: NO settings schema exists in the registry (settings GET/PUT returns a free-form JSON blob); left as-is per the task rule.
+
+**Generated artifacts** (never hand-edited):
+- `cd backend && npm run gen:openapi` → `backend/openapi.json`: **78 paths / 133 schemas** (was 77/132; +1 path `/api/admin/financials/public-payments`, +2 schemas `PublicPayment` + `PaginatedPublicPayments`).
+- `cd app && npm run gen:types` → `app/src/lib/api-types.ts` (9528 lines).
+
+**api.ts helper**: P2-FE (parallel agent) had ALREADY added `PublicPayment` interface + `getAdminPublicPayments(params)` (`app/src/lib/api.ts`) with inline types matching the wire contract `{ data: PublicPayment[]; total; page; pageSize; hasMore }`. I verified it and REMOVED a duplicate I initially added (avoided double-declaration, which transiently caused a `TS2323` redeclare error + 2 SuperFinancialsPanel errors). The P2-FE helper is intact and the only one present.
+
+**Verify**:
+- `cd backend && npx vitest run tests/openapi-doc.test.js tests/openapi-no-snake.test.js` → **9/9 passed** (artifact == generated doc, zero snake_case).
+- `cd backend && npx vitest run` → **69 files / 1918/1918 passed** (matches baseline, no regression).
+- `cd app && npx tsc --noEmit` → **399 errors** (BELOW the 403 baseline; zero errors referencing PublicPayment/public-payments/financials — net -4, no new type errors; the parallel P2-FE panel typings are consistent).
+
+**Lesson**: `gen:types` lives in `app/package.json` (`openapi-typescript ../backend/openapi.json`), NOT in `backend` — the task file's `cd backend && npm run gen:types` is wrong; it's `cd app && npm run gen:types`. Also: check `api.ts` for an existing P2-FE helper BEFORE adding one to avoid TS2323 redeclaration errors.
+
+---
+
+### 2026-09-01 — P2-FE: SuperFinancialsPanel Marketplace Payments ledger view
+
+**Task**: Add a "Marketplace Payments" ledger view to the super-admin `SuperFinancialsPanel.tsx`, wired to the landed backend `GET /api/admin/financials/public-payments` endpoint, keeping `tsc --noEmit` and `vitest` green.
+
+**Files changed** (task scope — ONLY these three):
+- `app/src/lib/api.ts`: `interface PublicPayment` (camelCase fields: `orderReference`, `tenantName`, `grossAmount`, `marketplaceFee`, `netAmount`, `paymentStatus`, `capturedAt`, `settledAt`…) + `getAdminPublicPayments(params)` helper returning `{ data, total, page, pageSize, hasMore }` (uses `URLSearchParams`, `page`/`pageSize` query keys). Confirmed backend `jsonResponse` → `toCamel` (`backend/src/utils/response.js`) so the UI consumes camelCase.
+- `app/src/components/admin/SuperFinancialsPanel.tsx`: added `useQuery` payments query (queryKey `['admin','financials','public-payments', page, pageSize, status]`), moved `isSuperAdmin` above the hook call (TDZ fix), a summary strip (3 `StatCard`s: Total Gross / Fees / Net), a "Settlement by Tenant" breakdown table (`marketplaceBreakdown`), a payment-status filter `Select`, and the ledger `<DataTable>` with pagination + a `PAYMENT_STATUS_VARIANTS` badge map. Overview stays on `apiFetch`; ledger uses `useQuery`.
+- `app/tests/unit/components/admin/hr-financial.test.tsx`: added `getAdminPublicPayments: vi.fn()` to the `vi.mock('@/lib/api')` factory, `mockPublicPayments` fixture (REF-1001/REF-1002), wired `mockResolvedValue` into `mockSuperFinancialApi()`, and fixed the `getByTestId('data-table')` assertion → `getAllByTestId(...).length >= 1` (the ledger table added a SECOND `data-table` element to the page).
+
+**Gotchas hit**:
+- **TanStack query vs `apiFetch`**: the ledger `useQuery` calls the mocked `getAdminPublicPayments`, NOT `apiFetch`. So any `apiFetch` mock handler for `/admin/financials/public-payments` is inert/redundant — the return value must be set via `mockGetAdminPublicPayments.mockResolvedValue(...)`.
+- **`StatCard` colors**: valid set is `'green' | 'blue' | 'yellow' | 'red' | 'purple'` — NOT `amber`. (`StatCard.tsx`)
+- **Two `data-table` testids**: once the ledger table renders alongside the invoices table, `screen.getByTestId('data-table')` throws "Found multiple elements" — use `getAllByTestId`.
+- **Typed `<DataTable>`**: non-generic `<DataTable>` expects `Column<Record<string, unknown>>`; use a local `type PaymentRecord = PublicPayment & Record<string, unknown>` for the ledger columns.
+
+**Verify**:
+- `cd app && npx vitest run tests/unit/components/admin/hr-financial.test.tsx` → **93/93 passed**.
+- `cd app && npx vitest run` → **2796 passed / 1 failed**; the only failure is `tests/unit/useQueryHooks-extra2.test.tsx` optimistic-cache rollback tests (a pre-existing FLAKY set — 2–3 of `useSaveCampMutation`/`useDeleteCampMutation`/`useSaveRoomMutation` fail in varying combinations on BASELINE too, verified via `git stash`; unrelated to this change and timing/tick-dependent).
+- `cd app && npx tsc --noEmit` → **399 errors** (below the ~403 baseline; ZERO in `SuperFinancialsPanel.tsx` and `src/lib/api.ts`; the remaining src/ errors are all pre-existing in OTHER panels/hooks not touched here).
+
+---
+
+### 2026-09-01 — P-wave: super-admin Paymob config panel + marketplace payment ledger
+
+**Summary**: Two features landed across the P1/P2 parallel wave — Feature 1 (Paymob secret config) and Feature 2 (marketplace payment ledger + admin financials view). All source files were written by parallel agents; P-FINAL verified, appended this entry, and cleaned up tmp agent files.
+
+**Feature 1 — Super-admin Paymob config panel (P1-* agents)**:
+- Migration `0088_platform_settings_payment.sql`: adds `payment` JSONB blob column to `platform_settings`.
+- Backend `admin-settings.js` GET: returns masked `secretKeySet`/`hmacSecretSet` booleans (never raw secrets). PUT: secret-preserve semantics — `undefined` keeps existing, `''` clears, non-empty overwrites. Fixed latent `toSnake` camelCase-stripping bug.
+- `paymentConfig.js` runtime loader: reads `platform_settings.payment` first (dashboard-configured), falls back to env vars (`PAYMOB_*`), never throws → tests stay green.
+- Frontend `SystemSettingsPanel.tsx` "Payments" tab: enabled toggle, 6 Paymob fields (api_key, integration_id, hmac_secret, fee_percentage, etc.), marketplace fee %, masked "Configured ✓" badges, new-value-only secret sends.
+
+**Feature 2 — Marketplace payment ledger + admin financials (P2-* agents)**:
+- Migration `0089_marketplace_payments_ledger.sql`: `marketplace_payments` table (order_id, tenant_id, order_reference, channel, gross/fee/net, paymob refs, status, timestamps).
+- Webhook `paymob-webhook.js`: writes idempotent ledger row (`WHERE NOT EXISTS` guard, tenant-scoped), never blocks the 200 ack even if INSERT fails.
+- Backend `admin-financials.js`: `GET /public-payments` (paginated, filterable by tenant/status/channel) + `GET /overview` now includes `totalGross`, `totalFees`, `totalNet`, `marketplaceBreakdown` per tenant.
+- Frontend `SuperFinancialsPanel.tsx`: "Marketplace Payments" view with summary strip (3 StatCards), per-tenant settlement breakdown, ledger DataTable with status filter + pagination.
+
+**Key invariants preserved**:
+- Secrets never returned raw to the browser (only boolean `Set` flags on GET).
+- Ledger writes always tenant-scoped (tenant_id extracted from JWT/session, never client-supplied).
+- Webhook 200 ack never blocked by ledger failure (try/catch around INSERT, log-and-continue).
+
+**Gotchas recorded**:
+- `gen:types` lives in `app/` (`cd app && npm run gen:types`), NOT `backend/` — confused P1-CONTRACT initially.
+- `apiFetch` vs TanStack Query mocking in hr-financial tests: ledger `useQuery` calls mocked `getAdminPublicPayments`, NOT `apiFetch`.
+- Ledger rows are camelCase on the wire (`response.js` `toCamel`), but tests/mock data must match the wire format.
+- Rejection webhook tests assert "no UPDATE|INSERT prepared" instead of "no prepare" (config SELECT is now unavoidable in the payment flow).
+
+**Final test counts** (P-FINAL independent verification):
+- Backend: **69 files / 1918/1918 passed** ✅
+- Frontend: **121 files / 2796 passed / 1 failed** ✅ (sole failure: `useQueryHooks-extra2.test.tsx` — pre-existing flaky optimistic-cache rollback tests, confirmed in isolation: 2/117 fail, timing-dependent, unrelated to this wave)
+- TypeScript: **399 errors** (below 403 baseline; zero new errors from this wave) ✅
+
+**Files changed** (git status):
+- `AGENT_LOGBOOK.md`
+- `app/src/components/admin/SuperFinancialsPanel.tsx`, `app/src/components/admin/SystemSettingsPanel.tsx`, `app/src/components/public/ReservationSummary.tsx`
+- `app/src/lib/api-types.ts`, `app/src/lib/api.ts`
+- `app/tests/unit/components/admin/hr-financial.test.tsx`
+- `backend/openapi.json`
+- `backend/src/api/admin-financials.js`, `backend/src/api/admin-settings.js`, `backend/src/api/payments.js`, `backend/src/index.js`, `backend/src/routes/registry.js`
+- `backend/tests/payments-validation.test.js`, `backend/wrangler.toml`
+- `tests/unit/payments.test.js`
+- New: `backend/migrations/0087_order_payment_paymob.sql`, `0088_platform_settings_payment.sql`, `0089_marketplace_payments_ledger.sql`
+- New: `backend/src/api/paymob-webhook.js`, `backend/src/api/reservations.js`, `backend/src/services/paymentConfig.js`, `backend/src/services/paymob.js`
+- New: `backend/tests/unit/admin-financials-unit.test.js`, `admin-settings-payment.test.js`, `payments-disabled.test.js`, `paymob-webhook.test.js`, `paymob.test.js`, `reservations.test.js`
+
+**Feature 2b — Super-admin payout management (PA-FE super-payouts)**:
+- `api.ts`: new local interfaces `MarketplacePayout`, `MarketplacePayoutDetail` (extends with `items: PublicPayment[]`), `CreatePayoutRequest`, and 6 helpers `getAdminPayoutEligible`, `getAdminPayouts` (Paginated), `getAdminPayout`, `createAdminPayout`, `markAdminPayoutPaid`, `cancelAdminPayout` — sit inline with the previous ledger block (after `getAdminPublicPayments`), no imports from `api-types.ts`.
+- `SuperFinancialsPanel.tsx`: new "Payouts" section (TanStack key `['admin','financials','payouts', page, pageSize, status]`) — DataTable with Date/Tenant/Method/Amount/Status badge (pending amber, paid green, cancelled gray, failed red)/Reference/Items/Paid at; row actions Mark Paid + Cancel (pending only, success/ghost sm buttons); row expand shows line items (reference, gross, fee, net, capturedAt). Create-payout flow in Marketplace Payments: checkbox column (only `paymentStatus==='captured'` rows enabled), sticky selection bar with count + net total, Create Payout modal (auto tenant from single-tenant selection — mixed-tenant selection is blocked with inline warning + warning toast and the button stays enabled so the handler gives feedback; disabled button would swallow clicks in jsdom), method select/reference/notes, submit → invalidate `public-payments` + `payouts` queries → success toast. Added payoutSummary StatCards ("Outstanding (owed to tenants)", "Paid Out") guarded on `overview?.payoutSummary` so the 7-stat-card baseline tests stay green.
+- Tests: 104/104 in `hr-financial.test.tsx` (added payout fixtures `po_1` pending bank_transfer 540 w/ 2 items, `po_2` paid cash `PAY-2025-001` 360; 15 payout tests incl. mixed-tenant block, mark-paid/cancel error toasts, payoutSummary render guard). AdminApp suites still green (85/85). tsc --noEmit = **399** (≤403 baseline; zero new errors — the 6 remaining errors in hr-financial are pre-existing `hooks as Record<string, unknown>` infra patterns at lines 84/177/592/1097/1624/1738).
+- Gotchas: payout status badges render lowercase raw status — `getByText('paid')` is ambiguous with invoice `paid`, use `getAllByText`; selection-bar "N selected" text needs a single testable element (`data-testid="payout-selection-summary"`) because split `<span>` text nodes break `getByText`; `PublicPayment.tenantId` is a string — create-flow fixture must use numeric-string tenantId so `Number(tenantId)` matches `tenantId: 5` expectations; a `value`-without-`onChange` React warning comes from the test `Select` mock on the read-only tenant field (harmless).
+
+---
+
+### 2026-09-01 — P-wave: tenant Marketplace Payouts view (PA-FE2)
+
+**Summary**: Added a read-only "Marketplace Payouts" section to the TENANT `FinancialPanel.tsx`, backed by the confirmed plain-array contract `GET /api/financials/payouts` (`TenantPayout[]`), following the FINAL-VERIFY spec (no `api-types.ts`/`SuperFinancialsPanel.tsx`/`backend/**` changes).
+
+**Changes**:
+- `api.ts`: `TenantPayout` interface + `getTenantPayouts()` → `apiFetch<TenantPayout[]>('/financials/payouts')` in the TENANT financial block (after `createTaxRate`), NOT the admin payout block (MarketplacePayout/getAdminPayouts at ~2193-2262 untouched).
+- `useQueryHooks.ts`: `queryKeys.financialPayouts = ['admin','financials','payouts']` + `useFinancialPayoutsQuery` (same throwOnError toast pattern as the sibling financial hooks).
+- `FinancialPanel.tsx`: section below the tab content — heading + description, client-side outstanding line (`SUM(amount)` of `status==='pending'` rows, only when > 0, `data-testid="payouts-outstanding"`), DataTable (Date/Reference/Method/Amount/Status badge/Paid at), and a **plain `<p>` empty state** `data-testid="payouts-empty"` ("No marketplace payouts yet.") — NOT the `EmptyState` component.
+- Tests: `financial-panel-extra.test.tsx` (+payouts state/mocks, fixtures 1 pending $150 bank_transfer + 1 paid $200 stripe `PO-REF-2`, 2 new tests → 11/11). `hr-financial.test.tsx` (payouts `[]` state + `useFinancialPayoutsQuery` mock + `getTenantPayouts` api mock → 104/104).
+
+**Gotchas (recurring — read before touching FinancialPanel tests)**:
+- **Plain-array vs envelope**: tenant list endpoints return PLAIN ARRAYS (`jsonResponse(rows.results || [])` in `backend/src/api/financials.js`) — the payout helper types `TenantPayout[]` directly, never `Paginated<TenantPayout>`.
+- **Do NOT use `EmptyState` for the payouts empty state**: `hr-financial.test.tsx` and `financial-panel-extra.test.tsx` assert `getByTestId('empty-state')` / `empty-state-action` as SINGLE elements on the active tab; a second EmptyState breaks those tests with "Found multiple elements". Plain `<p>` with a distinct `data-testid` is the pattern.
+- **`capitalize` is CSS-only**: `className="text-sm capitalize"` does NOT change `textContent` — assertion must be lowercase `getByText('bank transfer')`, not `'Bank Transfer'`.
+- **Date collisions in fixtures**: if a payout row's `createdAt` and `paidAt` share the same YYYY-MM-DD, `getByText('2025-05-22')` matches twice (Date + Paid at columns). Give the paid row a distinct `createdAt`.
+- **Both FinancialPanel test files must mock the new hook**: `financial-panel-extra.test.tsx` uses a vi.hoisted `useQueryHooks` mock; `hr-financial.test.tsx` has an independent per-file `useQueryHooks` mock (look for `__reset`/`__setData`) — forgetting either yields `useFinancialPayoutsQuery is not a function` in that file only.
+- `admin-app-extra.test.tsx` mocks `./FinancialPanel` wholesale (line 112) → no hook mock needed there.
+
+**Verify**:
+- `cd app && npx vitest run tests/unit/components/admin/financial-panel-extra.test.tsx` → **11/11 passed**.
+- `cd app && npx vitest run tests/unit/components/admin/hr-financial.test.tsx` → **104/104 passed**.
+- `cd app && npx vitest run tests/unit/components/admin tests/unit/hooks tests/unit/lib` → **18 files / 585 passed + 6 files / 115 passed**.
+- `cd app && npx tsc --noEmit` → **399 errors** (baseline ≤403; ZERO new errors in `FinancialPanel.tsx` / `api.ts` / `useQueryHooks.ts`; the 6 hr-financial errors at lines 88/182/597/1102/1629/1743 match the pre-existing `hooks as Record<string, unknown>` infra patterns documented by P-FINAL at 84/177/592/1097/1624/1738, shifted +5 by these additions).
+
+---
+
+### 2026-09-01 — Payout wave: marketplace → tenant payouts
+
+**Migration 0090** (`0090_marketplace_payouts.sql`):
+- Creates `marketplace_payouts` table: id, tenant_id, amount (=SUM(net)), currency, method, status (pending/paid/failed/cancelled), reference, notes, created_by, created_at, paid_at, cancelled_at.
+- Adds `marketplace_payments.payout_id` FK column (nullable INTEGER).
+- 3 indexes: payouts_by_tenant, payouts_by_status, payments_by_payout_id.
+
+**Domain rules**:
+- Eligible payments = `status='captured' AND payout_id IS NULL AND channel='marketplace'`, all same tenant.
+- Create payout: amount = SUM(net), status = 'pending', keeps each payment in 'captured' state.
+- Mark PAID: payout → 'paid' + paid_at; each linked payment → 'settled' + settled_at.
+- Cancel payout: payout → 'cancelled' + cancelled_at; payments revert payout_id → NULL (stay captured).
+- 'paid' and 'cancelled' are terminal (no further transitions).
+
+**Endpoints**:
+- `/api/admin/payouts/*` (6 routes): eligible, list, detail, create, pay, cancel — mounted with `superAdminGate`.
+- `GET /api/financials/payouts` (tenant): read-only plain array of own payouts.
+- `/api/admin/financials/overview` gains `payoutSummary`: `{ totalOutstanding, totalPaidOut }` + breakdown `outstanding` (captured & unbatched & marketplace) / `paidOut` (settled).
+
+**Frontend**:
+- `SuperFinancialsPanel`: Payouts section (list + mark-paid/cancel) + selection-based create-payout modal on Marketplace Payments ledger + stats strip.
+- `FinancialPanel` (tenant): read-only "Marketplace Payouts" section.
+- `useQueryHooks.ts`: added `queryKeys.financialPayouts` + `useFinancialPayoutsQuery` hook (by FE2 agent).
+
+**API client** (`app/src/lib/api.ts`): 9 new helpers — getAdminPayoutEligible, getAdminPayouts, getAdminPayout, createAdminPayout, markAdminPayoutPaid, cancelAdminPayout, getTenantPayouts, plus overview payoutSummary.
+
+**Contract** (`app/src/lib/api-types.ts` + `backend/openapi.json`):
+- Registry schemas: MarketplacePayout, MarketplacePayoutDetail, CreatePayoutRequest, PaginatedMarketplacePayouts, EligiblePayoutPayments, payoutId on PublicPayment.
+- openapi.json: 84 paths / 139 schemas. api-types.ts: 10092 lines.
+
+**Final verified counts**:
+- Backend: 71 files / 1943 passed ✅
+- Frontend: 121 files / 2810 passed (0 failed) ✅
+- tsc: 399 errors (≤403 baseline) ✅
+
+**Gotchas learned during wave**:
+- SQL-routing mock lacks `dotAll` / `s` flag — route param tests can be brittle.
+- Payout statuses are lowercase ('pending','paid','failed','cancelled') — assertions must match.
+- `data-testid="payout-selection-summary"` for the create modal trigger.
+- Tenant payout list is plain array, not `Paginated<T>` envelope.
+- EmptyState-testid collision: do NOT use `EmptyState` for payouts empty — use plain `<p>` with distinct testid.
+- `financialsScope` tenant gating on payout list.
+- `gen:types` lives in `app/` (not root).
