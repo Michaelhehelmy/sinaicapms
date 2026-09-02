@@ -30,6 +30,29 @@ function createMockRequest(body, headers = {}) {
   });
 }
 
+// Sequence-based mock: returns a distinct first()/run() result per prepare()/bind()
+// call, in order. Mirrors how handleConfirmPayment's ownership check (intent SELECT)
+// precedes the order SELECT, then performs two UPDATEs — so each step can return
+// its own fixture. Matches the convention used in backend/tests/unit/payments-disabled.test.js.
+function createSeqMockEnv(sequence) {
+  let callIdx = 0;
+  return {
+    DB: {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => {
+          const cur = sequence[Math.min(callIdx, sequence.length - 1)];
+          callIdx += 1;
+          return {
+            first: cur.first ? vi.fn().mockResolvedValue(cur.first) : vi.fn().mockResolvedValue(null),
+            run: cur.run ? vi.fn().mockResolvedValue(cur.run) : vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+            all: cur.all ? vi.fn().mockResolvedValue({ results: cur.all }) : vi.fn().mockResolvedValue({ results: [] }),
+          };
+        }),
+      })),
+    },
+  };
+}
+
 // ─── handleCreatePaymentIntent ───────────────────────────────
 describe('handleCreatePaymentIntent', () => {
   const tenantId = 'tenant_1';
@@ -183,8 +206,16 @@ describe('handleConfirmPayment', () => {
   });
 
   it('confirms payment and updates order to paid', async () => {
+    // Seed a valid, matching payment_intent row (ownership check: id/order_id/tenant_id/amount/status='created')
+    // before the order lookup so confirm succeeds. 1st prepare: intent SELECT, 2nd: order SELECT, 3rd/4th: updates.
+    const intentRow = { id: 'pi_mock_123', order_id: 'ord_1', amount: 500, status: 'created' };
     const orderRow = { id: 'ord_1', tenant_id: tenantId, total_amount: 500, order_state_id: 'confirmed', room_id: 'room_1', check_in_date: '2026-08-01' };
-    const { DB } = createMockDb(orderRow);
+    const { DB } = createSeqMockEnv([
+      { first: intentRow },
+      { first: orderRow },
+      { run: { meta: { changes: 1 } } },
+      { run: { meta: { changes: 1 } } },
+    ]);
     const req = createMockRequest({ paymentIntentId: 'pi_mock_123', orderId: 'ord_1' });
 
     const res = await handleConfirmPayment(req, { DB, PM_ENABLED: 'true' }, tenantId);

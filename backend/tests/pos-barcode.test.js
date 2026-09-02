@@ -27,7 +27,7 @@ describe('pos-barcode', () => {
           all: vi.fn().mockResolvedValue({
             results: [{
               id: 'p1', sku: 'SKU1', name: 'Tent', description: 'D', selling_price: 100,
-              cost_price: 50, category_id: 'c1', type: 'product', image_url: 'x.png',
+              category_id: 'c1', type: 'product', image_url: 'x.png',
               is_active: 1, stock_quantity: 5,
             }],
           }),
@@ -40,6 +40,8 @@ describe('pos-barcode', () => {
     expect(data.id).toBe('p1');
     expect(data.sellingPrice).toBe(100);
     expect(data.stockQuantity).toBe(5);
+    expect(data).not.toHaveProperty('costPrice');
+    expect(data).not.toHaveProperty('cost_price');
   });
 
   it('returns 404 when no matching product found', async () => {

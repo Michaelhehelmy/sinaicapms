@@ -112,11 +112,10 @@ export default function CartPanel({
         body.tipAmount = tip;
       }
       const res = await apiClient.posCreateOrder(body);
-      setCart([]);
-      localStorage.removeItem('pos_cart');
-      onCheckout();
-      // Navigate to orders page after successful checkout (pushState — no reload)
-      push(posUrl('/pos/orders'));
+      // Show the receipt BEFORE leaving the products view (A2 #2). The cart
+      // reset, query invalidation and the orders-page navigation all wait for
+      // the modal to close (see handleReceiptClose) so the receipt is visible.
+      setReceiptOrder(res.order);
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Checkout failed', 'error');
     } finally {
@@ -124,7 +123,19 @@ export default function CartPanel({
     }
   }
 
+  function handleReceiptClose() {
+    // Receipt dismissed — run the post-checkout cleanup that previously ran
+    // synchronously after checkout: clear cart, refresh POS queries, then
+    // navigate to the orders page (pushState — no reload).
+    setReceiptOrder(null);
+    setCart([]);
+    localStorage.removeItem('pos_cart');
+    onCheckout();
+    push(posUrl('/pos/orders'));
+  }
+
   return (
+    <>
     <div
       data-testid="pos-cart"
       className={cn(
@@ -315,5 +326,11 @@ export default function CartPanel({
         </Button>
       </div>
     </div>
+      {/* Post-checkout receipt — portal-rendered overlay that delays the
+          orders-page navigation until the cashier closes it. */}
+      {receiptOrder && (
+        <ReceiptModal order={receiptOrder} user={user} onClose={handleReceiptClose} />
+      )}
+    </>
   );
 }

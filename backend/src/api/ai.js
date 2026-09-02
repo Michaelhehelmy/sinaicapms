@@ -425,6 +425,63 @@ router.patch('/automation-rules/:id/activate', async (c) => {
   return jsonResponse({ id, isActive: newState, success: true });
 });
 
+router.put('/automation-rules/:id', async (c) => {
+  const scope = getScope(c);
+  const tenantId = scope.tenantId;
+  if (!tenantId) return errorResponse('Tenant ID required', 400);
+  const { id } = c.req.param();
+  const body = await c.req.json();
+  const parsed = automationRuleUpdateSchema.safeParse(body);
+  if (!parsed.success) return validationError(parsed);
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM automation_rules WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!existing) return errorResponse('Automation rule not found', 404);
+
+  const data = parsed.data;
+  const sets = [];
+  const binds = [];
+  if (data.name !== undefined) { sets.push('name = ?'); binds.push(data.name); }
+  if (data.triggerEvent !== undefined) { sets.push('trigger_event = ?'); binds.push(data.triggerEvent); }
+  if (data.conditionJson !== undefined) { sets.push('condition_json = ?'); binds.push(data.conditionJson); }
+  if (data.actionJson !== undefined) { sets.push('action_json = ?'); binds.push(data.actionJson); }
+  if (sets.length === 0) {
+    const row = await c.env.DB.prepare(
+      'SELECT * FROM automation_rules WHERE id = ? AND tenant_id = ?'
+    ).bind(id, tenantId).first();
+    return jsonResponse(row);
+  }
+  binds.push(id, tenantId);
+  await c.env.DB.prepare(
+    `UPDATE automation_rules SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`
+  ).bind(...binds).run();
+
+  const updated = await c.env.DB.prepare(
+    'SELECT * FROM automation_rules WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  return jsonResponse(updated);
+});
+
+router.post('/automation-rules/:id/toggle', async (c) => {
+  const scope = getScope(c);
+  const tenantId = scope.tenantId;
+  if (!tenantId) return errorResponse('Tenant ID required', 400);
+  const { id } = c.req.param();
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id, is_active FROM automation_rules WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!existing) return errorResponse('Automation rule not found', 404);
+
+  const newState = existing.is_active ? 0 : 1;
+  await c.env.DB.prepare(
+    'UPDATE automation_rules SET is_active = ? WHERE id = ? AND tenant_id = ?'
+  ).bind(newState, id, tenantId).run();
+
+  return jsonResponse({ id, isActive: newState, success: true });
+});
+
 // ── Automation Logs ──────────────────────────────────────────────────────────
 
 router.get('/automation-logs', async (c) => {

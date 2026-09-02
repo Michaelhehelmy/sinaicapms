@@ -53,6 +53,8 @@ const blogCategoryCreateSchema = z.object({
   slug: z.string().min(1).max(200),
 }).strip();
 
+const blogCategoryUpdateSchema = blogCategoryCreateSchema.partial().strip();
+
 // ════════════════════════════════════════════════════════════════════════════
 // PUBLIC ENDPOINTS (no auth required)
 // ════════════════════════════════════════════════════════════════════════════
@@ -566,6 +568,48 @@ router.post('/admin/blog-categories', async (c) => {
   ).bind(id, tenantId, name, slug).run();
 
   return jsonResponse({ id, name, slug, success: true }, 201);
+});
+
+router.put('/admin/blog-categories/:id', async (c) => {
+  const scope = getScope(c);
+  const tenantId = scope?.tenantId;
+  if (!tenantId) return errorResponse('Tenant ID required', 400);
+  const { id } = c.req.param();
+  const body = await c.req.json();
+  const parsed = blogCategoryUpdateSchema.safeParse(body);
+  if (!parsed.success) return validationError(parsed);
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM blog_categories WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!existing) return errorResponse('Category not found', 404);
+
+  const data = parsed.data;
+  const sets = [];
+  const binds = [];
+  if (data.name !== undefined) { sets.push('name = ?'); binds.push(data.name); }
+  if (data.slug !== undefined) {
+    const dup = await c.env.DB.prepare(
+      'SELECT id FROM blog_categories WHERE slug = ? AND tenant_id = ? AND id != ?'
+    ).bind(data.slug, tenantId, id).first();
+    if (dup) return errorResponse('Category slug already exists', 409);
+    sets.push('slug = ?'); binds.push(data.slug);
+  }
+  if (sets.length === 0) {
+    const row = await c.env.DB.prepare(
+      'SELECT * FROM blog_categories WHERE id = ? AND tenant_id = ?'
+    ).bind(id, tenantId).first();
+    return jsonResponse(row);
+  }
+  binds.push(id, tenantId);
+  await c.env.DB.prepare(
+    `UPDATE blog_categories SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`
+  ).bind(...binds).run();
+
+  const updated = await c.env.DB.prepare(
+    'SELECT * FROM blog_categories WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  return jsonResponse(updated);
 });
 
 router.delete('/admin/blog-categories/:id', async (c) => {

@@ -33,6 +33,26 @@ function createMockEnv(order = null) {
   };
 }
 
+// Sequence-based mock: returns a distinct first()/run() per prepare call.
+function createSeqMockEnv(sequence) {
+  let callIdx = 0;
+  return {
+    PM_ENABLED: 'true',
+    DB: {
+      prepare: vi.fn(() => ({
+        bind: vi.fn(() => {
+          const cur = sequence[Math.min(callIdx, sequence.length - 1)];
+          callIdx += 1;
+          return {
+            first: cur.first ? vi.fn().mockResolvedValue(cur.first) : vi.fn().mockResolvedValue(null),
+            run: cur.run ? vi.fn().mockResolvedValue(cur.run) : vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+          };
+        }),
+      })),
+    },
+  };
+}
+
 describe('handleCreatePaymentIntent (disabled guard)', () => {
   const tenantId = 't1';
 
@@ -84,7 +104,13 @@ describe('handleConfirmPayment (disabled guard + enabled path)', () => {
   });
 
   it('with PM_ENABLED=true, marks a matching tenant order paid', async () => {
-    const env = createMockEnv({ id: 'order_1', tenant_id: 't1', total_amount: 200, order_state_id: 'confirmed' });
+    const order = { id: 'order_1', tenant_id: 't1', total_amount: 200, order_state_id: 'confirmed' };
+    const env = createSeqMockEnv([
+      { sql: 'SELECT id', first: { id: 'pi_123', order_id: 'order_1', amount: 200, status: 'created' } },
+      { sql: 'SELECT id', first: order },
+      { sql: 'UPDATE payment_intents' },
+      { sql: 'UPDATE orders' },
+    ]);
     const res = await handleConfirmPayment(
       makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }),
       env,
@@ -99,7 +125,10 @@ describe('handleConfirmPayment (disabled guard + enabled path)', () => {
   });
 
   it('with PM_ENABLED=true, returns 404 for an order in another tenant', async () => {
-    const env = createMockEnv(null); // lookup scoped by tenant returns nothing
+    const env = createSeqMockEnv([
+      { sql: 'SELECT id', first: null }, // intent lookup scoped by tenant returns nothing
+      { sql: 'SELECT id', first: null }, // order lookup returns nothing
+    ]);
     const res = await handleConfirmPayment(
       makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_other' }),
       env,

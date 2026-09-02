@@ -169,9 +169,9 @@ export default function AIPanel() {
         adjustmentPercent: parseFloat(priceRuleForm.adjustmentPercent) || 0,
       };
       if (editingPriceRuleId) {
-        await (api as any).updateAIPriceRule?.(editingPriceRuleId, payload);
+        await api.updateAIPriceRule(editingPriceRuleId, payload);
       } else {
-        await (api as any).createAIPriceRule?.(payload);
+        await api.createAIPriceRule(payload);
       }
       showToast(editingPriceRuleId ? 'Price rule updated.' : 'Price rule created.', 'success');
       setShowPriceRuleForm(false);
@@ -203,9 +203,9 @@ export default function AIPanel() {
         actionJson: automationForm.actionJson || undefined,
       };
       if (editingAutomationId) {
-        await (api as any).updateAIAutomationRule?.(editingAutomationId, payload);
+        await api.updateAIAutomationRule(editingAutomationId, payload);
       } else {
-        await (api as any).createAIAutomationRule?.(payload);
+        await api.createAIAutomationRule(payload);
       }
       showToast(editingAutomationId ? 'Rule updated.' : 'Rule created.', 'success');
       setShowAutomationForm(false);
@@ -219,7 +219,7 @@ export default function AIPanel() {
 
   const handleToggleAutomation = useCallback(async (id: string) => {
     try {
-      await (api as any).toggleAIAutomationRule?.(id);
+      await api.toggleAIAutomationRule(id);
       showToast('Rule toggled.', 'success');
       invalidateAi();
     } catch (err) {
@@ -231,7 +231,7 @@ export default function AIPanel() {
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
     try {
-      await (api as any).deleteAIPriceRule?.(deleteTarget.item.id);
+      await api.deleteAIPriceRule(deleteTarget.item.id);
       showToast('Deleted.', 'success');
       setDeleteTarget(null);
       invalidateAi();
@@ -245,7 +245,7 @@ export default function AIPanel() {
     if (!forecastForm.productId.trim()) { showToast('Product ID is required.', 'warning'); return; }
     setSaving(true);
     try {
-      const result = await (api as any).runAIForecast?.({
+      const result = await api.runAIForecast({
         productId: forecastForm.productId.trim(),
         periodDays: parseInt(forecastForm.periodDays, 10),
       });

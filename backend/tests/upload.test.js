@@ -167,7 +167,7 @@ describe('handleUploadRoute — POST /api/upload', () => {
     expect(file.size).toBe('fake-image-bytes'.length);
   });
 
-  it('uploads a raw octet-stream body with ?filename= and preserves the content type', async () => {
+  it('uploads a raw octet-stream body with ?filename= and stores the allowlisted type', async () => {
     const bucket = makeBucketSpy();
     const env = { MEDIA_BUCKET: bucket };
     const res = await handleUploadRoute(
@@ -241,21 +241,63 @@ describe('handleUploadRoute — POST /api/upload', () => {
     expect(bucket.put).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when the declared content type is not an image', async () => {
+  it.each([
+    ['jpg', 'image/jpeg'],
+    ['jpeg', 'image/jpeg'],
+    ['png', 'image/png'],
+    ['webp', 'image/webp'],
+    ['gif', 'image/gif'],
+  ])('stores .%s as %s regardless of the client-declared type', async (ext, expected) => {
     const bucket = makeBucketSpy();
     const env = { MEDIA_BUCKET: bucket };
     const res = await handleUploadRoute(
       makeRequest('POST', '/api/upload', {
         body: new ArrayBuffer(3),
-        headers: { 'Content-Type': 'application/pdf' },
-        filename: 'doc.jpg',
+        headers: { 'Content-Type': 'text/html' },
+        filename: `photo.${ext}`,
+      }),
+      env,
+      tenantId
+    );
+    expect(res.status).toBe(200);
+    expect(bucket.put).toHaveBeenCalledTimes(1);
+    const [, , opts] = bucket.put.mock.calls[0];
+    expect(opts.httpMetadata.contentType).toBe(expected);
+  });
+
+  it('regression: a file named x.png declared as text/html is stored as image/png', async () => {
+    const bucket = makeBucketSpy();
+    const env = { MEDIA_BUCKET: bucket };
+    const res = await handleUploadRoute(
+      makeRequest('POST', '/api/upload', {
+        body: new ArrayBuffer(3),
+        headers: { 'Content-Type': 'text/html' },
+        filename: 'x.png',
+      }),
+      env,
+      tenantId
+    );
+    expect(res.status).toBe(200);
+    expect(bucket.put).toHaveBeenCalledTimes(1);
+    const [, , opts] = bucket.put.mock.calls[0];
+    expect(opts.httpMetadata.contentType).toBe('image/png');
+  });
+
+  it('regression: an .html upload is rejected before reaching R2', async () => {
+    const bucket = makeBucketSpy();
+    const env = { MEDIA_BUCKET: bucket };
+    const res = await handleUploadRoute(
+      makeRequest('POST', '/api/upload', {
+        body: new ArrayBuffer(3),
+        headers: { 'Content-Type': 'image/png' },
+        filename: 'payload.html',
       }),
       env,
       tenantId
     );
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toContain('Only image uploads are allowed');
+    expect(body.error).toContain('Unsupported file type');
     expect(bucket.put).not.toHaveBeenCalled();
   });
 });
@@ -279,6 +321,7 @@ describe('handleMediaRoute — GET /api/media/*', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('image/jpeg');
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
     expect(bucket.get).toHaveBeenCalledWith('media/tenant_1/11111111-2222-3333-4444-555555555555.jpg');
     const bytes = await res.arrayBuffer();

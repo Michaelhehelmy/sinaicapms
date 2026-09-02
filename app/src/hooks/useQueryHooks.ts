@@ -1555,7 +1555,7 @@ export function useStorefrontBlogCategoriesQuery() {
   const toastError = useErrorToast();
   return useQuery({
     queryKey: queryKeys.storefrontBlogCategories,
-    queryFn: () => apiFetch<unknown[]>('/storefront/admin/blog/categories'),
+    queryFn: () => api.getStorefrontBlogCategories(),
     throwOnError: (err) => {
       toastError('Failed to load blog categories', err);
       return false;

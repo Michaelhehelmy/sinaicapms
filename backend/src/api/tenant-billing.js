@@ -41,7 +41,7 @@ tenantBillingRoutes.get('/', async (c) => {
 
     // 2. Usage: order count (this billing period)
     const orderCount = await c.env.DB.prepare(
-      "SELECT COUNT(*) as cnt FROM orders WHERE tenant_id = ? AND deleted_at IS NULL"
+      "SELECT COUNT(*) as cnt FROM orders WHERE tenant_id = ? AND order_state_id != 'cancelled'"
     ).bind(tenantId).first();
 
     // 3. Usage: POS user count

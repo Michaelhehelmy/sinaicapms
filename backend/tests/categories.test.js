@@ -298,6 +298,32 @@ describe('categoriesRoutes', () => {
       expect(data.success).toBe(true);
     });
 
+    it('deletes category translations without tenant_id column', async () => {
+      let callIdx = 0;
+      const preparedStatements = [];
+      const db = {
+        prepare: vi.fn((sql) => {
+          preparedStatements.push(sql);
+          return {
+            bind: vi.fn(() => ({
+              all: vi.fn().mockImplementation(() => {
+                callIdx++;
+                return Promise.resolve({ results: callIdx === 1 ? [{ id: 'cat_1' }] : [] });
+              }),
+              run: vi.fn().mockResolvedValue({}),
+            })),
+          };
+        }),
+      };
+      env = { DB: db };
+      const res = await request('DELETE', 'http://localhost/api/categories/cat_1');
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(preparedStatements[2]).toBe('DELETE FROM category_lang WHERE category_id = ?');
+      expect(preparedStatements[2]).not.toContain('tenant_id');
+    });
+
     it('returns 404 when category not found or is global', async () => {
       const db = {
         prepare: vi.fn(() => ({

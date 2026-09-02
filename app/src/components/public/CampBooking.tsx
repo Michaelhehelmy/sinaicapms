@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { cn, INK, readableTextOn, normalizeAssetUrl } from '@/lib/utils';
 import { hexToRgba } from '@/lib/theme';
+import { getProjectMealPlans } from '@/lib/api';
+import type { ProjectMealPlan } from '@/lib/api';
 
 interface RoomType {
   id: string;
@@ -16,13 +18,7 @@ interface RoomType {
   imageUrl?: string;
 }
 
-interface MealPlan {
-  id: string;
-  name: string;
-  selling_price: number;
-  description?: string;
-  image_url?: string;
-}
+interface MealPlan extends ProjectMealPlan {}
 
 interface ReservationItem {
   roomType: RoomType;
@@ -120,9 +116,8 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
 
   useEffect(() => {
     if (projectId && mealPlanCategoryId) {
-      fetch(`/api/projects/${projectId}/meal-plans`)
-        .then(res => res.json())
-        .then(data => setMealPlans(data.meal_plans || []))
+      getProjectMealPlans(projectId)
+        .then(setMealPlans)
         .catch(() => {});
     }
   }, [projectId, mealPlanCategoryId]);
@@ -208,7 +203,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
   const lineTotal = modalRoom ? nights * (modalRoom.basePrice || 0) : 0;
   const mealPlanTotal = mealPlans.reduce((sum, mp) => {
     const qty = selectedMealPlans[mp.id] || 0;
-    return sum + qty * mp.selling_price * nights;
+    return sum + qty * mp.sellingPrice * nights;
   }, 0);
   const totalWithMealPlans = lineTotal + mealPlanTotal;
 
@@ -218,7 +213,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
       .filter(([, qty]) => qty > 0)
       .map(([productId, quantity]) => {
         const mp = mealPlans.find(m => m.id === productId)!;
-        return { productId, name: mp.name, pricePerDay: mp.selling_price, quantity };
+        return { productId, name: mp.name, pricePerDay: mp.sellingPrice, quantity };
       });
     setItems(prev => [...prev, {
       roomType: modalRoom,
@@ -447,7 +442,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm truncate">{mp.name}</p>
                             {mp.description && <p className="text-xs text-gray-500 truncate">{mp.description}</p>}
-                            <p className="text-xs text-gray-500 mt-0.5">{mp.selling_price} EGP/day × {nights} nights</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{mp.sellingPrice} EGP/day × {nights} nights</p>
                           </div>
                           <div className="flex items-center gap-2 ml-3">
                             <button

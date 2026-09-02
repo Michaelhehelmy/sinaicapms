@@ -115,6 +115,18 @@ test.describe.serial('POS Shift Lifecycle — Full Flow', () => {
 
       // Complete the payment
       await payBtn.click();
+
+      // Receipt modal appears after successful payment
+      const receiptModal = page.locator('[data-testid="receipt-modal"]');
+      await expect(receiptModal).toBeVisible({ timeout: 10000 });
+      await expect(receiptModal).toContainText('Order:');
+      await expect(receiptModal).toContainText('Total');
+
+      // Dismiss receipt modal to proceed to orders
+      await receiptModal.locator('button:has-text("Close")').click();
+      await expect(receiptModal).not.toBeVisible({ timeout: 5000 });
+
+      // Should navigate to orders page after closing receipt
       await page.locator('[data-testid="pos-orders"]').waitFor({ state: 'visible', timeout: 10000 });
 
       // Should navigate to orders page after successful payment

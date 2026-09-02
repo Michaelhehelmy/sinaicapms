@@ -80,7 +80,18 @@ test.describe.serial('POS Full E2E Flow — End to End', () => {
     await expect(payBtn).toBeVisible();
     await payBtn.click();
 
-    // Should navigate to orders page after successful payment
+    // Receipt modal appears after successful payment
+    const receiptModal = page.locator('[data-testid="receipt-modal"]');
+    await expect(receiptModal).toBeVisible({ timeout: 10000 });
+    // Verify order reference and total are shown in the receipt
+    await expect(receiptModal).toContainText('Order:');
+    await expect(receiptModal).toContainText('Total');
+
+    // Dismiss receipt modal to proceed to orders page
+    await receiptModal.locator('button:has-text("Close")').click();
+    await expect(receiptModal).not.toBeVisible({ timeout: 5000 });
+
+    // Should navigate to orders page after closing receipt
     await page.locator('[data-testid="pos-orders"]').waitFor({ state: 'visible', timeout: 10000 });
     expect(page.url()).toContain('/orders');
 
@@ -146,7 +157,17 @@ test.describe.serial('POS Split Payment Flow', () => {
     expect(payDisabled).toBe(false);
     await payBtn.click();
 
-    // Should navigate to orders page
+    // Receipt modal appears after successful payment
+    const receiptModal = page.locator('[data-testid="receipt-modal"]');
+    await expect(receiptModal).toBeVisible({ timeout: 10000 });
+    await expect(receiptModal).toContainText('Order:');
+    await expect(receiptModal).toContainText('Total');
+
+    // Dismiss receipt modal
+    await receiptModal.locator('button:has-text("Close")').click();
+    await expect(receiptModal).not.toBeVisible({ timeout: 5000 });
+
+    // Should navigate to orders page after closing receipt
     await page.locator('[data-testid="pos-orders"]').waitFor({ state: 'visible', timeout: 10000 });
     expect(page.url()).toContain('/orders');
   });
@@ -242,8 +263,18 @@ test.describe('POS Receipt Modal', () => {
     const payBtn = page.locator('[data-testid="pay-btn"]');
     await payBtn.click();
 
-    // Should end up on orders page (receipt modal is not used in current flow —
-    // checkout navigates directly to /pos/orders)
+    // Receipt modal should appear after payment with order details
+    const receiptModal = page.locator('[data-testid="receipt-modal"]');
+    await expect(receiptModal).toBeVisible({ timeout: 10000 });
+    await expect(receiptModal).toContainText('Order:');
+    await expect(receiptModal).toContainText('Total');
+    await expect(receiptModal).toContainText('SinaiCamps');
+
+    // Dismiss the receipt modal to proceed
+    await receiptModal.locator('button:has-text("Close")').click();
+    await expect(receiptModal).not.toBeVisible({ timeout: 5000 });
+
+    // After closing receipt, should navigate to orders page
     await page.locator('[data-testid="pos-orders"]').waitFor({ state: 'visible', timeout: 10000 });
     expect(page.url()).toContain('/orders');
 

@@ -18,7 +18,7 @@ barcode.get('/:code', async (c) => {
 
   try {
     const { results } = await c.env.DB.prepare(
-      'SELECT id, sku, name, description, selling_price, cost_price, category_id, type, image_url, is_active, stock_quantity FROM pos_products WHERE (sku = ? OR barcode = ?) AND tenant_id = ? AND is_active = 1 LIMIT 1'
+      'SELECT id, sku, name, description, selling_price, category_id, type, image_url, is_active, stock_quantity FROM pos_products WHERE (sku = ? OR barcode = ?) AND tenant_id = ? AND is_active = 1 LIMIT 1'
     ).bind(code, code, tenantId).all();
 
     if (results.length === 0) {
@@ -32,7 +32,6 @@ barcode.get('/:code', async (c) => {
       name: row.name,
       description: row.description,
       sellingPrice: row.selling_price,
-      costPrice: row.cost_price,
       categoryId: row.category_id,
       type: row.type,
       imageUrl: row.image_url,

@@ -460,6 +460,45 @@ describe('Storefront Blog Categories', () => {
     expect(res.status).toBe(409);
   });
 
+  it('PUT /admin/blog-categories/:id updates a category', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id FROM blog_categories WHERE id/, [{ id: 'cat1' }])
+      .on(/UPDATE blog_categories SET/, { meta: { changes: 1 } })
+      .on(/SELECT \* FROM blog_categories WHERE id.*tenant_id/, [{ id: 'cat1', name: 'Updated', slug: 'updated' }]);
+    const app = mountRouter(storefrontRouter, { tenantId: 't1' });
+    const res = await app.request(req('/admin/blog-categories/cat1', {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'Updated' }),
+    }), {}, env(db));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.name).toBe('Updated');
+    expect(body.id).toBe('cat1');
+  });
+
+  it('PUT /admin/blog-categories/:id rejects duplicate slug', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id FROM blog_categories WHERE id/, [{ id: 'cat1' }])
+      .on(/SELECT id FROM blog_categories WHERE slug/, [{ id: 'cat2' }]);
+    const app = mountRouter(storefrontRouter, { tenantId: 't1' });
+    const res = await app.request(req('/admin/blog-categories/cat1', {
+      method: 'PUT',
+      body: JSON.stringify({ slug: 'taken' }),
+    }), {}, env(db));
+    expect(res.status).toBe(409);
+  });
+
+  it('PUT /admin/blog-categories/:id returns 404 for unknown id', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id FROM blog_categories WHERE id/, null);
+    const app = mountRouter(storefrontRouter, { tenantId: 't1' });
+    const res = await app.request(req('/admin/blog-categories/missing', {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'X' }),
+    }), {}, env(db));
+    expect(res.status).toBe(404);
+  });
+
   it('DELETE /admin/blog-categories/:id removes a category', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id FROM blog_categories WHERE id/, [{ id: 'cat1' }])

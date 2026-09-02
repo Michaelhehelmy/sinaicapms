@@ -158,6 +158,37 @@ describe('CartPanel', () => {
       expect(mockPosCreateOrder).toHaveBeenCalled();
     });
   });
+
+  it('opens the receipt modal after checkout success; cleanup + navigation run on close', async () => {
+    mockPosCreateOrder.mockResolvedValue({
+      order: { id: 'o1', orderNumber: 'ORD-REC', totalAmount: 11, subtotal: 10, taxAmount: 1, paymentMethod: 'cash', status: 'completed', items: [{ id: 'i1', productName: 'Water', quantity: 1, unitPrice: 10, totalAmount: 10 }] },
+    } as any);
+    const setCart = vi.fn();
+    const onCheckout = vi.fn();
+    const cart = [{ product: { ...sampleProduct, sellingPrice: 10 }, quantity: 1 }];
+    render(
+      <CartPanel cart={cart} setCart={setCart} onCheckout={onCheckout} user={userWithTaxRate} />,
+    );
+
+    fireEvent.click(screen.getByText(/Pay \$/));
+
+    // Receipt appears immediately after the order is created…
+    await waitFor(() => {
+      expect(screen.getByTestId('receipt-modal')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/ORD-REC/)).toBeInTheDocument();
+    expect(screen.getByText(/Paid \(cash\)/)).toBeInTheDocument();
+    // …while the cart reset + navigation are deferred until the modal closes.
+    expect(setCart).not.toHaveBeenCalled();
+    expect(onCheckout).not.toHaveBeenCalled();
+
+    // Closing the receipt runs the post-checkout cleanup + navigation.
+    fireEvent.click(screen.getByText('Close'));
+    await waitFor(() => {
+      expect(setCart).toHaveBeenCalledWith([]);
+    });
+    expect(onCheckout).toHaveBeenCalled();
+  });
 });
 
 // ─── OrdersView ─────────────────────────────────────────────

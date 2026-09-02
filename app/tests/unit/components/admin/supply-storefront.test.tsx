@@ -21,6 +21,7 @@ const mockGetSupplyBoms = vi.fn();
 const mockGetSupplyManufacturingOrders = vi.fn();
 const mockGetStorefrontPages = vi.fn();
 const mockGetStorefrontBlogPosts = vi.fn();
+const mockGetStorefrontBlogCategories = vi.fn();
 const mockRequest = vi.fn();
 const mockSaveStorefrontPage = vi.fn();
 const mockSaveStorefrontBlogPost = vi.fn();
@@ -40,6 +41,7 @@ vi.mock('@/lib/api', () => ({
   getSupplyManufacturingOrders: (...args: unknown[]) => mockGetSupplyManufacturingOrders(...args),
   getStorefrontPages: (...args: unknown[]) => mockGetStorefrontPages(...args),
   getStorefrontBlogPosts: (...args: unknown[]) => mockGetStorefrontBlogPosts(...args),
+  getStorefrontBlogCategories: (...args: unknown[]) => mockGetStorefrontBlogCategories(...args),
   request: (...args: unknown[]) => mockRequest(...args),
   saveStorefrontPage: (...args: unknown[]) => mockSaveStorefrontPage(...args),
   saveStorefrontBlogPost: (...args: unknown[]) => mockSaveStorefrontBlogPost(...args),
@@ -1113,6 +1115,7 @@ describe('StorefrontPanel', () => {
     mockApiFetch.mockImplementation(defaultApiFetch);
     mockGetStorefrontPages.mockResolvedValue(samplePages);
     mockGetStorefrontBlogPosts.mockResolvedValue(samplePosts);
+    mockGetStorefrontBlogCategories.mockResolvedValue(sampleCategories);
     mockSaveStorefrontPage.mockResolvedValue({ id: 'pg', success: true });
     mockSaveStorefrontBlogPost.mockResolvedValue({ id: 'bp', success: true });
     mockSaveStorefrontBlogCategory.mockResolvedValue({ id: 'cat', success: true });

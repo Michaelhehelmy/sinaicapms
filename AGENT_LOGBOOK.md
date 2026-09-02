@@ -141,6 +141,36 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 
 ## Task Logs
 
+### [2026-09-01] AW2-S2 — server-side MIME allowlist for media uploads + nosniff on media responses (backend tmp agent)
+
+**Task**: Fix the stored-XSS vector where the media upload trusted the client-declared Content-Type (a `.html`/`.svg` payload declared as `image/png` was stored raw and later served with the attacker-chosen type). Also harden media responses with nosniff.
+
+**Files changed**:
+- `backend/src/api/upload.js` — added an extension→MIME allowlist map (`jpg/jpeg → image/jpeg`, `png → image/png`, `webp → image/webp`, `gif → image/gif`); removed the client-`declaredContentType` trust path entirely; the stored `httpMetadata.contentType` for the R2 `put()` is now derived ONLY from the allowlisted file extension via `CONTENT_TYPE_MAP[ext]`. Non-allowlisted extensions are rejected 400 BEFORE the R2 `put()` call. Added `X-Content-Type-Options: nosniff` to the media GET/HEAD response headers (plain header addition — did NOT touch the hono/cors source in `index.js`). The now-dead `Only image uploads are allowed` check and `declaredContentType` variable were removed.
+- `backend/tests/upload.test.js` — retitled the raw-upload test, replaced the "not an image" test with 5 per-extension storage tests (each sends `Content-Type: text/html`, asserts the allowlisted MIME is stored), plus 2 regressions: (a) `x.png` declared `text/html` → stored `image/png`; (b) `payload.html` → 400 with no R2 `put`. Media GET test now asserts `X-Content-Type-Options: nosniff`.
+
+**Verification**:
+- `cd backend && npx vitest run tests/upload.test.js` → **42 passed (1 file)**.
+- `cd backend && npx vitest run` → **71 files, 1966 passed** — ALL green.
+
+**Lesson**: The upload handler completely discarded the client Content-Type — do not keep a redundant `image/` guard alongside an extension allowlist; the extension IS the only input that should survive to R2 metadata.
+
+### [2026-09-01] AW1-BE1 — tenant-scope the meal-plan `pos_products` lookup in order create (backend tmp agent)
+
+**Task**: Fix a confirmed P1 cross-tenant pricing write in `backend/src/api/orders.js` (POST /orders, `meal_plan.items` branch, ~line 755). The old `SELECT id, name, selling_price FROM pos_products WHERE id IN (...)` had NO org/tenant filter and NO existence check — tenant A submitting tenant B's product ids read B's name/pricing and wrote the foreign pricing into A's order.
+
+**Files changed**:
+- `backend/src/api/orders.js` — reordered the meal-plan branch to resolve `tenant_org_mapping.organization_id` FIRST, then scope the product SELECT by `organization_id = ?` (matching the `meal-plans.js` browse convention), and require `products.length === requested.length` (deduped) — any foreign/unknown id → 400 `'One or more meal plan products were not found in this organization'` with no `order_items`/`pos_transactions` writes. Line-item pricing stays server-authoritative from the scoped rows.
+- `backend/tests/orders-unit.test.js` — 3 new regression tests: (a) cross-org id → 400 and no `order_items`/`pos_transactions`; (b) nonexistent id → 400 with no writes; (c) valid org ids → 200, org-scoped SQL (`organization_id = ?`), server-computed meal-plan total (48.5) applied via the order-total UPDATE.
+
+**Scope column**: `pos_products.organization_id` (INTEGER). Proof — `backend/migrations/0042_cleanup_pos_products.sql:32`: `organization_id INTEGER NOT NULL DEFAULT 1,` (table has both `tenant_id TEXT` and `organization_id INTEGER`; `pos_products` is org-scoped, matching `meal-plans.js`).
+
+**Verification**:
+- `cd backend && npx vitest run tests/orders-unit.test.js` → **90 passed (1 file)**.
+- `cd backend && npx vitest run` → **71 files, 1956 passed** — ALL green.
+
+**Lesson**: batch statements returned by the `chainMock` in `routerHarness`-based tests expose NO `.sql` property (only `bind`/`first`/`all`/`run`) — assert SQL text via `db.prepare.mock.calls` and bound values via `db.prepare.mock.results[idx].value.bind.mock.calls`, not from the batch array.
+
 ### [2026-09-01] PA-BE super-admin payout module — `admin-payouts.js` (backend tmp agent)
 
 **Task**: Build `backend/src/api/admin-payouts.js` — super-admin endpoints that batch 'captured' marketplace-payment ledger rows into a payout to a tenant, move them through `pending → paid` (settling ledger rows), plus cancel. Mounted at `/api/admin/payouts` in the EXISTING `superAdminAuth` loop (one import + one array entry, no separate `app.use`). Domain rules: eligible = `payment_status='captured'` + `payout_id IS NULL` + `channel='marketplace'`; all payments in a payout share one `tenant_id` == body `tenantId`; amount = `SUM(net_amount)` (marketplace keeps the fee); create sets `payout_id` only (payments stay 'captured'); Pay flips members to 'settled' with `settled_at = paid_at`; Cancel reverts `payout_id` to NULL (payments stay captured); paid/cancelled are terminal → 409 on re-transition.
@@ -8475,3 +8505,114 @@ Playwright needs `video: 'retain-on-failure'` (config) → ffmpeg, and headless 
 - EmptyState-testid collision: do NOT use `EmptyState` for payouts empty — use plain `<p>` with distinct testid.
 - `financialsScope` tenant gating on payout list.
 - `gen:types` lives in `app/` (not root).
+
+---
+
+## Task Log — 2026-09-01 — @frontend (aw1-fe1-panel-endpoints): realign api.ts storefront/AI helpers to live backend routes
+
+**Files changed**:
+- `app/src/lib/api.ts` — repointed `saveStorefrontPage` → `/storefront/admin/pages[/:id]`, `saveStorefrontBlogPost` → `/storefront/admin/blog[/:id]`, `saveStorefrontBlogCategory` → `/storefront/admin/blog-categories[/:id]`, `deleteStorefrontBlogCategory` → DELETE `/storefront/admin/blog-categories/:id`, `toggleAIAutomationRule` → POST `/ai/automation-rules/:id/toggle` (was PUT). Added `getStorefrontBlogCategories()` (GET `/storefront/admin/blog-categories`), typed `runAIForecast` return (AiForecastPoint[]), new `AiForecastPoint` interface.
+- `app/src/hooks/useQueryHooks.ts` — `useStorefrontBlogCategoriesQuery` now calls `api.getStorefrontBlogCategories()` (removed inline `apiFetch` bypass; note the old inline URL `/storefront/admin/blog/categories` was ALSO wrong — backend route is `/storefront/admin/blog-categories`).
+- `app/src/components/admin/AIPanel.tsx` — removed all 7 `(api as any).fn?.()` masks (updateAIPriceRule/createAIPriceRule/updateAIAutomationRule/createAIAutomationRule/toggleAIAutomationRule/deleteAIPriceRule/runAIForecast).
+- `app/src/components/admin/StorefrontPanel.tsx` — removed unused `apiFetch` import (payloads already camelCase, matching zod).
+- Tests: `useQueryHooks-extra.test.tsx` (mock factory + error-case now uses `api.getStorefrontBlogCategories`), `supply-storefront.test.tsx` (mock factory + beforeEach resolved value), `api-bulk.test.ts` (new getter coverage).
+
+**Verify**: `cd app && npx vitest run` → 121 files / 2811 passed ✅. `cd app && npx tsc --noEmit` → 398 errors (≤ baseline 403) ✅; AIPanel/api.ts/useQueryHooks/src have 0 errors; the only StorefrontPanel/test errors are pre-existing casts unrelated to this change.
+
+**Lessons**:
+- Backend storefront admin routes live under `/storefront/admin/*` (blog-categories is hyphenated, NOT `blog/categories`); frontend api.ts paths must match exactly.
+- `toggleAIAutomationRule` is POST (not PUT) — mirrors backend `POST /ai/automation-rules/:id/toggle`.
+- `runAIForecast` needed a typed return so removing `as any` on `result?.forecasts` typechecks without a new cast.
+
+---
+
+## Task Log — 2026-09-01 — @frontend (aw1-fe3-campbooking-fetch): route CampBooking meal-plan loading through the shared api client
+
+**Task**: `app/src/components/public/CampBooking.tsx:~123` loaded meal plans via a raw `fetch('/api/projects/${id}/meal-plans')` that silently fails on custom tenant domains (wrong base / missing `/api/v1`). A2 audit #1. Replaced with the shared `@/lib/api` client.
+
+**Files changed**:
+- `app/src/lib/api.ts` — ADDED `getProjectMealPlans(projectId)` + `ProjectMealPlan` interface. No existing helper existed (grepped: no meal-plan helper in api.ts). Uses `apiFetch` (which applies `API_BASE` including `/api/v1` and sets `x-tenant-id` via `getTenantId`), hitting `GET /api/projects/:id/meal-plans` (public scope, backend/src/api/meal-plans.js). Wire is camelCase via `jsonResponse`'s deep `toCamel`, so the helper returns `ProjectMealPlan[]` with `sellingPrice`/`imageUrl` and unwraps `data.mealPlans`.
+- `app/src/components/public/CampBooking.tsx` — import `getProjectMealPlans` + `type ProjectMealPlan`; `interface MealPlan extends ProjectMealPlan {}`; replaced the raw `fetch(...)` effect with `getProjectMealPlans(projectId).then(setMealPlans).catch(()=>{})` (kept identical loading/error UI); corrected `mp.selling_price` → `mp.sellingPrice` at 3 sites (the old code read snake keys that the deep-camel wire never delivered — so meal plans were actually broken on the default base too; the helper fixes this).
+- `app/tests/unit/CampBooking.test.tsx` — added `vi.mock('@/lib/api')` with `getProjectMealPlans`/`getTenantId`; new test asserts the call goes through the mocked client (called with `'p1'`) and the meal plan renders in the modal — NOT a raw fetch URL.
+- `app/tests/unit/MealPlans.test.tsx` — refactored the CampBooking block (previously mocked `global.fetch` returning snake `{ meal_plans }`): now mocks `@/lib/api`'s `getProjectMealPlans` (camel rows) and asserts the helper is called with the project id; ReservationSummary block untouched (its `createPublicReservation` stubbed).
+
+**Not touched**: backend/, admin components, ReservationSummary, api-types.ts/openapi.json (generated).
+
+**Verify** (workdir=app): `npx vitest run` → 2811 passed, 1 failed. The single failure (`useSaveRoomMutation rolls back cache and toasts on error` in `useQueryHooks-extra2.test.tsx`) is PRE-EXISTING — confirmed by `git stash` + targeted run failing identically on the pristine tree (deferred-toast-after-mutate assertion, AGENT_LOGBOOK T5). All CampBooking + MealPlans specs green. `npx tsc --noEmit` → 398 errors (≤ baseline ~399); zero errors in the 4 touched files.
+
+**Lesson**: `jsonResponse` applies deep `toCamel`, so the `/meal-plans` wire returns `{ mealPlans:[{sellingPrice,imageUrl,...}] }`. The pre-fix component read snake keys (`data.meal_plans`, `mp.selling_price`) that never existed on the wire — this raw-fetch bug was broken even on the default base, not just on custom domains. Switching to the shared client both fixes the base-URL issue AND aligns key names to the camel wire.
+
+---
+
+## Task Log — 2026-09-01 — @frontend (aw2-fe1-orphaned-leads): fix marketplace-zone lead submission so bookings scoped to a tenant
+
+**Task**: On the marketplace zone (`/camp/{id}/book` at sinaicamps.com) `app/src/components/public/ReservationSummary.tsx` POSTed leads via a raw `fetch(\`${apiBase}/leads\`)` with no tenant context — backend `getTenant()` resolved `tenantId = null`, so marketplace bookings created NULL-tenant ("orphaned") leads invisible in every tenant inbox, and `broadcastNewLead` skipped SSE. Root cause additionally included the ambient `getTenantId()` returning `'marketplace'` on that host — wrong scope, not just missing scope.
+
+**Files changed**:
+- `app/src/lib/api.ts` — `saveLead(data, options?: { tenantId?: string })`: when `options.tenantId` given, passes header `'x-tenant-id': options.tenantId`. Works because `apiFetch` merges `options.headers` LAST in its headers object, overriding the ambient `getTenantId()` value. Normal path (no options) unchanged. JSDoc documents the marketplace-ambient-`'marketplace'` trap.
+- `app/src/components/public/ReservationSummary.tsx` — `submitLead` now calls `saveLead({ name, email: '', phone: guestPhone || undefined, subject: \`Booking request — ${tenantName}\`, message, source: 'booking' }, { tenantId }).catch(() => {})`. No raw `fetch` remains for leads. `email: ''` satisfies the generated client type `email: string` (the form has no email field) while matching the backend zod contract — `(email || '').trim() || null` → NULL and the `email || phone` superRefine passes via phone. Kept the `if (!apiBase) return;` guard and the fire-and-forget best-effort behavior (never blocks WhatsApp handoff).
+- `app/tests/unit/components/ReservationSummary.test.tsx` — `vi.mock('@/lib/api')` with `saveLead` + `createPublicReservation`; asserts `saveLead(body, { tenantId: 't1' })` on submit, `saveLead` NOT called when `apiBase` absent, rejection swallowed, and a `vi.stubGlobal('fetch')` spy never called (no raw fetch).
+- `app/tests/unit/api-extended.test.ts` — new `saveLead with explicit tenantId sends x-tenant-id header (AW2-FE1)` asserting the merged headers reach the wire via `expect.objectContaining({ headers: expect.objectContaining({ 'x-tenant-id': 't-camp-1' }) })`. (Deliberately avoided the file's prevailing `const [url, opts] = mock.calls[0]` pattern because it emits TS18048 `'opts' is possibly 'undefined'` — kept tsc-error-neutral.)
+
+**Not touched**: backend/ (read-only verification only — ran `backend npx vitest run tests/leads.test.js tests/inbox.test.js` → 39 passed, confirming `x-tenant-id` header resolution + inbox/SSE scope), CampBooking, api-types.ts/openapi.json (generated).
+
+**Verify** (workdir=app): targeted run → 159 passed (ReservationSummary ×2 + api-extended). `npx vitest run` full suite → 121 files / 2813 passed (the T5 `useQueryHooks-extra2.test.tsx` baseline fails only in isolation, flaky ordering, pre-existing). `npx tsc --noEmit` → 398 errors — exactly the documented baseline, zero in changed files (a first pass was 400: my own test's `opts` TS18048 and a ReservationSummary TS2345 from missing required `email`; both fixed).
+
+**Lessons**:
+- The generated `LeadCreateRequest` requires `email: string` (stricter than the backend zod `email||phone` superRefine); a form with only phone must send `email: ''` to satisfy the client type without changing the wire semantics.
+- `apiFetch` merges `options.headers` after ambient `getTenantId()` — explicit tenant headers win, which is the sanctioned way to scope a public-zone call to a tenant.
+- Follow the task's "no new tsc errors" rule strictly even when matching a file's existing (broken) style: the `mock.calls[0]` destructure pattern in api-extended.test.ts is itself the source of ~50 pre-existing TS18048s; asymmetric matchers (`expect.objectContaining`) are the type-safe alternative.
+
+---
+
+## Task Log — 2026-09-01 — @qa (aw1-e2e-pos-receipt): update POS E2E specs for the post-checkout receipt modal + fix E2E seed stock
+
+**Task**: After AW1-FE2 wired `ReceiptModal` into CartPanel (checkout now shows a receipt and only navigates to `/pos/orders` after closing it), the POS payment E2E specs still asserted the OLD immediate-navigation behavior. Update the three payment specs to assert the receipt modal, run them, ensure they pass.
+
+**Files changed**:
+- `tests/e2e/specs/pos/pos-e2e-flow.spec.ts` — cash flow, split-payment flow, and the "POS Receipt Modal" test: after Pay, wait for `[data-testid="receipt-modal"]`, assert `Order:` + `Total` (+ `SinaiCamps`), click the modal's `Close` button, assert modal hides, THEN wait for `[data-testid="pos-orders"]` + `/orders` URL.
+- `tests/e2e/specs/pos/order-payment-flow.spec.ts` — "checkout with cash payment navigates to orders" and "orders page shows completed order after payment": same receipt-modal → close → navigate pattern.
+- `tests/e2e/specs/pos/shift-lifecycle.spec.ts` — "cashier can process a sale during open shift": same pattern.
+- `tests/e2e/utils/api-helpers.ts` — **added `seedPosStock()`** called at the end of `seedTestData()`: top up each `TEST_PRODUCTS` row via `POST /api/inventory/adjustments` (+100, reason `e2e-seed`).
+
+**Root cause of the "receipt modal never appears" failures** (NOT the modal feature — it was working): `POST /api/products` inserts `pos_products` with `stock_quantity = 0` (column default) and the POS sale path is stock-guarded (`UPDATE ... AND stock_quantity >= ?`, see the 2026-08-24 "POS product self-stock deduction" entry). Every Pay click returned 400 `Insufficient stock for an item in your order…`, so `posCreateOrder` threw, the cart was never cleared, and no receipt ever rendered. Repeated E2E runs could never complete a sale against the 0-stock seed product — a silent fake-green until the specs were strengthened. `seedPosStock` is idempotent-enough for E2E: stock only drifts upward, exact values are never asserted.
+
+**Verify**: `CI=true npx playwright test tests/e2e/specs/pos/pos-e2e-flow.spec.ts tests/e2e/specs/pos/order-payment-flow.spec.ts tests/e2e/specs/pos/shift-lifecycle.spec.ts --project=pos` → 27 passed (1.3m). Full `--project=pos` → **89 passed (3.2m), exit 0** (dashboard/orders/products/reports/workflows unaffected).
+
+**Lessons**:
+- Any POS sale E2E assertion is HELPLESS until seed products have stock — this is why the specs looked green-but-dead before. The stock-guard semantics note in the 2026-08-24 entry ("room-type rows ever get sold via POS terminals") is now resolved for the E2E path via `seedPosStock`.
+- The bash tool kills backgrounded children on timeout: restarting `wrangler dev` inside the tool needs `setsid bash -c '…' &` so the server survives, otherwise every subsequent run fails global-setup with `SocketError: other side closed` on 127.0.0.1:8787 (seen once here — the first full-project attempt failed 9 dashboard tests purely because the backend it talks to had died).
+- Receipt modal real selectors (already had these in the feature work, re-verified here): `data-testid="receipt-modal"` (Modal `testId`), Close button is the footer `<Button variant="primary">Close</Button>` (modal is `showCloseButton={false}` — the footer button is the ONLY dismissal control besides ESC/overlay), receipt text = `SinaiCamps` / `Order: {orderNumber}` / `Cashier:` / `Date:` / items / `Subtotal` / `Tax` / `Total` / `Paid ({paymentMethod})`.
+
+---
+
+## Wave Summary — 2026-09-01 — Audit Wave 1 (P0) + Wave 2 (P1) execution
+
+**Trigger**: Prior deep-audit wave (A1-A5 artifacts in /tmp/opencode/audit) queued Wave 1 P0 and Wave 2 P1 fixes; the Paymob payment wave landed first (dashboard-config payment settings + marketplace_payments ledger). This wave executed the queued audit work.
+
+**Shipped (all verified)**:
+1. **AW1-DB1** — `tenant-billing.js` `orders.deleted_at` phantom column → `order_state_id != 'cancelled'` (was a 500 on every call). Regression test locks the SQL contract.
+2. **AW1-DB2** — `categories.js` category delete dropped phantom `AND tenant_id = ?` on `category_lang` (was a 500 on every delete; category_lang has no such column, composite PK is category_id+lang).
+3. **AW1-BE1** — Order-create meal-plan branch (`orders.js`) now scopes the `pos_products` lookup by `organization_id` (resolved via `tenant_org_mapping`, same as meal-plans.js browse) + exists-check → cross-tenant pricing write + foreign name read are closed (400 on unknown/foreign ids, zero writes). 3 regression tests added; the pre-written `0070 A5 P1` tests now pass.
+4. **AW1-BE2** — Added missing routes the frontend already called: `PUT /storefront/admin/blog-categories/:id`, `PUT /ai/automation-rules/:id`, `POST /ai/automation-rules/:id/toggle`.
+5. **AW1-FE1** — Realigned `api.ts` helpers to the live backend (storefront pages/blog/posts/blog-categories now `/storefront/admin/*`; AI update/toggle now PUT/POST as mounted); exported `getStorefrontBlogCategories` (killed an inline apiFetch bypass that ALSO had a wrong URL); removed 7 `(api as any).fn?.()` masks in AIPanel; typed `runAIForecast` return.
+6. **AW1-FE2** — Wired ReceiptModal into CartPanel: checkout success sets `receiptOrder`, modal portals over the cart, close runs the old deferred cleanup+nav. CartPanel's pre-existing dead receipt state is now live. Unit test added (PosViews).
+7. **AW1-E2E** — POS E2E specs updated to the NEW receipt flow (3 specs, 7 call sites); found + fixed a REAL seed bug: seed products had `stock_quantity = 0` so every E2E Pay 400'd (`Insufficient stock`); added `seedPosStock()` (+100 per product via inventory adjustments). POS project suite now 89 passed. **Lesson: any POS sale E2E assertion is helpless until seed products have stock.**
+8. **AW1-FE3** — CampBooking switched to shared client `getProjectMealPlans` (also fixed a latent snake/camel bug: meal plans never rendered even on the default base because the raw fetch read `data.meal_plans`/`mp.selling_price` from a deep-camel wire).
+9. **AW2-S1** — `handleConfirmPayment` ownership check: scoped `payment_intents` lookup (id+order_id+tenant_id+status='created'), amount-mismatch → 409, missing/used → 400, zero state writes on reject; intent marked `status='confirmed'` on success; `client_secret` now `randomUUID()`-based. Root `tests/unit/payments.test.js` updated (mock needed a 2-step `first()` sequence; it previously reused the order row as the intent row).
+10. **AW2-S2** — Upload MIME hardening: extension-only allowlist (jpg/jpeg/png/webp/gif), client Content-Type never trusted, non-allowlisted → 400 before R2, `httpMetadata.contentType` from allowlist, `X-Content-Type-Options: nosniff` on media GET/HEAD.
+11. **AW2-S3** — POS barcode lookup no longer returns `cost_price`/`costPrice` (cashier terminals don't get wholesale cost).
+12. **AW2-FE1** — Marketplace-zone bookings now create tenant-scoped leads: `saveLead(data, { tenantId })` sends explicit `x-tenant-id`, overriding the ambient `'marketplace'` getTenantId trap on the public host. No raw fetch remains in ReservationSummary; inbox + SSE path verified (backend leads/inbox tests 39 pass). **Lesson: the marketplace ambient scope is `'marketplace'` — explicit tenant headers win via header merge order.**
+
+**Final verification (this wave)**:
+- Backend: `npx vitest run` → **71 files / 1966 passed**
+- Frontend: `npx vitest run` → **121 files / 2813 passed** (the T5 `useQueryHooks-extra2` deferred-toast test fails only in isolation — documented pre-existing baseline, flaky ordering)
+- Root integration: `npx vitest run` → **10 files / 158 passed**
+- tsc: `npx tsc --noEmit` → **398 errors — exact baseline** (pre-existing CampsSection.astro / test-file casts; zero new)
+- POS E2E: `CI=true npx playwright test --project=pos` → **89 passed** (incl. updated receipt specs)
+
+**Deferred to backlog (not in this wave)**:
+- P2: order `reference` entropy (`ORD-` + Math.random on a public status endpoint → crypto suffix), SSE `?tenantId` param not validated against an active tenant, `?tenant_id` query-param cache split on public reads (drop or validate vs header), availability SWR staleness on public pages (2 min stale "available" — fails safe via 409).
+- P3: hard-coded `store_id = 1` on meal-plan `pos_transactions`, `camp_id` stay-limit lookup not tenant-scoped, meal-plan second batch no rollback on failure.
+- P2 (design): super-admin impersonation sessions are not tenant-tagged in audit logs.
+- No KV writes added anywhere (free-plan quota rule honored); Vary/`x-tenant-id` partitioning verified sound.

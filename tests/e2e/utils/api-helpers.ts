@@ -100,6 +100,38 @@ export async function seedTestData(): Promise<void> {
   await apiRequest('POST', '/api/rateplans', TEST_RATE_PLAN, headers);
 
   await seedMealData(token, TEST_TENANT.id);
+
+  await seedPosStock(token, TEST_TENANT.id);
+}
+
+/**
+ * Top up stock for the POS seed products.
+ *
+ * `POST /api/products` inserts pos_products rows with stock_quantity = 0
+ * (column default; the marketplace product handler omits the column), and the
+ * POS sale path is stock-guarded (logbook 2026-08-24: "any newly created /
+ * never-restocked product becomes unsellable via POS until topped up
+ * (400 + rollback)"). Without a top-up the POS payment specs can never
+ * complete a sale, so the post-checkout receipt modal never appears and every
+ * payment path 400s with "Insufficient stock".
+ *
+ * `/api/inventory/adjustments` is the only stock-writing API; a positive
+ * adjustment is safe on re-runs (stock only drifts upward, exact values are
+ * never asserted by the E2E suite).
+ */
+async function seedPosStock(token: string, tenantId: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${token}`, 'x-tenant-id': tenantId };
+  for (const p of TEST_PRODUCTS) {
+    const res = await apiRequest('POST', '/api/inventory/adjustments', {
+      product_id: p.id,
+      adjustment: 100,
+      reason: 'e2e-seed',
+    }, headers);
+    if (!res.ok) {
+      throw new Error(`seedPosStock failed for ${p.id}: ${res.status} ${await res.text()}`);
+    }
+  }
+  console.log('  ✅ POS product stock topped up');
 }
 
 /**

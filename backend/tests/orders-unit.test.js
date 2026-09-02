@@ -822,6 +822,115 @@ describe('handleOrdersRoute', () => {
       expect(body.success).toBe(true);
       expect(db.batch).toHaveBeenCalledTimes(1); // only the guarded INSERT
     });
+
+    // --- 0070: meal plans — org-scoped pos_products lookup (A5 P1) ---
+
+    // prepare sequence (guest_name only, no email/phone):
+    // 0 room query (all) · 1 overlap query (all) · 2 stay limits (all)
+    // 3 customer insert (run) · 4 guarded orders INSERT (batch)
+    // 5 tenant_org_mapping (all) · 6 pos_products (all)
+    function makeMealPlanDb(mock) {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ min_stay: null, max_stay: null }] }); },
+        (ch) => { ch.run.mockResolvedValue({}); },
+        (ch) => {},
+        (ch) => { ch.all.mockResolvedValue({ results: [{ organization_id: mock.org }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: mock.products }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      return { db };
+    }
+
+    it('0070 A5 P1: rejects a foreign (cross-org) meal-plan product id with 400 and writes nothing', async () => {
+      // Scoped lookup returns only the tenant's own product; the foreign id is
+      // missing → products.length (1) !== requested (2) → 400 before any write.
+      const { db } = makeMealPlanDb({
+        org: 7,
+        products: [{ id: 'pp_a', name: 'Grilled Chicken', selling_price: '18.00' }],
+      });
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05',
+        meal_plans: [
+          { product_id: 'pp_a', quantity: 1 },
+          { product_id: 'pp_B_FOREIGN', quantity: 1 },
+        ],
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('not found in this organization');
+      // only the guarded orders INSERT ran; NO order_items / pos_transactions
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      const items = db.batch.mock.calls[0][0].map((s) => s && s.sql);
+      expect(items.some((sql) => sql && sql.includes('INSERT INTO order_items'))).toBe(false);
+      expect(db.prepare.mock.calls.some(([sql]) => sql.includes('INSERT INTO pos_transactions'))).toBe(false);
+    });
+
+    it('0070 A5 P1: rejects a nonexistent meal-plan product id with 400 and writes nothing', async () => {
+      const { db } = makeMealPlanDb({
+        org: 7,
+        products: [], // pos_products returns nothing for the unknown id
+      });
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05',
+        meal_plans: [{ product_id: 'pp_does_not_exist', quantity: 2 }],
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('not found in this organization');
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      const items = db.batch.mock.calls[0][0].map((s) => s && s.sql);
+      expect(items.some((sql) => sql && sql.includes('INSERT INTO order_items'))).toBe(false);
+      expect(db.prepare.mock.calls.some(([sql]) => sql.includes('INSERT INTO pos_transactions'))).toBe(false);
+    });
+
+    it('0070 A5 P1: accepts valid org-scoped ids and prices line items from the scoped rows', async () => {
+      const { db } = makeMealPlanDb({
+        org: 7,
+        products: [
+          { id: 'pp_a', name: 'Grilled Chicken', selling_price: '18.00' },
+          { id: 'pp_b', name: 'Pasta', selling_price: '12.50' },
+        ],
+      });
+      const req = makeRequest('POST', 'https://x.com/api/orders', {
+        camp_id: 'c1', room_id: 'r1', guest_name: 'John',
+        check_in_date: '2030-08-01', check_out_date: '2030-08-05',
+        meal_plans: [
+          { product_id: 'pp_a', quantity: 2 },
+          { product_id: 'pp_b', quantity: 1 },
+        ],
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      // guarded INSERT + order_items/UPDATE batch + pos_transactions batch
+      expect(db.batch).toHaveBeenCalledTimes(3);
+
+      // the pos_products lookup must be org-scoped
+      const productSql = db.prepare.mock.calls.find(([sql]) => sql.includes('FROM pos_products'));
+      expect(productSql).toBeTruthy();
+      expect(productSql[0]).toContain('organization_id = ?');
+      expect(productSql[0]).toContain('WHERE id IN (');
+
+      // line items priced server-authoritatively from the scoped rows:
+      // 2 × 18.00 = 36 · 1 × 12.50 = 12.5 → meal plan total 48.5
+      const productNameCalls = db.prepare.mock.calls.filter(([sql]) => sql.includes("'meal_plan'"));
+      expect(productNameCalls).toHaveLength(2);
+      // ensure the order-total UPDATE carries the server-computed meal-plan total
+      const updateIdx = db.prepare.mock.calls.findIndex(([sql]) => sql.includes('UPDATE orders SET total_amount'));
+      expect(updateIdx).not.toBe(-1);
+      const updateChain = db.prepare.mock.results[updateIdx].value;
+      const updateBinds = updateChain.bind.mock.calls[0];
+      expect(updateBinds[0]).toBe(48.5);
+      expect(updateBinds[1]).toMatch(/^ord_/);
+    });
   });
 
   describe('PUT /orders/:id (update)', () => {

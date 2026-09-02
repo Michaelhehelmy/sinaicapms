@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import ReservationSummary from '@/components/public/ReservationSummary';
+import { saveLead } from '@/lib/api';
+
+// Lead capture must route through the shared API client (saveLead) — never a
+// raw fetch. Mock the client module so we can assert the call + tenant
+// options and assert zero raw fetch traffic.
+vi.mock('@/lib/api', () => ({
+  saveLead: vi.fn(),
+  createPublicReservation: vi.fn(),
+}));
+
+const saveLeadMock = vi.mocked(saveLead);
 
 const reservationItem = {
   roomType: { id: 'r1', name: 'Deluxe Tent', capacity: 4, basePrice: 1200 },
@@ -26,6 +37,8 @@ describe('ReservationSummary', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    saveLeadMock.mockReset();
+    saveLeadMock.mockResolvedValue({ success: true, message: 'ok', id: 'lead_x' });
   });
 
   it('shows empty state when no reservation', () => {
@@ -79,7 +92,7 @@ describe('ReservationSummary', () => {
     expect(waBtn.closest('button')).not.toBeDisabled();
   });
 
-  it('submits lead to API when apiBase is provided (lines 170-173)', async () => {
+  it('submits lead through the shared client with the booking tenant id (no raw fetch)', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchSpy);
     setReservation();
@@ -91,24 +104,23 @@ describe('ReservationSummary', () => {
       fireEvent.click(screen.getByText('Send Booking via WhatsApp'));
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.example.com/api/leads',
-      expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    expect(saveLeadMock).toHaveBeenCalledTimes(1);
+    const [body, options] = saveLeadMock.mock.calls[0];
     expect(body.name).toBe('John Doe');
+    expect(body.email).toBe('');
     expect(body.phone).toBe('+20 111 222 3333');
     expect(body.source).toBe('booking');
     expect(body.message).toContain('Deluxe Tent');
     expect(body.message).toContain('Total');
+    // The booking's tenant is passed explicitly so apiFetch sends
+    // `x-tenant-id: t1` (marketplace-zone bookings resolve to 'marketplace'
+    // via getTenantId() and would otherwise orphan the lead).
+    expect(options).toEqual({ tenantId: 't1' });
+    // No raw fetch remains for the lead — everything goes through the client.
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('does not submit lead when apiBase is absent', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal('fetch', fetchSpy);
     setReservation();
     render(<ReservationSummary {...defaultProps} />);
     fireEvent.change(screen.getByPlaceholderText('Enter your full name'), { target: { value: 'John Doe' } });
@@ -117,11 +129,12 @@ describe('ReservationSummary', () => {
       fireEvent.click(screen.getByText('Send Booking via WhatsApp'));
     });
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(saveLeadMock).not.toHaveBeenCalled();
   });
 
   it('lead capture failure does not throw (fire-and-forget)', async () => {
-    const fetchSpy = vi.fn().mockRejectedValue(new Error('Network error'));
+    saveLeadMock.mockRejectedValue(new Error('Network error'));
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchSpy);
     setReservation();
     render(<ReservationSummary {...defaultProps} apiBase="https://api.example.com/api" />);
@@ -131,7 +144,8 @@ describe('ReservationSummary', () => {
       fireEvent.click(screen.getByText('Send Booking via WhatsApp'));
     });
 
-    expect(fetchSpy).toHaveBeenCalled();
+    expect(saveLeadMock).toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('copy summary button works', async () => {

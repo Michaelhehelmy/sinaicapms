@@ -313,6 +313,66 @@ describe('Automation Rules', () => {
     const res = await app.request(req('/automation-rules/nonexistent/activate', { method: 'PATCH' }), {}, env(db));
     expect(res.status).toBe(404);
   });
+
+  it('PUT /automation-rules/:id updates a rule', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id FROM automation_rules WHERE id/, [{ id: 'ar1' }])
+      .on(/UPDATE automation_rules SET/, { meta: { changes: 1 } })
+      .on(/SELECT \* FROM automation_rules WHERE id.*tenant_id/, [{
+        id: 'ar1', name: 'Updated Rule', trigger_event: 'order.created',
+        condition_json: '{}', action_json: '{}', is_active: 1, trigger_count: 3,
+      }]);
+    const app = mountRouter(aiRouter, { tenantId: 't1' });
+    const res = await app.request(req('/automation-rules/ar1', {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'Updated Rule' }),
+    }), {}, env(db));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.name).toBe('Updated Rule');
+    expect(body.id).toBe('ar1');
+  });
+
+  it('PUT /automation-rules/:id returns 404 for unknown id', async () => {
+    const db = makeRoutingDb().on(/SELECT id FROM automation_rules WHERE id/, null);
+    const app = mountRouter(aiRouter, { tenantId: 't1' });
+    const res = await app.request(req('/automation-rules/nonexistent', {
+      method: 'PUT',
+      body: JSON.stringify({ name: 'X' }),
+    }), {}, env(db));
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /automation-rules/:id/toggle flips is_active from 1 to 0', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id, is_active FROM automation_rules/, [{ id: 'ar1', is_active: 1 }])
+      .on(/UPDATE automation_rules SET is_active/, { meta: { changes: 1 } });
+    const app = mountRouter(aiRouter, { tenantId: 't1' });
+    const res = await app.request(req('/automation-rules/ar1/toggle', { method: 'POST' }), {}, env(db));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.isActive).toBe(0);
+    expect(body.success).toBe(true);
+  });
+
+  it('POST /automation-rules/:id/toggle flips is_active from 0 to 1', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id, is_active FROM automation_rules/, [{ id: 'ar1', is_active: 0 }])
+      .on(/UPDATE automation_rules SET is_active/, { meta: { changes: 1 } });
+    const app = mountRouter(aiRouter, { tenantId: 't1' });
+    const res = await app.request(req('/automation-rules/ar1/toggle', { method: 'POST' }), {}, env(db));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.isActive).toBe(1);
+    expect(body.success).toBe(true);
+  });
+
+  it('POST /automation-rules/:id/toggle returns 404 for unknown id', async () => {
+    const db = makeRoutingDb().on(/SELECT id, is_active FROM automation_rules/, null);
+    const app = mountRouter(aiRouter, { tenantId: 't1' });
+    const res = await app.request(req('/automation-rules/nonexistent/toggle', { method: 'POST' }), {}, env(db));
+    expect(res.status).toBe(404);
+  });
 });
 
 // ── Automation Logs ─────────────────────────────────────────────────────────

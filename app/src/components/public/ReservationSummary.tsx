@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { createPublicReservation } from '@/lib/api';
+import { createPublicReservation, saveLead } from '@/lib/api';
 
 interface ReservationItem {
   roomType: { id: string; name: string; capacity: number; basePrice: number };
@@ -194,20 +194,27 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
       '',
       `${t.waTotal}: ${formatPrice(totalAmount)}`,
     ].join('\n');
-    fetch(`${apiBase}/leads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    // Route through the shared client (apiFetch) and pass the booking's
+    // tenant explicitly — on the marketplace zone getTenantId() resolves to
+    // 'marketplace', so a raw unscoped POST recorded the lead with a NULL
+    // tenant_id (invisible in every inbox + no SSE broadcast). apiFetch merges
+    // this header LAST, so it overrides the ambient scope.
+    saveLead(
+      {
         name: guestName,
+        // The reservation form has no email field; '' is accepted by the
+        // lead schema (email || phone must be present) and stored as NULL.
+        email: '',
         phone: guestPhone || undefined,
         subject: `Booking request — ${tenantName}`,
         message,
         source: 'booking',
-      }),
-    }).catch(() => {
+      },
+      { tenantId },
+    ).catch(() => {
       // Lead capture is best-effort — the WhatsApp handoff still works.
     });
-  }, [apiBase, items, guestName, guestPhone, tenantName, totalAmount, t]);
+  }, [apiBase, items, guestName, guestPhone, tenantId, tenantName, totalAmount, t]);
 
   const sendWhatsApp = () => {
     if (!whatsappNumber || items.length === 0 || !guestName) return;

@@ -12,6 +12,7 @@ function makeRoutingDb() {
   const db = {
     prepare: vi.fn((sql) => {
       const stmt = {
+        sql,
         bind: vi.fn((...binds) => { stmt.boundBinds = binds; return stmt; }),
         boundBinds: [],
         all: vi.fn(async () => (await runHandler(sql, stmt.boundBinds)) ?? { results: [], meta: { changes: 0 } }),
@@ -90,6 +91,37 @@ describe('Tenant Billing', () => {
     expect(body.subscription.plan).toBe('free');
     expect(body.subscription.planLabel).toBe('Free');
     expect(body.usage.bookings).toBe(5);
+  });
+
+  it('GET / excludes cancelled orders and does not reference phantom deleted_at column', async () => {
+    const db = makeRoutingDb()
+      .on(/FROM tenant_subscriptions[\s\S]*LEFT JOIN subscription_plans[\s\S]*WHERE/, [
+        { tenant_id: 't1', plan_id: 'plan_starter', plan_slug: 'starter', plan_name: 'Starter', status: 'active', price_monthly: 49, max_orders_monthly: 1000, max_pos_users: 5, bookings_limit: 1000, current_period_end: '2026-09-01', trial_ends_at: null, created_at: '2026-01-01' },
+      ])
+      .on(/SELECT COUNT\(\*\) as cnt FROM orders WHERE/, [
+        { cnt: 42 },
+      ])
+      .on(/SELECT COUNT\(\*\) as cnt FROM pos_users WHERE/, [
+        { cnt: 3 },
+      ]);
+
+    // The routing mock never executes real SQL, so a phantom `deleted_at` column
+    // would not throw here — this is a SQL-text contract regression that locks
+    // the cancellation semantic the router actually sends to D1.
+    const app = mountRouter(tenantBillingRoutes, { tenantId: 't1' });
+    const res = await app.request(req('/'), {}, env(db));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.usage.bookings).toBe(42);
+
+    const ordersStmt = db.statements.find((s) =>
+      /SELECT COUNT\(\*\) as cnt FROM orders/.test(s.sql)
+    );
+    expect(ordersStmt).toBeDefined();
+    expect(ordersStmt.sql).toContain("order_state_id != 'cancelled'");
+    expect(ordersStmt.sql).not.toContain('deleted_at');
+    expect(ordersStmt.boundBinds).toEqual(['t1']);
   });
 
   it('GET / returns 404 when no tenant context', async () => {

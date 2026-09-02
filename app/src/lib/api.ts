@@ -700,9 +700,20 @@ export function registerUser(data: { name: string; email: string; password: stri
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────
-export function saveLead(data: Schemas['LeadCreateRequest']) {
+/**
+ * Create a lead. Pass `{ tenantId }` to explicitly scope the request to a
+ * booking's tenant via the `x-tenant-id` header (marketplace-zone submissions
+ * must do this — `getTenantId()` resolves to 'marketplace' on sinaicamps.com,
+ * which would orphan the lead under the wrong/null tenant). The normal path
+ * (no options) keeps the ambient `getTenantId()` scoping unchanged.
+ */
+export function saveLead(
+  data: Schemas['LeadCreateRequest'],
+  options?: { tenantId?: string },
+) {
   return apiFetch<Schemas['LeadCreateResponse']>('/leads', {
     method: 'POST',
+    headers: options?.tenantId ? { 'x-tenant-id': options.tenantId } : undefined,
     body: JSON.stringify(data),
   });
 }
@@ -1173,6 +1184,30 @@ export async function removeProjectTag(projectId: string, tagId: string): Promis
     `/projects/${encodeURIComponent(projectId)}/tags/${encodeURIComponent(tagId)}`,
     { method: 'DELETE' },
   );
+}
+
+// ─── Project Meal Plans ───────────────────────────────────────────────
+// Backed by GET /api/projects/:id/meal-plans (backend/src/api/meal-plans.js).
+// Public scope — used by the public CampBooking component on tenant domains
+// where a window-relative `/api/...` fetch would miss the /api/v1 base.
+
+/** A meal-plan product, as returned by GET /api/projects/:id/meal-plans (camel wire). */
+export interface ProjectMealPlan {
+  id: string;
+  name: string;
+  sellingPrice: number;
+  description?: string | null;
+  imageUrl?: string | null;
+}
+
+/** List the meal plans available for a project (empty array when none/unavailable). */
+export async function getProjectMealPlans(
+  projectId: string,
+): Promise<ProjectMealPlan[]> {
+  const data = await apiFetch<{ mealPlans: ProjectMealPlan[] }>(
+    `/projects/${encodeURIComponent(projectId)}/meal-plans`,
+  );
+  return Array.isArray(data?.mealPlans) ? data.mealPlans : [];
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────
@@ -2346,24 +2381,28 @@ export function createHrApplicant(data: Record<string, unknown>) {
 
 export function saveStorefrontPage(data: Record<string, unknown>, editId?: string) {
   const method = editId ? 'PUT' : 'POST';
-  const path = editId ? `/storefront/pages/${editId}` : '/storefront/pages';
+  const path = editId ? `/storefront/admin/pages/${editId}` : '/storefront/admin/pages';
   return apiFetch(path, { method, body: JSON.stringify(data) });
 }
 
 export function saveStorefrontBlogPost(data: Record<string, unknown>, editId?: string) {
   const method = editId ? 'PUT' : 'POST';
-  const path = editId ? `/storefront/blog/posts/${editId}` : '/storefront/blog/posts';
+  const path = editId ? `/storefront/admin/blog/${editId}` : '/storefront/admin/blog';
   return apiFetch(path, { method, body: JSON.stringify(data) });
 }
 
 export function saveStorefrontBlogCategory(data: Record<string, unknown>, editId?: string) {
   const method = editId ? 'PUT' : 'POST';
-  const path = editId ? `/storefront/blog/categories/${editId}` : '/storefront/blog/categories';
+  const path = editId ? `/storefront/admin/blog-categories/${editId}` : '/storefront/admin/blog-categories';
   return apiFetch(path, { method, body: JSON.stringify(data) });
 }
 
 export function deleteStorefrontBlogCategory(id: string) {
-  return apiFetch(`/storefront/blog/categories/${id}`, { method: 'DELETE' });
+  return apiFetch(`/storefront/admin/blog-categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getStorefrontBlogCategories() {
+  return apiFetch<Array<{ id: string; name: string; slug: string }>>('/storefront/admin/blog-categories');
 }
 
 // ─── AI Module API Functions ────────────────────────────────────────────────
@@ -2389,11 +2428,22 @@ export function createAIAutomationRule(data: Record<string, unknown>) {
 }
 
 export function toggleAIAutomationRule(id: string) {
-  return apiFetch(`/ai/automation-rules/${id}/toggle`, { method: 'PUT' });
+  return apiFetch(`/ai/automation-rules/${encodeURIComponent(id)}/toggle`, { method: 'POST' });
+}
+
+export interface AiForecastPoint {
+  date: string;
+  predictedDemand: number;
+  confidence: number;
 }
 
 export function runAIForecast(data: Record<string, unknown>) {
-  return apiFetch('/ai/forecast', { method: 'POST', body: JSON.stringify(data) });
+  return apiFetch<{
+    productId: string;
+    periodDays: number;
+    forecasts: AiForecastPoint[];
+    model: { slope: number; intercept: number; rSquared: number };
+  }>('/ai/forecast', { method: 'POST', body: JSON.stringify(data) });
 }
 
 // ─── Admin Settings API Functions ───────────────────────────────────────────

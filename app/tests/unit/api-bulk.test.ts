@@ -222,6 +222,7 @@ describe('api.ts — storefront (public + orders)', () => {
     await expectResolves(() => api.updateStorefrontPage('pg1', { title: 'Y' }));
     await expectResolves(() => api.deleteStorefrontPage('pg1'));
     await expectResolves(() => api.getStorefrontBlogPosts());
+    await expectResolves(() => api.getStorefrontBlogCategories());
     await expectResolves(() => api.createStorefrontBlogPost({ slug: 'x', title: 'X', content: 'c' }));
     await expectResolves(() => api.updateStorefrontBlogPost('bp1', { title: 'Y' }));
     await expectResolves(() => api.deleteStorefrontBlogPost('bp1'));

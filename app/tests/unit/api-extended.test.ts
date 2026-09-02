@@ -974,6 +974,16 @@ describe('lead endpoints', () => {
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/leads'), expect.objectContaining({ method: 'POST' }));
   });
 
+  it('saveLead with explicit tenantId sends x-tenant-id header (AW2-FE1)', async () => {
+    await saveLead({ name: 'John', email: 'j@t.com' }, { tenantId: 't-camp-1' });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/leads'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-tenant-id': 't-camp-1' }),
+      }),
+    );
+  });
+
   it('getLeads GET /leads', async () => {
     await getLeads();
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/leads'), expect.any(Object));

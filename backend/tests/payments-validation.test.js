@@ -1,15 +1,41 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleCreatePaymentIntent, handleConfirmPayment } from '../src/api/payments';
 
-function createMockEnv(order = null) {
+function createMockEnv(order = null, intent = null) {
   return {
     PM_ENABLED: 'true',
     DB: {
       prepare: vi.fn(() => ({
         bind: vi.fn(() => ({
           first: vi.fn().mockResolvedValue(order),
-          run: vi.fn().mockResolvedValue({}),
+          run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
         })),
+      })),
+    },
+  };
+}
+
+// Mock env that returns a different first() per prepare call, keyed by SQL text.
+function createSeqMockEnv(sequence) {
+  // sequence: [{sql, first, run}] — matches prepares in order
+  const callbacks = sequence.map((s) => ({
+    sql: s.sql,
+    first: s.first || null,
+    run: s.run || null,
+  }));
+  let callIdx = 0;
+  return {
+    PM_ENABLED: 'true',
+    DB: {
+      prepare: vi.fn((sql) => ({
+        bind: vi.fn(() => {
+          const cur = callbacks[Math.min(callIdx, callbacks.length - 1)];
+          callIdx += 1;
+          return {
+            first: cur.first ? vi.fn().mockResolvedValue(cur.first) : vi.fn().mockResolvedValue(null),
+            run: cur.run ? vi.fn().mockResolvedValue(cur.run) : vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+          };
+        }),
       })),
     },
   };
@@ -104,6 +130,15 @@ describe('handleCreatePaymentIntent', () => {
     expect(data.currency).toBe('usd');
   });
 
+  it('generates a client_secret from crypto random (no weak Math.random base36 suffix)', async () => {
+    const order = { id: 'order_1', tenant_id: 't1', total_amount: 100, order_state_id: 'pending' };
+    const res = await handleCreatePaymentIntent(makeRequest({ orderId: 'order_1', amount: 100 }), createMockEnv(order), tenantId);
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    const suffix = data.clientSecret.replace(/^pi_mock_[0-9a-f-]+_secret_/, '');
+    expect(suffix).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
   it('returns 500 on JSON parse error', async () => {
     const badRequest = { json: () => Promise.reject(new Error('Invalid JSON')) };
     const res = await handleCreatePaymentIntent(badRequest, createMockEnv(), tenantId);
@@ -148,7 +183,11 @@ describe('handleConfirmPayment', () => {
 
   it('returns 400 when order is cancelled', async () => {
     const order = { id: 'order_1', tenant_id: 't1', order_state_id: 'cancelled' };
-    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), createMockEnv(order), tenantId);
+    const env = createSeqMockEnv([
+      { sql: 'SELECT id', first: { id: 'pi_123', order_id: 'order_1', amount: 200, status: 'created' } },
+      { sql: 'SELECT id', first: order },
+    ]);
+    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), env, tenantId);
     const data = await res.json();
     expect(res.status).toBe(400);
     expect(data.error).toBe('Cannot confirm payment for a cancelled order');
@@ -156,13 +195,60 @@ describe('handleConfirmPayment', () => {
 
   it('returns 200 with success on valid request', async () => {
     const order = { id: 'order_1', tenant_id: 't1', total_amount: 200, order_state_id: 'pending' };
-    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), createMockEnv(order), tenantId);
+    const env = createSeqMockEnv([
+      { sql: 'SELECT id', first: { id: 'pi_123', order_id: 'order_1', amount: 200, status: 'created' } },
+      { sql: 'SELECT id', first: order },
+      { sql: 'UPDATE payment_intents' },
+      { sql: 'UPDATE orders' },
+    ]);
+    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), env, tenantId);
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.success).toBe(true);
     expect(data.orderId).toBe('order_1');
     expect(data.status).toBe('paid');
     expect(data.amountPaid).toBe(200);
+  });
+
+  it('returns 400 when payment intent is not found or already used', async () => {
+    const order = { id: 'order_1', tenant_id: 't1', total_amount: 200, order_state_id: 'pending' };
+    const env = createSeqMockEnv([
+      { sql: 'SELECT id', first: null }, // intent lookup returns nothing
+      { sql: 'SELECT id', first: order },
+    ]);
+    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), env, tenantId);
+    const data = await res.json();
+    expect(res.status).toBe(400);
+    expect(data.error).toBe('Payment intent not found or already used');
+  });
+
+  it('returns 409 and writes NO state when intent order_id does not match the order', async () => {
+    const order = { id: 'order_1', tenant_id: 't1', total_amount: 200, order_state_id: 'pending' };
+    // Intent belongs to a different order (order_id = 'order_other'); scoped lookup by order_id returns nothing.
+    const env = createSeqMockEnv([
+      { sql: 'SELECT id', first: null },
+      { sql: 'SELECT id', first: order },
+    ]);
+    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), env, tenantId);
+    const data = await res.json();
+    // Intent not found for this order → 400, not a write
+    expect(res.status).toBe(400);
+    expect(data.error).toBe('Payment intent not found or already used');
+  });
+
+  it('returns 409 and writes NO state when intent amount does not match order total', async () => {
+    const order = { id: 'order_1', tenant_id: 't1', total_amount: 200, order_state_id: 'pending' };
+    const env = createSeqMockEnv([
+      { sql: 'SELECT id', first: { id: 'pi_123', order_id: 'order_1', amount: 999, status: 'created' } },
+      { sql: 'SELECT id', first: order },
+    ]);
+    const res = await handleConfirmPayment(makeRequest({ paymentIntentId: 'pi_123', orderId: 'order_1' }), env, tenantId);
+    const data = await res.json();
+    expect(res.status).toBe(409);
+    expect(data.error).toBe('Payment intent amount does not match order total');
+    // No UPDATE calls should have been issued (no state written).
+    const updateCalls = env.DB.prepare.mock.calls.map((c) => c[0]).filter((s) => s.startsWith('UPDATE'));
+    expect(updateCalls).toHaveLength(0);
   });
 
   it('returns 500 on JSON parse error', async () => {

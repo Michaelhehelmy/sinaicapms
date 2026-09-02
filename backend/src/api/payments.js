@@ -14,6 +14,7 @@
 import { jsonResponse, errorResponse } from '../utils/response';
 import { validationError } from '../utils/errors';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 
 export const paymentIntentSchema = z.object({
   orderId: z.string().min(1, 'Order ID is required'),
@@ -54,9 +55,12 @@ export async function handleCreatePaymentIntent(request, env, tenantId) {
       return errorResponse('Cannot create payment for a cancelled order', 400);
     }
 
-    // Unreachable when PM_ENABLED is false (guard above returns 503).
-    const paymentIntentId = 'pi_mock_' + Date.now();
-    const clientSecret = paymentIntentId + '_secret_' + Date.now().toString(36);
+    const paymentIntentId = 'pi_mock_' + randomUUID();
+    const clientSecret = paymentIntentId + '_secret_' + randomUUID();
+
+    await env.DB.prepare(
+      'INSERT INTO payment_intents (id, order_id, amount, currency, status, tenant_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(paymentIntentId, orderId, amount, currency || 'egp', 'created', tenantId).run();
 
     return jsonResponse({
       success: true,
@@ -87,6 +91,11 @@ export async function handleConfirmPayment(request, env, tenantId) {
     }
     const { paymentIntentId, orderId } = parsed.data;
 
+    // Ownership check: verify the intent belongs to this order/tenant and is still creatable.
+    const intent = await env.DB.prepare(
+      "SELECT id, order_id, amount, status FROM payment_intents WHERE id = ? AND order_id = ? AND tenant_id = ? AND status = 'created'"
+    ).bind(paymentIntentId, orderId, tenantId).first();
+
     const order = await env.DB.prepare(
       'SELECT id, tenant_id, total_amount, order_state_id, room_id, check_in_date FROM orders WHERE id = ? AND tenant_id = ?'
     ).bind(orderId, tenantId).first();
@@ -95,9 +104,21 @@ export async function handleConfirmPayment(request, env, tenantId) {
       return errorResponse('Order not found', 404);
     }
 
+    if (!intent) {
+      return errorResponse('Payment intent not found or already used', 400);
+    }
+
     if (order.order_state_id === 'cancelled') {
       return errorResponse('Cannot confirm payment for a cancelled order', 400);
     }
+
+    if (intent.amount !== order.total_amount) {
+      return errorResponse('Payment intent amount does not match order total', 409);
+    }
+
+    await env.DB.prepare(
+      "UPDATE payment_intents SET status = 'confirmed' WHERE id = ?"
+    ).bind(paymentIntentId).run();
 
     await env.DB.prepare(
       "UPDATE orders SET payment_status = 'paid', amount_paid = total_amount, notes = COALESCE(notes, '') || ' | Payment: ' || ?, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?"

@@ -64,6 +64,7 @@ vi.mock('@/lib/api', () => {
     // Storefront
     getStorefrontPages: mk(),
     getStorefrontBlogPosts: mk(),
+    getStorefrontBlogCategories: mk(),
     getStorefrontOrders: mk(),
     // AI
     getAiPredictions: mk(),
@@ -350,7 +351,7 @@ describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM
       ['useCrmKnowledgeArticlesQuery', useCrmKnowledgeArticlesQuery as never, api.getCrmKnowledgeArticles, []],
       ['useStorefrontPagesQuery', useStorefrontPagesQuery as never, api.getStorefrontPages, []],
       ['useStorefrontBlogPostsQuery', useStorefrontBlogPostsQuery as never, api.getStorefrontBlogPosts, []],
-      ['useStorefrontBlogCategoriesQuery', useStorefrontBlogCategoriesQuery as never, api.apiFetch, []],
+      ['useStorefrontBlogCategoriesQuery', useStorefrontBlogCategoriesQuery as never, api.getStorefrontBlogCategories, []],
       ['useStorefrontCartsQuery', useStorefrontCartsQuery as never, api.apiFetch, []],
       ['useStorefrontOrdersQuery', useStorefrontOrdersQuery as never, api.getStorefrontOrders, []],
       ['useAIPredictionsQuery', useAIPredictionsQuery as never, api.getAiPredictions, []],

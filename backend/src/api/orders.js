@@ -750,17 +750,36 @@ ordersRoutes.post('/', async (c) => {
     const mealPlanList = meal_plans || [];
     if (mealPlanList.length > 0) {
       const productIds = mealPlanList.map(mp => mp.product_id);
-      const placeholders = productIds.map(() => '?').join(',');
-      const { results: products } = await c.env.DB.prepare(
-        `SELECT id, name, selling_price FROM pos_products WHERE id IN (${placeholders})`
-      ).bind(...productIds).all();
+      const uniqueIds = [...new Set(productIds)];
 
-      const productMap = new Map(products.map(p => [p.id, p]));
-
+      // Scope the order's tenant to its organization BEFORE reading products.
+      // pos_products is org-scoped (organization_id INTEGER) — meal-plans.js
+      // browse uses the same convention. Resolving org first lets the product
+      // lookup below stay server-authoritative and org-scoped.
       const { results: orgMapping } = await c.env.DB.prepare(
         'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
       ).bind(tenantId).all();
       const organizationId = orgMapping.length > 0 ? orgMapping[0].organization_id : null;
+      if (organizationId == null) {
+        return errorResponse('Meal plan products are unavailable for this tenant', 400);
+      }
+
+      // Cross-tenant + nonexistent-id guard (A5 P1): only read products owned by
+      // THIS tenant's organization, and require every requested id to resolve.
+      // Any foreign/unknown id → 400 with no writes.
+      const placeholders = uniqueIds.map(() => '?').join(',');
+      const { results: products } = await c.env.DB.prepare(
+        `SELECT id, name, selling_price FROM pos_products
+         WHERE id IN (${placeholders}) AND organization_id = ?`
+      ).bind(...uniqueIds, organizationId).all();
+      if (products.length !== uniqueIds.length) {
+        return errorResponse(
+          'One or more meal plan products were not found in this organization',
+          400
+        );
+      }
+
+      const productMap = new Map(products.map(p => [p.id, p]));
 
       const itemStmts = [];
       const posStmts = [];

@@ -8,6 +8,16 @@ export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 // Extension allowlist — only raster image formats are accepted.
 export const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
 
+// Extension → MIME type map. The stored content type is always derived from
+// the file extension, NEVER from the client-declared Content-Type header.
+const CONTENT_TYPE_MAP = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
 /**
  * Returns the lowercase extension of `filename` when it is on the allowlist,
  * otherwise null. `filename` is the multipart file name or the ?filename=
@@ -61,8 +71,10 @@ export function sanitizeMediaKey(rawKey) {
  * Body: `multipart/form-data` with a `file` field (preferred), OR a raw
  * `application/octet-stream` body with the original filename in `?filename=`.
  *
- * Validation: content type must start with `image/`, size ≤ 8 MB (File.size
- * for multipart, buffered byte length for raw), extension on the allowlist.
+ * Validation: extension on the allowlist (jpg/jpeg/png/webp/gif), size ≤ 8 MB
+ * (File.size for multipart, buffered byte length for raw). The stored content
+ * type is derived from the extension only — the client-declared Content-Type is
+ * never trusted.
  *
  * Returns camelCase `{ url }` where url = `/api/media/{key}` (streamed by
  * handleMediaRoute).
@@ -80,7 +92,6 @@ uploadRoutes.post('/', async (c) => {
 
   let body;
   let filename;
-  let declaredContentType;
 
   if (contentType.startsWith('multipart/form-data')) {
     const formData = await request.formData();
@@ -89,25 +100,21 @@ uploadRoutes.post('/', async (c) => {
     if (file.size > MAX_UPLOAD_BYTES) return errorResponse('File exceeds the 8 MB limit', 413);
     body = file;
     filename = file.name;
-    declaredContentType = (file.type || '').toLowerCase();
   } else {
     // Raw octet-stream upload: ?filename= carries the original file name.
     filename = url.searchParams.get('filename');
     const raw = await request.arrayBuffer();
     if (raw.byteLength > MAX_UPLOAD_BYTES) return errorResponse('File exceeds the 8 MB limit', 413);
     body = raw;
-    declaredContentType = contentType || 'application/octet-stream';
   }
 
   const ext = allowedExt(filename);
   if (!ext) return errorResponse('Unsupported file type: allowed extensions are jpg, jpeg, png, webp, gif', 400);
 
-  if (!declaredContentType.startsWith('image/')) {
-    return errorResponse('Only image uploads are allowed', 400);
-  }
-
   const key = makeObjectKey(tenantId, ext);
-  await env.MEDIA_BUCKET.put(key, body, { httpMetadata: { contentType: declaredContentType } });
+  await env.MEDIA_BUCKET.put(key, body, {
+    httpMetadata: { contentType: CONTENT_TYPE_MAP[ext] },
+  });
 
   return jsonResponse({ url: `/api/media/${key}` }, 200);
 });
@@ -147,6 +154,7 @@ mediaRoutes.on(['GET', 'HEAD'], '*', async (c) => {
     headers: {
       'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
       'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 });

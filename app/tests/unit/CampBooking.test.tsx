@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import CampBooking from '@/components/public/CampBooking';
 
+vi.mock('@/lib/api', () => ({
+  getProjectMealPlans: vi.fn(),
+  getTenantId: vi.fn().mockReturnValue('t1'),
+}));
+
+import { getProjectMealPlans } from '@/lib/api';
+
+const mockedGetProjectMealPlans = getProjectMealPlans as unknown as ReturnType<typeof vi.fn>;
+
 const roomTypes = [
   { id: 'r1', name: 'Deluxe Tent', capacity: 4, basePrice: 100, description: 'A tent' },
   { id: 'r2', name: 'Family Suite', capacity: 6, basePrice: 250, description: 'A suite' },
@@ -205,5 +214,34 @@ describe('CampBooking', () => {
     );
     render(<CampBooking {...defaultProps} bookUrl="/book" />);
     expect(screen.getByText('View Summary').closest('a')).toHaveAttribute('href', '/book');
+  });
+
+  it('loads meal plans through the shared api client, not a raw fetch', async () => {
+    mockedGetProjectMealPlans.mockResolvedValue([
+      { id: 'mp1', name: 'Full Board', sellingPrice: 50, description: 'Three meals' },
+    ]);
+
+    render(
+      <CampBooking
+        {...defaultProps}
+        roomTypes={[roomTypes[0]]}
+        projectId="p1"
+        mealPlanCategoryId="c1"
+      />,
+    );
+
+    // The shared client helper must be invoked with the project id.
+    await waitFor(() => {
+      expect(mockedGetProjectMealPlans).toHaveBeenCalledWith('p1');
+    });
+
+    // The fetched meal plan surfaces in the booking modal.
+    fireEvent.click(screen.getByText('Book'));
+    fireEvent.change(screen.getByTestId('checkin-date'), { target: { value: '2026-09-01' } });
+    fireEvent.change(screen.getByTestId('checkout-date'), { target: { value: '2026-09-03' } });
+    await waitFor(() => {
+      expect(screen.getByText('Full Board')).toBeInTheDocument();
+      expect(screen.getByText(/50 EGP\/day/)).toBeInTheDocument();
+    });
   });
 });

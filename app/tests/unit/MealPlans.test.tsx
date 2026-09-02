@@ -3,13 +3,27 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import CampBooking from '@/components/public/CampBooking';
 import ReservationSummary from '@/components/public/ReservationSummary';
 
+// CampBooking loads meal plans through the shared client (not a raw fetch).
+// Mock @/lib/api so the call is asserted against the mocked helper. ReservationSummary
+// is rendered too, so its client dependency (createPublicReservation) is stubbed as well.
+vi.mock('@/lib/api', () => ({
+  getProjectMealPlans: vi.fn(),
+  createPublicReservation: vi.fn(),
+  getTenantId: vi.fn().mockReturnValue('t1'),
+}));
+
+import { getProjectMealPlans } from '@/lib/api';
+
+const mockedGetProjectMealPlans = getProjectMealPlans as unknown as ReturnType<typeof vi.fn>;
+
 const roomTypes = [
   { id: 'r1', name: 'Deluxe Tent', capacity: 4, basePrice: 100, description: 'A tent' },
 ];
 
+// camelCase meal-plan rows match the shared client's typed ProjectMealPlan wire shape.
 const mealPlans = [
-  { id: 'mp1', name: 'Full Board', selling_price: 50, description: 'Breakfast, lunch, dinner' },
-  { id: 'mp2', name: 'Half Board', selling_price: 30, description: 'Breakfast and dinner' },
+  { id: 'mp1', name: 'Full Board', sellingPrice: 50, description: 'Breakfast, lunch, dinner' },
+  { id: 'mp2', name: 'Half Board', sellingPrice: 30, description: 'Breakfast and dinner' },
 ];
 
 const defaultProps = {
@@ -26,30 +40,28 @@ describe('Meal Plans', () => {
   });
 
   describe('CampBooking', () => {
-    it('does not fetch meal plans when projectId is not set', () => {
-      const fetchSpy = vi.spyOn(global, 'fetch');
-      render(<CampBooking {...defaultProps} />);
-      expect(fetchSpy).not.toHaveBeenCalled();
+    beforeEach(() => {
+      mockedGetProjectMealPlans.mockReset();
+      mockedGetProjectMealPlans.mockResolvedValue([]);
     });
 
-    it('fetches meal plans when projectId and mealPlanCategoryId are set', async () => {
-      vi.spyOn(global, 'fetch').mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ meal_plans: mealPlans }),
-      } as Response);
+    it('does not fetch meal plans when projectId is not set', () => {
+      render(<CampBooking {...defaultProps} />);
+      expect(mockedGetProjectMealPlans).not.toHaveBeenCalled();
+    });
+
+    it('loads meal plans through the shared api client when projectId and mealPlanCategoryId are set', async () => {
+      mockedGetProjectMealPlans.mockResolvedValue(mealPlans);
 
       render(<CampBooking {...defaultProps} projectId="proj1" mealPlanCategoryId="cat1" />);
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/projects/proj1/meal-plans');
+        expect(mockedGetProjectMealPlans).toHaveBeenCalledWith('proj1');
       });
     });
 
     it('renders meal plan options in the booking modal when data is loaded', async () => {
-      vi.spyOn(global, 'fetch').mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ meal_plans: mealPlans }),
-      } as Response);
+      mockedGetProjectMealPlans.mockResolvedValue(mealPlans);
 
       render(<CampBooking {...defaultProps} projectId="proj1" mealPlanCategoryId="cat1" />);
       fireEvent.click(screen.getByText('Book'));
@@ -72,10 +84,7 @@ describe('Meal Plans', () => {
     });
 
     it('allows selecting meal plans via increment/decrement buttons', async () => {
-      vi.spyOn(global, 'fetch').mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ meal_plans: mealPlans }),
-      } as Response);
+      mockedGetProjectMealPlans.mockResolvedValue(mealPlans);
 
       render(<CampBooking {...defaultProps} projectId="proj1" mealPlanCategoryId="cat1" />);
       fireEvent.click(screen.getByText('Book'));
@@ -105,10 +114,7 @@ describe('Meal Plans', () => {
     });
 
     it('meal plan costs are included in the total', async () => {
-      vi.spyOn(global, 'fetch').mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ meal_plans: mealPlans }),
-      } as Response);
+      mockedGetProjectMealPlans.mockResolvedValue(mealPlans);
 
       render(<CampBooking {...defaultProps} projectId="proj1" mealPlanCategoryId="cat1" />);
       fireEvent.click(screen.getByText('Book'));
@@ -140,10 +146,7 @@ describe('Meal Plans', () => {
     });
 
     it('meal plans are stored in reservation with correct data', async () => {
-      vi.spyOn(global, 'fetch').mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ meal_plans: mealPlans }),
-      } as Response);
+      mockedGetProjectMealPlans.mockResolvedValue(mealPlans);
 
       render(<CampBooking {...defaultProps} projectId="proj1" mealPlanCategoryId="cat1" />);
       fireEvent.click(screen.getByText('Book'));
