@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelContentReady } from '../../fixtures/admin';

@@ -19,7 +19,7 @@ router.get('/overview', async (c) => {
       db.prepare('SELECT COUNT(*) as cnt FROM pos_products').first(),
       db.prepare('SELECT COUNT(*) as cnt FROM pos_products WHERE is_active = 1').first(),
       db.prepare('SELECT COUNT(*) as cnt FROM pos_transactions').first(),
-      db.prepare("SELECT COALESCE(SUM(total), 0) as total FROM pos_transactions WHERE status = 'completed'").first(),
+      db.prepare("SELECT COALESCE(SUM(total_amount), 0) as total FROM pos_transactions WHERE status = 'completed'").first(),
       db.prepare(`
         SELECT t.id as tenant_id, t.name as tenant_name,
                COUNT(DISTINCT pp.id) as product_count,

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { TENANT_URL, TEST_POS_USER, TEST_TENANT } from '../../fixtures/test-data';
 
 const VALID_IDENTIFIER = process.env.POS_IDENTIFIER || TEST_POS_USER.identifier;

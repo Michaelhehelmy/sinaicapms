@@ -8,7 +8,7 @@
  * (e.g., private dining, catering). The meals/menu panels handle the standard
  * restaurant menu workflow.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';

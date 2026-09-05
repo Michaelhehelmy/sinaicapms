@@ -22,6 +22,12 @@ vi.mock('@/lib/api', () => {
     setProjectMeta: vi.fn().mockResolvedValue(undefined),
     updateProjectMeta: vi.fn().mockResolvedValue(undefined),
     deleteProjectMeta: vi.fn().mockResolvedValue(undefined),
+    deleteProjectLink: vi.fn().mockResolvedValue({ success: true }),
+    getProjectItems: mk(),
+    saveProjectItem: vi.fn().mockResolvedValue({ id: 'i1' }),
+    deleteProjectItem: vi.fn().mockResolvedValue({ success: true }),
+    getProjectLinks: mk(),
+    createProjectLink: vi.fn().mockResolvedValue({ id: 'l1' }),
     // top products / kitchen / analytics reports
     getTopProducts: mk(),
     getKitchenPerformance: mk(),
@@ -47,6 +53,7 @@ vi.mock('@/lib/api', () => {
     getJournalEntries: mk(),
     getFinancialInvoices: mk(),
     getTaxRates: mk(),
+    getTenantPayouts: mk(),
     // Supply
     getSupplyWarehouses: mk(),
     getSupplyStock: mk(),
@@ -161,6 +168,13 @@ import {
   useAdminScheduledReportsQuery,
   useAdminSettingsQuery,
   useAdminSubscriptionsQuery,
+  useFinancialPayoutsQuery,
+  useDeleteProjectLinkMutation,
+  useProjectItemsQuery,
+  useSaveProjectItemMutation,
+  useDeleteProjectItemMutation,
+  useProjectLinksQuery,
+  useCreateProjectLinkMutation,
 } from '@/hooks/useQueryHooks';
 
 import * as api from '@/lib/api';
@@ -303,6 +317,7 @@ describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM
       ['useAdminScheduledReportsQuery', useAdminScheduledReportsQuery as never, []],
       ['useAdminSettingsQuery', useAdminSettingsQuery as never, []],
       ['useAdminSubscriptionsQuery', useAdminSubscriptionsQuery as never, [{}]],
+      ['useFinancialPayoutsQuery', useFinancialPayoutsQuery as never, []],
     ];
 
     for (const [name, hook, args] of queryCases) {
@@ -311,6 +326,98 @@ describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM
         expect(result.current.isSuccess).toBe(true);
       });
     }
+
+    it('useDeleteProjectLinkMutation runs delete and invalidates cache', async () => {
+      vi.mocked(api.deleteProjectLink).mockResolvedValue({ success: true });
+      const { wrapper, queryClient } = createWrapper();
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
+      const { result } = renderHook(() => useDeleteProjectLinkMutation(), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync('link1' as never);
+      });
+      expect(api.deleteProjectLink).toHaveBeenCalledWith('link1');
+      expect(invalidateSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('project items & links hooks', () => {
+    it('useProjectItemsQuery resolves and calls getProjectItems', async () => {
+      vi.mocked(api.getProjectItems).mockResolvedValue([{ id: 'i1' } as never]);
+      const result = await mountQuery(useProjectItemsQuery as never, 'p1', 'vehicle');
+      expect(api.getProjectItems).toHaveBeenCalledWith({ projectId: 'p1', itemType: 'vehicle' });
+      expect(result.current.data).toEqual([{ id: 'i1' }]);
+    });
+
+    it('useProjectItemsQuery shows toast on error', async () => {
+      mockShowToast.mockClear();
+      vi.mocked(api.getProjectItems).mockRejectedValue(new Error('boom'));
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => useProjectItemsQuery('p1'), { wrapper });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(mockShowToast).toHaveBeenCalled();
+    });
+
+    it('useSaveProjectItemMutation creates and shows toast', async () => {
+      vi.mocked(api.saveProjectItem).mockResolvedValue({ id: 'i1' } as never);
+      const { wrapper, queryClient } = createWrapper();
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
+      const { result } = renderHook(() => useSaveProjectItemMutation(), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync({ name: 'x' } as never);
+      });
+      expect(api.saveProjectItem).toHaveBeenCalledWith({ name: 'x' }, undefined);
+      expect(invalidateSpy).toHaveBeenCalled();
+    });
+
+    it('useSaveProjectItemMutation updates with editId', async () => {
+      vi.mocked(api.saveProjectItem).mockResolvedValue({ id: 'i1' } as never);
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => useSaveProjectItemMutation('i1'), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync({ name: 'x' } as never);
+      });
+      expect(api.saveProjectItem).toHaveBeenCalledWith({ name: 'x' }, 'i1');
+    });
+
+    it('useDeleteProjectItemMutation deletes and shows toast', async () => {
+      vi.mocked(api.deleteProjectItem).mockResolvedValue({ success: true });
+      const { wrapper, queryClient } = createWrapper();
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
+      const { result } = renderHook(() => useDeleteProjectItemMutation(), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync('i1');
+      });
+      expect(api.deleteProjectItem).toHaveBeenCalledWith('i1');
+      expect(invalidateSpy).toHaveBeenCalled();
+    });
+
+    it('useProjectLinksQuery resolves and calls getProjectLinks', async () => {
+      vi.mocked(api.getProjectLinks).mockResolvedValue([{ id: 'l1' } as never]);
+      const result = await mountQuery(useProjectLinksQuery as never, 'p1');
+      expect(api.getProjectLinks).toHaveBeenCalledWith('p1');
+      expect(result.current.data).toEqual([{ id: 'l1' }]);
+    });
+
+    it('useProjectLinksQuery shows toast on error', async () => {
+      mockShowToast.mockClear();
+      vi.mocked(api.getProjectLinks).mockRejectedValue(new Error('boom'));
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => useProjectLinksQuery('p1'), { wrapper });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(mockShowToast).toHaveBeenCalled();
+    });
+
+    it('useCreateProjectLinkMutation creates and shows toast', async () => {
+      vi.mocked(api.createProjectLink).mockResolvedValue({ id: 'l1' } as never);
+      const { wrapper, queryClient } = createWrapper();
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
+      const { result } = renderHook(() => useCreateProjectLinkMutation(), { wrapper });
+      await act(async () => {
+        await result.current.mutateAsync({ projectIdA: 'a', projectIdB: 'b' } as never);
+      });
+      expect(api.createProjectLink).toHaveBeenCalledWith({ projectIdA: 'a', projectIdB: 'b' });
+      expect(invalidateSpy).toHaveBeenCalled();
+    });
   });
 
   describe('throwOnError error paths (toast + return false)', () => {
@@ -358,6 +465,7 @@ describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM
       ['useAIPriceRulesQuery', useAIPriceRulesQuery as never, api.getAiPriceRules, []],
       ['useAIAutomationRulesQuery', useAIAutomationRulesQuery as never, api.getAiAutomationRules, []],
       ['useAIAutomationLogsQuery', useAIAutomationLogsQuery as never, api.getAiAutomationLogs, []],
+      ['useFinancialPayoutsQuery', useFinancialPayoutsQuery as never, api.getTenantPayouts, []],
     ];
 
     for (const [name, hook, apiFn, args] of errorCases) {

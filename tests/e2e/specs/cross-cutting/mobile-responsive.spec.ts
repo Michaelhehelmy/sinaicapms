@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { TEST_TENANT, SUPER_ADMIN } from '../../fixtures/test-data';
 
 const TENANT_ID = process.env.E2E_TENANT_ID || TEST_TENANT.id;

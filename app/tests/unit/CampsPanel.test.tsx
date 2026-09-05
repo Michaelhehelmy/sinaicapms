@@ -505,6 +505,20 @@ describe('CampsPanel unified-schema editing', () => {
     const updateBtn = screen.getByText('Update Project').closest('button');
     expect(updateBtn).toBeDisabled();
   });
+
+  it('closes the edit form via the modal close button and resets edit state', async () => {
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    fireEvent.click(screen.getByLabelText('Close dialog'));
+    await waitFor(() => {
+      expect(screen.queryByText('Edit Project')).not.toBeInTheDocument();
+    });
+    // Re-opening goes back to a fresh CREATE form (edit state cleared).
+    fireEvent.click(screen.getByTestId('add-project-button'));
+    await waitFor(() => expect(screen.getByText('Create Project')).toBeInTheDocument());
+    expect(screen.getByLabelText('Project Type')).toHaveValue('camp');
+  });
 });
 
 describe('CampsPanel Connections (cross-project links)', () => {
@@ -597,5 +611,42 @@ describe('CampsPanel Connections (cross-project links)', () => {
     await openEditModal();
     fireEvent.click(screen.getByTestId('add-link-button'));
     expect(mockCreateLinkMutate).not.toHaveBeenCalled();
+  });
+
+  it('resets the add-form selection when a connection is successfully created', async () => {
+    mockCreateLinkMutate.mockImplementation((_data: any, options: any) => options?.onSuccess?.());
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    const select = screen.getByLabelText('Link to project') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'c2' } });
+    fireEvent.change(screen.getByLabelText('Link type'), { target: { value: 'supplies' } });
+    fireEvent.click(screen.getByTestId('add-link-button'));
+
+    await waitFor(() => {
+      expect(mockCreateLinkMutate).toHaveBeenCalledWith(
+        { projectIdA: 'c1', projectIdB: 'c2', linkType: 'supplies' },
+        expect.anything(),
+      );
+      // onSuccess clears the selected project back to the placeholder.
+      expect(select.value).toBe('');
+    });
+  });
+
+  it('cancels the remove-connection confirm dialog without deleting', async () => {
+    mockLinks = [{ ...linkC1toC2, a: { ...linkC1toC2.a }, b: { ...linkC1toC2.b } }];
+    render(<CampsPanel onRefreshCamps={mockRefreshCamps} />);
+    await openEditModal();
+
+    fireEvent.click(screen.getByTestId('remove-link-pl1'));
+    const dialog = await waitFor(() => screen.getByRole('dialog', { name: 'Remove Connection' }));
+    expect(within(dialog).getByText('Cancel')).toBeInTheDocument();
+
+    // Cancel path — dialog closes, delete mutation is never fired.
+    fireEvent.click(within(dialog).getByText('Cancel'));
+    await waitFor(() => {
+      expect(screen.queryByText('Remove Connection')).not.toBeInTheDocument();
+    });
+    expect(mockDeleteLinkMutate).not.toHaveBeenCalled();
   });
 });

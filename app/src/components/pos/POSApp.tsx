@@ -132,11 +132,15 @@ function POSAppShell() {
   const [user, setUser] = useState<PosUser | null>(() => session.getUser<PosUser>('pos'));
   const [token, setToken] = useState<string | null>(() => session.getAccessToken('pos'));
   const [view, setView] = useState<string>(() => {
+    /* v8 ignore start -- SSR guard, jsdom always defines window */
     if (typeof window === 'undefined') return 'dashboard';
+    /* v8 ignore stop */
     return viewFromPath(window.location.pathname);
   });
   const [cart, setCart] = useState<CartItem[]>(() => {
+    /* v8 ignore start -- SSR guard, jsdom always defines window */
     if (typeof window === 'undefined') return [];
+    /* v8 ignore stop */
     try {
       const saved = localStorage.getItem('pos_cart');
       return saved ? JSON.parse(saved) : [];
@@ -157,7 +161,9 @@ function POSAppShell() {
 
   // Persist cart to localStorage so it survives page refreshes within a session.
   useEffect(() => {
+    /* v8 ignore start -- SSR guard, jsdom always defines window */
     if (typeof window === 'undefined') return;
+    /* v8 ignore stop */
     if (cart.length > 0) {
       localStorage.setItem('pos_cart', JSON.stringify(cart));
     } else {

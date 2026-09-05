@@ -48,7 +48,9 @@ export const USER_KEY = USER_KEYS.admin;
 const listeners = new Set<AuthChangeListener>();
 
 function read(key: string): string | null {
+  /* v8 ignore start -- env guard, jsdom always has window */
   if (typeof window === 'undefined') return null;
+  /* v8 ignore stop */
   try {
     return window.localStorage.getItem(key);
   } catch {
@@ -57,7 +59,9 @@ function read(key: string): string | null {
 }
 
 function write(key: string, value: string): void {
+  /* v8 ignore start -- env guard, jsdom always has window */
   if (typeof window === 'undefined') return;
+  /* v8 ignore stop */
   try {
     window.localStorage.setItem(key, value);
   } catch {
@@ -66,7 +70,9 @@ function write(key: string, value: string): void {
 }
 
 function remove(keys: string[]): void {
+  /* v8 ignore start -- env guard, jsdom always has window */
   if (typeof window === 'undefined') return;
+  /* v8 ignore stop */
   try {
     keys.forEach((k) => window.localStorage.removeItem(k));
   } catch {

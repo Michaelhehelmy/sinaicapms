@@ -6,6 +6,12 @@ import { IconShift } from '@/components/ui/icons';
 import { useOpenShiftMutation } from '@/hooks/usePosQueries';
 import type { Shift } from '../types';
 
+// Non-dismissable modal — onClose is intentionally a no-op consumed only by
+// the shared Modal, never invoked at runtime here.
+/* v8 ignore start -- onClose is an intentional no-op, never called */
+const noop = () => {};
+/* v8 ignore stop */
+
 // ─── Shift Overlay (blocks POS until shift is open) ────────
 // Phase 8: rebuilt on the shared ui/Modal (portal, focus trap, ESC handling)
 // instead of a bespoke fixed-position overlay. Every dismissal path is
@@ -30,7 +36,7 @@ export default function ShiftOverlay({ onShiftOpened }: { onShiftOpened: (shift:
   return (
     <Modal
       isOpen
-      onClose={() => {}}
+      onClose={noop}
       size="sm"
       testId="shift-overlay"
       closeOnOverlay={false}

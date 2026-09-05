@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 
 test.describe('Password Reset Flow', () => {
   test('forgot password page loads', async ({ page }) => {

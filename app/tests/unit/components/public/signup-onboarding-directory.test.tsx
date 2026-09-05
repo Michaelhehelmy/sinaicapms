@@ -323,6 +323,15 @@ describe('OnboardingWizard', () => {
     expect(screen.getByText('Loading setup wizard...')).toBeInTheDocument();
   });
 
+  it('shows an error when the onboarding status fetch fails', async () => {
+    mockGetOnboardingStatus.mockRejectedValue(new Error('fetch failed'));
+    window.history.replaceState({}, '', '/?token=abc');
+    render(<OnboardingWizard />);
+    expect(
+      await screen.findByText('Failed to load onboarding status: fetch failed'),
+    ).toBeInTheDocument();
+  });
+
   it('shows the complete screen when setup is already complete', async () => {
     mockGetOnboardingStatus.mockResolvedValue(completeStatus);
     window.history.replaceState({}, '', '/?token=abc');
@@ -356,8 +365,12 @@ describe('OnboardingWizard', () => {
 
     fireEvent.change(screen.getByTestId('onboarding-location'), { target: { value: 'Nuweiba' } });
     fireEvent.change(screen.getByTestId('onboarding-activities'), { target: { value: 'Diving, Safari' } });
+    fireEvent.change(screen.getByTestId('onboarding-phone'), { target: { value: '+20 111 222 3333' } });
+    fireEvent.change(screen.getByTestId('onboarding-description'), { target: { value: 'Updated description' } });
     expect(screen.getByTestId('onboarding-location')).toHaveValue('Nuweiba');
     expect(screen.getByTestId('onboarding-activities')).toHaveValue('Diving, Safari');
+    expect(screen.getByTestId('onboarding-phone')).toHaveValue('+20 111 222 3333');
+    expect(screen.getByTestId('onboarding-description')).toHaveValue('Updated description');
   });
 
   it('saves profile and advances to the branding step', async () => {
@@ -434,6 +447,19 @@ describe('OnboardingWizard', () => {
 
     fireEvent.change(screen.getByTestId('onboarding-color'), { target: { value: '#dc2626' } });
     expect(screen.getByTestId('onboarding-color')).toHaveValue('#dc2626');
+
+    // Type a hex value into the text input next to the color picker.
+    const textInput = screen.getByPlaceholderText('#4a7c4f');
+    fireEvent.change(textInput, { target: { value: '#9333ea' } });
+    expect(screen.getByTestId('onboarding-color')).toHaveValue('#9333ea');
+
+    // Click the preset swatch for #1e40af (navy).
+    const swatches = screen.getAllByRole('button').filter(
+      (btn) => (btn as HTMLElement).style.backgroundColor === 'rgb(30, 64, 175)',
+    );
+    expect(swatches.length).toBeGreaterThan(0);
+    fireEvent.click(swatches[0]);
+    expect(screen.getByTestId('onboarding-color')).toHaveValue('#1e40af');
   });
 
   it('completes setup and shows the live screen', async () => {
@@ -491,6 +517,25 @@ describe('OnboardingWizard', () => {
     });
 
     expect(screen.getByTestId('onboarding-error')).toHaveTextContent('Launch failed');
+    expect(screen.queryByText('Your Site is Live!')).not.toBeInTheDocument();
+  });
+
+  it('shows an error when complete setup resolves without success', async () => {
+    mockGetOnboardingStatus.mockResolvedValue(onboardingStatus);
+    mockUpdateOnboardingTenant.mockResolvedValue({ success: true, tenant_id: 't1' });
+    mockCompleteOnboarding.mockResolvedValue({ success: false, tenant_id: '', message: 'nope' });
+    window.history.replaceState({}, '', '/?token=abc');
+    render(<OnboardingWizard />);
+    await screen.findByText('Set Up Acacia Camp');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-next'));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-complete'));
+    });
+
+    expect(screen.getByTestId('onboarding-error')).toHaveTextContent('Setup failed');
     expect(screen.queryByText('Your Site is Live!')).not.toBeInTheDocument();
   });
 });
@@ -589,6 +634,14 @@ describe('MarketplaceDirectory', () => {
     await waitFor(() => {
       expect(screen.queryByText('Starlight Glamping')).not.toBeInTheDocument();
     });
+
+    // Reset back to "All" — clears the active category and page.
+    fireEvent.click(screen.getByText('All'));
+    await waitFor(() => {
+      expect(mockGetMarketplaceListings).toHaveBeenCalledWith(
+        expect.objectContaining({ category: undefined }),
+      );
+    });
   });
 
   it('shows the error state and retries', async () => {
@@ -623,9 +676,16 @@ describe('MarketplaceDirectory', () => {
     expect(screen.getByText('Next')).toBeInTheDocument();
     expect(screen.getByText('Previous')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Next'));
-
+    // Jump directly to page 2 via the page-number button.
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
     expect(await screen.findByText('Starlight Glamping')).toBeInTheDocument();
-    expect(screen.queryByText('Acacia Camp')).not.toBeInTheDocument();
+
+    // Step back to page 1 via Previous.
+    fireEvent.click(screen.getByText('Previous'));
+    expect(await screen.findByText('Acacia Camp')).toBeInTheDocument();
+
+    // And move forward a page via Next again.
+    fireEvent.click(screen.getByText('Next'));
+    expect(await screen.findByText('Starlight Glamping')).toBeInTheDocument();
   });
 });

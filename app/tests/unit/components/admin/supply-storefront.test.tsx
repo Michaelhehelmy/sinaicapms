@@ -1638,4 +1638,12 @@ describe('SuperStorefrontPanel', () => {
       expect(mockShowToast).toHaveBeenCalledWith('Failed to load products: Products error', 'error');
     });
   });
+
+  it('shows error toast when tenants fail to load', async () => {
+    mockGetAdminTenants.mockRejectedValue(new Error('Tenants error'));
+    renderWithQuery(<SuperStorefrontPanel />);
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Failed to load tenants: Tenants error', 'error');
+    });
+  });
 });

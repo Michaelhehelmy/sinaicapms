@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
@@ -30,15 +30,15 @@ test.describe('Admin CRUD Execution — Camps', () => {
     expect(text.length).toBeGreaterThan(0);
   });
 
-  test('no create button for tenant with existing camp (one camp per tenant)', async ({ page }) => {
+  test('add project button available for tenant with existing camps (multi-project)', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('camps');
     await expectPanelContentReady(page, 'camps-panel');
     const panel = page.locator('[data-testid="camps-panel"]');
-    // One camp per tenant: once a camp exists there is no "Add/Create" affordance
-    const addBtn = panel.locator('button:has-text("Add"), button:has-text("Create")');
-    await expect(addBtn).toHaveCount(0);
-    // The tenant's single camp is shown with an Edit affordance
+    // Multi-project: tenants can create additional projects even when camps exist
+    const addBtn = panel.locator('[data-testid="add-project-button"]');
+    await expect(addBtn).toBeVisible();
+    // Existing camps are listed with Edit affordances
     await expect(panel.locator('button:has-text("Edit")').first()).toBeVisible();
   });
 

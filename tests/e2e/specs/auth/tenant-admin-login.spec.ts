@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { TEST_TENANT, TEST_TENANT_ADMIN } from '../../fixtures/test-data';
 
 const MARKETPLACE = 'http://localhost:4320';

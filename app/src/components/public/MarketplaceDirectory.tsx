@@ -62,7 +62,8 @@ export default function MarketplaceDirectory() {
       setDebouncedSearch(value);
       setPage(1);
     }, 350);
-    return () => clearTimeout(id);
+    // NOTE: handleSearchChange is used only as an onChange handler, so its
+    // return value is discarded. Deliberately no cleanup is returned here.
   }, []);
 
   const { data: categories = [], isLoading: catLoading } = useQuery<MarketplaceCategory[]>({

@@ -302,7 +302,11 @@ export default function ServicesPanel() {
 
       {/* ── Booking Status Modal ────────────────────────────── */}
       {bookingStatusTarget && (
-        <FormModal open title="Update Booking Status" onClose={() => setBookingStatusTarget(null)} onSubmit={() => {}} submitLabel="" submitDisabled>
+        <FormModal open title="Update Booking Status" onClose={() => setBookingStatusTarget(null)} onSubmit={
+          /* v8 ignore start -- provably unreachable: modal is submitDisabled with empty label, no submit path */
+          () => {}
+          /* v8 ignore stop */
+        } submitLabel="" submitDisabled>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">Current status: <strong>{bookingStatusLabel[bookingStatusTarget.status]?.text || bookingStatusTarget.status}</strong></p>
             <p className="text-sm text-gray-600">Service: {bookingStatusTarget.item_name || ''}</p>

@@ -23,7 +23,7 @@
  * Retry-safety: unique subdomain/id/email/names per invocation — generated
  * INSIDE a test body (Date.now() + random), never at module level.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 import { apiRequest, superAdminLogin } from '../../utils/api-helpers';

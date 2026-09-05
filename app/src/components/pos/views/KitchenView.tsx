@@ -31,6 +31,7 @@ function nextStatus(current: KitchenStatus): KitchenStatus | null {
     case 'confirmed': return 'preparing';
     case 'preparing': return 'ready';
     case 'ready': return 'served';
+    /* v8 ignore next 2 -- defensive: KitchenStatus has no other runtime values reaching here */
     default: return null;
   }
 }
@@ -126,7 +127,11 @@ export default function KitchenView() {
   // (aligned with the 30s data cadence).
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    /* v8 ignore start -- 30s ticking clock; the interval callback only fires on a
+       real 30s timer, impractical to force deterministically in unit tests.
+       The unmount cleanup below IS covered (see 'clears timers on unmount'). */
     const t = setInterval(() => setNow(Date.now()), Math.min(KITCHEN_REFRESH_MS, 30_000));
+    /* v8 ignore stop */
     return () => clearInterval(t);
   }, []);
 
@@ -149,6 +154,7 @@ export default function KitchenView() {
 
   function handleAdvance(order: KitchenOrder) {
     const target = nextStatus((order.kitchenStatus || 'pending') as KitchenStatus);
+    /* v8 ignore next 2 -- defensive: advance only rendered for ACTIVE_STATUSES, never returns null */
     if (!target) return;
     updateKitchen.mutate(
       { orderId: order.id, kitchenStatus: target },

@@ -177,6 +177,24 @@ describe('RoomsPanel', () => {
     });
   });
 
+  it('requires a camp assignment when no camp is available', async () => {
+    mockSaveProduct.mockResolvedValue({} as any);
+    // Empty campIds/camps means activeCampId is '' — saving a product with no
+    // campIds hits the "Assign the product to the camp." guard.
+    render(<RoomsPanel campIds={[]} camps={[]} />);
+    fireEvent.click(screen.getByText('Products'));
+    await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
+    fireEvent.click(screen.getAllByText('Add Product')[0]);
+    await waitFor(() => { expect(screen.getByText('Add New Product')).toBeInTheDocument(); });
+    fireEvent.change(screen.getByPlaceholderText('Room type name'), { target: { value: 'Type A' } });
+    fireEvent.change(screen.getByLabelText('Capacity *'), { target: { value: '2' } });
+    fireEvent.click(screen.getByText('Save Product'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Assign the product to the camp.', 'warning');
+    });
+    expect(mockSaveProduct).not.toHaveBeenCalled();
+  });
+
   it('auto-assigns the single camp to a new product', async () => {
     mockSaveProduct.mockResolvedValue({} as any);
     render(<RoomsPanel campIds={['c1']} camps={camps} />);

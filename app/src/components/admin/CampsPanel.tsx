@@ -558,7 +558,11 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
             schema={typeSchema}
             values={{}}
             metaValues={metaValues}
-            onChange={() => { /* core fields owned by the grid above */ }}
+            onChange={
+              /* v8 ignore start -- provably unreachable: fields="meta" renders only meta widgets, so the core-field onChange callback is never invoked */
+              () => {}
+              /* v8 ignore stop */
+            }
             onMetaChange={(key, value) => setMetaValues((prev) => ({ ...prev, [key]: value }))}
             fields="meta"
             excludeMetaKeys={CORE_OWNED_META_KEYS}

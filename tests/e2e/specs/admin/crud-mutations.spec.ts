@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT, API_BASE } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
@@ -266,9 +266,9 @@ test.describe.serial('Admin CRUD Mutations — Rate Plans', () => {
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    await waitForToast(page, 'Plan created').catch(() =>
-      waitForToast(page, 'saved')
-    );
+    // "Plan created" would match BOTH "Rate plan created" AND "Plan created."
+    // (strict-mode violation) — use the unique hook toast text.
+    await waitForToast(page, 'Rate plan created');
 
     await page.locator('[data-testid="modal-overlay"]').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
 
@@ -330,9 +330,9 @@ test.describe.serial('Admin CRUD Mutations — Rate Plans', () => {
     await expect(confirmDialog).toBeVisible({ timeout: 5000 });
     await confirmDialog.locator('button:has-text("Delete")').last().click();
 
-    await waitForToast(page, 'deleted').catch(() =>
-      waitForToast(page, 'Deleted')
-    );
+    // "deleted"/"Deleted" both match "Rate plan deleted" AND "Deleted."
+    // (:has-text is case-insensitive → strict-mode violation) — use the unique toast.
+    await waitForToast(page, 'Rate plan deleted');
 
     await expectPanelContentReady(page, 'rate-plans-panel');
     const deletedRow = page.locator('[data-testid="data-table-row"]:has-text("' + RATE_PLAN_NAME_EDITED + '")');

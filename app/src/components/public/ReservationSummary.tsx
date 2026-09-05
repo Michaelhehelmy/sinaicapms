@@ -226,11 +226,15 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
   const submitReservation = useCallback(async () => {
     if (!guestName || items.length === 0) return;
 
-    // Only send if exactly one room item (backend takes a single room booking)
+    // Only send if exactly one room item (backend takes a single room booking).
+    // Unreachable from the UI: the submit button is disabled whenever
+    // items.length !== 1, so a multi-room submission can never originate here.
+    /* v8 ignore start */
     if (items.length !== 1) {
       setPayError(t.paymentUnavailable);
       return;
     }
+    /* v8 ignore stop */
 
     const item = items[0];
     const mealPlanItems = item.mealPlans?.map(mp => ({

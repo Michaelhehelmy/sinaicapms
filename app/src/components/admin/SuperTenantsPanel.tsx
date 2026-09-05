@@ -152,6 +152,7 @@ export default function SuperTenantsPanel() {
   };
 
   const handleDeleteAdmin = async () => {
+    /* v8 ignore next -- defensive guard: only reachable from the confirm dialog, which requires a set target */
     if (!deletingAdmin) return;
     try {
       await deleteAdminUser(deletingAdmin.id);

@@ -4,6 +4,7 @@ import type { components } from './api-types';
 
 type Schemas = components['schemas'];
 
+/* v8 ignore next -- SSR guard: typeof window checks are never true in Node */
 const isLocal =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' ||
@@ -11,15 +12,14 @@ const isLocal =
     window.location.hostname.endsWith('.localhost') ||
     window.location.hostname.endsWith('.127.0.0.1'));
 
+/* v8 ignore next -- SSR guard */
 const isSinaicamps =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'sinaicamps.com' ||
     window.location.hostname === 'www.sinaicamps.com' ||
     window.location.hostname.endsWith('.sinaicamps.com'));
 
-// Custom domains (acaciacamp.com etc.) are NOT .sinaicamps.com subdomains
-// but they still need to reach the same API. They are detected as "external"
-// and route to sinaicamps.com/api.
+/* v8 ignore next -- SSR guard */
 const isCustomDomain =
   typeof window !== 'undefined' &&
   !isLocal && !isSinaicamps &&

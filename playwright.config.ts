@@ -10,6 +10,7 @@ export default defineConfig({
   // seed rows, so without this the POS/auth specs have no cashier/admin to
   // log in as and every real-login test 401s.
   globalSetup: './tests/e2e/global-setup.ts',
+  globalTeardown: './tests/e2e/global-teardown.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
@@ -96,10 +97,17 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cd backend && npx wrangler dev --port 8787 --local',
+      // wrangler dev does NOT auto-migrate its local D1 (`--local` starts
+      // from .wrangler/state; a fresh/cleared state is a BLANK database —
+      // no tables at all, so every seed/login call 500s and the whole gate
+      // fails). Apply migrations first so the gate is hermetic from a
+      // clean checkout. The apply is idempotent (tracked in d1_migrations)
+      // and adds ~1s when already applied.
+      command:
+        'cd backend && npx wrangler d1 migrations apply campmaster-db --local && npx wrangler dev --port 8787 --local',
       port: BACKEND_PORT,
       reuseExistingServer: true,
-      timeout: 60_000,
+      timeout: 90_000,
     },
     {
       command: 'cd app && npx astro dev --port 4320 --host',

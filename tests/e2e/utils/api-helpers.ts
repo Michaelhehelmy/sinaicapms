@@ -94,7 +94,20 @@ export async function seedTestData(): Promise<void> {
   }
 
   for (const p of TEST_PRODUCTS) {
-    await apiRequest('POST', '/api/products', p, headers);
+    const res = await apiRequest('POST', '/api/products', p, headers);
+    // Loud failure: the four loops above (camps/products/rateplans) were
+    // historically fire-and-forget, which masked multi-project drift
+    // (products 400'd without camp_id and the POS stock seed only failed
+    // later with a confusing 404). Surface product failures immediately —
+    // except re-seeds: a duplicate id hits the unique constraint and the
+    // handler returns 400 with the generic "Failed to create product"
+    // (idempotent-safe); every other 400 (missing camp_id, auth, …) throws.
+    if (!res.ok && res.status !== 409) {
+      const body = await res.text();
+      if (!(res.status === 400 && body.includes('Failed to create product'))) {
+        throw new Error(`seedTestData product ${p.id} failed: ${res.status} ${body}`);
+      }
+    }
   }
 
   await apiRequest('POST', '/api/rateplans', TEST_RATE_PLAN, headers);

@@ -11,15 +11,20 @@
     "test:e2e:auth": "playwright test --project=auth",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
-    "test:e2e:report": "playwright show-report tests/e2e/results/html"
+    "test:e2e:report": "playwright show-report tests/e2e/results/html",
+    "test:e2e:coverage": "COVERAGE_ENABLED=true CI=true npx playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "axe-core": "^4.12.1",
     "chrome-launcher": "^1.2.1",
+    "istanbul-lib-coverage": "^3.2.2",
+    "istanbul-lib-report": "^3.0.1",
+    "istanbul-reports": "^3.2.0",
     "lighthouse": "^13.4.1",
     "playwright": "^1.61.1",
     "tsx": "^4.23.11",
+    "v8-to-istanbul": "^9.3.0",
     "vitest": "^4.1.10",
     "wrangler": "^4.112.0"
   },

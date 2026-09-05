@@ -39,8 +39,12 @@ export const TEST_CAMPS = [
 ];
 
 export const TEST_PRODUCTS = [
-  { id: 'e2e-rt-1', name: 'Standard Tent', capacity: 2, basePrice: 80 },
-  { id: 'e2e-rt-2', name: 'Deluxe Cabin', capacity: 4, basePrice: 150 },
+  // campId is required by POST /api/products since multi-project support:
+  // the tenant now always has 2 seeded projects, so omitting it returns 400
+  // "camp_id is required when a tenant has multiple projects" and the POS
+  // stock seed can never find the products. Always scope to camp 1.
+  { id: 'e2e-rt-1', name: 'Standard Tent', capacity: 2, basePrice: 80, campId: TEST_CAMPS[0].id },
+  { id: 'e2e-rt-2', name: 'Deluxe Cabin', capacity: 4, basePrice: 150, campId: TEST_CAMPS[0].id },
 ];
 
 export const TEST_RATE_PLAN = {

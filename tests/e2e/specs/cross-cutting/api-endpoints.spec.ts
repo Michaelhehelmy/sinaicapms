@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { API_BASE, TEST_TENANT } from '../../fixtures/test-data';
 
 test.describe('Public API Endpoints', () => {

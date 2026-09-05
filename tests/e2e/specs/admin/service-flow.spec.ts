@@ -7,7 +7,7 @@
  * This spec tests the full service module lifecycle through the admin UI:
  * definition CRUD → item CRUD → booking creation → status management.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';

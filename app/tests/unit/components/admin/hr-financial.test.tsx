@@ -1544,6 +1544,26 @@ describe('FinancialPanel', () => {
 
   // ── Tax rate form ──
 
+  it('selects an invoice in the payment form', async () => {
+    setHrData({ accounts: mockAccounts, invoices: mockInvoices });
+    renderWithClient(<FinancialPanel />);
+    fireEvent.click(screen.getByTestId('tab-payments'));
+    fireEvent.click(screen.getAllByText('Record Payment')[0]);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Record Payment' })));
+    fireEvent.change(screen.getByTestId('select-Invoice (optional)'), { target: { value: 'inv_1' } });
+    expect(screen.getByTestId('select-Invoice (optional)')).toHaveValue('inv_1');
+  });
+
+  it('closes the new entry form without saving', async () => {
+    setHrData({ accounts: mockAccounts, journals: mockJournals });
+    renderWithClient(<FinancialPanel />);
+    fireEvent.click(screen.getByTestId('tab-journals'));
+    fireEvent.click(screen.getAllByText('New Entry')[0]);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'New Journal Entry' })));
+    fireEvent.click(screen.getByTestId('modal-close'));
+    expect(screen.queryByRole('heading', { name: 'New Journal Entry' })).not.toBeInTheDocument();
+  });
+
   it('add tax rate rejects missing name/rate', async () => {
     setHrData({ accounts: mockAccounts, taxRates: mockTaxRates });
     renderWithClient(<FinancialPanel />);

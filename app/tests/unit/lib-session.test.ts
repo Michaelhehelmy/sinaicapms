@@ -111,6 +111,18 @@ describe('lib/session — resilience', () => {
     removeSpy.mockRestore();
   });
 
+  it('returns null from read when the storage getItem throws', () => {
+    // Spy on the actual instance method that read() calls so the catch branch
+    // in read() is exercised even if jsdom attaches getItem directly to the
+    // localStorage instance rather than inheriting it from Storage.prototype.
+    const spy = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(session.getAccessToken('admin')).toBeNull();
+    expect(session.getRefreshToken('admin')).toBeNull();
+    spy.mockRestore();
+  });
+
   it('a broken auth listener does not break other listeners', () => {
     const listener = vi.fn();
     session.onAuthChange(() => {

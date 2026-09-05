@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { TEST_POS_USER, TEST_TENANT } from '../../fixtures/test-data';
 const TENANT_ID = process.env.TEST_TENANT_ID || TEST_TENANT.id;
 

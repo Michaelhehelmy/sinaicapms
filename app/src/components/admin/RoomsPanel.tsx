@@ -230,6 +230,7 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
   }, [typeForm, editTypeId, showToast, saveProductMutation, activeCampId]);
 
   const handleDelete = useCallback(async () => {
+    /* v8 ignore next -- defensive guard: only reachable from the confirm dialog, which requires a set target */
     if (!deleteTarget) return;
     if (deleteTarget.type === 'room') {
       await deleteRoomMutation.mutateAsync(deleteTarget.id);

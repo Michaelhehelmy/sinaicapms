@@ -10,6 +10,7 @@ vi.mock('@/lib/api', () => ({
   getProjectMealPlans: vi.fn(),
   createPublicReservation: vi.fn(),
   getTenantId: vi.fn().mockReturnValue('t1'),
+  saveLead: vi.fn().mockResolvedValue({}),
 }));
 
 import { getProjectMealPlans } from '@/lib/api';

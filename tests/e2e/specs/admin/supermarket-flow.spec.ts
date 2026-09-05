@@ -8,7 +8,7 @@
  * E2E admin login. This spec tests the admin-side product management and
  * orders viewing; POS cart E2E is covered by the existing pos/ specs.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { TEST_TENANT_ADMIN, TEST_TENANT } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
@@ -43,7 +43,7 @@ test.describe.serial('Supermarket Flow — end-to-end', () => {
 
   test('step 3: orders panel loads with stats', async ({ page }) => {
     const admin = await loginAsTenantAdmin(page);
-    await admin.clickTab('orders');
+    await admin.clickTab('reservations');
     await expectPanelReady(page);
     await expectPanelContentReady(page, 'orders-panel');
 

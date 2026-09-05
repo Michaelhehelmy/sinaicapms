@@ -717,6 +717,25 @@ describe('SuperTenantsPanel', () => {
     });
   });
 
+  it('create admin: cancel closes the form', async () => {
+    mockGetAdminTenants.mockResolvedValue(sampleTenants);
+    mockGetAdmins.mockResolvedValue([]);
+    render(<SuperTenantsPanel />);
+    await waitFor(() => {
+      fireEvent.click(screen.getByText(/Show Admin Users/));
+    });
+    fireEvent.click(screen.getByTestId('create-admin-btn'));
+    await waitFor(() => {
+      expect(screen.getByText('Create Admin')).toBeInTheDocument();
+    });
+    // The create-admin form has a Cancel button that closes it.
+    const cancelButtons = screen.getAllByText('Cancel');
+    fireEvent.click(cancelButtons[cancelButtons.length - 1]);
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-admin-btn')).toBeInTheDocument();
+    });
+  });
+
   it('edit admin: captures firstName/lastName/role fields', async () => {
     mockGetAdmins.mockResolvedValue(sampleAdmins);
     mockUpdateAdminUser.mockResolvedValue({});

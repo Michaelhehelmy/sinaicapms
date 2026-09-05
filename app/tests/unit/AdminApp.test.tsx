@@ -15,6 +15,11 @@ const mockShowToast = vi.fn();
 const mockLogin = vi.fn();
 const mockLogout = vi.fn();
 
+// Mutable project type so a single test can render the project-items tab
+// (non-camp project type → ProjectItemsPanel instead of RoomsPanel). Defaults
+// to 'camp' to preserve the behaviour of every existing test.
+let mockProjectType: string = 'camp';
+
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
@@ -40,7 +45,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
   },
   useCampsQuery: () => ({
     data: [
-      { id: 'c1', name: 'Camp Alpha', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' },
+      { id: 'c1', name: 'Camp Alpha', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '', projectType: mockProjectType },
       { id: 'c2', name: 'Camp Beta', location: 'Cairo', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 30, status: 'active', notes: '' },
     ],
     isLoading: false,
@@ -68,6 +73,9 @@ vi.mock('@/components/admin/CampsPanel', () => ({
 }));
 vi.mock('@/components/admin/RoomsPanel', () => ({
   default: () => <div data-testid="rooms-panel">RoomsPanel</div>,
+}));
+vi.mock('@/components/admin/ProjectItemsPanel', () => ({
+  default: () => <div data-testid="project-items-panel">ProjectItemsPanel</div>,
 }));
 vi.mock('@/components/admin/OrdersPanel', () => ({
   default: () => <div data-testid="orders-panel">OrdersPanel</div>,
@@ -163,6 +171,7 @@ vi.mock('@/components/admin/SuperAIPanel', () => ({
 describe('AdminApp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockProjectType = 'camp';
     Object.assign(authState, {
   user: { name: 'Admin User', email: 'admin@test.com', role: 'admin', tenantId: null as string | null },
       loading: false,
@@ -399,7 +408,6 @@ describe('AdminApp', () => {
     render(<AdminApp />);
     expect(screen.getByTestId('rooms-panel')).toBeInTheDocument();
   });
-
   it('responds to hashchange events', async () => {
     render(<AdminApp />);
     window.location.hash = '#tab=meals';
@@ -606,5 +614,20 @@ describe('AdminApp', () => {
     render(<AdminApp />);
     const shell = document.querySelector('[style*="--brand-primary"]');
     expect(shell).toBeTruthy();
+  });
+
+  it('renders ProjectItemsPanel (not RoomsPanel) for a non-camp project type', async () => {
+    mockProjectType = 'supermarket';
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/admin/rooms', search: '', hash: '#tab=rooms', assign: vi.fn(), reload: vi.fn(), href: '' },
+      writable: true,
+    });
+    render(<AdminApp />);
+    // With a supermarket activeCamp, the 'rooms' route renders the type-aware
+    // ProjectItemsPanel instead of the legacy RoomsPanel.
+    await waitFor(() => {
+      expect(screen.getByTestId('project-items-panel')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('rooms-panel')).not.toBeInTheDocument();
   });
 });

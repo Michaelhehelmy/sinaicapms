@@ -798,4 +798,134 @@ describe('POSApp', () => {
       });
     });
   });
+
+  // ─── Extended coverage: POSApp.tsx lines 119-220, 292-316 ──────
+  describe('Extended coverage (tables path)', () => {
+    it('resolves view to tables from URL path', async () => {
+      loginAsTestUser();
+      setPOSPath('/pos/tables');
+      render(<POSApp />);
+      await waitFor(() => {
+        expect(screen.getByText('Tables')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Extended coverage (kitchen path)', () => {
+    it('resolves view to kitchen from URL path', async () => {
+      loginAsTestUser();
+      setPOSPath('/pos/kitchen');
+      render(<POSApp />);
+      await waitFor(() => {
+        expect(screen.getByText('Kitchen')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Extended coverage (localStorage cart restore)', () => {
+    it('restores cart from localStorage on mount', async () => {
+      const savedCart = [{ product: { id: 'p1', sku: 'SKU001', name: 'RestoredItem', description: '', sellingPrice: 5, costPrice: 3, categoryId: 1, type: 'retail', imageUrl: null, isActive: 1, stockQuantity: 50 }, quantity: 2 }];
+      localStorage.setItem('pos_cart', JSON.stringify(savedCart));
+      mockPosGetProducts.mockResolvedValue([savedCart[0].product] as any);
+      loginAsTestUser();
+      setPOSPath('/pos/products');
+      render(<POSApp />);
+      await waitFor(() => {
+        expect(screen.getByText('In cart: 2')).toBeInTheDocument();
+      });
+    });
+
+    it('ignores corrupt pos_cart in localStorage and starts with empty cart', async () => {
+      localStorage.setItem('pos_cart', '{not valid json!!!');
+      loginAsTestUser();
+      setPOSPath('/pos/products');
+      render(<POSApp />);
+      // No cart restore — button shows "Add to Cart" for all products, not "In cart"
+      await waitFor(() => {
+        expect(screen.queryByText(/In cart/)).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Extended coverage (onNavigation popstate)', () => {
+    it('updates view on popstate event', async () => {
+      loginAsTestUser();
+      setPOSPath('/pos/products');
+      render(<POSApp />);
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Search products...')).toBeInTheDocument();
+      });
+      // Dispatch a popstate event — onNavigation listener should pick it up
+      setPOSPath('/pos/orders');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+      await waitFor(() => {
+        expect(screen.getByText('No orders found')).toBeInTheDocument();
+      });
+    });
+
+    it('ignores popstate for non-pos paths', async () => {
+      loginAsTestUser();
+      setPOSPath('/pos/products');
+      render(<POSApp />);
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Search products...')).toBeInTheDocument();
+      });
+      // Dispatch popstate for a non-/pos path — should be ignored
+      setPOSPath('/other/path');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+      // Should still show products view (popstate for /other was ignored)
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Search products...')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Extended coverage (handleCheckout after receipt close)', () => {
+    it('calls handleCheckout on receipt close and navigates', async () => {
+      const waterProduct = { id: 'p1', sku: 'SKU001', name: 'CheckoutWater', description: '', sellingPrice: 10, costPrice: 5, categoryId: 1, type: 'retail', imageUrl: null, isActive: 1, stockQuantity: 50 };
+      mockPosGetProducts.mockResolvedValue([waterProduct] as any);
+      mockPosCreateOrder.mockResolvedValue({
+        order: {
+          id: 'o1', orderNumber: 'ORD-COV', totalAmount: 11, subtotal: 10, taxAmount: 1, paymentMethod: 'cash', status: 'completed', createdAt: new Date().toISOString(),
+          items: [{ id: 'i1', productName: 'CheckoutWater', quantity: 1, unitPrice: 10, totalAmount: 10 }],
+        },
+      } as any);
+      loginAsTestUser();
+      setPOSPath('/pos/products');
+      render(<POSApp />);
+      await waitFor(() => { expect(screen.getAllByText('CheckoutWater').length).toBeGreaterThanOrEqual(1); });
+      fireEvent.click(screen.getAllByText('CheckoutWater')[0]);
+      await waitFor(() => { expect(screen.getByText(/Pay \$/)).toBeInTheDocument(); });
+      fireEvent.click(screen.getByText(/Pay \$/));
+      // Receipt appears
+      await waitFor(() => { expect(screen.getByTestId('receipt-modal')).toBeInTheDocument(); });
+      // Close receipt → triggers handleCheckout → navigates to orders
+      fireEvent.click(screen.getByText('Close'));
+      await waitFor(() => {
+        expect(vi.mocked(push)).toHaveBeenCalledWith('/pos/orders');
+      });
+    });
+  });
+
+  describe('Extended coverage (mobile cart toggle)', () => {
+    it('toggles mobile cart open and closed', async () => {
+      const waterProduct = { id: 'p1', sku: 'SKU001', name: 'MobileItem', description: '', sellingPrice: 5, costPrice: 3, categoryId: 1, type: 'retail', imageUrl: null, isActive: 1, stockQuantity: 50 };
+      mockPosGetProducts.mockResolvedValue([waterProduct] as any);
+      loginAsTestUser();
+      setPOSPath('/pos/products');
+      render(<POSApp />);
+      await waitFor(() => { expect(screen.getAllByText('MobileItem').length).toBeGreaterThanOrEqual(1); });
+      // Add an item so the cart count badge shows
+      fireEvent.click(screen.getAllByText('MobileItem')[0]);
+      await waitFor(() => { expect(screen.getByText('In cart: 1')).toBeInTheDocument(); });
+      // Click the floating cart button to open mobile cart sheet
+      const cartBtn = screen.getByTestId('mobile-cart-toggle');
+      fireEvent.click(cartBtn);
+      // Click the backdrop to close (covers the backdrop onClick handler)
+      fireEvent.click(screen.getByTestId('mobile-cart-backdrop'));
+      // Open again and click the close button (covers onClose → setMobileCartOpen(false))
+      fireEvent.click(screen.getByTestId('mobile-cart-toggle'));
+      fireEvent.click(screen.getByTestId('mobile-cart-close'));
+    });
+  });
 });

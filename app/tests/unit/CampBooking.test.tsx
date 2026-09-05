@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act } from '@testing-library/react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import CampBooking from '@/components/public/CampBooking';
 
@@ -26,6 +27,11 @@ const defaultProps = {
 describe('CampBooking', () => {
   beforeEach(() => {
     localStorage.clear();
+    mockedGetProjectMealPlans.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders room cards for each roomType', () => {
@@ -243,5 +249,77 @@ describe('CampBooking', () => {
       expect(screen.getByText('Full Board')).toBeInTheDocument();
       expect(screen.getByText(/50 EGP\/day/)).toBeInTheDocument();
     });
+  });
+
+  it('recovers when the meal plan fetch rejects', async () => {
+    mockedGetProjectMealPlans.mockRejectedValue(new Error('boom'));
+    render(
+      <CampBooking
+        {...defaultProps}
+        roomTypes={[roomTypes[0]]}
+        projectId="p1"
+        mealPlanCategoryId="c1"
+      />,
+    );
+    await waitFor(() => {
+      expect(mockedGetProjectMealPlans).toHaveBeenCalledWith('p1');
+    });
+    // The failed fetch must not crash the component — no meal plans render.
+    fireEvent.click(screen.getByText('Book'));
+    fireEvent.change(screen.getByTestId('checkin-date'), { target: { value: '2026-09-01' } });
+    fireEvent.change(screen.getByTestId('checkout-date'), { target: { value: '2026-09-03' } });
+    await waitFor(() => {
+      expect(screen.queryByText('Add Meal Plans')).not.toBeInTheDocument();
+    });
+  });
+
+  it('selects a meal plan, adds the item, and auto-closes the modal', async () => {
+    mockedGetProjectMealPlans.mockResolvedValue([
+      { id: 'mp1', name: 'Full Board', sellingPrice: 50, description: 'Three meals' },
+    ]);
+
+    render(
+      <CampBooking
+        {...defaultProps}
+        roomTypes={[roomTypes[0]]}
+        projectId="p1"
+        mealPlanCategoryId="c1"
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Book'));
+    fireEvent.change(screen.getByTestId('checkin-date'), { target: { value: '2026-09-01' } });
+    fireEvent.change(screen.getByTestId('checkout-date'), { target: { value: '2026-09-03' } });
+    await waitFor(() => {
+      expect(screen.getByText('Full Board')).toBeInTheDocument();
+    });
+
+    // Guests both increment and decrement via the guest stepper.
+    fireEvent.click(screen.getByLabelText('Increase guests'));
+    fireEvent.click(screen.getByLabelText('Increase guests'));
+    expect(screen.getByTestId('guest-count')).toHaveTextContent('4');
+    fireEvent.click(screen.getByLabelText('Decrease guests'));
+    expect(screen.getByTestId('guest-count')).toHaveTextContent('3');
+
+    // Meal plan + (increment) then − (decrement) buttons.
+    fireEvent.click(screen.getAllByText('+')[1]);
+    fireEvent.click(screen.getAllByText('+')[1]);
+    fireEvent.click(screen.getAllByText('−')[1]);
+
+    // Switch to fake timers so the modal auto-close (800ms) can be advanced.
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText('Add to Reservation'));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    const stored = JSON.parse(localStorage.getItem('sc_reservation') || '[]');
+    expect(stored).toHaveLength(1);
+    expect(stored[0].mealPlans).toEqual([
+      { productId: 'mp1', name: 'Full Board', pricePerDay: 50, quantity: 1 },
+    ]);
+    // The modal closed after the timer fired.
+    expect(screen.queryByText('Add to Reservation')).not.toBeInTheDocument();
   });
 });

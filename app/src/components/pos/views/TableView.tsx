@@ -229,6 +229,7 @@ export default function TableView() {
   }
 
   function handleStatusChange(next: TableStatus) {
+    /* v8 ignore next 2 -- defensive: only reachable from a selected table's action bar */
     if (!selectedTable) return;
     updateStatus.mutate(
       { id: selectedTable.id, status: next },

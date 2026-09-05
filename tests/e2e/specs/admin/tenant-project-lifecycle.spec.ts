@@ -30,7 +30,7 @@
  * INSIDE the test body (Date.now() + random), never at module level, so a
  * retried run never collides with a previous run's resources.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
 import { apiRequest, superAdminLogin } from '../../utils/api-helpers';

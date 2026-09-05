@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TenantDrilldown from '@/components/admin/TenantDrilldown';
 
@@ -12,7 +13,14 @@ vi.mock('@/lib/api', () => ({
 
 // Stub the existing admin panels so this test focuses on scope + tab wiring.
 vi.mock('@/components/admin/CampsPanel', () => ({
-  default: () => <div data-testid="panel-stub-camps">CAMPS_PANEL_STUB</div>,
+  default: ({ onRefreshCamps }: { onRefreshCamps?: () => void }) => {
+    // Invoke onRefreshCamps on mount so the drilldown's refreshCamps callback
+    // (queryClient.invalidateQueries) is exercised in this test.
+    React.useEffect(() => {
+      onRefreshCamps?.();
+    }, [onRefreshCamps]);
+    return <div data-testid="panel-stub-camps">CAMPS_PANEL_STUB</div>;
+  },
 }));
 vi.mock('@/components/admin/RoomsPanel', () => ({
   default: ({ campIds, camps }: { campIds: string[]; camps: { id: string }[] }) => (

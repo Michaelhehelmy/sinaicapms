@@ -19,7 +19,9 @@ router.get('/overview', async (c) => {
       db.prepare('SELECT COUNT(*) as cnt FROM warehouses').first(),
       db.prepare('SELECT COUNT(*) as cnt FROM pos_products WHERE is_active = 1').first(),
       db.prepare("SELECT COUNT(*) as cnt FROM purchase_orders WHERE status IN ('draft', 'pending', 'ordered')").first(),
-      db.prepare('SELECT COUNT(*) as cnt FROM stock_quant WHERE quantity <= reorder_point AND reorder_point > 0').first(),
+      db.prepare(
+        'SELECT COUNT(*) as cnt FROM stock_quant sq JOIN pos_products pp ON pp.id = sq.product_id WHERE sq.quantity <= pp.reorder_point AND pp.reorder_point > 0'
+      ).first(),
       db.prepare(`
         SELECT t.id as tenant_id, t.name as tenant_name,
                COUNT(DISTINCT w.id) as warehouse_count,

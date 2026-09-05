@@ -11,7 +11,7 @@ const baseItems = [
   { id: 'p9', projectId: 'p1', itemType: 'product', name: 'Snack Pack', basePrice: 8.5, quantity: 40, status: 'active' },
 ];
 
-const state = vi.hoisted(() => ({ items: [] as any[] }));
+const state = vi.hoisted(() => ({ items: [] as any[], saveIsPending: false }));
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -31,7 +31,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
         mockShowToast('Error saving item: ' + (err as Error).message, 'error');
       }
     },
-    isPending: false,
+    isPending: state.saveIsPending,
   }),
   useDeleteProjectItemMutation: () => ({
     mutateAsync: (id: string) => api.deleteProjectItem(id),
@@ -58,6 +58,7 @@ const mockDeleteItem = vi.mocked(api.deleteProjectItem);
 describe('ProjectItemsPanel', () => {
   afterEach(() => {
     state.items = [];
+    state.saveIsPending = false;
     vi.clearAllMocks();
   });
 
@@ -241,5 +242,66 @@ describe('ProjectItemsPanel', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
     expect(mockDeleteItem).not.toHaveBeenCalled();
+  });
+
+  it('humanizes an unknown item type in the table', () => {
+    state.items = [{ id: 'b1', projectId: 'p1', itemType: 'gear_equipment', name: 'Tent', basePrice: 50, quantity: 4, status: 'active' }];
+    render(<ProjectItemsPanel projectId="p1" />);
+    // formatItemType fallback: underscores -> spaces, words capitalized
+    expect(screen.getByText('Gear Equipment')).toBeInTheDocument();
+  });
+
+  it('pre-fills edit form and JSON-stringifies object metaData', async () => {
+    state.items = [
+      { id: 'i9', projectId: 'p1', itemType: 'vehicle', name: 'Bus 09', description: 'Coach', basePrice: 150, quantity: 1, status: 'active', metaData: { plate: 'XYZ-09' } },
+    ];
+    render(<ProjectItemsPanel projectId="p1" itemType="vehicle" />);
+    fireEvent.click(screen.getAllByText('Edit')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Edit Item')).toBeInTheDocument();
+    });
+    // JSON.stringify(object, null, 2) branch of openEdit
+    expect(screen.getByLabelText('Meta Data (JSON)')).toHaveValue('{\n  "plate": "XYZ-09"\n}');
+  });
+
+  it('selects an item type in the add form when none is fixed', async () => {
+    render(<ProjectItemsPanel projectId="p1" />);
+    fireEvent.click(screen.getByTestId('add-item-btn'));
+    await waitFor(() => {
+      expect(screen.getByText('Add New Item')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText('Item Type *'), { target: { value: 'service' } });
+    fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'Wash' } });
+    fireEvent.click(screen.getByText('Save Item'));
+    await waitFor(() => {
+      expect(mockSaveItem).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: 'p1', itemType: 'service', name: 'Wash' }),
+        undefined,
+      );
+    });
+  });
+
+  it('closes the add form via the modal close button', async () => {
+    render(<ProjectItemsPanel projectId="p1" itemType="vehicle" />);
+    fireEvent.click(screen.getByTestId('add-item-btn'));
+    await waitFor(() => {
+      expect(screen.getByText('Add New Item')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText('Close dialog'));
+    await waitFor(() => {
+      expect(screen.queryByText('Add New Item')).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not close the modal while a save is pending', async () => {
+    state.saveIsPending = true;
+    render(<ProjectItemsPanel projectId="p1" itemType="vehicle" />);
+    fireEvent.click(screen.getByTestId('add-item-btn'));
+    await waitFor(() => {
+      expect(screen.getByText('Add New Item')).toBeInTheDocument();
+    });
+    // closeForm returns early when saving, so triggering the modal close keeps it open
+    fireEvent.click(screen.getByLabelText('Close dialog'));
+    expect(screen.getByText('Add New Item')).toBeInTheDocument();
   });
 });

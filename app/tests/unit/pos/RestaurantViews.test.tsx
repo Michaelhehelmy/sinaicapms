@@ -17,7 +17,6 @@ function renderWithClient(ui: React.ReactElement) {
   });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
-
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
@@ -35,7 +34,7 @@ vi.mock('@/lib/api', () => ({
 
 import * as api from '@/lib/api';
 import TableView from '@/components/pos/views/TableView';
-import KitchenView from '@/components/pos/views/KitchenView';
+import KitchenView, { timeAgo } from '@/components/pos/views/KitchenView';
 
 const mockGetPosTables = vi.mocked(api.getPosTables);
 const mockCreatePosTable = vi.mocked(api.createPosTable);
@@ -81,6 +80,13 @@ beforeEach(() => {
   // Default: no active tickets anywhere.
   mockPosGetOrders.mockResolvedValue([] as any);
 });
+
+/** Helper: mock a single kitchen ticket. */
+function mockTicket(overrides: Partial<Record<string, unknown>>) {
+  const row = { ...dineInOrder, ...overrides };
+  mockPosGetOrders.mockResolvedValue([row] as any);
+  mockPosGetOrder.mockResolvedValue(row as any);
+}
 
 // ─── TableView ──────────────────────────────────────────────
 describe('TableView', () => {
@@ -206,12 +212,6 @@ describe('TableView', () => {
 
 // ─── KitchenView ────────────────────────────────────────────
 describe('KitchenView', () => {
-  function mockTicket(overrides: Partial<Record<string, unknown>>) {
-    const row = { ...dineInOrder, ...overrides };
-    mockPosGetOrders.mockResolvedValue([row] as any);
-    mockPosGetOrder.mockResolvedValue(row as any);
-  }
-
   it('renders all four kanban columns with counts', async () => {
     // The board grid only renders when there is at least one open ticket;
     // a fully empty board collapses to the "All caught up" empty state.
@@ -321,5 +321,159 @@ describe('KitchenView', () => {
     expect(await screen.findByTestId('kitchen-card-ord_active')).toBeInTheDocument();
     expect(screen.queryByTestId('kitchen-card-ord_served')).not.toBeInTheDocument();
     expect(screen.queryByTestId('kitchen-card-ord_canceled')).not.toBeInTheDocument();
+  });
+});
+
+// ─── Extended coverage: KitchenView.tsx timeAgo + branches ────────
+describe('timeAgo (unit)', () => {
+  it('returns empty string for undefined createdAt', () => {
+    expect(timeAgo(undefined, Date.now())).toBe('');
+  });
+
+  it('returns empty string for invalid date', () => {
+    expect(timeAgo('not-a-date', Date.now())).toBe('');
+  });
+
+  it('returns "just now" for <60s', () => {
+    const now = Date.now();
+    expect(timeAgo(new Date(now - 30_000).toISOString(), now)).toBe('just now');
+  });
+
+  it('returns minutes ago', () => {
+    const now = Date.now();
+    expect(timeAgo(new Date(now - 5 * 60_000).toISOString(), now)).toBe('5m ago');
+  });
+
+  it('returns hours ago', () => {
+    const now = Date.now();
+    expect(timeAgo(new Date(now - 3 * 3600_000).toISOString(), now)).toBe('3h ago');
+  });
+
+  it('returns days ago', () => {
+    const now = Date.now();
+    expect(timeAgo(new Date(now - 2 * 86400_000).toISOString(), now)).toBe('2d ago');
+  });
+});
+
+// ─── Extended coverage: KitchenView error retry + empty items ────────
+describe('KitchenView extended coverage', () => {
+  it('retry button re-fetches orders', async () => {
+    mockPosGetOrders
+      .mockRejectedValueOnce(new Error('Kitchen transient'))
+      .mockResolvedValueOnce([] as any);
+    renderWithClient(<KitchenView />);
+    await waitFor(() => {
+      expect(screen.getByText('Kitchen transient')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Try Again'));
+    await waitFor(() => {
+      expect(screen.getByText('All caught up')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "Items unavailable" when order has no items', async () => {
+    mockTicket({ tableId: null, kitchenStatus: 'pending', items: [] });
+    renderWithClient(<KitchenView />);
+    const card = await screen.findByTestId('kitchen-card-ord_1');
+    expect(card.textContent).toContain('Items unavailable');
+  });
+
+  it('advances confirmed → preparing', async () => {
+    mockTicket({ tableId: null, kitchenStatus: 'confirmed' });
+    mockUpdateKitchenStatus.mockResolvedValue({ success: true, id: 'ord_1', status: 'preparing' } as any);
+    renderWithClient(<KitchenView />);
+    fireEvent.click(await screen.findByTestId('kitchen-advance-ord_1'));
+    await waitFor(() => {
+      expect(mockUpdateKitchenStatus).toHaveBeenCalledWith('ord_1', 'preparing');
+    });
+  });
+
+  it('advances preparing → ready', async () => {
+    mockTicket({ tableId: null, kitchenStatus: 'preparing' });
+    mockUpdateKitchenStatus.mockResolvedValue({ success: true, id: 'ord_1', status: 'ready' } as any);
+    renderWithClient(<KitchenView />);
+    fireEvent.click(await screen.findByTestId('kitchen-advance-ord_1'));
+    await waitFor(() => {
+      expect(mockUpdateKitchenStatus).toHaveBeenCalledWith('ord_1', 'ready');
+    });
+  });
+
+  it('shows empty column placeholder when column has no tickets', async () => {
+    // Only one pending ticket — other columns show "Empty"
+    mockTicket({ tableId: null, kitchenStatus: 'pending' });
+    renderWithClient(<KitchenView />);
+    await screen.findByTestId('kitchen-card-ord_1');
+    // The confirmed column should have the "Empty" placeholder
+    expect(screen.getByTestId('kitchen-column-confirmed').textContent).toContain('Empty');
+  });
+
+  it('clears timers on unmount', async () => {
+    mockTicket({ tableId: null, kitchenStatus: 'pending' });
+    const { unmount } = renderWithClient(<KitchenView />);
+    await screen.findByTestId('kitchen-card-ord_1');
+    unmount();
+    // No throw on unmount — the interval cleanup ran
+  });
+});
+
+// ─── Extended coverage: TableView keyboard + error + retry + form ──────
+describe('TableView extended coverage', () => {
+  it('selects table via Enter key', async () => {
+    renderWithClient(<TableView />);
+    await waitFor(() => {
+      expect(screen.getByTestId('table-card-T1')).toBeInTheDocument();
+    });
+    fireEvent.keyDown(screen.getByTestId('table-card-T1'), { key: 'Enter' });
+    // T1 is selected — action buttons appear
+    expect(screen.getByTestId('table-seat-btn')).toBeInTheDocument();
+  });
+
+  it('selects table via Space key', async () => {
+    renderWithClient(<TableView />);
+    await waitFor(() => {
+      expect(screen.getByTestId('table-card-T1')).toBeInTheDocument();
+    });
+    fireEvent.keyDown(screen.getByTestId('table-card-T1'), { key: ' ' });
+    expect(screen.getByTestId('table-seat-btn')).toBeInTheDocument();
+  });
+
+  it('shows toast on status change error', async () => {
+    mockUpdatePosTableStatus.mockRejectedValue(new Error('Status update failed'));
+    renderWithClient(<TableView />);
+    await waitFor(() => {
+      expect(screen.getByTestId('table-card-T1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('table-card-T1'));
+    fireEvent.click(screen.getByTestId('table-seat-btn'));
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Status update failed', 'error');
+    });
+  });
+
+  it('retry button re-fetches tables on error', async () => {
+    mockGetPosTables
+      .mockRejectedValueOnce(new Error('Tables transient'))
+      .mockResolvedValueOnce({ sections: [], total: 0 } as any);
+    renderWithClient(<TableView />);
+    await waitFor(() => {
+      expect(screen.getByText('Tables transient')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Try Again'));
+    await waitFor(() => {
+      expect(screen.getByText('No tables yet')).toBeInTheDocument();
+    });
+  });
+
+  it('does not submit form when name is empty', async () => {
+    renderWithClient(<TableView />);
+    await waitFor(() => {
+      expect(screen.getByTestId('toggle-add-table')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('toggle-add-table'));
+    // Leave name empty, just fill capacity
+    fireEvent.change(screen.getByLabelText('Table capacity'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Table' }));
+    // Should NOT call the API because name is required
+    expect(mockCreatePosTable).not.toHaveBeenCalled();
   });
 });

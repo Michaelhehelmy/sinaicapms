@@ -543,6 +543,17 @@ describe('AnalyticsPanel', () => {
     expect(screen.getByText('No seasonal data yet')).toBeInTheDocument();
   });
 
+  it('renders seasonal chart when max value is zero', () => {
+    S.mockSeasonal = {
+      accommodation_monthly: [{ month: '2025-07', revenue: 0 }],
+      pos_monthly: [{ month: '2025-07', revenue: 0 }],
+    };
+    render(<AnalyticsPanel />);
+    expect(screen.getByText('Monthly Revenue Trend')).toBeInTheDocument();
+    expect(screen.getByText('Accommodation Revenue')).toBeInTheDocument();
+    expect(screen.getByText('POS Revenue')).toBeInTheDocument();
+  });
+
   it('renders top products tab with table', () => {
     S.mockTopProducts = {
       top_products: [

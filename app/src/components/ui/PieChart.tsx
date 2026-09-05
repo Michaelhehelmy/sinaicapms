@@ -52,8 +52,7 @@ export function PieChart({ data, colors = DEFAULT_COLORS, height = 200 }: PieCha
         <Legend
           wrapperStyle={{ fontSize: '11px' }}
           formatter={(value) => <span className="text-gray-600">{value}</span>}
-        />
-      </RechartsPieChart>
+        />      </RechartsPieChart>
     </ResponsiveContainer>
   );
 }

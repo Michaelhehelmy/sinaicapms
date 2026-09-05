@@ -863,7 +863,11 @@ export default function CRMPanel() {
 
       {/* ── Lead Status Modal ────────────────────────────────── */}
       {leadStatusTarget && (
-        <FormModal open title="Update Lead Status" onClose={() => setLeadStatusTarget(null)} onSubmit={() => {}} submitLabel="" submitDisabled>
+        <FormModal open title="Update Lead Status" onClose={() => setLeadStatusTarget(null)} onSubmit={
+          /* v8 ignore start -- provably unreachable: modal is submitDisabled with empty label, no submit path */
+          () => {}
+          /* v8 ignore stop */
+        } submitLabel="" submitDisabled>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">Lead: <strong>{String(leadStatusTarget.contactName || '')}</strong></p>
             <p className="text-sm text-gray-600">Current status: <Badge variant={badgeVariant(String(leadStatusTarget.status))} dot size="sm">{formatLabel(String(leadStatusTarget.status))}</Badge></p>
@@ -889,7 +893,11 @@ export default function CRMPanel() {
 
       {/* ── Opportunity Stage Modal ─────────────────────────── */}
       {oppStageTarget && (
-        <FormModal open title="Update Pipeline Stage" onClose={() => setOppStageTarget(null)} onSubmit={() => {}} submitLabel="" submitDisabled>
+        <FormModal open title="Update Pipeline Stage" onClose={() => setOppStageTarget(null)} onSubmit={
+          /* v8 ignore start -- provably unreachable: modal is submitDisabled with empty label, no submit path */
+          () => {}
+          /* v8 ignore stop */
+        } submitLabel="" submitDisabled>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">Opportunity: <strong>{String(oppStageTarget.name)}</strong></p>
             <p className="text-sm text-gray-600">Current stage: <Badge variant={badgeVariant(String(oppStageTarget.stage))} dot size="sm">{formatLabel(String(oppStageTarget.stage))}</Badge></p>
@@ -918,7 +926,11 @@ export default function CRMPanel() {
 
       {/* ── Task Status Modal ────────────────────────────────── */}
       {taskStatusTarget && (
-        <FormModal open title="Update Task Status" onClose={() => setTaskStatusTarget(null)} onSubmit={() => {}} submitLabel="" submitDisabled>
+        <FormModal open title="Update Task Status" onClose={() => setTaskStatusTarget(null)} onSubmit={
+          /* v8 ignore start -- provably unreachable: modal is submitDisabled with empty label, no submit path */
+          () => {}
+          /* v8 ignore stop */
+        } submitLabel="" submitDisabled>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">Task: <strong>{String(taskStatusTarget.title)}</strong></p>
             <p className="text-sm text-gray-600">Current status: <Badge variant={badgeVariant(String(taskStatusTarget.status))} dot size="sm">{formatLabel(String(taskStatusTarget.status))}</Badge></p>

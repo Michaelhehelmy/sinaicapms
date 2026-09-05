@@ -44,6 +44,17 @@ describe('RegisterPage', () => {
     });
   });
 
+  it('shows error for invalid email format', async () => {
+    render(<RegisterPage />);
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'John' } });
+    fireEvent.change(screen.getAllByRole('textbox')[1], { target: { value: 'not-an-email' } });
+    fireEvent.click(screen.getByText('Register'));
+    await waitFor(() => {
+      expect(screen.getByText('Please enter a valid email address')).toBeInTheDocument();
+    });
+    expect(mockRegisterUser).not.toHaveBeenCalled();
+  });
+
   it('shows error when password is too short', async () => {
     render(<RegisterPage />);
     const textboxes = screen.getAllByRole('textbox');

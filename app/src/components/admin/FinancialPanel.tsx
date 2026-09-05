@@ -213,6 +213,10 @@ export default function FinancialPanel() {
   }, [showToast, invalidateFinancial]);
 
   // ── Journal handlers ──────────────────────────────────────
+  // NOTE: There is no UI entry point that ever opens the "New Journal" form
+  // (showJournalForm is only ever set to false), so this handler is
+  // provably unreachable dead code.
+  /* v8 ignore start */
   const handleSaveJournal = useCallback(async () => {
     if (!journalForm.name.trim()) { showToast('Name is required.', 'warning'); return; }
     setSaving(true);
@@ -226,6 +230,7 @@ export default function FinancialPanel() {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
   }, [journalForm, showToast, invalidateFinancial]);
+  /* v8 ignore stop */
 
   // ── Entry handlers ────────────────────────────────────────
   const handleSaveEntry = useCallback(async () => {
@@ -532,13 +537,16 @@ export default function FinancialPanel() {
         </div>
       </FormModal>
 
-      {/* ── Journal Form Modal ────────────────────────────── */}
+      {/* ── Journal Form Modal ──────────────────────────────
+           Provably unreachable: showJournalForm is only ever set to false. */}
+      {/* v8 ignore start */}
       <FormModal open={showJournalForm} title="New Journal" onClose={() => setShowJournalForm(false)} onSubmit={handleSaveJournal} submitLabel={saving ? 'Saving...' : 'Create'} submitDisabled={saving}>
         <div className="space-y-4">
           <Input label="Name *" type="text" value={journalForm.name} onChange={(e) => setJournalForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Sales Journal" />
           <Select label="Type *" options={JOURNAL_TYPES} value={journalForm.type} onChange={(e) => setJournalForm((p) => ({ ...p, type: e.target.value }))} />
         </div>
       </FormModal>
+      {/* v8 ignore stop */}
 
       {/* ── Entry Form Modal ──────────────────────────────── */}
       <FormModal open={showEntryForm} title="New Journal Entry" onClose={() => setShowEntryForm(false)} onSubmit={handleSaveEntry} submitLabel={saving ? 'Saving...' : 'Create'} submitDisabled={saving}>

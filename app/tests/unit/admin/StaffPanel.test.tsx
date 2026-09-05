@@ -751,4 +751,90 @@ describe('StaffPanel', () => {
     fireEvent.change(statusSelect, { target: { value: 'false' } });
     expect(statusSelect).toBeDefined();
   });
+
+  it('tenant select onChange updates selectedTenantId', async () => {
+    mockUser = { role: 'super_admin' };
+    mockTenantsData = [
+      { id: 't1', name: 'Camp Alpha', subdomain: 'alpha', status: 'active' },
+      { id: 't2', name: 'Camp Beta', subdomain: 'beta', status: 'active' },
+    ];
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => { expect(screen.getByTestId('tenant-filter')); });
+    const select = screen.getByTestId('select-Select Tenant') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 't2' } });
+    await waitFor(() => {
+      expect(select.value).toBe('t2');
+    });
+  });
+
+  it('closes add modal via close button', async () => {
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => { expect(screen.getByTestId('add-user-btn')); });
+    fireEvent.click(screen.getByTestId('add-user-btn'));
+    await waitFor(() => { expect(screen.getByTestId('form-modal')); });
+    fireEvent.click(screen.getByTestId('modal-close'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('form-modal')).not.toBeInTheDocument();
+    });
+  });
+
+  it('closes reset password modal via close button', async () => {
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
+    fireEvent.click(screen.getAllByText('Reset Password')[0]);
+    await waitFor(() => { expect(screen.getByTestId('form-modal')); });
+    fireEvent.click(screen.getByTestId('modal-close'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('form-modal')).not.toBeInTheDocument();
+    });
+  });
+
+  it('triggers onSearch from DataTable', async () => {
+    mockPosUsersData = { data: mockStaff, total: 3, page: 1 };
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
+    const searchInput = screen.getByTestId('search-input');
+    fireEvent.change(searchInput, { target: { value: 'alice' } });
+    // Should not crash — onSearch callback is triggered
+    expect(searchInput).toBeInTheDocument();
+  });
+
+  it('triggers pagination onChange', async () => {
+    mockPosUsersData = { data: mockStaff, total: 25, page: 1 };
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => { expect(screen.getByTestId('pagination')); });
+    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
+  });
+
+  it('renders RoleBadge fallback for unknown role', async () => {
+    const unknownStaff = [
+      { ...mockStaff[0], role: 'super_admin' },
+    ];
+    mockPosUsersData = { data: unknownStaff, total: 1, page: 1 };
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => { expect(screen.getByText('Alice Morgan')); });
+    expect(screen.getByText('super_admin')).toBeInTheDocument();
+  });
+
+  it('handles users with empty optional fields', async () => {
+    const emptyFieldsStaff = [
+      { id: 99, firstName: '', lastName: '', email: '', username: '', role: 'cashier', phone: '', department: '', employeeId: '', isActive: true, lastLogin: null },
+    ];
+    mockPosUsersData = { data: emptyFieldsStaff, total: 1, page: 1 };
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => { expect(screen.getByTestId('data-table')); });
+    // Renders without crash — column render fallbacks for empty firstName/email/username
+    expect(screen.getByTestId('data-row')).toBeInTheDocument();
+  });
+
+  it('handles tenants data as {data:[...]} object shape', async () => {
+    mockUser = { role: 'super_admin' };
+    mockTenantsData = { data: [{ id: 't1', name: 'Camp1', subdomain: 'c1', status: 'active' }] } as unknown as unknown[];
+    renderWithQuery(<StaffPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId('tenant-filter')).toBeInTheDocument();
+    });
+  });
 });

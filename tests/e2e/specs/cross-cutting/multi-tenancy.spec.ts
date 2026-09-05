@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/coverage-fixture';
 import { TEST_TENANT, API_BASE } from '../../fixtures/test-data';
 
 const TENANT_A = TEST_TENANT.id;

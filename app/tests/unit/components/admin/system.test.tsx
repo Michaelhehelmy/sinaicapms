@@ -855,6 +855,24 @@ describe('SuperReportsPanel', () => {
     });
   });
 
+  it('changes schedule frequency via select', async () => {
+    const refetch = vi.fn();
+    mockUseAdminReportsQuery.mockReturnValue({ data: sampleReports, isLoading: false });
+    mockUseAdminScheduledReportsQuery.mockReturnValue({ data: sampleScheduled, isLoading: false, refetch });
+    renderWithProviders(<SuperReportsPanel />);
+    fireEvent.click(screen.getAllByText('Schedule')[0]);
+    expect(screen.getByText('Schedule Report')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'weekly' } });
+    fireEvent.click(screen.getByText('Confirm Schedule'));
+    await waitFor(() => {
+      expect(mockCreateAdminScheduledReport).toHaveBeenCalledWith({
+        reportId: 'r1',
+        schedule: 'weekly',
+        recipients: [],
+      });
+    });
+  });
+
   it('handles schedule error', async () => {
     mockCreateAdminScheduledReport.mockRejectedValue(new Error('sched fail'));
     mockUseAdminReportsQuery.mockReturnValue({ data: sampleReports, isLoading: false });

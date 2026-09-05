@@ -212,6 +212,18 @@ describe('core field interactions', () => {
     expect((screen.getByTestId('form-field-end_date') as HTMLInputElement).type).toBe('date');
   });
 
+  it('emits core textarea changes through onChange', () => {
+    renderCampForm();
+    fireEvent.change(screen.getByTestId('form-field-description'), { target: { value: 'A long description' } });
+    expect(onChange).toHaveBeenCalledWith('description', 'A long description');
+  });
+
+  it('emits core date changes through onChange', () => {
+    renderCampForm();
+    fireEvent.change(screen.getByTestId('form-field-start_date'), { target: { value: '2026-09-01' } });
+    expect(onChange).toHaveBeenCalledWith('start_date', '2026-09-01');
+  });
+
   it('shows core field errors passed via the errors map', () => {
     renderCampForm({ errors: { name: 'Name is required' } });
     expect(screen.getByText('Name is required')).toBeInTheDocument();
@@ -350,6 +362,61 @@ describe('meta field types', () => {
     // The change still propagates — validation display only.
     fireEvent.change(screen.getByTestId('form-meta-config'), { target: { value: '{ still bad' } });
     expect(onMetaChange).toHaveBeenCalledWith('config', '{ still bad');
+  });
+
+  it('json: empty value renders as empty string', () => {
+    const schema = {
+      ...campProjectType,
+      metaFields: [{ key: 'config', label: 'Config', type: 'json' as const }],
+    };
+    render(
+      <DynamicForm
+        schema={schema}
+        values={{}}
+        metaValues={{ config: '' }}
+        onChange={onChange}
+        onMetaChange={onMetaChange}
+      />,
+    );
+    expect((screen.getByTestId('form-meta-config') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('json: circular object does not crash', () => {
+    const schema = {
+      ...campProjectType,
+      metaFields: [{ key: 'config', label: 'Config', type: 'json' as const }],
+    };
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() =>
+      render(
+        <DynamicForm
+          schema={schema}
+          values={{}}
+          metaValues={{ config: circular }}
+          onChange={onChange}
+          onMetaChange={onMetaChange}
+        />,
+      ),
+    ).not.toThrow();
+  });
+
+  it('image-gallery: tolerates a string value', () => {
+    const schema = {
+      ...campProjectType,
+      metaFields: [{ key: 'gallery', label: 'Gallery', type: 'image-gallery' as const }],
+    };
+    render(
+      <DynamicForm
+        schema={schema}
+        values={{}}
+        metaValues={{ gallery: 'https://a.example/single.jpg' }}
+        onChange={onChange}
+        onMetaChange={onMetaChange}
+      />,
+    );
+    const ta = screen.getByTestId('form-meta-gallery') as HTMLTextAreaElement;
+    expect(ta.value).toBe('https://a.example/single.jpg');
   });
 
   it('shows meta errors keyed plain or with the meta. prefix', () => {
