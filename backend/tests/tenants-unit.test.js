@@ -482,7 +482,7 @@ describe('handleTenants', () => {
         }),
         { DB: db, JWT_SECRET: 'secret' }
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -517,13 +517,13 @@ describe('handleMe (meRoutes sub-router)', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns graceful 200 when no tenant context', async () => {
+    it('returns 400 when no tenant context', async () => {
       const db = mockDb();
       const app = mountRouter(meRoutes, { tenantId: null, basePath: '/api/me' });
       const res = await app.request('https://x.com/api/me', { method: 'GET' }, { DB: db });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(400);
       const data = await res.json();
-      expect(data.message).toContain('No tenant context');
+      expect(data.error).toBe('No tenant context provided');
     });
   });
 
@@ -598,7 +598,7 @@ describe('handleMe (meRoutes sub-router)', () => {
         method: 'PUT',
         body: JSON.stringify({ name: 'X' }),
       }, { DB: db });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 

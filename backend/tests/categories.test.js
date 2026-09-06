@@ -46,7 +46,7 @@ describe('categoriesRoutes', () => {
       env = { DB: db };
       const res = await request('GET', 'http://localhost/api/categories');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to load categories');
     });
   });
@@ -94,7 +94,7 @@ describe('categoriesRoutes', () => {
       env = { DB: db };
       const res = await request('GET', 'http://localhost/api/categories/cat_1');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to load category');
     });
   });
@@ -141,7 +141,7 @@ describe('categoriesRoutes', () => {
       env = { DB: db };
       const res = await request('POST', 'http://localhost/api/categories', { name: 'Cat' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to create category');
     });
   });
@@ -205,7 +205,7 @@ describe('categoriesRoutes', () => {
       env = { DB: db };
       const res = await request('PUT', 'http://localhost/api/categories/cat_1', { name: 'X' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to update category');
     });
 
@@ -376,7 +376,7 @@ describe('categoriesRoutes', () => {
       env = { DB: db };
       const res = await request('DELETE', 'http://localhost/api/categories/cat_1');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to delete category');
     });
   });

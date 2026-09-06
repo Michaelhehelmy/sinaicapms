@@ -109,7 +109,7 @@ describe('tenantMetaRoutes', () => {
   it('returns 500 on DB error during create', async () => {
     env.DB = { prepare: vi.fn(() => ({ bind: () => ({ run: () => { throw new Error('x'); } }) })) };
     const res = await request('POST', '/api/tenants/tee1/meta', { meta_key: 'k', meta_value: 'v' });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── PUT /:id ──────────────────────────────────────────────
@@ -136,7 +136,7 @@ describe('tenantMetaRoutes', () => {
   it('returns 500 on DB error during update', async () => {
     env.DB = { prepare: vi.fn(() => ({ bind: () => ({ run: () => { throw new Error('x'); } }) })) };
     const res = await request('PUT', '/api/tenants/tee1/meta/1', { meta_value: 'new' });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── DELETE /:id ───────────────────────────────────────────

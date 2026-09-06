@@ -46,7 +46,7 @@ describe('mealCategoriesRoutes', () => {
       env = { DB: db };
       const res = await request('GET', 'http://localhost/api/meal-categories');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to load meal categories');
     });
   });
@@ -94,7 +94,7 @@ describe('mealCategoriesRoutes', () => {
       env = { DB: db };
       const res = await request('GET', 'http://localhost/api/meal-categories/mcat_1');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to load meal category');
     });
   });
@@ -141,7 +141,7 @@ describe('mealCategoriesRoutes', () => {
       env = { DB: db };
       const res = await request('POST', 'http://localhost/api/meal-categories', { name: 'Cat' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to create meal category');
     });
   });
@@ -205,7 +205,7 @@ describe('mealCategoriesRoutes', () => {
       env = { DB: db };
       const res = await request('PUT', 'http://localhost/api/meal-categories/mcat_1', { name: 'X' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to update meal category');
     });
   });
@@ -255,7 +255,7 @@ describe('mealCategoriesRoutes', () => {
       env = { DB: db };
       const res = await request('DELETE', 'http://localhost/api/meal-categories/mcat_1');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to delete meal category');
     });
   });

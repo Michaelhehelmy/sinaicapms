@@ -57,7 +57,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/occupancy', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── revenue ───────────────────────────────────────────────
@@ -85,7 +85,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/revenue', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── bookings ──────────────────────────────────────────────
@@ -104,7 +104,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/bookings', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── top-products ──────────────────────────────────────────
@@ -122,7 +122,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/top-products', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── kitchen-performance ───────────────────────────────────
@@ -141,7 +141,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/kitchen-performance', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── low-stock ─────────────────────────────────────────────
@@ -158,7 +158,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/low-stock', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── revenue-breakdown ─────────────────────────────────────
@@ -179,7 +179,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/revenue-breakdown', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── customer-metrics ──────────────────────────────────────
@@ -202,7 +202,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/customer-metrics', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── seasonal ──────────────────────────────────────────────
@@ -221,7 +221,7 @@ describe('reportsRoutes', () => {
     const res = await get('/api/reports/seasonal', {
       prepare: vi.fn(() => { throw new Error('db'); }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 
   // ─── guards ────────────────────────────────────────────────

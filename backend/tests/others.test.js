@@ -138,7 +138,7 @@ describe('plansRoutes', () => {
       env = makeEnv(db);
       const res = await request('POST', 'http://localhost/api/plans', { name: 'Plan', camp_id: 'camp_1' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to create plan');
     });
   });
@@ -237,7 +237,7 @@ describe('plansRoutes', () => {
       env = makeEnv(db);
       const res = await request('PUT', 'http://localhost/api/plans/pln_1', { name: 'Updated' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to update plan');
     });
   });
@@ -269,7 +269,7 @@ describe('plansRoutes', () => {
       env = makeEnv(db);
       const res = await request('DELETE', 'http://localhost/api/plans/pln_1');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to delete plan');
     });
   });

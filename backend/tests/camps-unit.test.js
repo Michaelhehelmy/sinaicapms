@@ -219,7 +219,7 @@ describe('handleCampsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('POST', 'https://x.com/api/camps', { name: 'Camp' });
       const res = await handleCampsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -253,7 +253,7 @@ describe('handleCampsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('PUT', 'https://x.com/api/camps/c1', { name: 'X' });
       const res = await handleCampsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -284,7 +284,7 @@ describe('handleCampsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('DELETE', 'https://x.com/api/camps/c1');
       const res = await handleCampsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -859,7 +859,7 @@ describe('handleProductsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('POST', 'https://x.com/api/products', { name: 'Product' });
       const res = await handleProductsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -908,7 +908,7 @@ describe('handleProductsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('PUT', 'https://x.com/api/products/p1', { name: 'X' });
       const res = await handleProductsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1001,7 +1001,7 @@ describe('handleProductsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('DELETE', 'https://x.com/api/products/p1');
       const res = await handleProductsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1195,7 +1195,7 @@ describe('handleRoomsRoute', () => {
         camp_id: 'c1', product_id: 'p1', name: 'Room A'
       });
       const res = await handleRoomsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1273,7 +1273,7 @@ describe('handleRoomsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('PUT', 'https://x.com/api/rooms/r1', { name: 'X' });
       const res = await handleRoomsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1346,7 +1346,7 @@ describe('handleRoomsRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('DELETE', 'https://x.com/api/rooms/r1');
       const res = await handleRoomsRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1410,7 +1410,7 @@ describe('handleRatePlansRoute', () => {
         product_id: 'p1', name: 'Rate', price_per_night: 100
       });
       const res = await handleRatePlansRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1437,7 +1437,7 @@ describe('handleRatePlansRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('PUT', 'https://x.com/api/rate-plans/rp1', { name: 'X' });
       const res = await handleRatePlansRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1511,7 +1511,7 @@ describe('handleRatePlansRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('DELETE', 'https://x.com/api/rate-plans/rp1');
       const res = await handleRatePlansRoute(req, { DB: db }, T);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 

@@ -436,7 +436,7 @@ describe('handlePosUsersRoute', () => {
         email: 'boom@test.com', password: 'password123', firstName: 'F', lastName: 'L',
       }, bearer(adminToken));
       const res = await handlePosUsersRoute(req, { DB: db, JWT_SECRET }, 'acaciacamp');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.error).toBe('Failed to create user');
     });
@@ -515,7 +515,7 @@ describe('handlePosUsersRoute', () => {
       });
       const req = makeRequest('PATCH', 'https://x.com/api/pos-users/5', { role: 'manager' }, bearer(adminToken));
       const res = await handlePosUsersRoute(req, { DB: db, JWT_SECRET }, 'acaciacamp');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect((await res.json()).error).toBe('Failed to update user');
     });
   });
@@ -559,7 +559,7 @@ describe('handlePosUsersRoute', () => {
       });
       const req = makeRequest('DELETE', 'https://x.com/api/pos-users/5', null, bearer(adminToken));
       const res = await handlePosUsersRoute(req, { DB: db, JWT_SECRET }, 'acaciacamp');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect((await res.json()).error).toBe('Failed to delete user');
     });
   });
@@ -613,7 +613,7 @@ describe('handlePosUsersRoute', () => {
       });
       const req = makeRequest('POST', 'https://x.com/api/pos-users/5/reset-password', { password: 'newpass123' }, bearer(adminToken));
       const res = await handlePosUsersRoute(req, { DB: db, JWT_SECRET }, 'acaciacamp');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect((await res.json()).error).toBe('Failed to reset password');
     });
   });

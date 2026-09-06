@@ -106,9 +106,9 @@ describe('response utils', () => {
   });
 
   describe('errorResponse', () => {
-    it('returns Response with status 400 by default', () => {
+    it('returns Response with status 500 by default', () => {
       const res = errorResponse('Bad input');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
 
     it('returns Response with custom status', () => {

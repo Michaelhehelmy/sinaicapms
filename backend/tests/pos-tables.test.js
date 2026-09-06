@@ -165,7 +165,7 @@ describe('pos-tables routes (/api/pos-tables)', () => {
       });
       const app = makeApp();
       const res = await app.request('/api/pos-tables', { method: 'GET' }, { DB: db });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.success).toBe(false);
       expect(body.error).toContain('Failed to fetch tables');

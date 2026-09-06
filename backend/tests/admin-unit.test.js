@@ -168,7 +168,7 @@ describe('handleAdminRoute', () => {
       });
       const req = makeRequest('GET', 'https://x.com/api/admin/stats', null, superAdminHeaders(superAdminToken));
       const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -230,7 +230,7 @@ describe('handleAdminRoute', () => {
         });
         const req = makeRequest('GET', 'https://x.com/api/admin/tenants', null, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
 
@@ -349,7 +349,7 @@ describe('handleAdminRoute', () => {
         withActiveAdminThenThrow(db);
         const req = makeRequest('PUT', 'https://x.com/api/admin/tenants/t1', { name: 'X' }, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
 
@@ -399,7 +399,7 @@ describe('handleAdminRoute', () => {
         withActiveAdminThenThrow(db);
         const req = makeRequest('DELETE', 'https://x.com/api/admin/tenants/t1', null, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
 
@@ -478,7 +478,7 @@ describe('handleAdminRoute', () => {
         withActiveAdminThenThrow(db);
         const req = makeRequest('POST', 'https://x.com/api/admin/tenants/bulk/suspend', { ids: ['t1'] }, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
   });
@@ -518,7 +518,7 @@ describe('handleAdminRoute', () => {
         });
         const req = makeRequest('GET', 'https://x.com/api/admin/admins', null, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
 
@@ -584,7 +584,7 @@ describe('handleAdminRoute', () => {
           email: 'a@b.com', password: 'pass1234', role: 'admin'
         }, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
 
@@ -611,7 +611,7 @@ describe('handleAdminRoute', () => {
         withActiveAdminThenThrow(db);
         const req = makeRequest('DELETE', 'https://x.com/api/admin/admins/a1', null, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
 
@@ -698,7 +698,7 @@ describe('handleAdminRoute', () => {
         withActiveAdminThenThrow(db);
         const req = makeRequest('PUT', 'https://x.com/api/admin/admins/a1', { role: 'admin' }, superAdminHeaders(superAdminToken));
         const res = await handleAdminRoute(req, { DB: db, JWT_SECRET });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(500);
       });
     });
     describe('PATCH /admin/admins/:id (update)', () => {

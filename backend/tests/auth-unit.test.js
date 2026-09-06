@@ -139,7 +139,7 @@ describe('handleAuthRoute', () => {
         email: 'a@b.com', password: 'pass1234'
       });
       const res = await handleAuthRoute(req, { DB: db });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.error).toBe('Failed to process login');
     });
@@ -220,7 +220,7 @@ describe('handleAuthRoute', () => {
         email: 'a@b.com', password: 'pass1234', tenantId: 't1'
       });
       const res = await handleAuthRoute(req, { DB: db, JWT_SECRET: 'secret' });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -356,7 +356,7 @@ describe('handleAuthRoute', () => {
         name: 'Admin', email: 'a@b.com', password: 'pass1234', tenantId: 't1'
       });
       const res = await handleAuthRoute(req, { DB: db });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -492,7 +492,7 @@ describe('handleAuthRoute', () => {
         email: 'a@b.com'
       });
       const res = await handleAuthRoute(req, { DB: db });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -557,7 +557,7 @@ describe('handleAuthRoute', () => {
         token: 'tok', password: 'newpass123'
       });
       const res = await handleAuthRoute(req, { DB: db });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -637,7 +637,7 @@ describe('handleAuthRoute', () => {
         currentPassword: 'old', newPassword: 'newpass123'
       }, { Authorization: 'Bearer valid' });
       const res = await handleAuthRoute(req, { DB: db, JWT_SECRET: 'secret' });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -735,7 +735,7 @@ describe('handleAuthRoute', () => {
         refreshToken: 'valid-refresh-token'
       });
       const res = await handleAuthRoute(req, { DB: db });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.error).toBe('Failed to process refresh');
     });

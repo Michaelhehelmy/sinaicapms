@@ -9,24 +9,17 @@ import {
 } from '../helpers';
 
 // Payments contract notes (frozen backend — tests align to it):
-//   - POST /api/payments/create-intent
-//       paymentIntentSchema { orderId: string, amount: number, currency?: string }
-//       Gate FIRST: env.PM_ENABLED !== 'true' → 503 { success:false, error:'Payment gateway disabled' }
-//       Happy path (PM_ENABLED=true): { success, paymentIntentId:'pi_mock_'+uuid,
-//         clientSecret, amount, currency (default 'egp'), orderId }.
-//   - POST /api/payments/confirm
-//       confirmPaymentSchema { paymentIntentId: string, orderId: string }
-//       Same 503 gate. Happy path: { success, orderId, status:'paid', amountPaid }.
-//   - POST /api/payments/webhook  (no gate; own secret check)
+//   - POST /api/payments/webhook  (no auth gate; own secret check)
 //       503 { success:false, error:'Webhook not configured' } when STRIPE_WEBHOOK_SECRET
 //       is not bound (local wrangler has no such secret) or header mismatch → 401.
+//   - The mock Stripe create-intent / confirm routes were removed; orders are paid
+//     only via order_state transitions or the Paymob flow.
 //
-// In this test environment PM_ENABLED is "false" (backend/wrangler.toml [vars]) and no
-// STRIPE_WEBHOOK_SECRET is bound, so every reachable path is the deterministic
-// disabled-gateway response. The suite documents that behavior and the exact gate
-// messages; the happy paths above are exercised on deployments with the gateway on.
+// In this test environment no STRIPE_WEBHOOK_SECRET is bound, so every reachable
+// path is the deterministic not-configured response. The suite documents that
+// behavior and the exact gate message.
 
-describe('Payments API — disabled-gateway contract (PM_ENABLED=false)', () => {
+describe('Payments API — webhook contract (STRIPE_WEBHOOK_SECRET not bound)', () => {
   let superAdminToken, tenantId, tenantToken, orderId;
   const ts = Date.now();
   const subdomain = `core-pay-${ts}`;
@@ -90,84 +83,6 @@ describe('Payments API — disabled-gateway contract (PM_ENABLED=false)', () => 
     if (tenantId && superAdminToken) await deleteTestTenant(tenantId, superAdminToken);
   });
 
-  describe('POST /api/payments/create-intent', () => {
-    it('gates the happy path with 503 Payment gateway disabled (PM_ENABLED is false locally)', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-        body: JSON.stringify({ orderId, amount: 200, currency: 'usd' }),
-      });
-      expect(res.status).toBe(503);
-      const data = await res.json();
-      expect(data.success).toBe(false);
-      expect(data.error).toContain('Payment gateway disabled');
-    });
-
-    it('rejects missing orderId (gate precedes body validation → 503)', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-        body: JSON.stringify({ amount: 200 }),
-      });
-      expect(res.status).toBe(503);
-      const data = await res.json();
-      expect(data.error).toContain('Payment gateway disabled');
-    });
-
-    it('rejects zero or negative amount (gate precedes body validation → 503)', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-        body: JSON.stringify({ orderId, amount: 0 }),
-      });
-      expect(res.status).toBe(503);
-    });
-
-    it('returns gateway-disabled for a non-existent order (gate precedes DB lookup)', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-        body: JSON.stringify({ orderId: 'nonexistent_order', amount: 100 }),
-      });
-      expect(res.status).toBe(503);
-      const data = await res.json();
-      expect(data.error).toContain('Payment gateway disabled');
-    });
-  });
-
-  describe('POST /api/payments/confirm', () => {
-    it('confirms payment and updates order (gate precedes confirm → 503 locally)', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/payments/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-        body: JSON.stringify({ paymentIntentId: 'pi_mock_not_reachable', orderId }),
-      });
-      expect(res.status).toBe(503);
-      const data = await res.json();
-      expect(data.success).toBe(false);
-      expect(data.error).toContain('Payment gateway disabled');
-    });
-
-    it('rejects missing paymentIntentId (gate precedes body validation → 503)', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/payments/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-        body: JSON.stringify({ orderId }),
-      });
-      expect(res.status).toBe(503);
-    });
-
-    it('returns gateway-disabled for a non-existent order (gate precedes DB lookup)', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/payments/confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-        body: JSON.stringify({ paymentIntentId: 'pi_mock_000', orderId: 'nonexistent_order' }),
-      });
-      expect(res.status).toBe(503);
-      const data = await res.json();
-      expect(data.error).toContain('Payment gateway disabled');
-    });
-  });
 
   describe('POST /api/payments/webhook', () => {
     it('returns 503 Webhook not configured (no STRIPE_WEBHOOK_SECRET bound locally)', async () => {

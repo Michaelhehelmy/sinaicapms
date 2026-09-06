@@ -201,7 +201,7 @@ describe('onboardingRoutes', () => {
     it('returns 500 on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('GET', '/api/onboarding/status/token123');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -266,7 +266,7 @@ describe('onboardingRoutes', () => {
     it('returns 500 on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('POST', '/api/onboarding/setup', { token: 'tok123' });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -330,7 +330,7 @@ describe('onboardingRoutes', () => {
     it('returns 500 on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('POST', '/api/onboarding/tenant', { token: 'tok123' });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 });

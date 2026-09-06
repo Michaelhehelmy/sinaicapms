@@ -60,8 +60,6 @@ vi.mock('../src/api/meal-categories.js', async (importOriginal) => ({
 }));
 vi.mock('../src/api/payments.js', async (importOriginal) => ({
   ...(await importOriginal()),
-  handleCreatePaymentIntent: vi.fn().mockResolvedValue(new Response('payment-intent', { status: 200 })),
-  handleConfirmPayment: vi.fn().mockResolvedValue(new Response('payment-confirm', { status: 200 })),
   handleStripeWebhook: vi.fn().mockResolvedValue(new Response('webhook', { status: 200 })),
 }));
 vi.mock('../src/api/reports.js', async (importOriginal) => ({
@@ -180,13 +178,13 @@ describe('App entry (index.js)', () => {
       expect(body.id).toBe('t1');
     });
 
-    it('returns graceful 200 for GET /api/me without tenant context', async () => {
+    it('returns 400 for GET /api/me without tenant context', async () => {
       const { getTenant } = await import('../src/middleware/tenant.js');
       getTenant.mockResolvedValueOnce(null);
       const res = await app.fetch(makeRequest('GET', '/api/me'), env);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.id).toBeNull();
+      expect(body.error).toBe('No tenant context provided');
     });
 
     it('returns 401 for non-public API paths without auth', async () => {

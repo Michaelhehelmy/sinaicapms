@@ -151,7 +151,7 @@ describe('tagsRoutes', () => {
     it('returns 500 on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('POST', '/api/tags', { name: 'Beach' });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -225,7 +225,7 @@ describe('tagsRoutes', () => {
     it('returns 500 on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('PUT', '/api/tags/tag_1', { name: 'X' });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -251,7 +251,7 @@ describe('tagsRoutes', () => {
     it('returns 500 on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('DELETE', '/api/tags/tag_1');
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 });

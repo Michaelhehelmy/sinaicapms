@@ -179,7 +179,7 @@ describe('projectLinksRoutes', () => {
     it('returns 400 on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('POST', '/api/projects/links', { projectIdA: 'pa', projectIdB: 'pb' });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 

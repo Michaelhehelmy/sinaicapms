@@ -111,7 +111,7 @@ describe('mealsRoutes', () => {
       env = { DB: db };
       const res = await request('POST', 'http://localhost/api/meals', { name: 'Meal', price: 10 });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to create meal');
     });
   });
@@ -191,7 +191,7 @@ describe('mealsRoutes', () => {
       env = { DB: db };
       const res = await request('PUT', 'http://localhost/api/meals/meal_1', { name: 'X' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to update meal');
     });
   });
@@ -246,7 +246,7 @@ describe('mealsRoutes', () => {
       env = { DB: db };
       const res = await request('DELETE', 'http://localhost/api/meals/meal_1');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to delete meal');
     });
   });

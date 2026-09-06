@@ -183,7 +183,7 @@ describe('handleMealSchedulesRoute', () => {
         { DB: db }, tenantId
       );
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to create meal schedule');
     });
   });

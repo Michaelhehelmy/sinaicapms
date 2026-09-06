@@ -62,7 +62,7 @@ describe('rateLimitMiddleware', () => {
     });
     c3.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
     await middleware(c3, limitFn);
-    expect(c3.json).toHaveBeenCalledWith({ error: 'Too many requests' }, 429);
+    expect(c3.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
   });
 
   it('returns 429 on KV error (fail-closed)', async () => {
@@ -78,7 +78,7 @@ describe('rateLimitMiddleware', () => {
     c.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
     const middleware = rateLimitMiddleware({ windowMs: 60000, max: 100 });
     await middleware(c, next);
-    expect(c.json).toHaveBeenCalledWith({ error: 'Rate limit check failed' }, 429);
+    expect(c.json).toHaveBeenCalledWith({ success: false, error: 'Rate limit check failed' }, 429);
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -128,7 +128,7 @@ describe('rateLimitMiddleware', () => {
       const c3 = makeHonoCtx('/api/test', '1.2.3.4', { ENVIRONMENT: 'production' });
       c3.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
       await middleware(c3, next);
-      expect(c3.json).toHaveBeenCalledWith({ error: 'Too many requests' }, 429);
+      expect(c3.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
     });
 
     it('resets after window expires', async () => {
@@ -195,7 +195,7 @@ describe('rateLimitMiddleware', () => {
       c2.req.header = () => null;
       c2.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
       await middleware(c2, next);
-      expect(c2.json).toHaveBeenCalledWith({ error: 'Too many requests' }, 429);
+      expect(c2.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
     });
 
     it('cleans up stale entries when map is large', async () => {

@@ -79,7 +79,7 @@ describe('rateLimitMiddleware', () => {
       expect(ctx1._nextMock).toHaveBeenCalled();
       expect(ctx2._nextMock).toHaveBeenCalled();
       // Third should be blocked
-      expect(ctx3._jsonMock).toHaveBeenCalledWith({ error: 'Too many requests' }, 429);
+      expect(ctx3._jsonMock).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
     });
 
     it('uses different counters for different IPs', async () => {
@@ -145,7 +145,7 @@ describe('rateLimitMiddleware', () => {
 
       await middleware(ctx, ctx.next);
 
-      expect(ctx._jsonMock).toHaveBeenCalledWith({ error: 'Too many requests' }, 429);
+      expect(ctx._jsonMock).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
       expect(ctx._nextMock).not.toHaveBeenCalled();
     });
 
@@ -159,7 +159,7 @@ describe('rateLimitMiddleware', () => {
       await middleware(ctx, ctx.next);
 
       // Fail-closed: returns 429 on KV error
-      expect(ctx._jsonMock).toHaveBeenCalledWith({ error: 'Rate limit check failed' }, 429);
+      expect(ctx._jsonMock).toHaveBeenCalledWith({ success: false, error: 'Rate limit check failed' }, 429);
     });
   });
 

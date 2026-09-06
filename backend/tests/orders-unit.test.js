@@ -403,7 +403,7 @@ describe('handleOrdersRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('POST', 'https://x.com/api/orders/bulk-delete', { ids: ['o1'] });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1102,7 +1102,7 @@ describe('handleOrdersRoute', () => {
         check_in_date: '2030-08-01', check_out_date: '2030-08-05'
       });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1388,7 +1388,7 @@ describe('handleOrdersRoute', () => {
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
       const req = makeRequest('DELETE', 'https://x.com/api/orders/o1');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -1452,6 +1452,6 @@ describe('handleAvailability', () => {
     db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
     const req = makeRequest('GET', 'https://x.com/api/availability?checkIn=2026-08-10&checkOut=2026-08-15');
     const res = await handleAvailability(req, { DB: db }, TENANT);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(500);
   });
 });

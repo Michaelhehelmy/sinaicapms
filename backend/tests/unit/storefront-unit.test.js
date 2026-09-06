@@ -200,13 +200,11 @@ describe('Storefront Checkout', () => {
   it('POST /checkout creates order from cart', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id FROM carts WHERE session_id/, [{ id: 'cart1' }])
-      .on(/SELECT \* FROM cart_items WHERE cart_id/, [
-        { id: 'ci1', product_id: 'p1', quantity: 2, unit_price: 50.0, total_price: 100.0 },
+      .on(/FROM cart_items ci/, [
+        { product_id: 'p1', quantity: 2, unit_price: 50.0, total_price: 100.0, product_name: 'Tent' },
       ])
-      .on(/SELECT COUNT.*FROM orders/, [{ cnt: 0 }])
-      .on(/INSERT INTO orders/, { meta: { changes: 1 } })
-      .on(/INSERT INTO order_items/, { meta: { changes: 1 } })
-      .on(/DELETE FROM cart_items/, { meta: { changes: 1 } });
+      .on(/INSERT INTO storefront_orders/, { meta: { changes: 1 } })
+      .on(/INSERT INTO storefront_order_items/, { meta: { changes: 1 } });
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/checkout', {
       method: 'POST',
@@ -215,15 +213,22 @@ describe('Storefront Checkout', () => {
     const body = await res.json();
     expect(res.status).toBe(201);
     expect(body.success).toBe(true);
-    expect(body.orderNumber).toBe('ORD-000001');
+    expect(body.orderId).toBeTruthy();
+    // T40: random ORD- reference (booking-flow convention), not stacked COUNT(*) numbers
+    expect(body.orderNumber).toMatch(/^ORD-[0-9A-Z]{6}$/);
     expect(body.totalAmount).toBe(100.0);
+    expect(body.status).toBe('pending');
     expect(body.paymentStatus).toBe('pending');
+    // order + line items + cart cleanup all land in ONE atomic batch
+    expect(db.batch).toHaveBeenCalledTimes(1);
+    const stmts = db.batch.mock.calls[0][0];
+    expect(stmts).toHaveLength(3);
   });
 
   it('POST /checkout returns 400 for empty cart', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id FROM carts WHERE session_id/, [{ id: 'cart1' }])
-      .on(/SELECT \* FROM cart_items WHERE cart_id/, []);
+      .on(/FROM cart_items ci/, []);
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/checkout', {
       method: 'POST',
@@ -249,12 +254,16 @@ describe('Storefront Checkout', () => {
 describe('Storefront Orders', () => {
   it('GET /orders lists orders by session', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM orders/, [{ id: 'o1', order_number: 'ORD-000001', status: 'pending' }]);
+      .on(/SELECT id, reference AS orderNumber.*FROM storefront_orders/, [
+        { id: 'o1', orderNumber: 'ORD-A1B2C3', totalAmount: 100.0, status: 'pending', createdAt: '2026-09-06 10:00:00' },
+      ]);
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/orders?sessionId=s1'), {}, env(db));
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.length).toBe(1);
+    expect(body[0]).toMatchObject({ id: 'o1', orderNumber: 'ORD-A1B2C3', totalAmount: 100.0, status: 'pending' });
+    expect(body[0].createdAt).toBeTruthy();
   });
 });
 

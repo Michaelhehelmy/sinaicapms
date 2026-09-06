@@ -86,7 +86,7 @@ describe('leadsRoutes', () => {
       env.DB = db;
       const res = await request('GET', 'http://localhost/api/leads');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to fetch leads');
     });
   });
@@ -130,7 +130,7 @@ describe('leadsRoutes', () => {
       env.DB = db;
       const res = await request('POST', 'http://localhost/api/leads', { name: 'Jane', email: 'jane@test.com' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to submit lead');
     });
   });
@@ -184,7 +184,7 @@ describe('leadsRoutes', () => {
       env.DB = db;
       const res = await request('PUT', 'http://localhost/api/leads/lead_1', { status: 'new' });
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to update lead');
     });
   });
@@ -230,7 +230,7 @@ describe('leadsRoutes', () => {
       env.DB = db;
       const res = await request('DELETE', 'http://localhost/api/leads/lead_1');
       const data = await res.json();
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to delete lead');
     });
   });
