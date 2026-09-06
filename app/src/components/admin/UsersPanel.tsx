@@ -18,6 +18,7 @@ interface AdminUser {
   tenantName: string | null;
   lastLogin: string | null;
   createdAt: string;
+  [key: string]: unknown;
 }
 
 const roleColors: Record<string, string> = {
@@ -42,7 +43,7 @@ export default function UsersPanel() {
   const users: AdminUser[] = useMemo(() => {
     if (!usersData) return [];
     // Handle both paginated and array response
-    const raw = (usersData as { data?: AdminUser[] })?.data || usersData;
+    const raw = (usersData as unknown as { data?: AdminUser[] })?.data || usersData;
     return Array.isArray(raw) ? raw : [];
   }, [usersData]);
 
@@ -242,7 +243,7 @@ export default function UsersPanel() {
           </div>
 
           {/* Users Table */}
-          <DataTable
+          <DataTable<AdminUser>
             columns={columns}
             data={filteredUsers}
             rowKey="id"

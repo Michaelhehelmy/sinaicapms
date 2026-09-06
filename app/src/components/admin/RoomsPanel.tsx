@@ -23,6 +23,7 @@ import type { Room, Product, Camp } from '@/hooks/useAdminData';
 interface RoomsPanelProps {
   campIds: string[];
   camps: Camp[];
+  onNavigateToTab?: (tab: string) => void;
 }
 
 interface RoomForm {
@@ -79,7 +80,7 @@ const bedTypeOptions = [
   { value: 'suite', label: 'Suite' },
 ];
 
-export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
+export default function RoomsPanel({ campIds, camps, onNavigateToTab }: RoomsPanelProps) {
   const { data: rooms, isLoading: loadingRooms } = useRoomsQuery();
   const { data: products, isLoading: loadingTypes } = useProductsQuery();
   const { showToast } = useToast();
@@ -135,9 +136,15 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
 
   const openAddRoom = useCallback(() => {
     setEditRoomId(null);
+    // Dependency gate: a room belongs to a product type — no types, no room
+    // form. Flip to the Products section instead of opening a dead form.
+    if (filteredTypes.length === 0) {
+      setActiveSection('types');
+      return;
+    }
     setRoomForm({ ...emptyRoomForm, campId: activeCampId });
     setShowRoomForm(true);
-  }, [activeCampId]);
+  }, [activeCampId, filteredTypes]);
 
   const openEditRoom = useCallback((room: Room) => {
     setEditRoomId(room.id);
@@ -268,6 +275,12 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
 
       {loading ? (
         <LoadingSpinner text="Loading rooms..." />
+      ) : campIds.length === 0 ? (
+        <EmptyState
+          title="No projects yet"
+          description="Create a project before adding rooms and room types."
+          action={{ label: 'Create project', onClick: () => onNavigateToTab?.('camps') }}
+        />
       ) : activeSection === 'rooms' ? (
         <div>
           <div className="flex justify-end mb-4">
@@ -285,7 +298,13 @@ export default function RoomsPanel({ campIds, camps }: RoomsPanelProps) {
               Add Room
             </Button>
           </div>
-          {filteredRooms.length === 0 ? (
+          {filteredTypes.length === 0 ? (
+            <EmptyState
+              title="No room types yet"
+              description="Rooms belong to a product type — create one first."
+              action={{ label: 'Create room type', onClick: () => setActiveSection('types') }}
+            />
+          ) : filteredRooms.length === 0 ? (
             <EmptyState
               title="No rooms yet"
               description="Add your first room to start managing occupancy."

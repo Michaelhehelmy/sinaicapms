@@ -311,7 +311,7 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
                         <button
                           onClick={() => setConfirmDeleteId(s.id)}
                           className="absolute top-2 right-2 text-red-400 hover:text-red-600 text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                          title="Remove meal"
+                          aria-label="Remove meal"
                         >
                           ×
                         </button>

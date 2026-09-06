@@ -22,7 +22,9 @@ const meta: Meta<typeof Modal> = {
 export default meta;
 type Story = StoryObj<typeof Modal>;
 
-function ModalDemo({ size = 'md', children, ...props }: React.ComponentProps<typeof Modal>) {
+type ModalDemoProps = Omit<React.ComponentProps<typeof Modal>, 'isOpen' | 'onClose'>;
+
+function ModalDemo({ size = 'md', children, ...props }: ModalDemoProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (

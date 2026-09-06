@@ -139,8 +139,8 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {occupancy.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-50">
+                  {occupancy.map((row) => (
+                    <tr key={row.date} className="border-b border-gray-50">
                       <td className="py-2 px-2 font-medium text-gray-800">{row.date}</td>
                       <td className="py-2 px-2 text-gray-600">{row.totalRooms}</td>
                       <td className="py-2 px-2 text-gray-600">{row.occupiedRooms}</td>
@@ -173,8 +173,8 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {revenue.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-50">
+                  {revenue.map((row) => (
+                    <tr key={row.period} className="border-b border-gray-50">
                       <td className="py-2 px-2 font-medium text-gray-800">{row.period}</td>
                       <td className="py-2 px-2 text-green-600 font-medium">{formatCurrency(row.totalRevenue)}</td>
                       <td className="py-2 px-2 text-gray-600">{row.bookingCount}</td>
@@ -202,8 +202,8 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {bookings.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-50">
+                  {bookings.map((row) => (
+                    <tr key={row.status} className="border-b border-gray-50">
                       <td className="py-2 px-2 font-medium text-gray-800 capitalize">{row.status?.replace(/_/g, ' ')}</td>
                       <td className="py-2 px-2 text-gray-600">{row.count}</td>
                       <td className="py-2 px-2 text-gray-600">{formatCurrency(row.totalAmount)}</td>

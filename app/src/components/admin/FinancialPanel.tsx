@@ -56,12 +56,12 @@ interface JournalForm { name: string; type: string; }
 const emptyJournalForm: JournalForm = { name: '', type: 'general' };
 
 // ─── Entry Form ─────────────────────────────────────────────
-interface EntryForm { journalId: string; date: string; description: string; reference: string; lines: { accountId: string; debit: string; credit: string; }[]; }
-const emptyEntryForm: EntryForm = { journalId: '', date: new Date().toISOString().slice(0, 10), description: '', reference: '', lines: [{ accountId: '', debit: '', credit: '' }, { accountId: '', debit: '', credit: '' }] };
+interface EntryForm { journalId: string; date: string; description: string; reference: string; lines: { uid: string; accountId: string; debit: string; credit: string; }[]; }
+const emptyEntryForm: EntryForm = { journalId: '', date: new Date().toISOString().slice(0, 10), description: '', reference: '', lines: [{ uid: crypto.randomUUID(), accountId: '', debit: '', credit: '' }, { uid: crypto.randomUUID(), accountId: '', debit: '', credit: '' }] };
 
 // ─── Invoice Form ───────────────────────────────────────────
-interface InvoiceForm { type: string; contactId: string; issueDate: string; dueDate: string; currency: string; notes: string; lines: { description: string; quantity: string; unitPrice: string; taxRate: string; }[]; }
-const emptyInvoiceForm: InvoiceForm = { type: 'sales', contactId: '', issueDate: new Date().toISOString().slice(0, 10), dueDate: '', currency: 'USD', notes: '', lines: [{ description: '', quantity: '1', unitPrice: '', taxRate: '0' }] };
+interface InvoiceForm { type: string; contactId: string; issueDate: string; dueDate: string; currency: string; notes: string; lines: { uid: string; description: string; quantity: string; unitPrice: string; taxRate: string; }[]; }
+const emptyInvoiceForm: InvoiceForm = { type: 'sales', contactId: '', issueDate: new Date().toISOString().slice(0, 10), dueDate: '', currency: 'USD', notes: '', lines: [{ uid: crypto.randomUUID(), description: '', quantity: '1', unitPrice: '', taxRate: '0' }] };
 
 // ─── Payment Form ───────────────────────────────────────────
 interface PaymentForm { invoiceId: string; amount: string; paymentDate: string; method: string; reference: string; }
@@ -558,7 +558,7 @@ export default function FinancialPanel() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Lines *</label>
             {entryForm.lines.map((line, idx) => (
-              <div key={idx} className="flex gap-2 mb-2 items-end">
+              <div key={line.uid} className="flex gap-2 mb-2 items-end">
                 <div className="flex-1">
                   <Select options={accounts.filter((a: any) => Number(a.is_active) === 1).map((a: any) => ({ value: a.id, label: `${a.code} - ${a.name}` }))} value={line.accountId} onChange={(e) => {
                     const lines = [...entryForm.lines]; lines[idx] = { ...lines[idx], accountId: e.target.value }; setEntryForm((p) => ({ ...p, lines }));
@@ -571,12 +571,12 @@ export default function FinancialPanel() {
                   const lines = [...entryForm.lines]; lines[idx] = { ...lines[idx], credit: e.target.value, debit: '' }; setEntryForm((p) => ({ ...p, lines }));
                 }} placeholder="Credit" />
                 {idx >= 2 && <Button variant="ghost" size="sm" onClick={() => {
-                  const lines = entryForm.lines.filter((_, i) => i !== idx); setEntryForm((p) => ({ ...p, lines }));
+                  const lines = entryForm.lines.filter((l) => l.uid !== line.uid); setEntryForm((p) => ({ ...p, lines }));
                 }}>x</Button>}
               </div>
             ))}
             <Button variant="ghost" size="sm" onClick={() => {
-              setEntryForm((p) => ({ ...p, lines: [...p.lines, { accountId: '', debit: '', credit: '' }] }));
+              setEntryForm((p) => ({ ...p, lines: [...p.lines, { uid: crypto.randomUUID(), accountId: '', debit: '', credit: '' }] }));
             }}>+ Add Line</Button>
           </div>
         </div>
@@ -592,7 +592,7 @@ export default function FinancialPanel() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Line Items *</label>
             {invoiceForm.lines.map((line, idx) => (
-              <div key={idx} className="grid grid-cols-4 gap-2 mb-2 items-end">
+              <div key={line.uid} className="grid grid-cols-4 gap-2 mb-2 items-end">
                 <div className="col-span-2">
                   <Input type="text" value={line.description} onChange={(e) => {
                     const lines = [...invoiceForm.lines]; lines[idx] = { ...lines[idx], description: e.target.value }; setInvoiceForm((p) => ({ ...p, lines }));
@@ -607,7 +607,7 @@ export default function FinancialPanel() {
               </div>
             ))}
             <Button variant="ghost" size="sm" onClick={() => {
-              setInvoiceForm((p) => ({ ...p, lines: [...p.lines, { description: '', quantity: '1', unitPrice: '', taxRate: '0' }] }));
+              setInvoiceForm((p) => ({ ...p, lines: [...p.lines, { uid: crypto.randomUUID(), description: '', quantity: '1', unitPrice: '', taxRate: '0' }] }));
             }}>+ Add Line</Button>
           </div>
           <Input label="Notes" type="text" value={invoiceForm.notes} onChange={(e) => setInvoiceForm((p) => ({ ...p, notes: e.target.value }))} />

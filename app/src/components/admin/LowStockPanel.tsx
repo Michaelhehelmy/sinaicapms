@@ -32,7 +32,7 @@ function StatusBadge({ status }: { status: LowStockItem['status'] }) {
  */
 export default function LowStockPanel() {
   const { data, isLoading, isError, refetch } = useLowStock();
-  const items = data?.items ?? [];
+  const items = data?.data ?? [];
 
   return (
     <Card padding="none" className="p-6" data-testid="low-stock-panel" aria-busy={isLoading || undefined}>

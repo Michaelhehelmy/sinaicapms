@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { session } from '@/lib/session';
 import { useToast } from '@/components/ui/Toast';
 import type { Camp } from '@/hooks/useAdminData';
-import { useCampsQuery, useSettingsQuery, useInboxUnreadQuery, queryKeys } from '@/hooks/useQueryHooks';
+import { useCampsQuery, useSettingsQuery, useInboxUnreadQuery, useProductsQuery, useRoomsQuery, queryKeys } from '@/hooks/useQueryHooks';
 import { buildTenantTheme } from '@/lib/theme';
 import { getPrimaryOperation } from '@/lib/project-types';
 import { parseHashTab, onNavigation, push } from '@/lib/navigation';
@@ -39,6 +39,7 @@ import {
 import { LoginForm } from '@/components/shell/LoginForm';
 import { AppSidebar, type ShellNavItem, type ShellNavGroup } from '@/components/shell/AppSidebar';
 import { AppTopbar } from '@/components/shell/AppTopbar';
+import { Select } from '@/components/ui/Select';
 import { MobileBottomNav } from '@/components/shell/MobileBottomNav';
 
 // Admin context: 30s stale time (data changes infrequently), 5min garbage collection
@@ -107,20 +108,29 @@ interface NavItem {
   id: string;
   label: string;
   icon: React.ComponentType<IconProps>;
+  /**
+   * Dependency signal (T2): when set, the sidebar shows a "Setup" pill on this
+   * tab if its prerequisite is missing. Tabs stay clickable (E2E clicks every
+   * nav-tab-*); the pill only guides the tenant to complete the setup chain.
+   * - 'project' → needs at least one camp
+   * - 'product' → needs at least one product (room type)
+   * - 'room'    → needs at least one room
+   */
+  requires?: 'project' | 'product' | 'room';
 }
 
 const TENANT_NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: IconDashboard },
   { id: 'camps', label: 'Projects', icon: IconCamps },
-  { id: 'rooms', label: 'Rooms', icon: IconRooms },
-  { id: 'rateplans', label: 'Rate Plans', icon: IconRatePlans },
-  { id: 'reservations', label: 'Orders', icon: IconOrders },
+  { id: 'rooms', label: 'Rooms', icon: IconRooms, requires: 'project' },
+  { id: 'rateplans', label: 'Rate Plans', icon: IconRatePlans, requires: 'product' },
+  { id: 'reservations', label: 'Orders', icon: IconOrders, requires: 'room' },
   { id: 'inbox', label: 'Inbox', icon: IconInbox },
-  { id: 'calendar', label: 'Booking Calendar', icon: IconCalendar },
-  { id: 'meals', label: 'Meals', icon: IconMeals },
-  { id: 'menu-planner', label: 'Menu Planner', icon: IconPlanning },
-  { id: 'menu', label: 'Menu Page', icon: IconMenu },
-  { id: 'planning', label: 'Planning', icon: IconPlanning },
+  { id: 'calendar', label: 'Booking Calendar', icon: IconCalendar, requires: 'room' },
+  { id: 'meals', label: 'Meals', icon: IconMeals, requires: 'project' },
+  { id: 'menu-planner', label: 'Menu Planner', icon: IconPlanning, requires: 'project' },
+  { id: 'menu', label: 'Menu Page', icon: IconMenu, requires: 'project' },
+  { id: 'planning', label: 'Planning', icon: IconPlanning, requires: 'project' },
   { id: 'reports', label: 'Reports', icon: IconReports },
   { id: 'analytics', label: 'Analytics', icon: IconAnalytics },
   { id: 'low-stock', label: 'Low Stock', icon: IconLowStock },
@@ -227,6 +237,11 @@ function AdminAppInner() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const { data: camps } = useCampsQuery();
+  // T2: products/rooms are loaded shell-wide so the nav "Setup" pills react to
+  // cache changes (create a product → rateplans/rooms pills disappear without
+  // a reload). The panels already share these exact query keys.
+  const { data: products } = useProductsQuery();
+  const { data: rooms } = useRoomsQuery();
   // Phase 6: camp list lives in the TanStack cache under ['admin','camps'] —
   // refreshes invalidate that concern instead of refetching a private hook.
   const refreshCamps = useCallback(
@@ -249,9 +264,15 @@ function AdminAppInner() {
   const [tab, setTab] = useState<Tab>(() => getInitialTab());
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Single-camp admin (B3): each tenant owns exactly one camp. Every panel is
-  // scoped to that camp — the topbar camp picker and multi-camp flows are gone.
-  const activeCamp = camps && camps.length > 0 ? camps[0] : null;
+  // Multi-project admin: a tenant can own several projects (CampsPanel +
+  // backend both support it). Every operation panel scopes to `activeCampIds`;
+  // the topbar switcher (visible when camps.length > 1) changes the selection,
+  // re-scoping rooms, rate plans, orders, calendar, meals, planning, reports.
+  const [selectedCampId, setSelectedCampId] = useState<string | undefined>(undefined);
+  const activeCamp = useMemo(() => {
+    if (!camps || camps.length === 0) return null;
+    return camps.find((c) => c.id === selectedCampId) ?? camps[0];
+  }, [camps, selectedCampId]);
   const activeCampIds = useMemo(() => (activeCamp ? [activeCamp.id] : []), [activeCamp]);
   const activeCamps = useMemo<Camp[]>(() => (activeCamp ? [activeCamp] : []), [activeCamp]);
 
@@ -268,6 +289,19 @@ function AdminAppInner() {
     item.id === 'rooms' ? { ...item, label: getInventoryNav(activeProjectType).label } : item,
   );
   const navItems = isSuperAdmin ? SUPER_NAV : tenantNavItems;
+
+  // T2: resolved-query gate — pills only appear once the query has settled to
+  // an EMPTY array, so a first paint on a populated account never flashes them.
+  const prereqMissing = useCallback(
+    (req: NavItem['requires']): boolean => {
+      if (!req) return false;
+      if (req === 'project') return camps !== undefined && camps.length === 0;
+      if (req === 'product') return products !== undefined && products.length === 0;
+      if (req === 'room') return rooms !== undefined && rooms.length === 0;
+      return false;
+    },
+    [camps, products, rooms],
+  );
 
   // Single navigation stream: sidebar/mobile clicks push new `/admin/<tab>`
   // paths; browser back/forward and external pushes re-derive the tab here.
@@ -352,12 +386,12 @@ function AdminAppInner() {
             />
           );
         }
-        return <RoomsPanel campIds={activeCampIds} camps={activeCamps} />;
+        return <RoomsPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       }
       case 'rateplans':
-        return <RatePlansPanel campIds={activeCampIds} camps={activeCamps} />;
+        return <RatePlansPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       case 'reservations':
-        return <OrdersPanel campIds={activeCampIds} camps={activeCamps} />;
+        return <OrdersPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       case 'inbox':
         return (
           <InboxPanel
@@ -367,7 +401,7 @@ function AdminAppInner() {
           />
         );
       case 'calendar':
-        return <BookingCalendar campIds={activeCampIds} camps={activeCamps} />;
+        return <BookingCalendar campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       case 'meals':
         return <MealsPanel campIds={activeCampIds} camps={activeCamps} />;
       case 'menu-planner':
@@ -486,9 +520,26 @@ function AdminAppInner() {
       ]
     : [
         {
-          items: tenantNavItems.map((item) =>
-            item.id === 'inbox' && user?.tenantId ? { ...item, trailing: <InboxUnreadBadge /> } : item,
-          ),
+          items: tenantNavItems.map((item) => {
+            const missing = item.requires ? prereqMissing(item.requires) : false;
+            return {
+              ...item,
+              trailing: (
+                <>
+                  {item.id === 'inbox' && user?.tenantId ? <InboxUnreadBadge /> : null}
+                  {missing ? (
+                    <span
+                      data-testid={`nav-prereq-${item.id}`}
+                      className="ml-auto inline-flex h-5 shrink-0 items-center rounded-full bg-amber-400/20 px-1.5 text-[0.6rem] font-semibold leading-none text-amber-300 whitespace-nowrap"
+                      aria-label={`${item.label}: setup needed`}
+                    >
+                      Setup
+                    </span>
+                  ) : null}
+                </>
+              ),
+            };
+          }),
         },
       ];
 
@@ -547,6 +598,17 @@ function AdminAppInner() {
               <span data-testid="active-camp-badge" className="bg-brand-600 text-white px-2.5 py-1 rounded-full text-xs font-semibold">
                 {activeCamp?.name ?? 'Camp'}
               </span>
+              {camps && camps.length > 1 && (
+                <Select
+                  aria-label="Switch project"
+                  data-testid="camp-switcher"
+                  options={(camps ?? []).map((c) => ({ value: c.id, label: c.name }))}
+                  value={activeCamp?.id ?? ''}
+                  onChange={(e) => setSelectedCampId(e.target.value)}
+                  placeholder="Switch project"
+                  className="w-auto min-w-[160px] py-1 text-xs rounded-full border-brand-200"
+                />
+              )}
             </div>
           )}
 

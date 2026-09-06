@@ -1226,6 +1226,36 @@ export async function getAuditLog(
   return apiFetch(`/audit${qs ? `?${qs}` : ''}`);
 }
 
+/**
+ * Export the admin audit log to CSV. Returns the response Blob so the caller
+ * can trigger a download. Backed by GET /api/admin/audit/export on the worker
+ * (superAdminGate-protected; audit.js query schema: tenantId, userId, action,
+ * entityType, startDate, endDate). Mirrors upload()'s raw-fetch pattern — the
+ * endpoint returns text/csv, so it must NOT go through apiFetch (JSON parsing).
+ */
+export async function exportAuditLog(params?: Record<string, string>): Promise<Blob> {
+  const tenant = getTenantId();
+  const token = session.getAccessToken('admin');
+  const headers: Record<string, string> = {};
+  if (tenant) headers['x-tenant-id'] = tenant;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const search = new URLSearchParams(params ?? {});
+  const qs = search.toString();
+  const response = await fetch(`${API_BASE}/admin/audit/export${qs ? `?${qs}` : ''}`, { headers });
+
+  if (!response.ok) {
+    const contentType = response.headers?.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const errData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const msg = errData.error || errData.message || `API error: ${response.status}`;
+      throw new Error(typeof msg === 'string' ? msg : String(msg));
+    }
+    throw new Error(`Server error (${response.status}): non-JSON response`);
+  }
+  return response.blob();
+}
+
 // ─── Promotions ───────────────────────────────────────────────────────
 export interface Promotion {
   id: string;
@@ -2048,9 +2078,10 @@ export function createCrmKnowledgeArticle(data: { title: string; content: string
 }
 
 // ─── Storefront (Agent E) ──────────────────────────────────────────────────
-export function getStorefrontProducts(params?: { category?: string; search?: string }) {
-  const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-  return apiFetch<Array<{ id: string; name: string; sellingPrice: number; description: string; imageUrl: string | null }>>(`/storefront/products${qs}`);
+/** Public product catalog page — unified {data,total,page,pageSize,hasMore} envelope. */
+export function getStorefrontProducts(params?: { category?: string; search?: string; page?: number; pageSize?: number }) {
+  const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined)) as Record<string, string>).toString() : '';
+  return apiFetch<Paginated<{ id: string; name: string; sellingPrice: number; description: string; imageUrl: string | null }>>(`/storefront/products${qs}`);
 }
 
 export function getStorefrontProduct(id: string) {
@@ -2281,7 +2312,7 @@ export function getAdminPayoutEligible(params: { tenantId?: number; limit?: numb
   if (params.tenantId) qs.set('tenantId', String(params.tenantId));
   if (params.limit) qs.set('limit', String(params.limit));
   const query = qs.toString();
-  return apiFetch<{ data: PublicPayment[]; total: number; totalNet: number }>(
+  return apiFetch<Paginated<PublicPayment> & { totalNet: number }>(
     `/admin/financials/payouts/eligible${query ? `?${query}` : ''}`
   );
 }
@@ -2448,8 +2479,17 @@ export function runAIForecast(data: Record<string, unknown>) {
 
 // ─── Admin Settings API Functions ───────────────────────────────────────────
 
+export interface AdminSettingsPayload {
+  featureFlags?: Record<string, boolean>;
+  emailTemplates?: Record<string, { subject: string; body: string }>;
+  defaults?: { taxRate: number; currency: string; timezone: string; dateFormat: string };
+  branding?: { platformName: string; logoUrl: string | null; faviconUrl: string | null; primaryColor: string };
+  payment?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export function getAdminSettings() {
-  return apiFetch('/admin/settings');
+  return apiFetch<AdminSettingsPayload>('/admin/settings');
 }
 
 export function updateAdminSettings(data: Record<string, unknown>) {
@@ -2470,22 +2510,211 @@ export function resumeAdminSubscription(id: string) {
   return apiFetch(`/admin/subscriptions/${id}/resume`, { method: 'POST' });
 }
 
+// ─── Admin Subscriptions (typed) ────────────────────────────────────────────
+
+export interface AdminSubscriptionRow {
+  tenantId: string;
+  tenantName: string;
+  planId: string | null;
+  planName: string;
+  planSlug: string;
+  status: string;
+  usage?: { bookings: number; limit: number; percent: number };
+  [key: string]: unknown;
+}
+
+export interface AdminSubscriptionsPage {
+  data: AdminSubscriptionRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+/** Fetch all tenant subscriptions (super admin) — typed paginated envelope. */
+export function getAdminSubscriptions(params?: Record<string, string>) {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  return apiFetch<AdminSubscriptionsPage>(`/admin/subscriptions${qs}`);
+}
+
 // ─── Admin Reports API Functions ────────────────────────────────────────────
 
+export interface AdminReportParameter {
+  name: string;
+  type: string;
+  options?: string[];
+}
+
+export interface AdminReportTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  parameters: AdminReportParameter[];
+  formats: string[];
+}
+
+export interface AdminReportsPayload {
+  reports: AdminReportTemplate[];
+}
+
+export interface AdminScheduledReport {
+  id: string;
+  reportId: string;
+  parameters?: Record<string, unknown>;
+  schedule: string;
+  recipients: string[];
+  createdAt: string;
+  lastRunAt?: string | null;
+  isActive: boolean;
+}
+
+export interface AdminScheduledReportsPayload {
+  scheduled: AdminScheduledReport[];
+}
+
+export interface AdminReportJobResult {
+  jobId: string;
+  status: string;
+  downloadUrl: string;
+}
+
+export function getAdminReports() {
+  return apiFetch<AdminReportsPayload>('/admin/reports');
+}
+
+export function getAdminScheduledReports() {
+  return apiFetch<AdminScheduledReportsPayload>('/admin/reports/scheduled');
+}
+
 export function generateAdminReport(data: Record<string, unknown>) {
-  return apiFetch('/admin/reports/generate', { method: 'POST', body: JSON.stringify(data) });
+  return apiFetch<AdminReportJobResult>('/admin/reports/generate', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export function createAdminScheduledReport(data: Record<string, unknown>) {
-  return apiFetch('/admin/reports/scheduled', { method: 'POST', body: JSON.stringify(data) });
+  // POST /api/admin/reports/schedule (not /scheduled — that path is GET-only).
+  return apiFetch<{ success: boolean; id: string; schedule: AdminScheduledReport }>('/admin/reports/schedule', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export function deleteAdminScheduledReport(id: string) {
-  return apiFetch(`/admin/reports/scheduled/${id}`, { method: 'DELETE' });
+  return apiFetch<{ success: boolean }>(`/admin/reports/scheduled/${id}`, { method: 'DELETE' });
 }
 
 // ─── Admin Performance API Functions ────────────────────────────────────────
 
-export function exportAdminPerformance(format: string) {
-  return apiFetch(`/admin/performance/export?format=${format}`);
+export interface AdminPerformanceTenant {
+  id: string;
+  name: string;
+  metrics: {
+    revenue: number;
+    bookings: number;
+    occupancy: number;
+    employeeCount: number;
+    inventoryValue: number;
+    leads: number;
+    growthRate: number;
+  };
+  trends: {
+    revenue: 'up' | 'down' | 'flat';
+    bookings: 'up' | 'down' | 'flat';
+  };
+}
+
+export interface AdminPerformanceData {
+  tenants: AdminPerformanceTenant[];
+  rankings: {
+    revenue: { tenantId: string; name: string; revenue: number }[];
+    occupancy: { tenantId: string; name: string; occupancy: number }[];
+    growth: { tenantId: string; name: string; growthRate: number }[];
+  };
+}
+
+export function getAdminPerformance() {
+  return apiFetch<AdminPerformanceData>('/admin/performance');
+}
+
+/**
+ * Export tenant performance to CSV. Returns the response Blob so the caller
+ * can trigger a download (the endpoint returns text/csv — must NOT go through
+ * apiFetch JSON parsing). Mirrors exportAuditLog()'s raw-fetch pattern.
+ */
+export async function exportAdminPerformance(format = 'csv'): Promise<Blob> {
+  const tenant = getTenantId();
+  const token = session.getAccessToken('admin');
+  const headers: Record<string, string> = {};
+  if (tenant) headers['x-tenant-id'] = tenant;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/admin/performance/export?format=${format}`, { headers });
+
+  if (!response.ok) {
+    const contentType = response.headers?.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const errData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const msg = errData.error || errData.message || `API error: ${response.status}`;
+      throw new Error(typeof msg === 'string' ? msg : String(msg));
+    }
+    throw new Error(`Server error (${response.status}): non-JSON response`);
+  }
+  return response.blob();
+}
+
+// ─── Admin Health API Functions ─────────────────────────────────────────────
+
+export type AdminHealthStatus = 'ok' | 'degraded' | 'down' | 'skipped';
+
+export interface AdminHealthSnapshot {
+  workers: { status: AdminHealthStatus; uptime?: number };
+  d1: { status: AdminHealthStatus; latencyMs?: number };
+  kv: { status: AdminHealthStatus; latencyMs?: number };
+  r2: { status: AdminHealthStatus; latencyMs?: number };
+  overall: AdminHealthStatus | 'unknown';
+}
+
+export interface AdminHealthMetricPoint {
+  timestamp: string;
+  workers: { requests: number; errors: number; latencyMs: number };
+  d1: { queries: number; errors: number; latencyMs: number };
+  kv: { operations: number; errors: number; latencyMs: number };
+}
+
+export interface AdminHealthMetricsPayload {
+  metrics: AdminHealthMetricPoint[];
+}
+
+export function getAdminHealth() {
+  return apiFetch<AdminHealthSnapshot>('/admin/health');
+}
+
+export function getAdminHealthMetrics() {
+  return apiFetch<AdminHealthMetricsPayload>('/admin/health/metrics');
+}
+
+// ─── Admin Audit API Functions ──────────────────────────────────────────────
+
+export interface AdminAuditRow {
+  id: number | string;
+  tenant_id?: string | null;
+  user_id?: string | null;
+  action?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  oldValues?: unknown;
+  newValues?: unknown;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+export interface AdminAuditPage {
+  data: AdminAuditRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+/** Fetch the admin audit log (super admin) — typed paginated envelope. */
+export function getAdminAudit(params?: Record<string, string>) {
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  return apiFetch<AdminAuditPage>(`/admin/audit${qs}`);
 }

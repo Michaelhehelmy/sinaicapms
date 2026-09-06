@@ -28,6 +28,16 @@ import { useToast } from '@/components/ui/Toast';
 import * as api from '@/lib/api';
 import { apiFetch } from '@/lib/api';
 import type { Paginated } from '@/lib/api';
+import type {
+  AdminAuditPage,
+  AdminHealthMetricsPayload,
+  AdminHealthSnapshot,
+  AdminPerformanceData,
+  AdminReportsPayload,
+  AdminScheduledReportsPayload,
+  AdminSettingsPayload,
+  AdminSubscriptionsPage,
+} from '@/lib/api';
 // T8-C: spec-derived wire types — the typed api client is the contract source.
 import type { components } from '@/lib/api-types';
 import type { MetaRow, MetaWriteOps } from '@/lib/project-types';
@@ -67,6 +77,14 @@ export const queryKeys = {
   settings: ['admin', 'settings'] as const,
   lowStock: ['admin', 'inventory', 'low-stock'] as const,
   adminStats: ['admin', 'stats'] as const,
+  adminAudit: (params?: Record<string, string>) => ['admin', 'audit', params] as const,
+  adminHealth: ['admin', 'health'] as const,
+  adminHealthMetrics: ['admin', 'healthMetrics'] as const,
+  adminPerformance: ['admin', 'performance'] as const,
+  adminReports: ['admin', 'reports'] as const,
+  adminScheduledReports: ['admin', 'reports', 'scheduled'] as const,
+  adminSettings: ['admin', 'settings'] as const,
+  adminSubscriptions: (params?: Record<string, string>) => ['admin', 'subscriptions', params] as const,
   tenants: ['admin', 'tenants'] as const,
   admins: ['admin', 'admins'] as const,
   availability: (params: Record<string, string>) => ['admin', 'availability', params] as const,
@@ -1809,9 +1827,9 @@ export function useAdminUsersQuery() {
 
 /** Fetch audit log entries */
 export function useAdminAuditQuery(params?: Record<string, string>) {
-  return useQuery({
-    queryKey: ['admin', 'audit', params],
-    queryFn: () => api.apiFetch('/admin/audit' + (params ? '?' + new URLSearchParams(params).toString() : '')),
+  return useQuery<AdminAuditPage>({
+    queryKey: queryKeys.adminAudit(params),
+    queryFn: () => api.getAdminAudit(params),
   });
 }
 
@@ -1819,17 +1837,17 @@ export function useAdminAuditQuery(params?: Record<string, string>) {
 
 /** Fetch system health status */
 export function useAdminHealthQuery() {
-  return useQuery({
-    queryKey: ['admin', 'health'],
-    queryFn: () => api.apiFetch('/admin/health'),
+  return useQuery<AdminHealthSnapshot>({
+    queryKey: queryKeys.adminHealth,
+    queryFn: () => api.getAdminHealth(),
   });
 }
 
 /** Fetch system health metrics */
 export function useAdminHealthMetricsQuery() {
-  return useQuery({
-    queryKey: ['admin', 'healthMetrics'],
-    queryFn: () => api.apiFetch('/admin/health/metrics'),
+  return useQuery<AdminHealthMetricsPayload>({
+    queryKey: queryKeys.adminHealthMetrics,
+    queryFn: () => api.getAdminHealthMetrics(),
   });
 }
 
@@ -1837,9 +1855,9 @@ export function useAdminHealthMetricsQuery() {
 
 /** Fetch tenant performance data */
 export function useAdminPerformanceQuery() {
-  return useQuery({
-    queryKey: ['admin', 'performance'],
-    queryFn: () => api.apiFetch('/admin/performance'),
+  return useQuery<AdminPerformanceData>({
+    queryKey: queryKeys.adminPerformance,
+    queryFn: () => api.getAdminPerformance(),
   });
 }
 
@@ -1847,17 +1865,17 @@ export function useAdminPerformanceQuery() {
 
 /** Fetch report templates */
 export function useAdminReportsQuery() {
-  return useQuery({
-    queryKey: ['admin', 'reports'],
-    queryFn: () => api.apiFetch('/admin/reports'),
+  return useQuery<AdminReportsPayload>({
+    queryKey: queryKeys.adminReports,
+    queryFn: () => api.getAdminReports(),
   });
 }
 
 /** Fetch scheduled reports */
 export function useAdminScheduledReportsQuery() {
-  return useQuery({
-    queryKey: ['admin', 'scheduledReports'],
-    queryFn: () => api.apiFetch('/admin/reports/scheduled'),
+  return useQuery<AdminScheduledReportsPayload>({
+    queryKey: queryKeys.adminScheduledReports,
+    queryFn: () => api.getAdminScheduledReports(),
   });
 }
 
@@ -1865,8 +1883,8 @@ export function useAdminScheduledReportsQuery() {
 
 /** Fetch admin system settings */
 export function useAdminSettingsQuery() {
-  return useQuery({
-    queryKey: ['admin', 'settings'],
+  return useQuery<AdminSettingsPayload>({
+    queryKey: queryKeys.adminSettings,
     queryFn: () => api.getAdminSettings(),
   });
 }
@@ -1875,8 +1893,8 @@ export function useAdminSettingsQuery() {
 
 /** Fetch all tenant subscriptions */
 export function useAdminSubscriptionsQuery(params?: Record<string, string>) {
-  return useQuery({
-    queryKey: ['admin', 'subscriptions', params],
-    queryFn: () => api.apiFetch('/admin/subscriptions' + (params ? '?' + new URLSearchParams(params).toString() : '')),
+  return useQuery<AdminSubscriptionsPage>({
+    queryKey: queryKeys.adminSubscriptions(params),
+    queryFn: () => api.getAdminSubscriptions(params),
   });
 }

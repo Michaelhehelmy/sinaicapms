@@ -342,7 +342,7 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
             {/* Room Cards */}
             <div className="space-y-3 mb-4">
               {items.map((item, idx) => (
-                <Card key={idx} padding="sm" hover className="!rounded-2xl !shadow-xs !border !border-gray-100">
+                <Card key={`${item.roomType.id}-${item.checkIn}-${item.checkOut}`} padding="sm" hover className="!rounded-2xl !shadow-xs !border !border-gray-100">
                   <div className="flex items-start gap-4">
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-base">{item.roomType.name}</h4>
@@ -354,8 +354,8 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
                       {item.mealPlans && item.mealPlans.length > 0 && (
                         <div className="mt-2 pt-2 border-t border-gray-100">
                           <p className="text-xs font-semibold text-gray-600 mb-1">Meal Plans</p>
-                          {item.mealPlans.map((mp, i) => (
-                            <div key={i} className="flex justify-between text-xs text-gray-500">
+                          {item.mealPlans.map((mp) => (
+                            <div key={mp.productId} className="flex justify-between text-xs text-gray-500">
                               <span>{mp.quantity}× {mp.name} ({item.nights} days)</span>
                               <span>{formatPrice(mp.pricePerDay * mp.quantity * item.nights)}</span>
                             </div>

@@ -39,9 +39,7 @@ export default function TenantPerformancePanel() {
 
   const handleExport = useCallback(async () => {
     try {
-      const response = await exportAdminPerformance();
-      if (!response.ok) throw new Error('Export failed');
-      const blob = await response.blob();
+      const blob = await exportAdminPerformance('csv');
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

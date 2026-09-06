@@ -299,6 +299,9 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
     }
     setSaving(true);
     try {
+      // 'viewer' is a display-only classification — the backend only accepts
+      // cashier/manager/admin, so normalize it before submitting.
+      const role = form.role === 'viewer' ? 'cashier' : form.role;
       if (editUserId != null) {
         await api.updatePosUser(editUserId, {
           firstName: form.firstName.trim(),
@@ -306,7 +309,7 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
           email: form.email.trim(),
           username: form.username.trim() || undefined,
           phone: form.phone.trim() || undefined,
-          role: form.role,
+          role,
           isActive: form.isActive === '1',
           department: form.department.trim() || undefined,
           employeeId: form.employeeId.trim() || undefined,
@@ -320,7 +323,7 @@ export default function StaffPanel({ scopedTenantId }: { scopedTenantId?: string
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           phone: form.phone.trim() || undefined,
-          role: form.role,
+          role,
           department: form.department.trim() || undefined,
           employeeId: form.employeeId.trim() || undefined,
         });

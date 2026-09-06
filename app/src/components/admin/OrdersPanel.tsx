@@ -17,6 +17,7 @@ import type { Order, Camp } from '@/hooks/useAdminData';
 interface OrdersPanelProps {
   campIds: string[];
   camps: Camp[];
+  onNavigateToTab?: (tab: string) => void;
 }
 
 const ORDER_STATES: Record<string, string> = {
@@ -51,7 +52,7 @@ function getOrderStateVariant(stateId: string): 'warning' | 'info' | 'success' |
   }
 }
 
-export default function OrdersPanel({ campIds, camps }: OrdersPanelProps) {
+export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersPanelProps) {
   const { data: ordersRes, isLoading, isFetching } = useOrdersQuery();
   const orders = ordersRes?.data ?? [];
   const { data: rooms } = useRoomsQuery();
@@ -95,6 +96,11 @@ export default function OrdersPanel({ campIds, camps }: OrdersPanelProps) {
     });
     return map;
   }, [rooms]);
+
+  const campRooms = useMemo(
+    () => (rooms ?? []).filter((r) => campIds.includes(r.campId)),
+    [rooms, campIds],
+  );
 
   const campNameMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -163,10 +169,18 @@ export default function OrdersPanel({ campIds, camps }: OrdersPanelProps) {
       {isLoading ? (
         <TableSkeleton rows={5} columns={8} />
       ) : filteredOrders.length === 0 ? (
-        <EmptyState
-          title="No reservations found"
-          description="When guests make reservations, they will appear here."
-        />
+        campRooms.length === 0 ? (
+          <EmptyState
+            title="No rooms yet"
+            description="Bookings need rooms — add a room type and a room first."
+            action={{ label: 'Go to Rooms', onClick: () => onNavigateToTab?.('rooms') }}
+          />
+        ) : (
+          <EmptyState
+            title="No reservations found"
+            description="When guests make reservations, they will appear here."
+          />
+        )
       ) : (
         <DataTable<Order & Record<string, unknown>>
           columns={[

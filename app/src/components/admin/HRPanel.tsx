@@ -226,7 +226,7 @@ export default function HRPanel() {
       await api.createHrLeaveType({
         name: leaveTypeForm.name.trim(),
         accrualRate: parseFloat(leaveTypeForm.accrualRate) || 0,
-        isPaid: leaveTypeForm.isPaid,
+        isPaid: leaveTypeForm.isPaid ? 1 : 0,
       });
       showToast('Leave type created.', 'success');
       setShowLeaveTypeForm(false);
@@ -275,7 +275,7 @@ export default function HRPanel() {
     if (!payrollPeriodStart || !payrollPeriodEnd) { showToast('Period dates are required.', 'warning'); return; }
     setSaving(true);
     try {
-      await api.createHrPayrollRun({ periodStart: payrollPeriodStart, periodEnd: payrollPeriodEnd });
+      await api.createHrPayrollRun({ periodStart: payrollPeriodStart, periodEnd: payrollPeriodEnd, runDate: new Date().toISOString().slice(0, 10) });
       showToast('Payroll run created.', 'success');
       setShowPayrollForm(false);
       setPayrollPeriodStart('');

@@ -7,6 +7,7 @@ import { DataTable } from '@/components/ui/DataTable';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
 import { useAdminAuditQuery } from '@/hooks/useQueryHooks';
+import { exportAuditLog } from '@/lib/api';
 
 const ACTION_OPTIONS = [
   { value: '', label: 'All Actions' },
@@ -80,14 +81,9 @@ export default function AuditLogPanel() {
     setExporting(true);
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
-      // The export endpoint returns a CSV blob
-      const url = `/api/admin/audit/export?${new URLSearchParams(params).toString()}`;
-      const token = localStorage.getItem('admin_access_token');
-      const response = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error('Export failed');
-      const blob = await response.blob();
+      // T23: export through the unified API client (@/lib/api) instead of a raw
+      // fetch with a manually-read localStorage token.
+      const blob = await exportAuditLog(params);
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;

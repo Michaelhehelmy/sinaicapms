@@ -65,6 +65,11 @@ export function useSseInbox({
       return;
     }
 
+    // Capture narrowed values — TS does not propagate `!token`/`!tenantId`
+    // narrowing into the nested `connect` closure below.
+    const activeToken = token;
+    const activeTenantId = tenantId;
+
     let attempt = 0;
     const BASE_DELAY_MS = 3000;
     const MAX_DELAY_MS = 10000;
@@ -88,8 +93,8 @@ export function useSseInbox({
       closeStream();
       streamRef.current = openInboxStream({
         apiBase,
-        tenantId,
-        token,
+        tenantId: activeTenantId,
+        token: activeToken,
         onEvent: (event) => onEventRef.current(event),
         onOpen: () => setConnected(true),
         onError: scheduleReconnect,

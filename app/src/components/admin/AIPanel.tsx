@@ -424,11 +424,11 @@ export default function AIPanel() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {forecasts.map((f, i) => {
+                    {forecasts.map((f) => {
                       const maxDemand = Math.max(...forecasts.map((x) => x.predictedDemand), 1);
                       const barWidth = Math.round((f.predictedDemand / maxDemand) * 100);
                       return (
-                        <tr key={i} className="hover:bg-gray-50">
+                        <tr key={f.date} className="hover:bg-gray-50">
                           <td className="px-4 py-2 text-gray-700">{f.date}</td>
                           <td className="px-4 py-2 text-right font-medium text-gray-900">{f.predictedDemand}</td>
                           <td className="px-4 py-2 text-right">

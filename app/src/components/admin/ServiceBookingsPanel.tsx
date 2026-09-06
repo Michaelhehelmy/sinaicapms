@@ -67,7 +67,7 @@ export default function ServiceBookingsPanel() {
 
   const staffQuery = useQuery({
     queryKey: ['admin', 'pos-users'],
-    queryFn: () => api.getPosUsers() as Promise<{ data: Array<{ id: string; firstName: string; lastName: string; isActive: number }> }>,
+    queryFn: () => api.getPosUsers() as unknown as Promise<{ data: Array<{ id: string; firstName: string; lastName: string; isActive: number }> }>,
   });
 
   const createMutation = useMutation({

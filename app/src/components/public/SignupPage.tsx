@@ -113,28 +113,29 @@ export default function SignupPage() {
             {/* Name row */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelClass}>First Name</label>
-                <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClass} autoComplete="given-name" data-testid="signup-first-name" />
+                <label className={labelClass} htmlFor="signup-first-name">First Name</label>
+                <input id="signup-first-name" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClass} autoComplete="given-name" data-testid="signup-first-name" />
               </div>
               <div>
-                <label className={labelClass}>Last Name</label>
-                <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} autoComplete="family-name" data-testid="signup-last-name" />
+                <label className={labelClass} htmlFor="signup-last-name">Last Name</label>
+                <input id="signup-last-name" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} autoComplete="family-name" data-testid="signup-last-name" />
               </div>
             </div>
 
             <div>
-              <label className={labelClass}>Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} placeholder="you@example.com" autoComplete="email" data-testid="signup-email" />
+              <label className={labelClass} htmlFor="signup-email">Email</label>
+              <input id="signup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} placeholder="you@example.com" autoComplete="email" data-testid="signup-email" />
             </div>
 
             <div>
-              <label className={labelClass}>Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} minLength={6} autoComplete="new-password" data-testid="signup-password" />
+              <label className={labelClass} htmlFor="signup-password">Password</label>
+              <input id="signup-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} minLength={6} autoComplete="new-password" data-testid="signup-password" />
             </div>
 
             <div>
-              <label className={labelClass}>Business Name</label>
+              <label className={labelClass} htmlFor="signup-business-name">Business Name</label>
               <input
+                id="signup-business-name"
                 type="text"
                 value={businessName}
                 onChange={(e) => {
@@ -150,9 +151,10 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className={labelClass}>Subdomain</label>
+              <label className={labelClass} htmlFor="signup-subdomain">Subdomain</label>
               <div className="flex items-center">
                 <input
+                  id="signup-subdomain"
                   type="text"
                   value={subdomain}
                   onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
@@ -165,8 +167,9 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className={labelClass}>Business Type</label>
+              <label className={labelClass} htmlFor="signup-business-type">Business Type</label>
               <select
+                id="signup-business-type"
                 value={businessType}
                 onChange={(e) => setBusinessType(e.target.value)}
                 className={inputClass}

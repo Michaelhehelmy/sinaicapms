@@ -173,7 +173,7 @@ export default function SuperTenantsPanel() {
       await createTenant({
         name: createTenantForm.name.trim(),
         subdomain: createTenantForm.subdomain.trim().toLowerCase(),
-        type: createTenantForm.type,
+        type: createTenantForm.type as 'camp' | 'supermarket' | 'transportation' | 'other',
         adminEmail: createTenantForm.adminEmail.trim() || undefined,
         adminPassword: createTenantForm.adminPassword,
         adminFirstName: createTenantForm.adminFirstName.trim() || undefined,

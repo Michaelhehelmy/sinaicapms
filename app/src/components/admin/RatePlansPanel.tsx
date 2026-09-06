@@ -32,6 +32,7 @@ interface RatePlan {
 interface RatePlansPanelProps {
   campIds: string[];
   camps: Camp[];
+  onNavigateToTab?: (tab: string) => void;
 }
 
 interface PlanForm {
@@ -52,7 +53,7 @@ const seasonOptions = [
   { value: 'off', label: 'Off-Peak' },
 ];
 
-export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) {
+export default function RatePlansPanel({ campIds, camps, onNavigateToTab }: RatePlansPanelProps) {
   const { showToast } = useToast();
   const { data: products, isLoading: productsLoading } = useProductsQuery();
   const { data: plansData, isLoading: plansLoading, error: plansError } = useRatePlansQuery();
@@ -65,7 +66,7 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
   const saveMutation = useSaveRatePlanMutation(editingId ?? undefined);
   const deleteMutation = useDeleteRatePlanMutation();
 
-  const plans = useMemo(() => (plansData ?? []) as RatePlan[], [plansData]);
+  const plans = useMemo(() => (plansData ?? []) as unknown as RatePlan[], [plansData]);
   const loading = plansLoading || productsLoading;
 
   React.useEffect(() => {
@@ -77,8 +78,17 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
   const filtered = useMemo(() => plans.filter((p) => !p.campId || campIds.includes(p.campId)), [plans, campIds]);
 
   const productSelectOptions = useMemo(
-    () => (products ?? []).map((p: { id: string; name: string }) => ({ value: p.id, label: p.name })),
-    [products],
+    () =>
+      (products ?? [])
+        .filter((p) => {
+          // 0091: products with no camp (legacy/uncamped) stay visible; the
+          // rest must belong to the active project's camps.
+          const pCamps = (p as { campIds?: string[] }).campIds ?? [];
+          if (pCamps.length === 0) return true;
+          return campIds.some((cid) => pCamps.includes(cid));
+        })
+        .map((p) => ({ value: p.id, label: p.name ?? p.sku ?? '(Unnamed)' })),
+    [products, campIds],
   );
 
   const openAdd = useCallback(() => { setEditingId(null); setForm(emptyForm); setShowForm(true); }, []);
@@ -114,26 +124,52 @@ export default function RatePlansPanel({ campIds, camps }: RatePlansPanelProps) 
 
   if (loading) return <LoadingSpinner text="Loading rate plans..." />;
 
+  if (campIds.length === 0) {
+    return (
+      <Card padding="none" className="p-6" data-testid="rate-plans-panel">
+        <h2 className="text-xl font-bold text-gray-800">Rate Plans</h2>
+        <p className="text-sm text-gray-500 mb-6">Set seasonal pricing per room type to manage rates effectively across seasons.</p>
+        <EmptyState
+          title="No projects yet"
+          description="Create a project before setting up rate plans."
+          action={{ label: 'Create project', onClick: () => onNavigateToTab?.('camps') }}
+        />
+      </Card>
+    );
+  }
+
+  // Dependency gate: plans price a room type — with no selectable product type
+  // the Add Plan button would open a dead form.
+  const hasSelectableProducts = productSelectOptions.length > 0;
+
   return (
     <Card padding="none" className="p-6" data-testid="rate-plans-panel">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xl font-bold text-gray-800">Rate Plans</h2>
-        <Button
-          variant="success"
-          size="md"
-          onClick={openAdd}
-          data-testid="add-rateplan-btn"
-          leftIcon={
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          }
-        >
-          Add Plan
-        </Button>
+        {hasSelectableProducts && (
+          <Button
+            variant="success"
+            size="md"
+            onClick={openAdd}
+            data-testid="add-rateplan-btn"
+            leftIcon={
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            }
+          >
+            Add Plan
+          </Button>
+        )}
       </div>
       <p className="text-sm text-gray-500 mb-6">Set seasonal pricing per room type to manage rates effectively across seasons.</p>
-      {filtered.length === 0 ? (
+      {!hasSelectableProducts ? (
+        <EmptyState
+          title="No room types yet"
+          description="Rate plans apply to room types — create a product type first."
+          action={{ label: 'Go to Rooms', onClick: () => onNavigateToTab?.('rooms') }}
+        />
+      ) : filtered.length === 0 ? (
         <EmptyState
           title="No rate plans yet"
           description="Create your first rate plan to define pricing for your accommodations."

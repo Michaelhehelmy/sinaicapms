@@ -36,17 +36,17 @@ interface MO { id: string; product_id: string; quantity: number; status: string;
 interface WhForm { name: string; location: string; }
 interface StockForm { productId: string; warehouseId: string; quantity: string; }
 interface TransferForm { fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: string; }
-interface POLineForm { productId: string; quantity: string; unitPrice: string; }
+interface POLineForm { uid: string; productId: string; quantity: string; unitPrice: string; }
 interface POForm { vendorId: string; orderDate: string; expectedDelivery: string; notes: string; lines: POLineForm[]; }
-interface BOMLineForm { componentId: string; quantity: string; unit: string; }
+interface BOMLineForm { uid: string; componentId: string; quantity: string; unit: string; }
 interface BOMForm { productId: string; name: string; lines: BOMLineForm[]; }
 interface MOForm { bomId: string; productId: string; quantity: string; startDate: string; endDate: string; }
 
 const emptyWhForm: WhForm = { name: '', location: '' };
 const emptyStockForm: StockForm = { productId: '', warehouseId: '', quantity: '' };
 const emptyTransferForm: TransferForm = { fromWarehouseId: '', toWarehouseId: '', productId: '', quantity: '' };
-const emptyPOForm: POForm = { vendorId: '', orderDate: '', expectedDelivery: '', notes: '', lines: [{ productId: '', quantity: '', unitPrice: '' }] };
-const emptyBOMForm: BOMForm = { productId: '', name: '', lines: [{ componentId: '', quantity: '', unit: 'each' }] };
+const emptyPOForm: POForm = { vendorId: '', orderDate: '', expectedDelivery: '', notes: '', lines: [{ uid: crypto.randomUUID(), productId: '', quantity: '', unitPrice: '' }] };
+const emptyBOMForm: BOMForm = { productId: '', name: '', lines: [{ uid: crypto.randomUUID(), componentId: '', quantity: '', unit: 'each' }] };
 const emptyMOForm: MOForm = { bomId: '', productId: '', quantity: '', startDate: '', endDate: '' };
 
 const WH_STATUS_OPTIONS = [{ value: '1', label: 'Active' }, { value: '0', label: 'Inactive' }];
@@ -542,13 +542,13 @@ export default function SupplyPanel() {
           <div className="border-t pt-3 mt-3">
             <p className="text-sm font-medium text-gray-700 mb-2">Lines</p>
             {poForm.lines.map((line, i) => (
-              <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+              <div key={line.uid} className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
                 <Input label="" type="text" value={line.productId} onChange={(e) => { const lines = [...poForm.lines]; lines[i] = { ...lines[i], productId: e.target.value }; setPOForm((p) => ({ ...p, lines })); }} placeholder="Product ID" />
                 <Input label="" type="number" value={line.quantity} onChange={(e) => { const lines = [...poForm.lines]; lines[i] = { ...lines[i], quantity: e.target.value }; setPOForm((p) => ({ ...p, lines })); }} placeholder="Qty" min="1" />
                 <Input label="" type="number" value={line.unitPrice} onChange={(e) => { const lines = [...poForm.lines]; lines[i] = { ...lines[i], unitPrice: e.target.value }; setPOForm((p) => ({ ...p, lines })); }} placeholder="Unit Price" min="0" step="0.01" />
               </div>
             ))}
-            <Button variant="ghost" size="sm" onClick={() => setPOForm((p) => ({ ...p, lines: [...p.lines, { productId: '', quantity: '', unitPrice: '' }] }))}>+ Add Line</Button>
+            <Button variant="ghost" size="sm" onClick={() => setPOForm((p) => ({ ...p, lines: [...p.lines, { uid: crypto.randomUUID(), productId: '', quantity: '', unitPrice: '' }] }))}>+ Add Line</Button>
           </div>
         </div>
       </FormModal>
@@ -561,13 +561,13 @@ export default function SupplyPanel() {
           <div className="border-t pt-3 mt-3">
             <p className="text-sm font-medium text-gray-700 mb-2">Components</p>
             {bomForm.lines.map((line, i) => (
-              <div key={i} className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+              <div key={line.uid} className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
                 <Input label="" type="text" value={line.componentId} onChange={(e) => { const lines = [...bomForm.lines]; lines[i] = { ...lines[i], componentId: e.target.value }; setBOMForm((p) => ({ ...p, lines })); }} placeholder="Component ID" />
                 <Input label="" type="number" value={line.quantity} onChange={(e) => { const lines = [...bomForm.lines]; lines[i] = { ...lines[i], quantity: e.target.value }; setBOMForm((p) => ({ ...p, lines })); }} placeholder="Qty" min="0.01" step="0.01" />
                 <Input label="" type="text" value={line.unit} onChange={(e) => { const lines = [...bomForm.lines]; lines[i] = { ...lines[i], unit: e.target.value }; setBOMForm((p) => ({ ...p, lines })); }} placeholder="Unit" />
               </div>
             ))}
-            <Button variant="ghost" size="sm" onClick={() => setBOMForm((p) => ({ ...p, lines: [...p.lines, { componentId: '', quantity: '', unit: 'each' }] }))}>+ Add Component</Button>
+            <Button variant="ghost" size="sm" onClick={() => setBOMForm((p) => ({ ...p, lines: [...p.lines, { uid: crypto.randomUUID(), componentId: '', quantity: '', unit: 'each' }] }))}>+ Add Component</Button>
           </div>
         </div>
       </FormModal>

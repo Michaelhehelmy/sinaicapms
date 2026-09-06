@@ -177,8 +177,8 @@ export default function OnboardingWizard() {
         <div className="mb-8">
           <div className="flex justify-between text-xs text-gray-500 mb-2">
             <span className={step === 'profile' ? 'text-emerald-600 font-semibold' : 'text-emerald-600'}>Profile</span>
-            <span className={step === 'branding' ? 'text-emerald-600 font-semibold' : step === 'complete' ? 'text-emerald-600' : 'text-gray-400'}>Branding</span>
-            <span className={step === 'complete' ? 'text-emerald-600 font-semibold' : 'text-gray-400'}>Done</span>
+            <span className={step === 'branding' ? 'text-emerald-600 font-semibold' : 'text-emerald-600'}>Branding</span>
+            <span className="text-gray-400">Done</span>
           </div>
           <div className="bg-gray-200 rounded-full h-2">
             <div className="bg-emerald-500 h-2 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />

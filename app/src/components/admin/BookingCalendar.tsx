@@ -36,6 +36,7 @@ import type { Camp, Order, RatePlan } from '@/hooks/useAdminData';
 interface BookingCalendarProps {
   campIds: string[];
   camps: Camp[];
+  onNavigateToTab?: (tab: string) => void;
 }
 
 /**
@@ -107,7 +108,7 @@ function buildMonthCells(month: Date): (Date | null)[] {
   return cells;
 }
 
-export default function BookingCalendar({ campIds, camps }: BookingCalendarProps) {
+export default function BookingCalendar({ campIds, camps, onNavigateToTab }: BookingCalendarProps) {
   const { data: productsData, isLoading: loadingProducts } = useProductsQuery();
   const { data: roomsData, isLoading: loadingRooms } = useRoomsQuery();
   const { data: ordersData, isLoading: loadingOrders } = useOrdersQuery();
@@ -445,6 +446,7 @@ export default function BookingCalendar({ campIds, camps }: BookingCalendarProps
         <EmptyState
           title="No rooms available"
           description="Add rooms to see availability and manage per-night prices on the calendar."
+          action={{ label: 'Go to Rooms', onClick: () => onNavigateToTab?.('rooms') }}
         />
       </Card>
     );

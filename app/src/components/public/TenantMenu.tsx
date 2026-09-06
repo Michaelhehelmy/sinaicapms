@@ -288,6 +288,7 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
           <Input
             type="text"
             placeholder={t.searchPlaceholder}
+            aria-label={t.searchPlaceholder}
             value={search}
             onChange={e => setSearch(e.target.value)}
             rightIcon={

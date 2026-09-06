@@ -42,7 +42,7 @@ export default function ShiftOverlay({ onShiftOpened }: { onShiftOpened: (shift:
       closeOnOverlay={false}
       closeOnEsc={false}
       showCloseButton={false}
-      initialFocus={() => cashWrapRef.current?.querySelector('input')}
+      initialFocus={() => cashWrapRef.current?.querySelector('input') ?? null}
     >
       <div className="py-2 text-center">
         <div className="mb-4 flex justify-center text-gray-400"><IconShift size={40} strokeWidth={1.5} /></div>

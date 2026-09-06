@@ -214,7 +214,7 @@ export default function StorefrontPanel() {
               { key: 'is_published', header: 'Status', render: (p) => <Badge variant={Number(p.is_published) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(p.is_published) === 1 ? 'Published' : 'Draft'}</Badge> },
               { key: 'updated_at', header: 'Updated', render: (p) => <span className="text-sm text-gray-500">{p.updated_at ? String(p.updated_at).slice(0, 10) : '-'}</span> },
             ]}
-            data={pages as (PageItem & Record<string, unknown>)[]}
+            data={pages as unknown as (PageItem & Record<string, unknown>)[]}
             emptyMessage="No pages yet."
             actions={(p) => (
               <div className="flex gap-1.5">
@@ -237,7 +237,7 @@ export default function StorefrontPanel() {
               { key: 'is_published', header: 'Status', render: (p) => <Badge variant={Number(p.is_published) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(p.is_published) === 1 ? 'Published' : 'Draft'}</Badge> },
               { key: 'author_id', header: 'Author', render: (p) => <span className="text-sm text-gray-500">{String(p.author_id || '-')}</span> },
             ]}
-            data={posts as (BlogPost & Record<string, unknown>)[]}
+            data={posts as unknown as (BlogPost & Record<string, unknown>)[]}
             emptyMessage="No blog posts."
             actions={(p) => (
               <div className="flex gap-1.5">

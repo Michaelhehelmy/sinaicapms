@@ -33,7 +33,7 @@ export default function DashboardPanel({ campIds, camps, onNavigateToTab }: Dash
 
   const loading = loadingOrders || loadingRooms;
 
-  const lowStockItems = useMemo(() => (lowStockRes?.items ?? []).slice(0, 5), [lowStockRes]);
+  const lowStockItems = useMemo(() => (lowStockRes?.data ?? []).slice(0, 5), [lowStockRes]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -87,6 +87,42 @@ export default function DashboardPanel({ campIds, camps, onNavigateToTab }: Dash
       {loading ? <DashboardSkeleton /> : (
       <>
       <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
+
+      {/* First-run / next-step strip (T2): guides a tenant to the next setup
+          step instead of staring at zeroed stat cards. Tabs remain clickable;
+          this is a nudge, not a gate. */}
+      {!loading && camps.length === 0 && (
+        <div data-testid="dashboard-onboarding-strip" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+          <div>
+            <p className="text-sm font-bold text-brand-800">Get started with SinaiCamps</p>
+            <p className="text-xs text-brand-700/80 mt-0.5">Create your first project to add room types, pricing, and start taking bookings.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateToTab?.('camps')}
+            data-testid="onboarding-cta-projects"
+            className="shrink-0 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-700 transition-colors"
+          >
+            Create project
+          </button>
+        </div>
+      )}
+      {!loading && camps.length > 0 && (products ?? []).length === 0 && (
+        <div data-testid="dashboard-onboarding-strip" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+          <div>
+            <p className="text-sm font-bold text-brand-800">Add room types and pricing</p>
+            <p className="text-xs text-brand-700/80 mt-0.5">Rooms, rate plans, and the booking calendar all depend on product types.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateToTab?.('rooms')}
+            data-testid="onboarding-cta-rooms"
+            className="shrink-0 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-700 transition-colors"
+          >
+            Add room types
+          </button>
+        </div>
+      )}
 
       {/* Room Overview */}
       <div data-testid="admin-stat-cards" className="grid grid-cols-2 md:grid-cols-4 gap-4">
