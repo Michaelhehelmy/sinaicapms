@@ -21,32 +21,41 @@ test.describe('Meals API Endpoints', () => {
 });
 
 test.describe('Payments API Endpoints', () => {
-  // create-checkout (byte-for-byte alias of create-intent) was retired in
-  // Phase 0 of the Unified Architecture Plan — create-intent is canonical.
-  test('POST /api/payments/create-checkout is retired and no longer creates intents', async ({ request }) => {
+  // create-checkout AND create-intent (its byte-for-byte twin) were retired in
+  // the backend payment rework — the mock storefront intent path no longer
+  // exists, so both fall through to Hono's /api/* catch-all (deterministic
+  // 404, not a disabled-gateway 503). The offline contract for both removed
+  // routes and the surviving webhooks is pinned in payments-offline.spec.ts.
+  test('POST /api/payments/create-checkout is retired and now 404s', async ({ request }) => {
     const response = await request.post(`${API_BASE}/api/payments/create-checkout`, {
       data: { amount: 100, currency: 'usd' },
       headers: { 'x-tenant-id': TEST_TENANT.id },
     });
-    expect([401, 404]).toContain(response.status());
+    expect(response.status()).toBe(404);
   });
 
-  test('POST /api/payments/create-intent without auth returns 401', async ({ request }) => {
+  test('POST /api/payments/create-intent is retired and now 404s', async ({ request }) => {
     const response = await request.post(`${API_BASE}/api/payments/create-intent`, {
       data: { amount: 100, currency: 'usd' },
       headers: { 'x-tenant-id': TEST_TENANT.id },
     });
-    expect(response.status()).toBe(401);
+    expect(response.status()).toBe(404);
   });
 
-  // `/api/payments/config` was retired with the Unified Architecture Plan; the
-  // canonical protected payment endpoint is `POST /api/payments/create-intent`
-  // (covered above). Assert the retired route now 404s so we don't silently
-  // ship a stale expectation.
+  // `/api/payments/config` was retired with the Unified Architecture Plan. The
+  // canonical protected payment-adjacent endpoint is now the super-admin gated
+  // `/api/admin/payouts` mount (asserted below — a missing token must 401, the
+  // same guarantee the retired create-intent route used to carry).
   test('GET /api/payments/config is retired and returns 404', async ({ request }) => {
     const response = await request.get(`${API_BASE}/api/payments/config`);
-    const status = response.status();
-    expect([401, 404]).toContain(status);
+    expect(response.status()).toBe(404);
+  });
+
+  test('POST /api/admin/payouts without auth returns 401 (super-admin gate)', async ({ request }) => {
+    const response = await request.post(`${API_BASE}/api/admin/payouts`, {
+      data: { tenantId: 'tenant-e2e', paymentIds: ['p_1'], method: 'bank_transfer' },
+    });
+    expect(response.status()).toBe(401);
   });
 });
 

@@ -52,7 +52,6 @@ import {
 } from '../api/auth.js';
 import { orderStatusSchema, kitchenStatusSchema } from '../api/orders.js'; // single-key { status } — wire-identical, reused as-is
 import { tablePostSchema, tablePutSchema, tableStatusSchema } from '../api/pos-tables.js'; // 0069 Restaurant pillar
-import { paymentIntentSchema, confirmPaymentSchema } from '../api/payments.js'; // already camelCase wire-identical (no toSnake in handler) — reused as-is
 
 // ─── Shared response schemas (camelCase wire contract) ───────────────────────
 
@@ -2465,50 +2464,11 @@ export const posUsersRoutes = [
 ];
 
 // ─── Payments (T8-B3) ──────────────────────────────────────────────────────────
-// Request schemas are the module's OWN paymentIntentSchema / confirmPaymentSchema —
-// they are already camelCase and parsed WITHOUT toSnake (wire-identical). The
-// webhook deliberately has NO request schema: it is a raw Stripe event body and
-// must not imply case-normalization.
-const paymentIntentResponseSchema = z
-  .object({
-    success: z.boolean(),
-    paymentIntentId: z.string(),
-    clientSecret: z.string(),
-    amount: z.number(),
-    currency: z.string(),
-    orderId: z.string(),
-  })
-  .openapi('PaymentIntentResponse');
-
-const confirmPaymentResponseSchema = z
-  .object({ success: z.boolean(), orderId: z.string(), status: z.string(), amountPaid: z.number() })
-  .openapi('ConfirmPaymentResponse');
-
+// The webhook deliberately has NO request schema: it is a raw Stripe event body
+// and must not imply case-normalization.
 const webhookResponseSchema = z.object({ received: z.boolean() }).openapi('WebhookResponse');
 
 export const paymentRoutes = [
-  createRoute({
-    method: 'post',
-    path: '/api/payments/create-intent',
-    tags: ['payments'],
-    summary: 'Create a (mock) Stripe PaymentIntent for an order (auth + tenant)',
-    request: { body: { content: { 'application/json': { schema: paymentIntentSchema } } } },
-    responses: {
-      200: { description: 'Payment intent created', content: { 'application/json': { schema: paymentIntentResponseSchema } } },
-      ...errorResponses(),
-    },
-  }),
-  createRoute({
-    method: 'post',
-    path: '/api/payments/confirm',
-    tags: ['payments'],
-    summary: 'Confirm a (mock) payment and mark the order paid (auth + tenant)',
-    request: { body: { content: { 'application/json': { schema: confirmPaymentSchema } } } },
-    responses: {
-      200: { description: 'Payment confirmed', content: { 'application/json': { schema: confirmPaymentResponseSchema } } },
-      ...errorResponses(),
-    },
-  }),
   createRoute({
     method: 'post',
     path: '/api/payments/webhook',
