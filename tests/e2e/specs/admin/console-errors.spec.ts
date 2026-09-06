@@ -80,7 +80,10 @@ test.afterAll(async () => {
 
 test('GET /admin/tenants returns exactly one row per tenant (no admin fan-out)', async () => {
   const token = await superAdminLogin();
-  const res = await apiRequest('GET', '/api/admin/tenants', undefined, {
+  // Explicit pageSize: the endpoint is paginated (page-1 cap), and isolation
+  // tenants from other suites can push the seeded acacia tenant off the first
+  // page — the fan-out guarantee must hold across the whole dataset.
+  const res = await apiRequest('GET', '/api/admin/tenants?page=1&pageSize=1000', undefined, {
     Authorization: `Bearer ${token}`,
   });
   expect(res.ok).toBeTruthy();

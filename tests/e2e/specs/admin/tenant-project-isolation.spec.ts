@@ -47,6 +47,51 @@ function makeIsolationTenant(tag: string) {
 
 type IsolationTenant = ReturnType<typeof makeIsolationTenant>;
 
+/** Tenants created by this run — purged in afterAll (see sweep below). */
+const createdTenantIds: string[] = [];
+
+/** DELETE /api/admin/tenants/:id (super admin) — best-effort cascade soft-delete. */
+async function deleteIsolationTenant(tenantId: string): Promise<void> {
+  try {
+    const token = await superAdminLogin();
+    await apiRequest('DELETE', `/api/admin/tenants/${tenantId}`, undefined, {
+      Authorization: `Bearer ${token}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * The admin tenant list is paginated (page-1 cap), and this suite is the sole
+ * creator of `iso-*` tenants. Leftovers from earlier runs/retries accumulate
+ * beyond the page cap and shadow the seeded tenant (breaking the super-admin
+ * order log dropdown and the console-errors fan-out spec), so sweep stale
+ * iso-* tenants at suite start (beforeAll) and this run's own at the end
+ * (afterAll) to keep the tenant store bounded.
+ */
+test.beforeAll(async () => {
+  const token = await superAdminLogin();
+  try {
+    const res = await apiRequest('GET', '/api/admin/tenants?page=1&pageSize=1000', undefined, {
+      Authorization: `Bearer ${token}`,
+    });
+    if (res.ok) {
+      const body = await res.json();
+      const list = Array.isArray(body) ? body : (body?.data ?? []);
+      for (const t of list) {
+        if (String(t.id).startsWith('iso-')) await deleteIsolationTenant(String(t.id));
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+});
+
+test.afterAll(async () => {
+  for (const id of createdTenantIds) await deleteIsolationTenant(id);
+});
+
 /** POST /api/tenants (super admin) — hard-fails so setup problems surface loudly. */
 async function createIsolationTenant(tenant: IsolationTenant): Promise<void> {
   const token = await superAdminLogin();
@@ -66,6 +111,7 @@ async function createIsolationTenant(tenant: IsolationTenant): Promise<void> {
   );
   const text = await res.text();
   expect(res.status, `create tenant ${tenant.id}: ${res.status} ${text}`).toBe(200);
+  createdTenantIds.push(tenant.id);
 }
 
 /** Login as the tenant admin (tenantId in body is required — camelCase-only schema). */

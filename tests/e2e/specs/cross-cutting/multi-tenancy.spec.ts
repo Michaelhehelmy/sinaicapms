@@ -27,7 +27,9 @@ test.describe('Multi-Tenancy Isolation', () => {
     });
 
     test('tenant A rooms page shows only tenant A rooms', async ({ page }) => {
-      await page.goto(`/rooms?tenant=${TENANT_A}`);
+      // Zone/E2E gotcha: astro dev 'load' hangs on dead localhost:8001
+      // logo/favicon — always use domcontentloaded for tenant pages.
+      await page.goto(`/rooms?tenant=${TENANT_A}`, { waitUntil: 'domcontentloaded' });
       const url = page.url();
       expect(url).toContain(`tenant=${TENANT_A}`);
     });

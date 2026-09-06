@@ -57,7 +57,9 @@ test.describe('Visual Regression — Page Snapshots', () => {
   });
 
   test('POS login page matches baseline', async ({ page }) => {
-    await page.goto(`/pos/login?tenant=${TENANT_ID}`);
+    // GOTO_OPTS (domcontentloaded) matches the sibling snapshots — default
+    // 'load' can stall on the dead-8001 favicon and flake the pixel compare.
+    await page.goto(`/pos/login?tenant=${TENANT_ID}`, GOTO_OPTS);
     await page.waitForLoadState('networkidle');
     await expect(page).toHaveScreenshot('pos-login.png', {
       fullPage: false,

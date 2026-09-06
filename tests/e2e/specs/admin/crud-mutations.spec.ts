@@ -2,6 +2,8 @@ import { test, expect } from '../../fixtures/coverage-fixture';
 import { AdminDashboardPage } from '../../pages/admin/dashboard.page';
 import { SUPER_ADMIN, TEST_TENANT_ADMIN, TEST_TENANT, API_BASE } from '../../fixtures/test-data';
 import { expectPanelReady, expectPanelContentReady } from '../../fixtures/admin';
+import { apiRequest, tenantAdminLogin } from '../../utils/api-helpers';
+import type { APIRequestContext } from '@playwright/test';
 
 const TIMESTAMP = Date.now();
 const ROOM_NAME = `E2E Room ${TIMESTAMP}`;
@@ -10,6 +12,12 @@ const MEAL_NAME = `E2E Meal ${TIMESTAMP}`;
 const MEAL_NAME_EDITED = `E2E Meal Edited ${TIMESTAMP}`;
 const RATE_PLAN_NAME = `E2E Plan ${TIMESTAMP}`;
 const RATE_PLAN_NAME_EDITED = `E2E Plan Edited ${TIMESTAMP}`;
+// The delete guard rejects rate plans that price a product with ACTIVE orders
+// (orders WHERE room_id IN rooms_new(product_id = ?)): the seeded e2e-rt-1
+// accumulates orders from public-booking-order, so every plan tied to it can
+// never be deleted (400). Point this describe's plan at a freshly created,
+// order-free product instead.
+const RATE_PLAN_PRODUCT_ID = `e2e-rp-origin-${TIMESTAMP}`;
 
 let createdRoomId: string | null = null;
 let createdMealId: string | null = null;
@@ -239,7 +247,26 @@ test.describe.serial('Admin CRUD Mutations — Meals', () => {
 });
 
 test.describe.serial('Admin CRUD Mutations — Rate Plans', () => {
-  test('create a new rate plan and verify it appears', async ({ page }) => {
+  async function createRatePlanOriginProduct() {
+  const res = await apiRequest(
+    'POST',
+    '/api/products',
+    { id: RATE_PLAN_PRODUCT_ID, name: 'E2E RP Origin Product', capacity: 2, basePrice: 60, campId: TEST_TENANT.id },
+    { Authorization: `Bearer ${await tenantAdminLogin()}`, 'x-tenant-id': TEST_TENANT.id },
+  );
+  if (!res.ok && res.status !== 409) {
+    const body = await res.text();
+    if (!(res.status === 400 && body.includes('Failed to create product'))) {
+      throw new Error(`create rate-plan origin product failed: ${res.status} ${body}`);
+    }
+  }
+}
+
+test('create a new rate plan and verify it appears', async ({ page }) => {
+    // Create the order-free origin product BEFORE the app loads — the panel's
+    // products query caches (Cache-Control: max-age=300) on first fetch, so
+    // creating it after login leaves the select without the option.
+    await createRatePlanOriginProduct();
     const admin = await loginAsTenantAdmin(page);
     await admin.clickTab('rateplans');
     await expectPanelContentReady(page, 'rate-plans-panel');
@@ -252,13 +279,11 @@ test.describe.serial('Admin CRUD Mutations — Rate Plans', () => {
     const nameInput = page.locator('[data-testid="modal-content"] input').first();
     await nameInput.fill(RATE_PLAN_NAME);
 
-    // Select a product from the dropdown (required field)
+    // Select the freshly created order-free product (NOT index 1 — e2e-rt-1
+    // has accumulated orders, so a plan on it can never be deleted via the
+    // active-orders guard).
     const productSelect = page.locator('[data-testid="modal-content"] select').first();
-    const options = productSelect.locator('option');
-    const optionCount = await options.count();
-    if (optionCount > 1) {
-      await productSelect.selectOption({ index: 1 });
-    }
+    await productSelect.selectOption(RATE_PLAN_PRODUCT_ID);
 
     const priceInput = page.locator('[data-testid="modal-content"] input[type="number"]').first();
     await priceInput.clear();
@@ -330,9 +355,8 @@ test.describe.serial('Admin CRUD Mutations — Rate Plans', () => {
     await expect(confirmDialog).toBeVisible({ timeout: 5000 });
     await confirmDialog.locator('button:has-text("Delete")').last().click();
 
-    // "deleted"/"Deleted" both match "Rate plan deleted" AND "Deleted."
-    // (:has-text is case-insensitive → strict-mode violation) — use the unique toast.
-    await waitForToast(page, 'Rate plan deleted');
+    // RatePlansPanel.handleDelete emits toast 'Deleted.' (not 'Rate plan deleted').
+    await waitForToast(page, 'Deleted.');
 
     await expectPanelContentReady(page, 'rate-plans-panel');
     const deletedRow = page.locator('[data-testid="data-table-row"]:has-text("' + RATE_PLAN_NAME_EDITED + '")');
