@@ -64,7 +64,7 @@ SELECT
 FROM pos_customers c
 WHERE EXISTS (SELECT 1 FROM pos_organizations WHERE id = c.organization_id);
 
-DROP TABLE pos_customers;
+DROP TABLE IF EXISTS pos_customers;
 ALTER TABLE pos_customers_new RENAME TO pos_customers;
 
 CREATE INDEX IF NOT EXISTS idx_customers_organization ON pos_customers(organization_id);
@@ -100,7 +100,7 @@ SELECT
 FROM pos_activity_logs l
 WHERE l.user_id IS NULL OR EXISTS (SELECT 1 FROM pos_users WHERE id = l.user_id);
 
-DROP TABLE pos_activity_logs;
+DROP TABLE IF EXISTS pos_activity_logs;
 ALTER TABLE pos_activity_logs_new RENAME TO pos_activity_logs;
 
 CREATE INDEX IF NOT EXISTS idx_pos_activity_logs_user ON pos_activity_logs(user_id, created_at);
@@ -138,7 +138,7 @@ SELECT
 FROM pos_staff_stats s
 WHERE EXISTS (SELECT 1 FROM pos_users WHERE id = s.user_id);
 
-DROP TABLE pos_staff_stats;
+DROP TABLE IF EXISTS pos_staff_stats;
 ALTER TABLE pos_staff_stats_new RENAME TO pos_staff_stats;
 
 CREATE INDEX IF NOT EXISTS idx_pos_staff_stats_tenant ON pos_staff_stats(tenant_id);
@@ -177,7 +177,7 @@ FROM pos_inventory_logs l
 WHERE EXISTS (SELECT 1 FROM pos_products WHERE id = l.product_id)
   AND EXISTS (SELECT 1 FROM pos_users WHERE id = l.user_id);
 
-DROP TABLE pos_inventory_logs;
+DROP TABLE IF EXISTS pos_inventory_logs;
 ALTER TABLE pos_inventory_logs_new RENAME TO pos_inventory_logs;
 
 CREATE INDEX IF NOT EXISTS idx_pos_inventory_logs_product ON pos_inventory_logs(product_id, created_at);

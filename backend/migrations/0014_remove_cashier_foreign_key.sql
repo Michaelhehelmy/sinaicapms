@@ -64,7 +64,7 @@ SELECT
 FROM pos_transactions_old;
 
 -- 4. Drop old table
-DROP TABLE pos_transactions_old;
+DROP TABLE IF EXISTS pos_transactions_old;
 
 -- 5. Recreate Indexes
 CREATE INDEX idx_orders_organization_store ON pos_transactions(organization_id, store_id);

@@ -110,7 +110,7 @@ ALTER TABLE pos_products_new RENAME TO pos_products;
 -- ============================================================
 -- 5. Clean up old table (FK checks deferred, so DROP succeeds)
 -- ============================================================
-DROP TABLE pos_products_old;
+DROP TABLE IF EXISTS pos_products_old;
 
 -- ============================================================
 -- 6. Recreate indexes

@@ -7,7 +7,7 @@
 --
 -- D1 (SQLite) does not support ALTER CONSTRAINT, so we use the rename-swap pattern.
 -- IMPORTANT: PRAGMA foreign_keys = OFF is required (not defer_foreign_keys) because
--- DROP TABLE checks FK constraints even when deferred. The orders table references
+-- Dropping a table checks FK constraints even when deferred. The orders table references
 -- rooms_new(id), so we must fully disable FK enforcement during the swap.
 
 PRAGMA foreign_keys = OFF;
@@ -41,7 +41,7 @@ SELECT
     base_price, floor, notes, is_active, tenant_id, created_at, updated_at
 FROM rooms_new;
 
-DROP TABLE rooms_new;
+DROP TABLE IF EXISTS rooms_new;
 ALTER TABLE rooms_new_v2 RENAME TO rooms_new;
 
 CREATE INDEX IF NOT EXISTS idx_rooms_new_camp ON rooms_new(camp_id);
@@ -75,7 +75,7 @@ SELECT
     price_per_night, min_stay, is_active, created_at, updated_at
 FROM rate_plans_new;
 
-DROP TABLE rate_plans_new;
+DROP TABLE IF EXISTS rate_plans_new;
 ALTER TABLE rate_plans_new_v2 RENAME TO rate_plans_new;
 
 -- Recreate indexes

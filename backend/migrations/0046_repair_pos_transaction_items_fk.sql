@@ -44,7 +44,7 @@ SELECT
     total_amount, notes, created_at, updated_at
 FROM pos_transaction_items;
 
-DROP TABLE pos_transaction_items;
+DROP TABLE IF EXISTS pos_transaction_items;
 ALTER TABLE pos_transaction_items_new RENAME TO pos_transaction_items;
 
 PRAGMA defer_foreign_keys = OFF;

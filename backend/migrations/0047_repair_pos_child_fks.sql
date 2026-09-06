@@ -64,7 +64,7 @@ SELECT
     is_active, created_at, updated_at
 FROM pos_product_variants;
 
-DROP TABLE pos_product_variants;
+DROP TABLE IF EXISTS pos_product_variants;
 ALTER TABLE pos_product_variants_new RENAME TO pos_product_variants;
 
 -- ============================================================
@@ -107,7 +107,7 @@ SELECT
     created_at, updated_at
 FROM pos_inventory;
 
-DROP TABLE pos_inventory;
+DROP TABLE IF EXISTS pos_inventory;
 ALTER TABLE pos_inventory_new RENAME TO pos_inventory;
 
 CREATE INDEX idx_inventory_store_product ON pos_inventory(store_id, product_id);
@@ -158,7 +158,7 @@ SELECT
     created_by, created_at
 FROM pos_stock_movements;
 
-DROP TABLE pos_stock_movements;
+DROP TABLE IF EXISTS pos_stock_movements;
 ALTER TABLE pos_stock_movements_new RENAME TO pos_stock_movements;
 
 CREATE INDEX idx_stock_movements_product ON pos_stock_movements(product_id);
@@ -207,7 +207,7 @@ SELECT
     unit_cost, reason
 FROM pos_stock_adjustment_items;
 
-DROP TABLE pos_stock_adjustment_items;
+DROP TABLE IF EXISTS pos_stock_adjustment_items;
 ALTER TABLE pos_stock_adjustment_items_new RENAME TO pos_stock_adjustment_items;
 
 -- ============================================================
@@ -234,7 +234,7 @@ SELECT
     quantity, unit, created_at
 FROM pos_recipe_ingredients;
 
-DROP TABLE pos_recipe_ingredients;
+DROP TABLE IF EXISTS pos_recipe_ingredients;
 ALTER TABLE pos_recipe_ingredients_new RENAME TO pos_recipe_ingredients;
 
 CREATE INDEX idx_recipe_product
@@ -275,7 +275,7 @@ SELECT
     reason, reference_id, created_at
 FROM pos_inventory_logs;
 
-DROP TABLE pos_inventory_logs;
+DROP TABLE IF EXISTS pos_inventory_logs;
 ALTER TABLE pos_inventory_logs_new RENAME TO pos_inventory_logs;
 
 CREATE INDEX idx_pos_inventory_logs_product ON pos_inventory_logs(product_id, created_at);

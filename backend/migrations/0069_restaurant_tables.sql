@@ -71,7 +71,7 @@ CREATE TABLE audit_log_new (
 );
 INSERT INTO audit_log_new (id, tenant_id, user_id, action, entity_type, entity_id, old_values, new_values, created_at)
   SELECT id, tenant_id, user_id, action, entity_type, entity_id, old_values, new_values, created_at FROM audit_log;
-DROP TABLE audit_log;
+DROP TABLE IF EXISTS audit_log;
 ALTER TABLE audit_log_new RENAME TO audit_log;
 CREATE INDEX IF NOT EXISTS idx_audit_log_tenant ON audit_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
