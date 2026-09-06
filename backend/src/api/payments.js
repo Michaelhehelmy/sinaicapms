@@ -12,9 +12,7 @@
  */
 
 import { jsonResponse, errorResponse } from '../utils/response';
-import { validationError } from '../utils/errors';
 import { z } from 'zod';
-import { randomUUID } from 'crypto';
 
 export const paymentIntentSchema = z.object({
   orderId: z.string().min(1, 'Order ID is required'),
@@ -26,114 +24,6 @@ export const confirmPaymentSchema = z.object({
   paymentIntentId: z.string().min(1, 'Payment intent ID is required'),
   orderId: z.string().min(1, 'Order ID is required'),
 }).strip();
-
-/**
- * POST /api/payments/create-intent
- * Creates a mock Stripe PaymentIntent for an order.
- * Body: { orderId: string, amount: number, currency?: string }
- */
-export async function handleCreatePaymentIntent(request, env, tenantId) {
-  if (env.PM_ENABLED !== 'true') {
-    return errorResponse('Payment gateway disabled', 503);
-  }
-  try {
-    const parsed = paymentIntentSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return validationError(parsed);
-    }
-    const { orderId, amount, currency } = parsed.data;
-
-    const order = await env.DB.prepare(
-      'SELECT id, tenant_id, total_amount, order_state_id FROM orders WHERE id = ? AND tenant_id = ?'
-    ).bind(orderId, tenantId).first();
-
-    if (!order) {
-      return errorResponse('Order not found', 404);
-    }
-
-    if (order.order_state_id === 'cancelled') {
-      return errorResponse('Cannot create payment for a cancelled order', 400);
-    }
-
-    const paymentIntentId = 'pi_mock_' + randomUUID();
-    const clientSecret = paymentIntentId + '_secret_' + randomUUID();
-
-    await env.DB.prepare(
-      'INSERT INTO payment_intents (id, order_id, amount, currency, status, tenant_id) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(paymentIntentId, orderId, amount, currency || 'egp', 'created', tenantId).run();
-
-    return jsonResponse({
-      success: true,
-      paymentIntentId,
-      clientSecret,
-      amount,
-      currency: currency || 'egp',
-      orderId,
-    });
-  } catch (e) {
-    return errorResponse('Failed to create payment intent', 500);
-  }
-}
-
-/**
- * POST /api/payments/confirm
- * Confirms a mock payment and updates the order status.
- * Body: { paymentIntentId: string, orderId: string }
- */
-export async function handleConfirmPayment(request, env, tenantId) {
-  if (env.PM_ENABLED !== 'true') {
-    return errorResponse('Payment gateway disabled', 503);
-  }
-  try {
-    const parsed = confirmPaymentSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return validationError(parsed);
-    }
-    const { paymentIntentId, orderId } = parsed.data;
-
-    // Ownership check: verify the intent belongs to this order/tenant and is still creatable.
-    const intent = await env.DB.prepare(
-      "SELECT id, order_id, amount, status FROM payment_intents WHERE id = ? AND order_id = ? AND tenant_id = ? AND status = 'created'"
-    ).bind(paymentIntentId, orderId, tenantId).first();
-
-    const order = await env.DB.prepare(
-      'SELECT id, tenant_id, total_amount, order_state_id, room_id, check_in_date FROM orders WHERE id = ? AND tenant_id = ?'
-    ).bind(orderId, tenantId).first();
-
-    if (!order) {
-      return errorResponse('Order not found', 404);
-    }
-
-    if (!intent) {
-      return errorResponse('Payment intent not found or already used', 400);
-    }
-
-    if (order.order_state_id === 'cancelled') {
-      return errorResponse('Cannot confirm payment for a cancelled order', 400);
-    }
-
-    if (intent.amount !== order.total_amount) {
-      return errorResponse('Payment intent amount does not match order total', 409);
-    }
-
-    await env.DB.prepare(
-      "UPDATE payment_intents SET status = 'confirmed' WHERE id = ?"
-    ).bind(paymentIntentId).run();
-
-    await env.DB.prepare(
-      "UPDATE orders SET payment_status = 'paid', amount_paid = total_amount, notes = COALESCE(notes, '') || ' | Payment: ' || ?, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?"
-    ).bind(paymentIntentId, orderId, tenantId).run();
-
-    return jsonResponse({
-      success: true,
-      orderId,
-      status: 'paid',
-      amountPaid: order.total_amount,
-    });
-  } catch (e) {
-    return errorResponse('Failed to confirm payment', 500);
-  }
-}
 
 /**
  * POST /api/payments/webhook

@@ -15,6 +15,18 @@ const router = new Hono();
 
 // ── Schemas ────────────────────────────────────────────────────────────────
 
+// T40: storefront order references follow the booking-flow convention —
+// ORD- + 6 random alnum chars (crypto, not Math.random) so concurrent
+// checkouts can never collide the way a COUNT(*) sequence would.
+function generateStorefrontReference() {
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  let rand = '';
+  for (let i = 0; i < bytes.length; i++) rand += chars[bytes[i] % chars.length];
+  return `ORD-${rand}`;
+}
+
 const addToCartSchema = z.object({
   productId: z.string().min(1),
   quantity: z.number().int().min(1).max(999).default(1),
@@ -272,10 +284,14 @@ router.post('/checkout', async (c) => {
   ).bind(sessionId, tenantId).first();
   if (!cart) return errorResponse('Cart not found', 404);
 
-  const items = await c.env.DB.prepare(
-    'SELECT * FROM cart_items WHERE cart_id = ?'
+  const itemsResult = await c.env.DB.prepare(
+    `SELECT ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
+            COALESCE(p.name, ci.product_id) AS product_name
+     FROM cart_items ci
+     LEFT JOIN pos_products p ON p.id = ci.product_id
+     WHERE ci.cart_id = ?`
   ).bind(cart.id).all();
-  const cartItems = items.results || [];
+  const cartItems = itemsResult.results || [];
 
   if (cartItems.length === 0) return errorResponse('Cart is empty', 400);
 
@@ -283,26 +299,35 @@ router.post('/checkout', async (c) => {
   const totalAmount = cartItems.reduce((sum, item) => sum + item.total_price, 0);
 
   const orderId = crypto.randomUUID();
-  const seqResult = await c.env.DB.prepare(
-    "SELECT COUNT(*) as cnt FROM orders WHERE tenant_id = ?"
-  ).bind(tenantId).first();
-  const seq = (seqResult?.cnt || 0) + 1;
-  const orderNumber = `ORD-${String(seq).padStart(6, '0')}`;
+  const orderNumber = generateStorefrontReference();
 
-  await c.env.DB.prepare(
-    `INSERT INTO orders (id, tenant_id, order_number, customer_email, total_amount, status, payment_status, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'pending', 'pending', 'Storefront checkout', datetime('now'), datetime('now'))`
-  ).bind(orderId, tenantId, orderNumber, sessionId, totalAmount).run();
+  // T40: order + line items + cart cleanup are one atomic batch — the order
+  // never exists without its items, and the cart rows are never orphaned by a
+  // partial failure (the old code INSERTed phantom columns on orders/order_items
+  // which are room-booking tables; both now land on the storefront tables).
+  const statements = [
+    c.env.DB.prepare(
+      `INSERT INTO storefront_orders
+         (id, tenant_id, reference, session_id, total_amount, status, payment_status, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'pending', 'pending', 'Storefront checkout', datetime('now'), datetime('now'))`
+    ).bind(orderId, tenantId, orderNumber, sessionId, totalAmount),
+  ];
 
   for (const item of cartItems) {
-    const lineId = crypto.randomUUID();
-    await c.env.DB.prepare(
-      `INSERT INTO order_items (id, order_id, product_id, product_name, quantity, unit_price, total_price)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(lineId, orderId, item.product_id, item.product_id, item.quantity, item.unit_price, item.total_price).run();
+    statements.push(
+      c.env.DB.prepare(
+        `INSERT INTO storefront_order_items
+           (id, order_id, product_id, product_name, quantity, unit_price, total_price)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).bind(crypto.randomUUID(), orderId, item.product_id, item.product_name, item.quantity, item.unit_price, item.total_price)
+    );
   }
 
-  await c.env.DB.prepare('DELETE FROM cart_items WHERE cart_id = ?').bind(cart.id).run();
+  statements.push(
+    c.env.DB.prepare('DELETE FROM cart_items WHERE cart_id = ?').bind(cart.id)
+  );
+
+  await c.env.DB.batch(statements);
 
   return jsonResponse({ orderId, orderNumber, totalAmount, status: 'pending', paymentStatus: 'pending', success: true }, 201);
 });
@@ -318,14 +343,17 @@ router.get('/orders', async (c) => {
   const sessionId = url.searchParams.get('sessionId');
   const userId = url.searchParams.get('userId');
 
-  let sql = 'SELECT * FROM orders WHERE tenant_id = ?';
+  let sql = 'SELECT id, reference AS orderNumber, total_amount AS totalAmount, status, created_at AS createdAt FROM storefront_orders WHERE tenant_id = ?';
   const binds = [tenantId];
 
-  if (sessionId) { sql += ' AND customer_email = ?'; binds.push(sessionId); }
-  if (userId) { sql += ' AND customer_email = ?'; binds.push(userId); }
+  if (sessionId) { sql += ' AND session_id = ?'; binds.push(sessionId); }
+  if (userId) { sql += ' AND customer_id = ?'; binds.push(userId); }
 
   sql += ' ORDER BY created_at DESC';
   const rows = await c.env.DB.prepare(sql).bind(...binds).all();
+
+  // Aliases above already produce the exact FE contract shape for
+  // GET /storefront/orders: { id, orderNumber, totalAmount, status, createdAt }.
   return jsonResponse(rows.results || []);
 });
 

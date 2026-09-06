@@ -70,7 +70,7 @@ export const tenantMePutSchema = z.object({
 }).strip();
 
 function selectFieldsPublic() {
-  return "id, name, subdomain, type, custom_domain, logo_url, favicon_url, primary_color, footer_text, location, whatsapp_number, phone, email, description, hero_image_url, gallery_images, about_text, faq_items, reviews, map_embed_url, activities, capacity, currency, status, menu_config";
+  return "tenants.id, tenants.name, tenants.subdomain, tenants.type, tenants.custom_domain, tenants.logo_url, tenants.favicon_url, tenants.primary_color, tenants.footer_text, tenants.location, tenants.whatsapp_number, tenants.phone, tenants.email, tenants.description, tenants.hero_image_url, tenants.gallery_images, tenants.about_text, tenants.faq_items, tenants.reviews, tenants.map_embed_url, tenants.activities, tenants.capacity, tenants.currency, tenants.status, tenants.menu_config";
 }
 
 export async function handleTenants(request, env) {
@@ -100,7 +100,7 @@ export async function handleTenants(request, env) {
       let query;
       if (isSuperAdmin) {
         query = `
-          SELECT tenants.*, MIN(a.email) AS admin_email, MIN(a.first_name || ' ' || a.last_name) AS admin_name
+          SELECT ${selectFieldsPublic()}, MIN(a.email) AS admin_email, MIN(a.first_name || ' ' || a.last_name) AS admin_name
           FROM tenants
           LEFT JOIN admins a ON a.tenant_id = tenants.id AND a.role IN ('admin', 'tenant_admin')
           WHERE 1=1 AND tenants.id != 'marketplace'
@@ -145,7 +145,8 @@ export async function handleTenants(request, env) {
       query += " GROUP BY tenants.id";
 
       const { results } = await env.DB.prepare(query).bind(...bindArgs).all();
-      return cachedJsonResponse(results);
+      // Super-admin view carries admin_email/admin_name — never public-cacheable.
+      return isSuperAdmin ? jsonResponse(results) : cachedJsonResponse(results);
     } else if (path.length === 3) {
       // Support lookup by id, subdomain, or custom_domain (SEO-friendly URLs use subdomain).
       // Normalize a leading `www.` so www.acaciacamp.com matches custom_domain = 'acaciacamp.com'.
@@ -153,7 +154,7 @@ export async function handleTenants(request, env) {
       let query;
       if (isSuperAdmin) {
         query = `
-          SELECT tenants.*, MIN(a.email) AS admin_email, MIN(a.first_name || ' ' || a.last_name) AS admin_name
+          SELECT ${selectFieldsPublic()}, MIN(a.email) AS admin_email, MIN(a.first_name || ' ' || a.last_name) AS admin_name
           FROM tenants
           LEFT JOIN admins a ON a.tenant_id = tenants.id AND a.role IN ('admin', 'tenant_admin')
           WHERE tenants.id = ? OR tenants.subdomain = ? OR tenants.custom_domain = ?
@@ -168,7 +169,7 @@ export async function handleTenants(request, env) {
       }
       const { results } = await env.DB.prepare(query).bind(lookupKey, lookupKey, lookupKey).all();
       if (results.length === 0) return errorResponse('Tenant not found', 404);
-      return cachedJsonResponse(results[0]);
+      return isSuperAdmin ? jsonResponse(results[0]) : cachedJsonResponse(results[0]);
     }
   } else if (method === 'POST') {
     // P0-7: Require authentication for tenant creation
@@ -188,14 +189,14 @@ export async function handleTenants(request, env) {
       } = parsed.data;
 
       if (!/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/.test(subdomain)) {
-        return errorResponse('Subdomain must be lowercase alphanumeric with hyphens, 3-63 chars');
+        return errorResponse('Subdomain must be lowercase alphanumeric with hyphens, 3-63 chars', 400);
       }
 
       const existing = await env.DB.prepare(
         "SELECT id FROM tenants WHERE subdomain = ?"
       ).bind(subdomain).all();
       if (existing.results.length > 0) {
-        return errorResponse('This subdomain is already taken');
+        return errorResponse('This subdomain is already taken', 400);
       }
 
       if (custom_domain) {
@@ -203,7 +204,7 @@ export async function handleTenants(request, env) {
           "SELECT id FROM tenants WHERE custom_domain = ?"
         ).bind(custom_domain).all();
         if (existingDomain.results.length > 0) {
-          return errorResponse('This custom domain is already registered');
+          return errorResponse('This custom domain is already registered', 400);
         }
       }
 
@@ -264,7 +265,7 @@ const meRoutes = new Hono();
 meRoutes.get('/', async (c) => {
   const tenantId = getScope(c).tenantId;
   if (!tenantId) {
-    return jsonResponse({ id: null, name: null, subdomain: null, message: 'No tenant context provided' });
+    return errorResponse('No tenant context provided', 400);
   }
   const { results } = await c.env.DB.prepare(
       `SELECT t.id, t.name, t.subdomain, t.type, t.custom_domain, t.logo_url, t.favicon_url, t.primary_color, t.footer_text, t.location, t.whatsapp_number, t.phone, t.email, t.description, t.hero_image_url, t.gallery_images, t.about_text, t.faq_items, t.reviews, t.map_embed_url, t.activities, t.capacity, t.currency, t.status, t.menu_config,

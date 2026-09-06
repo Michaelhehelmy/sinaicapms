@@ -220,6 +220,8 @@ adminSubscriptionsRoutes.put('/:id', async (c) => {
 
     return jsonResponse({ success: true, tenantId });
   } catch (e) {
+    // Malformed JSON body is a client error (the 500 default is for DB faults).
+    if (e && e.name === 'SyntaxError') return errorResponse('Failed to update subscription', 400);
     return errorResponse('Failed to update subscription');
   }
 });
@@ -276,6 +278,6 @@ adminSubscriptionsRoutes.post('/:id/resume', async (c) => {
   }
 });
 
-adminSubscriptionsRoutes.all('*', () => jsonResponse({ error: 'Method not allowed' }, 405));
+adminSubscriptionsRoutes.all('*', () => jsonResponse({ success: false, error: 'Method not allowed' }, 405));
 
 export default adminSubscriptionsRoutes;

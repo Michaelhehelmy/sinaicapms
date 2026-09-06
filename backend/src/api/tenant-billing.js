@@ -86,6 +86,6 @@ tenantBillingRoutes.get('/', async (c) => {
   }
 });
 
-tenantBillingRoutes.all('*', () => jsonResponse({ error: 'Method not allowed' }, 405));
+tenantBillingRoutes.all('*', () => jsonResponse({ success: false, error: 'Method not allowed' }, 405));
 
 export default tenantBillingRoutes;

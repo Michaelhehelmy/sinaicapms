@@ -34,7 +34,7 @@ import uploadRoutes, { mediaRoutes } from './api/upload';
 import { handleMealSchedulesRoute } from './api/meal-schedules';
 import { handlePosUsersRoute } from './api/pos-users';
 import { jsonResponse, errorResponse } from './utils/response';
-import { handleCreatePaymentIntent, handleConfirmPayment, handleStripeWebhook } from './api/payments';
+import { handleStripeWebhook } from './api/payments';
 import reportsRoutes from './api/reports';
 import inventoryRoutes from './api/inventory';
 import priceOverridesRoutes from './api/priceOverrides';
@@ -290,28 +290,6 @@ app.all('/api/admin', handleSuperAdminRoute);
 app.all('/api/admin/*', handleSuperAdminRoute);
 
 // ── Payment routes (rate-limited by policy table: /api/payments* 20/min) ──
-
-const paymentGate = requireAuth({
-  realm: 'admin',
-  realmMismatch: { message: 'Forbidden: POS sessions cannot access payment routes' },
-  scopeDenied: { message: 'Forbidden: Access denied to this tenant' },
-});
-
-app.post('/api/payments/create-intent', async (c) => {
-  const tenantId = await getTenant(c.req.raw, c.env);
-  if (!tenantId) return errorResponse('Tenant not found', 404);
-  const auth = await paymentGate(c.req.raw, c.env, { tenantId });
-  if (auth instanceof Response) return auth;
-  return handleCreatePaymentIntent(c.req.raw, c.env, tenantId);
-});
-
-app.post('/api/payments/confirm', async (c) => {
-  const tenantId = await getTenant(c.req.raw, c.env);
-  if (!tenantId) return errorResponse('Tenant not found', 404);
-  const auth = await paymentGate(c.req.raw, c.env, { tenantId });
-  if (auth instanceof Response) return auth;
-  return handleConfirmPayment(c.req.raw, c.env, tenantId);
-});
 
 // S-C2 fix: Webhook is covered by the /api/payments* entry in the policy table.
 // Stripe requires reliable delivery, so do NOT apply a stricter limiter here.

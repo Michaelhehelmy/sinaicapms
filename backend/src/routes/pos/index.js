@@ -1092,12 +1092,18 @@ pos.post('/shifts/close', async (c) => {
     const expectedClosingCash = shift.opening_cash + totalCashSales;
     const discrepancy = Math.round((actualClosingCash - expectedClosingCash) * 100) / 100;
 
-    await env.DB.prepare(
+    // Guarded status flip: AND status='open' makes concurrent close requests
+    // race-safe — the loser's UPDATE hits 0 rows → 409 instead of double-close.
+    const closeResult = await env.DB.prepare(
       `UPDATE pos_shifts
        SET status = 'closed', closing_time = datetime('now'),
            expected_closing_cash = ?, actual_closing_cash = ?, notes = COALESCE(?, notes)
-       WHERE id = ?`
+       WHERE id = ? AND status = 'open'`
     ).bind(expectedClosingCash, actualClosingCash, body.notes || null, shift.id).run();
+
+    if ((closeResult?.meta?.changes ?? 1) !== 1) {
+      return errorResponse('Shift is not open or was already closed', 409);
+    }
 
     return jsonResponse({
       success: true,

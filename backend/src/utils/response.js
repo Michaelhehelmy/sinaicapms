@@ -84,7 +84,7 @@ export function cachedJsonResponse(data, maxAge = 300, status = 200) {
  * appended to the envelope only when provided — 2-arg call sites are unchanged.
  * jsonResponse applies toCamel; `errors` items use single-word keys so they pass through.
  */
-export function errorResponse(message, status = 400, errors = undefined) {
+export function errorResponse(message, status = 500, errors = undefined) {
   return jsonResponse({ success: false, error: message, ...(errors ? { errors } : {}) }, status);
 }
 

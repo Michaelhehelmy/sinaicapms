@@ -64,7 +64,7 @@ onboardingRoutes.post('/public/signup', async (c) => {
 
     // Validate subdomain format
     if (!/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/.test(subdomain)) {
-      return errorResponse('Subdomain must be lowercase alphanumeric with hyphens, 3-63 chars');
+      return errorResponse('Subdomain must be lowercase alphanumeric with hyphens, 3-63 chars', 400);
     }
 
     // Check subdomain uniqueness
@@ -72,7 +72,7 @@ onboardingRoutes.post('/public/signup', async (c) => {
       'SELECT id FROM tenants WHERE subdomain = ?'
     ).bind(subdomain).all();
     if (existing.results.length > 0) {
-      return errorResponse('This subdomain is already taken');
+      return errorResponse('This subdomain is already taken', 400);
     }
 
     // Check email uniqueness for admins
@@ -80,7 +80,7 @@ onboardingRoutes.post('/public/signup', async (c) => {
       'SELECT id FROM admins WHERE email = ?'
     ).bind(email).all();
     if (existingAdmin.results.length > 0) {
-      return errorResponse('An account with this email already exists');
+      return errorResponse('An account with this email already exists', 400);
     }
 
     const tid = 'tenant_' + crypto.randomUUID().slice(0, 12);
@@ -247,7 +247,7 @@ onboardingRoutes.post('/onboarding/tenant', async (c) => {
     // every key that reaches the SET clause is a fixed, schema-declared column.
     const body = await c.req.json();
     const token = typeof body?.token === 'string' ? body.token : '';
-    if (!token) return errorResponse('Token is required');
+    if (!token) return errorResponse('Token is required', 400);
 
     const parsed = tenantUpdateSchema.safeParse(body);
     if (!parsed.success) {

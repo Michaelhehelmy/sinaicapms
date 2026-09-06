@@ -223,13 +223,23 @@ router.post('/:id/pay', async (c) => {
     }
 
     const now = new Date().toISOString();
-    await db.prepare("UPDATE marketplace_payouts SET status = 'paid', paid_at = ? WHERE id = ?").bind(now, id).run();
-
     const { results: items } = await db.prepare('SELECT * FROM marketplace_payments WHERE payout_id = ?').bind(id).all();
 
-    await Promise.all((items || []).map(p =>
-      db.prepare("UPDATE marketplace_payments SET payment_status = 'settled', settled_at = ? WHERE id = ?").bind(now, p.id).run()
-    ));
+    // Single atomic batch: the guarded payout UPDATE is the concurrency lock
+    // (AND status='pending' → changes 0 when a concurrent pay/cancel already
+    // transitioned). All payment-settle UPDATEs commit with the payout update;
+    // D1 batch always returns one result per statement, so changes 0 on the
+    // first result means we lost the race → 409.
+    const batchResults = await db.batch([
+      db.prepare("UPDATE marketplace_payouts SET status = 'paid', paid_at = ? WHERE id = ? AND status = 'pending'").bind(now, id),
+      ...(items || []).map(p =>
+        db.prepare("UPDATE marketplace_payments SET payment_status = 'settled', settled_at = ? WHERE id = ?").bind(now, p.id)
+      ),
+    ]);
+
+    if ((batchResults?.[0]?.meta?.changes ?? 1) !== 1) {
+      return errorResponse('Payout has already been settled or cancelled', 409);
+    }
 
     const settledItems = (items || []).map(p => ({ ...p, payment_status: 'settled', settled_at: now }));
 
@@ -257,12 +267,21 @@ router.post('/:id/cancel', async (c) => {
     }
 
     const now = new Date().toISOString();
-    await db.prepare("UPDATE marketplace_payouts SET status = 'cancelled', cancelled_at = ? WHERE id = ?").bind(now, id).run();
-
     const { results: items } = await db.prepare('SELECT id FROM marketplace_payments WHERE payout_id = ?').bind(id).all();
-    await Promise.all((items || []).map(p =>
-      db.prepare('UPDATE marketplace_payments SET payout_id = NULL WHERE id = ?').bind(p.id).run()
-    ));
+
+    // Guarded UPDATE (AND status='pending') in the same atomic batch as the
+    // payout_id clears — a concurrent pay/cancel wins by flipping status first,
+    // so this batch's first UPDATE hits 0 rows → 409 instead of double-cancel.
+    const batchResults = await db.batch([
+      db.prepare("UPDATE marketplace_payouts SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'pending'").bind(now, id),
+      ...(items || []).map(p =>
+        db.prepare('UPDATE marketplace_payments SET payout_id = NULL WHERE id = ?').bind(p.id)
+      ),
+    ]);
+
+    if ((batchResults?.[0]?.meta?.changes ?? 1) !== 1) {
+      return errorResponse('Only pending payouts can be cancelled', 409);
+    }
 
     return jsonResponse({ payout: { ...payout, status: 'cancelled', cancelled_at: now } });
   } catch (e) {

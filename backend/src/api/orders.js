@@ -682,8 +682,8 @@ ordersRoutes.post('/', async (c) => {
     const data = parsed.data;
     const { id, camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes, items, meal_plans } = data;
 
-    const validationError = await validateOrder(c.env, tenantId, null, data);
-    if (validationError) return errorResponse(validationError, 400);
+    const orderValidation = await validateOrder(c.env, tenantId, null, data);
+    if (orderValidation) return errorResponse(orderValidation, 400);
 
     // 0067: when an items array is supplied, the order total is recomputed
     // server-side from the line items (Σ quantity × unit_price) and the
@@ -861,8 +861,8 @@ ordersRoutes.put('/:id', async (c) => {
     const data = parsed.data;
     const { camp_id, room_id, guest_name, guest_email, guest_phone, number_of_people, check_in_date, check_out_date, total_amount, amount_paid, payment_method, payment_status, order_state_id, notes } = data;
 
-    const validationError = await validateOrder(c.env, tenantId, ordId, data);
-    if (validationError) return errorResponse(validationError, 400);
+    const orderValidation = await validateOrder(c.env, tenantId, ordId, data);
+    if (orderValidation) return errorResponse(orderValidation, 400);
 
     // S-H2 fix: Add tenant_id scoping to old order lookup
     const { results: oldResult } = await c.env.DB.prepare(
@@ -1148,7 +1148,7 @@ availabilityRoutes.get('/', async (c) => {
   const productId = url.searchParams.get('productId');
 
   if (!checkIn || !checkOut) {
-    return errorResponse('checkIn and checkOut parameters are required');
+    return errorResponse('checkIn and checkOut parameters are required', 400);
   }
 
   try {

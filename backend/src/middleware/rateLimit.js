@@ -99,7 +99,7 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
         const count = current ? parseInt(current, 10) : 0;
 
         if (count >= options.max) {
-          return c.json({ error: 'Too many requests' }, 429);
+          return c.json({ success: false, error: 'Too many requests' }, 429);
         }
 
         await c.env.RATE_LIMIT_KV.put(windowKey, (count + 1).toString(), {
@@ -111,7 +111,7 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
       } catch (err) {
         console.error('KV rate limit error:', err);
         // Fail-closed: deny on error
-        return c.json({ error: 'Rate limit check failed' }, 429);
+        return c.json({ success: false, error: 'Rate limit check failed' }, 429);
       }
     }
 
@@ -138,14 +138,14 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
       }
 
       if (record.count > options.max) {
-        return c.json({ error: 'Too many requests' }, 429);
+        return c.json({ success: false, error: 'Too many requests' }, 429);
       }
 
       await next();
     } catch (err) {
       console.error('In-memory rate limit error:', err);
       // Fail-closed: deny on error
-      return c.json({ error: 'Rate limit check failed' }, 429);
+      return c.json({ success: false, error: 'Rate limit check failed' }, 429);
     }
   };
 };

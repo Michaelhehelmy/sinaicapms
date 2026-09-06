@@ -187,6 +187,6 @@ adminAuditRoutes.get('/export', async (c) => {
   }
 });
 
-adminAuditRoutes.all('*', () => jsonResponse({ error: 'Method not allowed' }, 405));
+adminAuditRoutes.all('*', () => jsonResponse({ success: false, error: 'Method not allowed' }, 405));
 
 export default adminAuditRoutes;

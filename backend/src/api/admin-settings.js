@@ -271,6 +271,6 @@ adminSettingsRoutes.put('/feature-flags/:id', async (c) => {
 });
 
 // Catch-all for unmatched routes within this module
-adminSettingsRoutes.all('*', () => jsonResponse({ error: 'Method not allowed' }, 405));
+adminSettingsRoutes.all('*', () => jsonResponse({ success: false, error: 'Method not allowed' }, 405));
 
 export default adminSettingsRoutes;
