@@ -134,7 +134,18 @@ describe('handleProductsRoute GET (unified pos_products)', () => {
     const { db } = makeSequencedDb(acaciaProducts, []);
     const req = makeRequest('GET', 'https://acacia.sinaicamps.com/api/products');
     await handleProductsRoute(req, { DB: db }, 'acaciacamp');
-    expect(db.chains[0].bind).toHaveBeenCalledWith('acaciacamp');
+    // T6: same tenant bound twice — outer p.tenant_id + live-project subquery.
+    expect(db.chains[0].bind).toHaveBeenCalledWith('acaciacamp', 'acaciacamp');
+  });
+
+  it('hides products whose camp is a soft-deleted project (T6)', async () => {
+    const { db } = makeSequencedDb(acaciaProducts, []);
+    const req = makeRequest('GET', 'https://acacia.sinaicamps.com/api/products');
+    await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    const sql = db.prepare.mock.calls[0][0];
+    expect(sql).toContain('p.camp_id IS NULL OR p.camp_id IN');
+    expect(sql).toContain('SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL');
+    expect(sql).not.toContain('LIMIT 1'); // never fall back to a single project
   });
 
   it('returns all products across tenants when tenantId is marketplace', async () => {
@@ -240,7 +251,7 @@ describe('handleProductsRoute GET (unified pos_products)', () => {
 
 // ─── Write path: POST/PUT/DELETE must target pos_products + product_camps ─────
 describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', () => {
-  it('POST writes pos_products (with camp_id) and product_camps (never legacy products)', async () => {
+  it('POST writes pos_products (with camp_id) and never touches product_camps junction', async () => {
     const { db } = makeDbMock();
     const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products', {
       name: 'Product', basePrice: 100, capacity: 2, campIds: ['c1', 'c2']
@@ -253,7 +264,10 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     const sqls = db.prepare.mock.calls.map(c => c[0]);
     // Call 0 = resolve the tenant's active projects (fallback; no LIMIT 1 — a
     // multi-project tenant must pass camp_id explicitly); call 1 = tenant_org_mapping
-    // lookup; call 2 = pos_products INSERT (writes camp_id); call 3 = product_camps junction.
+    // lookup; call 2 = pos_products INSERT (writes camp_id). The product_camps
+    // junction is legacy (0053: pos_products.camp_id is the source of truth) —
+    // POST no longer re-inserts it.
+    expect(sqls).toHaveLength(3);
     expect(sqls[0]).toContain('FROM projects WHERE tenant_id = ? AND deleted_at IS NULL');
     expect(sqls[0]).not.toContain('LIMIT 1');
     expect(sqls[1]).toContain('tenant_org_mapping');
@@ -262,7 +276,6 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect(sqls[2]).toContain('selling_price');
     expect(sqls[2]).toContain("'room'");
     expect(sqls[2]).toContain('camp_id');
-    expect(sqls[3]).toContain('INTO product_camps');
     for (const sql of sqls) {
       expect(sql).not.toMatch(/\bINTO\s+products\b/);
       expect(sql).not.toMatch(/\bproducts\s+SET\b/);
@@ -291,7 +304,7 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect(sqls[2]).not.toContain('product_lang');
   });
 
-  it('PUT updates pos_products and rebuilds product_camps (never legacy)', async () => {
+  it('PUT updates pos_products and only cleans the legacy product_camps junction', async () => {
     const { db } = makeDbMock();
     const req = makeRequest('PUT', 'https://acacia.sinaicamps.com/api/products/p1', {
       name: 'Updated', basePrice: 150, campIds: ['c1']
@@ -303,8 +316,9 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     const sqls = db.prepare.mock.calls.map(c => c[0]);
     expect(sqls[0]).toContain('UPDATE pos_products');
     expect(sqls[0]).toContain('COALESCE(?, name)');
+    // Legacy cleanup only — the junction is never re-inserted (0053).
     expect(sqls[1]).toContain('DELETE FROM product_camps');
-    expect(sqls[2]).toContain('INTO product_camps');
+    expect(sqls).toHaveLength(2);
     for (const sql of sqls) {
       expect(sql).not.toMatch(/\bproducts\s+SET\b/);
       expect(sql).not.toMatch(/\bINTO\s+products\b/);

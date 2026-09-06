@@ -121,10 +121,13 @@ describe('Meal Plans (0070)', () => {
       expect(body.mealPlans).toEqual([]);
     });
 
-    it('returns 405 for non-GET methods', async () => {
+    it('falls through to 404 for non-GET methods (GET-only router, no catch-all)', async () => {
+      // T12: the meal-plans router deliberately has NO `all('*')` catch-all so
+      // mounting it at /api/projects cannot shadow sibling project mounts.
+      // Non-GET methods therefore fall through to Hono's default 404.
       const app = makeApp();
       const res = await app.request('/api/projects/proj_1/meal-plans', { method: 'POST', body: '{}' }, {});
-      expect(res.status).toBe(405);
+      expect(res.status).toBe(404);
     });
   });
 

@@ -50,25 +50,30 @@ describe('Storefront Products', () => {
   it('GET /products lists products with pagination', async () => {
     const db = makeRoutingDb()
       .on(/SELECT COUNT.*FROM pos_products/, [{ total: 1 }])
-      .on(/SELECT \* FROM pos_products/, [{ id: 'p1', name: 'Tent', price: 99.99, tenant_id: 't1' }]);
+      .on(/FROM pos_products WHERE tenant_id/, [{ id: 'p1', name: 'Tent', price: 99.99, tenant_id: 't1' }]);
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/products'), {}, env(db));
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body.items.length).toBe(1);
-    expect(body.items[0].name).toBe('Tent');
+    // T16: shared paginated envelope { data, total, page, pageSize, hasMore }.
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].name).toBe('Tent');
     expect(body.total).toBe(1);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(20);
+    expect(body.hasMore).toBe(false);
   });
 
   it('GET /products filters by category', async () => {
     const db = makeRoutingDb()
       .on(/SELECT COUNT.*FROM pos_products/, [{ total: 0 }])
-      .on(/SELECT \* FROM pos_products/, []);
+      .on(/FROM pos_products WHERE tenant_id/, []);
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/products?category=gear'), {}, env(db));
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body.items.length).toBe(0);
+    expect(body.data).toHaveLength(0);
+    expect(body.total).toBe(0);
   });
 
   it('GET /products requires tenant', async () => {
@@ -82,7 +87,7 @@ describe('Storefront Products', () => {
 
   it('GET /products/:id returns a product', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM pos_products WHERE id/, [{ id: 'p1', name: 'Tent', price: 99.99 }]);
+      .on(/FROM pos_products WHERE id/, [{ id: 'p1', name: 'Tent', price: 99.99 }]);
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/products/p1'), {}, env(db));
     const body = await res.json();
@@ -92,7 +97,7 @@ describe('Storefront Products', () => {
 
   it('GET /products/:id returns 404 when not found', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM pos_products WHERE id/, null);
+      .on(/FROM pos_products WHERE id/, null);
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/products/missing'), {}, env(db));
     expect(res.status).toBe(404);

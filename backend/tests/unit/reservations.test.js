@@ -61,7 +61,6 @@ function makeRoutingDb() {
 
 function validReservationBody(overrides = {}) {
   return {
-    camp_id: 'camp_1',
     room_id: 'room_1',
     check_in_date: '2026-10-01',
     check_out_date: '2026-10-03',
@@ -105,7 +104,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
 
   it('returns 409 when the advisory overlap check finds an existing booking', async () => {
     const db = makeRoutingDb()
-      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4 }] }))
+      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4, camp_id: 'camp_1' }] }))
       .on(/from orders[\s\S]*order_state_id != 'cancelled'/i, () => ({
         results: [{ id: 'existing_order' }],
       }));
@@ -123,7 +122,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
     // guarded INSERT reports 0 affected rows -> the authoritative race guard
     // rejects with "Room no longer available".
     const db = makeRoutingDb()
-      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4 }] }))
+      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4, camp_id: 'camp_1' }] }))
       .on(/from orders[\s\S]*order_state_id != 'cancelled'/i, () => ({ results: [] }))
       .on(/r\.product_id[\s\S]*join projects c/i, () => ({ results: [{ product_id: 'prod_1' }] }))
       .on(/from pos_products where id = \? and tenant_id/i, () => ({ results: [{ base_price: '100' }] }))
@@ -143,7 +142,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
 
   it('returns the WhatsApp fallback envelope when Paymob is not configured', async () => {
     const db = makeRoutingDb()
-      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4 }] }))
+      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4, camp_id: 'camp_1' }] }))
       .on(/from orders[\s\S]*order_state_id != 'cancelled'/i, () => ({ results: [] }))
       .on(/r\.product_id[\s\S]*join projects c/i, () => ({ results: [{ product_id: 'prod_1' }] }))
       .on(/from pos_products where id = \? and tenant_id/i, () => ({ results: [{ base_price: '100' }] }))
@@ -169,7 +168,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
   // Happy path: Paymob configured, service mocked -> returns intent + orderId.
   it('returns paymobIntention.clientSecret + orderId when Paymob is configured', async () => {
     const db = makeRoutingDb()
-      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4 }] }))
+      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4, camp_id: 'camp_1' }] }))
       .on(/from orders[\s\S]*order_state_id != 'cancelled'/i, () => ({ results: [] }))
       .on(/r\.product_id[\s\S]*join projects c/i, () => ({ results: [{ product_id: 'prod_1' }] }))
       .on(/from pos_products where id = \? and tenant_id/i, () => ({ results: [{ base_price: '100' }] }))
@@ -186,6 +185,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.orderId).toBeTruthy();
+    expect(data.reference).toMatch(/^ORD-[0-9A-Z]{6}$/);
     expect(data.paymobEnabled).toBe(true);
     expect(data.paymobIntention.clientSecret).toBeTruthy();
   });

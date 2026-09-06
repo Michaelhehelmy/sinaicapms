@@ -34,6 +34,14 @@ function makeD1(db) {
         },
       };
     },
+    // T13 (M6): PUT now commits the whole override batch in ONE D1
+    // transaction (env.DB.batch) instead of per-entry .run() calls.
+    async batch(statements) {
+      const runAll = db.transaction((stmts) => {
+        for (const stmt of stmts) stmt.run();
+      });
+      return runAll(statements);
+    },
   };
 }
 

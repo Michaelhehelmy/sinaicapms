@@ -98,27 +98,29 @@ describe('GET /api/inventory/low-stock', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.total).toBe(3);
-    expect(body.items).toHaveLength(3);
-    // Phase 3: `data` mirrors `items` (paginated-envelope convergence).
-    expect(body.data).toEqual(body.items);
+    expect(body.data).toHaveLength(3);
+    // T16: single paginated envelope — `data` is the canonical cursor.
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(50);
+    expect(body.hasMore).toBe(false);
     // Sorted by stock/min ratio ascending: most critical first.
-    expect(body.items.map((i) => i.id)).toEqual(['p2', 'p1', 'p7']);
-    expect(body.items[0].status).toBe('out'); // stock 0
-    expect(body.items[1].status).toBe('low');
-    expect(body.items[2].status).toBe('low'); // stock == min (included)
-    expect(Object.keys(body.items[0]).sort()).toEqual([
+    expect(body.data.map((i) => i.id)).toEqual(['p2', 'p1', 'p7']);
+    expect(body.data[0].status).toBe('out'); // stock 0
+    expect(body.data[1].status).toBe('low');
+    expect(body.data[2].status).toBe('low'); // stock == min (included)
+    expect(Object.keys(body.data[0]).sort()).toEqual([
       'category', 'id', 'minStockLevel', 'name', 'status', 'stockQuantity', 'unit',
     ]);
-    expect(body.items[1].category).toBeNull(); // category dropped with pos_categories (migration 0057)
-    expect(body.items[1].minStockLevel).toBe(10);
-    expect(body.items[1].stockQuantity).toBe(5);
-    expect(body.items[1].unit).toBe('pcs');
+    expect(body.data[1].category).toBeNull(); // category dropped with pos_categories (migration 0057)
+    expect(body.data[1].minStockLevel).toBe(10);
+    expect(body.data[1].stockQuantity).toBe(5);
+    expect(body.data[1].unit).toBe('pcs');
   });
 
   it('excludes inactive and soft-deleted products', async () => {
     const res = await request();
     const body = await res.json();
-    const ids = body.items.map((i) => i.id);
+    const ids = body.data.map((i) => i.id);
     expect(ids).not.toContain('p4'); // inactive
     expect(ids).not.toContain('p5'); // soft-deleted
     expect(ids).not.toContain('p3'); // above threshold
@@ -128,14 +130,14 @@ describe('GET /api/inventory/low-stock', () => {
     const res = await appFor('t2').request(URL, {}, env);
     const body = await res.json();
     expect(body.total).toBe(1);
-    expect(body.items.map((i) => i.id)).toEqual(['p6']);
+    expect(body.data.map((i) => i.id)).toEqual(['p6']);
   });
 
   it('returns an empty page for a tenant with no mapping row', async () => {
     const res = await appFor('t3').request(URL, {}, env);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.items).toEqual([]);
+    expect(body.data).toEqual([]);
     expect(body.data).toEqual([]);
     expect(body.total).toBe(0);
     expect(body.hasMore).toBe(false);
@@ -145,26 +147,26 @@ describe('GET /api/inventory/low-stock', () => {
     const res = await appFor('t4').request(URL, {}, env);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.items).toEqual([]);
+    expect(body.data).toEqual([]);
     expect(body.total).toBe(0);
   });
 
   it('paginates with page/pageSize and reports hasMore', async () => {
     const page1 = await request(`${URL}?page=1&pageSize=1`);
     const body1 = await page1.json();
-    expect(body1.items).toHaveLength(1);
-    expect(body1.items[0].id).toBe('p2');
+    expect(body1.data).toHaveLength(1);
+    expect(body1.data[0].id).toBe('p2');
     expect(body1.total).toBe(3);
     expect(body1.hasMore).toBe(true);
 
     const page2 = await request(`${URL}?page=2&pageSize=1`);
     const body2 = await page2.json();
-    expect(body2.items[0].id).toBe('p1');
+    expect(body2.data[0].id).toBe('p1');
     expect(body2.hasMore).toBe(true);
 
     const page3 = await request(`${URL}?page=3&pageSize=1`);
     const body3 = await page3.json();
-    expect(body3.items[0].id).toBe('p7');
+    expect(body3.data[0].id).toBe('p7');
     expect(body3.hasMore).toBe(false);
   });
 

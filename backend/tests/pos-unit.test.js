@@ -951,7 +951,7 @@ describe('POS Routes', () => {
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
         chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
-        chainDb([{ ingredient_id: 'i1', quantity: 10 }]),
+        chainDb([{ product_id: 'p1', ingredient_id: 'i1', quantity: 10 }]),
         chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '5' }]),
       ]);
       const req = new Request('http://localhost/orders', {
@@ -1013,11 +1013,14 @@ describe('POS Routes', () => {
         chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([
-          { ingredient_id: 'i1', quantity: 1 },
-          { ingredient_id: 'i2', quantity: 1 },
+          { product_id: 'p1', ingredient_id: 'i1', quantity: 1 },
+          { product_id: 'p1', ingredient_id: 'i2', quantity: 1 },
         ]),
-        chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
-        chainDb([{ id: 'i2', name: 'Sugar', stock_quantity: '50' }]),
+        chainDb([
+          { id: 'i1', name: 'Milk', stock_quantity: '50' },
+          { id: 'i2', name: 'Sugar', stock_quantity: '50' },
+        ]),
+        chainDb([]), // store lookup (cashier token has no storeId -> org's first store)
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1044,7 +1047,7 @@ describe('POS Routes', () => {
 
       // The product's OWN deduction comes first in the batch, before ingredients
       const firstUpdateIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('UPDATE pos_products SET stock_quantity'));
-      expect(db.prepare.mock.results[firstUpdateIdx].value.bind.mock.calls[0]).toEqual([2, 'p1', 1, 2]);
+      expect(db.prepare.mock.results[firstUpdateIdx].value.bind.mock.calls[0]).toEqual([2, 'p1', '1', 2]);;
     });
 
     it('deducts the sold product itself from master stock (supermarket fix)', async () => {
@@ -1077,7 +1080,7 @@ describe('POS Routes', () => {
       // Exactly one stock deduction statement, bound to the sold product itself
       const updIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('UPDATE pos_products SET stock_quantity'));
       expect(updIdx).toBeGreaterThan(-1);
-      expect(db.prepare.mock.results[updIdx].value.bind.mock.calls[0]).toEqual([100, 'coke', 1, 100]);
+      expect(db.prepare.mock.results[updIdx].value.bind.mock.calls[0]).toEqual([100, 'coke', '1', 100]);
 
       // Batch = [product deduction, transaction insert, item insert] and the
       // deduction runs BEFORE the transaction insert inside the same batch
@@ -1095,8 +1098,8 @@ describe('POS Routes', () => {
         chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([
-          { ingredient_id: 'i1', quantity: 1 },
-          { ingredient_id: 'missing', quantity: 1 },
+          { product_id: 'p1', ingredient_id: 'i1', quantity: 1 },
+          { product_id: 'p1', ingredient_id: 'missing', quantity: 1 },
         ]),
         chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
         chainDb([]),
@@ -1124,8 +1127,8 @@ describe('POS Routes', () => {
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
         chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
-        chainDb([{ ingredient_id: 'i1', quantity: 1 }]),
-        chainDb([]),
+        chainDb([{ product_id: 'p1', ingredient_id: 'i1', quantity: 1 }]),
+        chainDb([]), // cross-tenant ingredient stock lookup — a scoped query finds nothing
       ]);
       const req = new Request('http://localhost/orders', {
         method: 'POST',
@@ -1143,7 +1146,7 @@ describe('POS Routes', () => {
         .map((call, idx) => ({ sql: String(call[0]), idx }))
         .filter(({ sql }) => sql.includes('UPDATE pos_products SET stock_quantity'))
         .map(({ idx }) => db.prepare.mock.results[idx].value.bind.mock.calls[0]);
-      expect(updateBinds).toEqual([[2, 'p1', 1, 2]]);
+      expect(updateBinds).toEqual([[2, 'p1', '1', 2]]);
 
       const recipeIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('FROM pos_recipe_ingredients'));
       expect(recipeIdx).toBeGreaterThan(-1);
@@ -1152,8 +1155,8 @@ describe('POS Routes', () => {
 
       const stockIdx = db.prepare.mock.calls.findIndex(([sql]) => String(sql).includes('SELECT id, name, stock_quantity FROM pos_products'));
       expect(stockIdx).toBeGreaterThan(-1);
-      expect(String(db.prepare.mock.calls[stockIdx][0])).toContain('AND organization_id = ?');
-      expect(db.prepare.mock.results[stockIdx].value.bind.mock.calls[0]).toEqual(['i1', 1]);
+      expect(String(db.prepare.mock.calls[stockIdx][0])).toContain('AND tenant_id = ?');
+      expect(db.prepare.mock.results[stockIdx].value.bind.mock.calls[0]).toEqual(['i1', '1']);
     });
 
     it('applies org tax_rate from pos_organizations to the order total', async () => {
@@ -1325,11 +1328,13 @@ describe('POS Routes', () => {
         chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
         chainDb([
-          { ingredient_id: 'i1', quantity: 1 },
-          { ingredient_id: 'i2', quantity: 1 },
+          { product_id: 'p1', ingredient_id: 'i1', quantity: 1 },
+          { product_id: 'p1', ingredient_id: 'i2', quantity: 1 },
         ]),
-        chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
-        chainDb([{ id: 'i2', name: 'Sugar', stock_quantity: '50' }]),
+        chainDb([
+          { id: 'i1', name: 'Milk', stock_quantity: '50' },
+          { id: 'i2', name: 'Sugar', stock_quantity: '50' },
+        ]),
       ]);
       // First batch call: order creation — recipe ingredient i2 affected 0 rows.
       // Statement order: [p1 self-deduct, i1, i2, INSERT txn, INSERT items]
@@ -1377,9 +1382,7 @@ describe('POS Routes', () => {
         chainDb([{ id: 'p1', selling_price: '10', name: 'Coffee' }]),
         chainDb([]), // promotions (none active)
         chainDb([{ tax_rate: '0.15' }]),
-        chainDb([
-          { ingredient_id: 'i1', quantity: 1 },
-        ]),
+        chainDb([{ product_id: 'p1', ingredient_id: 'i1', quantity: 1 }]),
         chainDb([{ id: 'i1', name: 'Milk', stock_quantity: '50' }]),
       ]);
       db.batch.mockResolvedValueOnce([

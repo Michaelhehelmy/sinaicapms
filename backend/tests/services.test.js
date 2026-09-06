@@ -407,7 +407,7 @@ describe('services', () => {
                 if (allCalls === 1) {
                   return Promise.resolve({ results: [{ id: 'd1', slug: 'trek', name: 'Trek', description: 'x', fields_schema: '[]' }] });
                 }
-                return Promise.resolve({ results: [{ id: 'si1', name: 'Tent', description: 'D', base_price: 100, meta_data: '{}' }] });
+                return Promise.resolve({ results: [{ id: 'si1', name: 'Tent', description: 'D', base_price: 100, meta_data: '{}', service_definition_id: 'd1' }] });
               }),
             };
             return chain;

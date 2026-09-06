@@ -195,7 +195,7 @@ describe('Journal Entries', () => {
         { id: 'e1', journal_id: 'j1', journal_name: 'Sales Journal', date: '2026-01-01', description: 'Test', posted: 0 }
       ])
       .on(/FROM entry_lines el/, [
-        { id: 'l1', account_id: 'acc1', account_name: 'Cash', account_code: '1000', debit: 100, credit: 0 }
+        { id: 'l1', entry_id: 'e1', account_id: 'acc1', account_name: 'Cash', account_code: '1000', debit: 100, credit: 0 }
       ]);
     const app = mountRouter(financialsRouter, { tenantId: 't1' });
     const res = await app.request(req('/journal-entries'), {}, env(db));
