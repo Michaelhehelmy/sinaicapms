@@ -172,8 +172,8 @@ describe('ReservationSummary', () => {
     mockCreatePublicReservation.mockResolvedValue({
       paymobEnabled: true,
       publicKey: 'pk_test',
-      paymobIntention: { clientSecret: 'cs_123' },
-    });
+      paymobIntention: { clientSecret: 'cs_123', id: 'int_123' },
+    } as never);
     Object.defineProperty(window, 'location', {
       value: { ...window.location, href: 'http://localhost:3000/' },
       configurable: true,
@@ -229,7 +229,7 @@ describe('ReservationSummary', () => {
   });
 
   it('surfaces an error and captures the lead when paymob is disabled on success', async () => {
-    mockCreatePublicReservation.mockResolvedValue({ paymobEnabled: false });
+    mockCreatePublicReservation.mockResolvedValue({ paymobEnabled: false } as never);
     localStorage.setItem('sc_reservation', JSON.stringify([mockItems[0]]));
     render(<ReservationSummary {...defaultProps} apiBase="/api" />);
     fireEvent.change(screen.getByPlaceholderText('Enter your full name'), {

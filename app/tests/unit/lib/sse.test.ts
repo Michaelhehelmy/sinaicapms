@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete globalThis.EventSource;
+  delete (globalThis as any).EventSource;
   vi.useRealTimers();
 });
 

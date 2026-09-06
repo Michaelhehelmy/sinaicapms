@@ -35,7 +35,7 @@ vi.mock('@/components/ui/DataTable', () => ({
   DataTable: ({ data, columns, emptyMessage, actions }: { data: unknown[]; columns: { key: string; render?: (item: unknown) => React.ReactNode }[]; emptyMessage?: string; actions?: (row: unknown) => React.ReactNode }) => (
     <div data-testid="data-table">
       {data.length === 0 && emptyMessage && <p>{emptyMessage}</p>}
-      {data.map((row: Record<string, unknown>, i: number) => (
+      {data.map((row: any, i: number) => (
         <div key={i} data-testid="data-row">
           <span>{String(row.reference || '')}</span>
           <span>{String(row.paymentStatus || '')}</span>
@@ -115,10 +115,11 @@ vi.mock('@/components/ui/Select', () => ({
 }));
 
 vi.mock('@/components/ui/EmptyState', () => ({
-  EmptyState: ({ title, description }: { title: string; description?: string }) => (
+  EmptyState: ({ title, description, action }: { title: string; description?: string; action?: { label: string; onClick: () => void } }) => (
     <div data-testid="empty-state">
       <h3>{title}</h3>
       {description && <p>{description}</p>}
+      {action && <button onClick={action.onClick}>{action.label}</button>}
     </div>
   ),
 }));
@@ -196,6 +197,25 @@ describe('OrdersPanel', () => {
     const filterSelect = screen.getByDisplayValue('All Statuses');
     fireEvent.change(filterSelect, { target: { value: 'partial' } });
     expect(screen.getByText('No reservations found')).toBeInTheDocument();
+  });
+
+  it('shows a room-dependency empty state with CTA when no rooms and no orders exist', () => {
+    const onNavigateToTab = vi.fn();
+    setupMocks({
+      useOrdersQuery: {
+        data: { data: [], total: 0 },
+        isLoading: false,
+        error: null,
+        isFetching: false,
+      },
+      useRoomsQuery: { data: [], isLoading: false, error: null },
+    });
+    render(
+      <OrdersPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Test Camp' } as never]} onNavigateToTab={onNavigateToTab} />,
+    );
+    expect(screen.getByText('No rooms yet')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Go to Rooms'));
+    expect(onNavigateToTab).toHaveBeenCalledWith('rooms');
   });
 
   it('state change modal opens with ORDER_STATES options', () => {
@@ -281,7 +301,7 @@ describe('OrdersPanel', () => {
       { id: 'o6', campId: 'c1', roomId: 'r3', reference: 'REF006', orderStateId: 'no_show', paymentStatus: 'unpaid', totalAmount: 40, customerFirstName: 'Sam', customerLastName: 'Kim', checkInDate: '2026-08-01', checkOutDate: '2026-08-02' },
     ];
     setupMocks({
-      useOrdersQuery: { data: { data: allStates, total: 6 }, isLoading: false, error: null, isFetching: false },
+      useOrdersQuery: { data: { data: allStates as never, total: 6 }, isLoading: false, error: null, isFetching: false },
     });
     render(<OrdersPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Test Camp' } as never]} />);
     expect(screen.getAllByTestId('data-row')).toHaveLength(6);
@@ -299,7 +319,7 @@ describe('OrdersPanel', () => {
 
   it('shows loading skeleton', () => {
     setupMocks({
-      useOrdersQuery: { data: null, isLoading: true, error: null, isFetching: false },
+      useOrdersQuery: { data: null as any, isLoading: true, error: null, isFetching: false },
     });
     render(<OrdersPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Test Camp' } as never]} />);
     expect(screen.getByTestId('table-skeleton')).toBeInTheDocument();

@@ -24,7 +24,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
     refetch: mockRefreshItems,
   }),
   useSaveProjectItemMutation: (editId?: string) => ({
-    mutateAsync: async (data: unknown) => {
+    mutateAsync: async (data: any) => {
       try {
         return await api.saveProjectItem(data, editId);
       } catch (err) {

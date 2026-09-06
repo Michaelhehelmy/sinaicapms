@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import SuperAIPanel from '@/components/admin/SuperAIPanel';
 
 const mockShowToast = vi.fn();
-let mockAuthUser: { role: string } | null = { role: 'super_admin', id: 'u1' };
+let mockAuthUser: { role: string; id?: string } | null = { role: 'super_admin', id: 'u1' };
 let mockTenantsResolve: unknown = [{ id: 't1', name: 'Camp' }];
 let mockOverviewResolve: unknown = { totalPredictions: 5, totalAutomationRules: 3, totalLogs: 10, totalPriceRules: 2, tenantBreakdown: [{ tenant_id: 't1', tenant_name: 'Camp', prediction_count: 5, automation_count: 3 }] };
 let mockPredictionsResolve: unknown = { data: [{ id: 'p1', type: 'demand', confidence: 0.85, tenant_name: 'Camp', created_at: '2025-01-01' }], total: 1 };

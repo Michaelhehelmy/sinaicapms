@@ -82,7 +82,7 @@ const samplePhotos: WizardPhoto[] = [
 
 describe('PhotosStep', () => {
   let photos: WizardPhoto[];
-  let onChange: ReturnType<typeof vi.fn>;
+  let onChange: (photos: WizardPhoto[]) => void;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -223,7 +223,7 @@ describe('PhotosStep', () => {
   });
 
   it('upload progress indicator shows during upload', async () => {
-    let resolveUpload: (v: unknown) => void;
+    let resolveUpload: (v: any) => void;
     mockUpload.mockImplementation(() => new Promise((r) => { resolveUpload = r; }));
 
     render(<PhotosStep photos={[]} onChange={onChange} />);

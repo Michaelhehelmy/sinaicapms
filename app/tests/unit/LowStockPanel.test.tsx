@@ -9,7 +9,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
 }));
 
 const defaultHook = {
-  data: { items: [], total: 0, page: 1, pageSize: 20, hasMore: false },
+  data: { data: [], total: 0, page: 1, pageSize: 20, hasMore: false },
   isLoading: false,
   isError: false,
   error: null,
@@ -36,7 +36,7 @@ describe('LowStockPanel', () => {
   it('renders low-stock items with status badges', () => {
     mockUseLowStock.mockReturnValue({
       ...defaultHook,
-      data: { ...defaultHook.data, items, total: items.length },
+      data: { ...defaultHook.data, data: items, total: items.length },
     });
     render(<LowStockPanel />);
     expect(screen.getByTestId('low-stock-panel')).toBeInTheDocument();

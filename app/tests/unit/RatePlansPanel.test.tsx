@@ -12,6 +12,12 @@ let mockPlansData: unknown[] = [];
 let mockPlansLoading = false;
 let mockPlansError: Error | null = null;
 
+const defaultMockProducts = [
+  { id: 'p1', name: 'Standard Tent', type: 'room', tenantId: 'acaciacamp', sellingPrice: 100, capacity: 2, isActive: true },
+  { id: 'p2', name: 'Deluxe Cabin', type: 'room', tenantId: 'acaciacamp', sellingPrice: 250, capacity: 4, isActive: true },
+];
+let mockProductsData: unknown[] = [...defaultMockProducts];
+
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
@@ -104,10 +110,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
   return {
     queryKeys: { ratePlans: ['admin', 'ratePlans'], products: ['admin', 'products'] },
     useProductsQuery: () => ({
-      data: [
-        { id: 'p1', name: 'Standard Tent', type: 'room', tenantId: 'acaciacamp', sellingPrice: 100, capacity: 2, isActive: true },
-        { id: 'p2', name: 'Deluxe Cabin', type: 'room', tenantId: 'acaciacamp', sellingPrice: 250, capacity: 4, isActive: true },
-      ],
+      data: mockProductsData,
       isLoading: false,
       error: null,
     }),
@@ -117,7 +120,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
         data: mockPlansData,
         isLoading: mockPlansLoading,
         error: mockPlansError,
-        refetch: () => { setTick((t) => t + 1); return Promise.resolve(); },
+        refetch: () => { setTick((t: number) => t + 1); return Promise.resolve(); },
       };
     },
     useSaveRatePlanMutation: (editId?: string | number) => ({
@@ -149,6 +152,7 @@ describe('RatePlansPanel', () => {
     mockPlansData = [];
     mockPlansLoading = false;
     mockPlansError = null;
+    mockProductsData = [...defaultMockProducts];
   });
 
   it('renders with loading state', () => {
@@ -169,6 +173,24 @@ describe('RatePlansPanel', () => {
     await waitFor(() => {
       expect(screen.getAllByText('Add Plan').length).toBeGreaterThanOrEqual(1);
     });
+  });
+
+  it('shows a project-dependency empty state with CTA when no camps exist', async () => {
+    const onNavigateToTab = vi.fn();
+    renderWithQuery(<RatePlansPanel campIds={[]} camps={[]} onNavigateToTab={onNavigateToTab} />);
+    expect(screen.getByText('No projects yet')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Create project'));
+    expect(onNavigateToTab).toHaveBeenCalledWith('camps');
+    expect(screen.queryByText('Add Plan')).not.toBeInTheDocument();
+  });
+
+  it('hides Add Plan and shows a room-type dependency state when no product types are selectable', async () => {
+    mockProductsData = [];
+    renderWithQuery(<RatePlansPanel campIds={['c1']} camps={camps} />);
+    await waitFor(() => {
+      expect(screen.getByText('No room types yet')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Add Plan')).not.toBeInTheDocument();
   });
 
   it('handles load error', async () => {

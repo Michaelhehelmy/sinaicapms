@@ -19,6 +19,18 @@ const h = vi.hoisted(() => {
   const mockGetAdminTenants = vi.fn();
   const mockUseAuth = vi.fn();
 
+  // T22: per-tab analytics query spies. Call counts assert the gating behavior —
+  // mounting AnalyticsPanel must fire exactly the active tab's queries and no
+  // other tab's hooks (these spies back the @/hooks/useQueryHooks mock below).
+  const mockUseRevenueReportQuery = vi.fn(() => ({ data: mockState.mockRevenueData, isLoading: mockState.mockAnalyticsLoading }));
+  const mockUseOccupancyReportQuery = vi.fn(() => ({ data: mockState.mockOccupancyData, isLoading: mockState.mockAnalyticsLoading }));
+  const mockUseTopProductsQuery = vi.fn(() => ({ data: mockState.mockTopProducts, isLoading: mockState.mockAnalyticsLoading }));
+  const mockUseKitchenPerformanceQuery = vi.fn(() => ({ data: mockState.mockKitchen, isLoading: mockState.mockAnalyticsLoading }));
+  const mockUseAnalyticsLowStockQuery = vi.fn(() => ({ data: mockState.mockLowStock, isLoading: mockState.mockAnalyticsLoading }));
+  const mockUseRevenueBreakdownQuery = vi.fn(() => ({ data: mockState.mockRevenueBreakdown, isLoading: mockState.mockAnalyticsLoading }));
+  const mockUseCustomerMetricsQuery = vi.fn(() => ({ data: mockState.mockCustomerMetrics, isLoading: mockState.mockAnalyticsLoading }));
+  const mockUseSeasonalComparisonQuery = vi.fn(() => ({ data: mockState.mockSeasonal, isLoading: mockState.mockAnalyticsLoading }));
+
   const mockState = {
     mockPredictions: [] as unknown[],
     mockPriceRules: [] as unknown[],
@@ -48,6 +60,14 @@ const h = vi.hoisted(() => {
     mockApiFetch,
     mockGetAdminTenants,
     mockUseAuth,
+    mockUseRevenueReportQuery,
+    mockUseOccupancyReportQuery,
+    mockUseTopProductsQuery,
+    mockUseKitchenPerformanceQuery,
+    mockUseAnalyticsLowStockQuery,
+    mockUseRevenueBreakdownQuery,
+    mockUseCustomerMetricsQuery,
+    mockUseSeasonalComparisonQuery,
     mockState,
   };
 });
@@ -89,21 +109,23 @@ vi.mock('@/components/ui/LoadingSpinner', () => ({
   LoadingSpinner: ({ text }: { text?: string }) => <div data-testid="loading-spinner">{text}</div>,
 }));
 
-// Mock @/hooks/useQueryHooks (all AI + Analytics hooks)
+// Mock @/hooks/useQueryHooks (all AI + Analytics hooks).
+// T22: analytics hooks go through vi.fn spies so tests can assert the per-tab
+// query gating (which hooks fire on mount / on tab switch).
 vi.mock('@/hooks/useQueryHooks', () => ({
   queryKeys: { ai: ['admin', 'ai'] },
   useAIPredictionsQuery: () => ({ data: h.mockState.mockPredictions, isLoading: h.mockState.mockAiLoading }),
   useAIPriceRulesQuery: () => ({ data: h.mockState.mockPriceRules, isLoading: h.mockState.mockAiLoading }),
   useAIAutomationRulesQuery: () => ({ data: h.mockState.mockAutomationRules, isLoading: h.mockState.mockAiLoading }),
   useAIAutomationLogsQuery: () => ({ data: h.mockState.mockAutomationLogs, isLoading: h.mockState.mockAiLoading }),
-  useRevenueReportQuery: () => ({ data: h.mockState.mockRevenueData, isLoading: h.mockState.mockAnalyticsLoading }),
-  useOccupancyReportQuery: () => ({ data: h.mockState.mockOccupancyData, isLoading: h.mockState.mockAnalyticsLoading }),
-  useTopProductsQuery: () => ({ data: h.mockState.mockTopProducts, isLoading: h.mockState.mockAnalyticsLoading }),
-  useKitchenPerformanceQuery: () => ({ data: h.mockState.mockKitchen, isLoading: h.mockState.mockAnalyticsLoading }),
-  useAnalyticsLowStockQuery: () => ({ data: h.mockState.mockLowStock, isLoading: h.mockState.mockAnalyticsLoading }),
-  useRevenueBreakdownQuery: () => ({ data: h.mockState.mockRevenueBreakdown, isLoading: h.mockState.mockAnalyticsLoading }),
-  useCustomerMetricsQuery: () => ({ data: h.mockState.mockCustomerMetrics, isLoading: h.mockState.mockAnalyticsLoading }),
-  useSeasonalComparisonQuery: () => ({ data: h.mockState.mockSeasonal, isLoading: h.mockState.mockAnalyticsLoading }),
+  useRevenueReportQuery: h.mockUseRevenueReportQuery,
+  useOccupancyReportQuery: h.mockUseOccupancyReportQuery,
+  useTopProductsQuery: h.mockUseTopProductsQuery,
+  useKitchenPerformanceQuery: h.mockUseKitchenPerformanceQuery,
+  useAnalyticsLowStockQuery: h.mockUseAnalyticsLowStockQuery,
+  useRevenueBreakdownQuery: h.mockUseRevenueBreakdownQuery,
+  useCustomerMetricsQuery: h.mockUseCustomerMetricsQuery,
+  useSeasonalComparisonQuery: h.mockUseSeasonalComparisonQuery,
 }));
 
 // Mock @/lib/api (named fns for AIPanel + apiFetch/getAdminTenants for SuperAIPanel)
@@ -196,6 +218,14 @@ const {
   mockApiFetch,
   mockGetAdminTenants,
   mockUseAuth,
+  mockUseRevenueReportQuery,
+  mockUseOccupancyReportQuery,
+  mockUseTopProductsQuery,
+  mockUseKitchenPerformanceQuery,
+  mockUseAnalyticsLowStockQuery,
+  mockUseRevenueBreakdownQuery,
+  mockUseCustomerMetricsQuery,
+  mockUseSeasonalComparisonQuery,
 } = h;
 const S = h.mockState;
 
@@ -644,6 +674,66 @@ describe('AnalyticsPanel', () => {
     expect(screen.getByText('Avg Order Value')).toBeInTheDocument();
     expect(screen.getByText('Customer Composition')).toBeInTheDocument();
     expect(screen.getByText('60% of total')).toBeInTheDocument();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AnalyticsPanel per-tab query gating (T22)
+// ═════════════════════════════════════════════════════════════════════════════
+// Each tab is its own subcomponent that owns its queries: mounting the panel
+// must fire exactly the active tab's hooks and no other tab's hooks.
+describe('AnalyticsPanel query gating (T22)', () => {
+  it('fires only the Overview tab queries on mount', () => {
+    render(<AnalyticsPanel />);
+
+    // Default tab is Overview, which owns these four hooks:
+    expect(mockUseRevenueReportQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseOccupancyReportQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseKitchenPerformanceQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseSeasonalComparisonQuery).toHaveBeenCalledTimes(1);
+
+    // Every other tab's hook must stay untouched:
+    expect(mockUseTopProductsQuery).not.toHaveBeenCalled();
+    expect(mockUseAnalyticsLowStockQuery).not.toHaveBeenCalled();
+    expect(mockUseRevenueBreakdownQuery).not.toHaveBeenCalled();
+    expect(mockUseCustomerMetricsQuery).not.toHaveBeenCalled();
+  });
+
+  it('switching to the Revenue tab fires only the Revenue hook', () => {
+    render(<AnalyticsPanel />);
+    fireEvent.click(screen.getByTestId('analytics-tab-revenue'));
+
+    expect(mockUseRevenueBreakdownQuery).toHaveBeenCalledTimes(1);
+
+    // Other inactive tabs still not fired:
+    expect(mockUseTopProductsQuery).not.toHaveBeenCalled();
+    expect(mockUseAnalyticsLowStockQuery).not.toHaveBeenCalled();
+    expect(mockUseCustomerMetricsQuery).not.toHaveBeenCalled();
+
+    // Overview hooks fired exactly once at mount and are not re-fired by the
+    // tab switch:
+    expect(mockUseRevenueReportQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseOccupancyReportQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseKitchenPerformanceQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseSeasonalComparisonQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('visiting several tabs fires each tab hook exactly once, never re-firing others', () => {
+    render(<AnalyticsPanel />);
+
+    fireEvent.click(screen.getByTestId('analytics-tab-products'));
+    expect(mockUseTopProductsQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseRevenueBreakdownQuery).not.toHaveBeenCalled();
+    expect(mockUseAnalyticsLowStockQuery).not.toHaveBeenCalled();
+    expect(mockUseCustomerMetricsQuery).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('analytics-tab-customers'));
+    expect(mockUseCustomerMetricsQuery).toHaveBeenCalledTimes(1);
+
+    // Earlier tab hooks are not re-fired by later tab switches:
+    expect(mockUseTopProductsQuery).toHaveBeenCalledTimes(1);
+    expect(mockUseRevenueBreakdownQuery).not.toHaveBeenCalled();
+    expect(mockUseAnalyticsLowStockQuery).not.toHaveBeenCalled();
   });
 });
 

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as api from '@/lib/api';
+import * as apiModule from '@/lib/api';
+
+// The real api functions carry strict generated payload types, but these
+// smoke tests intentionally pass minimal/loose fixture payloads that the
+// wire layer forwards verbatim at runtime. Widen the module's type so each
+// call site doesn't need a per-argument cast (type-only change; the runtime
+// module object is the same `apiModule`).
+const api = apiModule as unknown as Record<string, (...args: any[]) => any>;
 
 global.fetch = vi.fn();
 
@@ -17,8 +24,9 @@ function mockFetch(jsonResponse: unknown, ok = true, contentType = 'application/
     ok,
     status: ok ? 200 : 400,
     json: () => Promise.resolve(jsonResponse),
+    blob: () => Promise.resolve(new Blob([JSON.stringify(jsonResponse)], { type: 'text/csv' })),
     headers: { get: () => contentType },
-  } as Response);
+  } as unknown as Response);
 }
 
 const RESULT = { ok: true };
@@ -305,7 +313,7 @@ describe('api.ts — super admin + request + upload + admin settings', () => {
     await expectResolves(() => api.generateAdminReport({ type: 'revenue' }));
     await expectResolves(() => api.createAdminScheduledReport({ frequency: 'daily' }));
     await expectResolves(() => api.deleteAdminScheduledReport('sr1'));
-    await expectResolves(() => api.exportAdminPerformance('csv'));
+    await expect(api.exportAdminPerformance('csv')).resolves.toBeInstanceOf(Blob);
   });
 
   it('upload posts a FormData payload and returns response', async () => {
@@ -322,7 +330,7 @@ describe('api.ts — super admin + request + upload + admin settings', () => {
       status: 500,
       json: () => Promise.resolve({}),
       headers: { get: () => 'text/html' },
-    } as Response);
+    } as unknown as Response);
     await expect(api.upload(new File(['x'], 'a.png', { type: 'image/png' }))).rejects.toThrow('Server error');
   });
 
@@ -333,7 +341,7 @@ describe('api.ts — super admin + request + upload + admin settings', () => {
       status: 400,
       json: () => Promise.resolve({ error: 'Upload failed' }),
       headers: { get: () => 'application/json' },
-    } as Response);
+    } as unknown as Response);
     await expect(api.upload(new File(['x'], 'a.png', { type: 'image/png' }))).rejects.toThrow('Upload failed');
   });
 });

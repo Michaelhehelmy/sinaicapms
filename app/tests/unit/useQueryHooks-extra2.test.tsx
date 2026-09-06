@@ -155,22 +155,22 @@ function createWrapper() {
 }
 
 /** Render a query hook and wait until its data resolves. */
-async function mountQuery<H extends (...a: never[]) => unknown>(hook: H, ...args: never[]) {
+async function mountQuery<H extends (...args: any[]) => any>(hook: H, ...args: any[]) {
   const { wrapper } = createWrapper();
-  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  const { result } = renderHook(() => (hook as any)(...args), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   return result;
 }
 
 /** Render a query hook whose api getter rejects — covers throwOnError error path. */
-async function mountQueryError<H extends (...a: never[]) => unknown>(
+async function mountQueryError<H extends (...args: any[]) => any>(
   hook: H,
-  apiFn: () => unknown,
-  ...args: never[]
+  apiFn: (...apiArgs: any[]) => unknown,
+  ...args: any[]
 ) {
   vi.mocked(apiFn).mockRejectedValueOnce(new Error('boom'));
   const { wrapper } = createWrapper();
-  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  const { result } = renderHook(() => (hook as any)(...args), { wrapper });
   await waitFor(() => expect(result.current.isError).toBe(true));
   return result;
 }
@@ -344,7 +344,7 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
   });
 
   describe('query error paths (toast + return false)', () => {
-    const errorCases: Array<[string, never, () => unknown, never[]]> = [
+    const errorCases: Array<[string, never, (...args: any[]) => unknown, any[]]> = [
       ['useCampsQuery', useCampsQuery as never, api.getCamps, []],
       ['useProductsQuery', useProductsQuery as never, api.getProducts, []],
       ['useRoomsQuery', useRoomsQuery as never, api.getRooms, []],
@@ -374,7 +374,7 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
     for (const [name, hook, apiFn, args] of errorCases) {
       it(`${name} shows an error toast when the request fails`, async () => {
         mockShowToast.mockClear();
-        await mountQueryError(hook, apiFn as () => unknown, ...args);
+        await mountQueryError(hook, apiFn, ...args);
         await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
       });
     }
@@ -437,7 +437,7 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
         const spy = apiFn as unknown as ReturnType<typeof vi.fn>;
         const { wrapper, queryClient } = createWrapper();
         const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-        const { result } = renderHook(() => (hook as (id: unknown) => { mutateAsync: (v: unknown) => Promise<unknown> })(), { wrapper });
+        const { result } = renderHook(() => (hook as (id?: unknown) => { mutateAsync: (v: unknown) => Promise<unknown> })(), { wrapper });
         await act(async () => {
           await result.current.mutateAsync(42);
         });
@@ -504,7 +504,9 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
         await expect(result.current.mutateAsync({ name: 'B' } as never)).rejects.toThrow('boom');
       });
       expect(queryClient.getQueryData(['admin', 'camps'])).toEqual([{ id: 1, name: 'A' }]);
-      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to save camp'), 'error');
+      await waitFor(() =>
+        expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to save camp'), 'error'),
+      );
     });
 
     it('useDeleteCampMutation removes from cache and invalidates', async () => {
@@ -540,7 +542,9 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
         await expect(result.current.mutateAsync(1)).rejects.toThrow('boom');
       });
       expect(queryClient.getQueryData(['admin', 'camps'])).toEqual([{ id: 1 }, { id: 2 }]);
-      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to delete camp'), 'error');
+      await waitFor(() =>
+        expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to delete camp'), 'error'),
+      );
     });
   });
 
@@ -591,7 +595,9 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
         await expect(result.current.mutateAsync({ name: 'B' } as never)).rejects.toThrow('boom');
       });
       expect(queryClient.getQueryData(['admin', 'rooms'])).toEqual([{ id: 1, name: 'A' }]);
-      expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to save room'), 'error');
+      await waitFor(() =>
+        expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to save room'), 'error'),
+      );
     });
   });
 

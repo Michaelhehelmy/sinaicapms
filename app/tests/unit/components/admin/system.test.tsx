@@ -45,17 +45,21 @@ const mockGenerateAdminReport = vi.fn();
 const mockCreateAdminScheduledReport = vi.fn();
 const mockDeleteAdminScheduledReport = vi.fn();
 
-vi.mock('@/lib/api', () => ({
-  getAdmins: vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 25, hasMore: false }),
-  updateAdminUser: (...args: unknown[]) => mockUpdateAdminUser(...args),
-  deleteAdminUser: (...args: unknown[]) => mockDeleteAdminUser(...args),
-  getAdminSettings: (...args: unknown[]) => mockGetAdminSettings(...args),
-  updateAdminSettings: (...args: unknown[]) => mockUpdateAdminSettings(...args),
-  exportAdminPerformance: (...args: unknown[]) => mockExportAdminPerformance(...args),
-  generateAdminReport: (...args: unknown[]) => mockGenerateAdminReport(...args),
-  createAdminScheduledReport: (...args: unknown[]) => mockCreateAdminScheduledReport(...args),
-  deleteAdminScheduledReport: (...args: unknown[]) => mockDeleteAdminScheduledReport(...args),
-}));
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>();
+  return {
+    ...actual,
+    getAdmins: vi.fn().mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 25, hasMore: false }),
+    updateAdminUser: (...args: unknown[]) => mockUpdateAdminUser(...args),
+    deleteAdminUser: (...args: unknown[]) => mockDeleteAdminUser(...args),
+    getAdminSettings: (...args: unknown[]) => mockGetAdminSettings(...args),
+    updateAdminSettings: (...args: unknown[]) => mockUpdateAdminSettings(...args),
+    exportAdminPerformance: (...args: unknown[]) => mockExportAdminPerformance(...args),
+    generateAdminReport: (...args: unknown[]) => mockGenerateAdminReport(...args),
+    createAdminScheduledReport: (...args: unknown[]) => mockCreateAdminScheduledReport(...args),
+    deleteAdminScheduledReport: (...args: unknown[]) => mockDeleteAdminScheduledReport(...args),
+  };
+});
 
 // ── lib/auth + lib/utils mocks ──────────────────────────────────────────
 const mockUseAuth = vi.fn();
@@ -121,7 +125,7 @@ vi.mock('@/components/ui/DataTable', () => ({
       {pagination && (
         <div data-testid="pagination">{pagination.page} / {pagination.total}</div>
       )}
-      {data.map((row: Record<string, unknown>, i: number) => (
+      {data.map((row: any, i: number) => (
         <div key={String(row.id || row.email || i)} data-testid="data-row" onClick={onRowClick ? () => onRowClick(row) : undefined}>
           {columns.map((col) => (
             <span key={col.key}>{col.render ? col.render(row) : String(row[col.key] ?? '')}</span>
@@ -725,12 +729,12 @@ describe('AuditLogPanel', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) });
     vi.stubGlobal('fetch', fetchMock);
     mockUseAdminAuditQuery.mockReturnValue({ data: sampleAudit, isLoading: false });
-    localStorage.setItem('admin_access_token', 'tok123');
+    localStorage.setItem('sinaicamps_token', 'tok123');
     renderWithProviders(<AuditLogPanel />);
     fireEvent.click(screen.getByTestId('audit-export-btn'));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/api/admin/audit/export'),
+        expect.stringContaining('/api/v1/admin/audit/export'),
         expect.objectContaining({ headers: { Authorization: 'Bearer tok123' } }),
       );
     });
@@ -741,7 +745,7 @@ describe('AuditLogPanel', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) });
     vi.stubGlobal('fetch', fetchMock);
     mockUseAdminAuditQuery.mockReturnValue({ data: sampleAudit, isLoading: false });
-    localStorage.removeItem('admin_access_token');
+    localStorage.removeItem('sinaicamps_token');
     renderWithProviders(<AuditLogPanel />);
     fireEvent.click(screen.getByTestId('audit-export-btn'));
     await waitFor(() => {

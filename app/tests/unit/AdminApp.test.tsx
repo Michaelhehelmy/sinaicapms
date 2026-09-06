@@ -50,6 +50,14 @@ vi.mock('@/hooks/useQueryHooks', () => ({
     ],
     isLoading: false,
   }),
+  useProductsQuery: () => ({
+    data: [{ id: 'p1', campId: 'c1', name: 'Deluxe Room', category: 'room', basePrice: 100, stockQuantity: 5, minStockLevel: 2, status: 'active' }],
+    isLoading: false,
+  }),
+  useRoomsQuery: () => ({
+    data: [{ id: 'r1', campId: 'c1', productId: 'p1', name: 'Tent 1', status: 'available' }],
+    isLoading: false,
+  }),
   useSaveCampMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteCampMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useSettingsQuery: () => ({ data: { primaryColor: '#4a7c4f' } }),

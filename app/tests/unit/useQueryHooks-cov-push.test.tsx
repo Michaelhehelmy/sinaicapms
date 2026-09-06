@@ -164,21 +164,21 @@ function createWrapper() {
   return { wrapper, queryClient };
 }
 
-async function mountQuery<H extends (...a: never[]) => unknown>(hook: H, ...args: never[]) {
+async function mountQuery<H extends (...args: any[]) => any>(hook: H, ...args: any[]) {
   const { wrapper } = createWrapper();
-  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  const { result } = renderHook(() => (hook as any)(...args), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   return result;
 }
 
-async function mountQueryError<H extends (...a: never[]) => unknown>(
+async function mountQueryError<H extends (...args: any[]) => any>(
   hook: H,
-  apiFn: () => unknown,
-  ...args: never[]
+  apiFn: (...apiArgs: any[]) => unknown,
+  ...args: any[]
 ) {
   vi.mocked(apiFn).mockRejectedValue(new Error('boom'));
   const { wrapper } = createWrapper();
-  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  const { result } = renderHook(() => (hook as any)(...args), { wrapper });
   await waitFor(() => expect(result.current.isError).toBe(true));
   return result;
 }

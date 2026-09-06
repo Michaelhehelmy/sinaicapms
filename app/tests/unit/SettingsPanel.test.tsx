@@ -17,7 +17,7 @@ const mockUseSettingsQuery = vi.fn();
 vi.mock('@/hooks/useQueryHooks', () => ({
   useSettingsQuery: () => mockUseSettingsQuery(),
   useUpdateSettingsMutation: () => ({
-    mutate: (data: unknown) => {
+    mutate: (data: any) => {
       api.updateBranding(data).then((res) => {
         if (res && res.success !== false) {
           mockShowToast('Settings updated successfully!', 'success');
@@ -28,7 +28,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
         mockShowToast('Error saving settings: ' + (err as Error).message, 'error');
       });
     },
-    mutateAsync: async (data: unknown) => {
+    mutateAsync: async (data: any) => {
       try {
         return await api.updateBranding(data);
       } catch (err) {
@@ -164,7 +164,7 @@ describe('SettingsPanel', () => {
   });
 
   it('handles save returning null response', async () => {
-    mockUpdateBranding.mockResolvedValue(null);
+    mockUpdateBranding.mockResolvedValue(null as never);
     render(<SettingsPanel />);
     await waitFor(() => {
       expect(screen.getByDisplayValue('Test Camp')).toBeInTheDocument();

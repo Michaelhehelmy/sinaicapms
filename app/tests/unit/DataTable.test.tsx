@@ -152,8 +152,8 @@ describe('DataTable', () => {
         data={data}
         rowKey="name"
         selectable
-        selectedKeys={[]}
-        onSelectionChange={onSelectionChange}
+        selectedRows={[] as never}
+        onSelectionChange={onSelectionChange as any}
       />,
     );
     const table = desktopTable();

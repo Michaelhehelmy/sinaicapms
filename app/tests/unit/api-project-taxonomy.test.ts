@@ -31,7 +31,7 @@ function mockFetch(jsonResponse: unknown, ok = true) {
     status: ok ? 200 : 400,
     json: () => Promise.resolve(jsonResponse),
     headers: { get: () => 'application/json' },
-  } as Response);
+  } as unknown as Response);
 }
 
 beforeEach(() => {

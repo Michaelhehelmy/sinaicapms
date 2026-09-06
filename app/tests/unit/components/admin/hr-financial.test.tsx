@@ -85,7 +85,7 @@ vi.mock('@/hooks/useQueryHooks', () => {
 const hooks = vi.mocked(await import('@/hooks/useQueryHooks'));
 
 function setHrData(patch: Record<string, unknown>) {
-  (hooks as Record<string, unknown>).__setData(patch);
+  (hooks as Record<string, any>).__setData(patch);
 }
 
 vi.mock('@/lib/api', () => ({
@@ -179,7 +179,7 @@ vi.mock('@/components/ui/DataTable', () => ({
   }) => (
     <div data-testid="data-table">
       {data.length === 0 && emptyMessage && <p>{emptyMessage}</p>}
-      {data.map((row: Record<string, unknown>, i: number) => (
+      {data.map((row: any, i: number) => (
         <div key={i} data-testid="data-row">
           {columns.map((col) => (
             <span key={col.key}>{col.render ? col.render(row) : String(row[col.key] ?? '')}</span>
@@ -594,7 +594,7 @@ function mockSuperFinancialApi() {
 describe('HRPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (hooks as Record<string, unknown>).__reset();
+    (hooks as Record<string, any>).__reset();
     Object.defineProperty(window, 'open', { writable: true, value: vi.fn().mockReturnValue(fakePrintWindow) });
   });
 
@@ -895,7 +895,7 @@ describe('HRPanel', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByTestId('modal-submit'));
     await waitFor(() => {
-      expect(mockCreateHrLeaveType).toHaveBeenCalledWith({ name: 'Maternity', accrualRate: 30, isPaid: false });
+      expect(mockCreateHrLeaveType).toHaveBeenCalledWith({ name: 'Maternity', accrualRate: 30, isPaid: 0 });
       expect(mockShowToast).toHaveBeenCalledWith('Leave type created.', 'success');
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'hr'] });
@@ -1012,7 +1012,7 @@ describe('HRPanel', () => {
     fireEvent.change(screen.getByTestId('input-Period End *'), { target: { value: '2025-07-31' } });
     fireEvent.click(screen.getByTestId('modal-submit'));
     await waitFor(() => {
-      expect(mockCreateHrPayrollRun).toHaveBeenCalledWith({ periodStart: '2025-07-01', periodEnd: '2025-07-31' });
+      expect(mockCreateHrPayrollRun).toHaveBeenCalledWith({ periodStart: '2025-07-01', periodEnd: '2025-07-31', runDate: expect.any(String) });
       expect(mockShowToast).toHaveBeenCalledWith('Payroll run created.', 'success');
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'hr'] });
@@ -1099,7 +1099,7 @@ describe('HRPanel', () => {
 describe('FinancialPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (hooks as Record<string, unknown>).__reset();
+    (hooks as Record<string, any>).__reset();
   });
 
   it('renders accounts table by default', () => {
@@ -1646,7 +1646,7 @@ describe('FinancialPanel', () => {
 describe('SuperHRPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (hooks as Record<string, unknown>).__reset();
+    (hooks as Record<string, any>).__reset();
     mockUser = { role: 'super_admin' };
     mockSuperHrApi();
   });
@@ -1760,7 +1760,7 @@ describe('SuperHRPanel', () => {
 describe('SuperFinancialsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (hooks as Record<string, unknown>).__reset();
+    (hooks as Record<string, any>).__reset();
     mockUser = { role: 'super_admin' };
     mockSuperFinancialApi();
   });

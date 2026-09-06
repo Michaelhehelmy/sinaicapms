@@ -69,7 +69,7 @@ describe('section rendering', () => {
   it('renders a placeholder message when a schema has no fields at all', () => {
     render(
       <DynamicForm
-        schema={{ type: 'empty', label: 'Empty', icon: '·', description: '', coreFields: [], metaFields: [] }}
+        schema={{ type: 'empty', label: 'Empty', icon: '·', description: '', coreFields: [], metaFields: [] } as never}
         values={{}}
         metaValues={{}}
         onChange={onChange}
@@ -129,7 +129,7 @@ describe('fields prop (section filtering)', () => {
   it('shows the empty-state message when fields="meta" but the schema has no meta fields', () => {
     render(
       <DynamicForm
-        schema={{ type: 'bare', label: 'Bare', icon: '·', description: '', coreFields: ['name'], metaFields: [] }}
+        schema={{ type: 'bare', label: 'Bare', icon: '·', description: '', coreFields: ['name'], metaFields: [] } as never}
         values={{}}
         metaValues={{}}
         onChange={onChange}

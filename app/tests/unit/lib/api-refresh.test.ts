@@ -18,7 +18,7 @@ function jsonResponse(data: unknown, status = 200): Response {
     status,
     json: () => Promise.resolve(data),
     headers: { get: () => 'application/json' },
-  } as Response;
+  } as unknown as Response;
 }
 
 function htmlErrorResponse(status: number): Response {
@@ -27,7 +27,7 @@ function htmlErrorResponse(status: number): Response {
     status,
     json: () => Promise.resolve({}),
     headers: { get: () => 'text/html' },
-  } as Response;
+  } as unknown as Response;
 }
 
 function mock401(): Response {
@@ -50,7 +50,7 @@ describe('apiFetch — Authorization header', () => {
 
     await apiFetch('/test');
 
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     const headers = opts.headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer my-access-token');
   });
@@ -60,7 +60,7 @@ describe('apiFetch — Authorization header', () => {
 
     await apiFetch('/test');
 
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     const headers = opts.headers as Record<string, string>;
     expect(headers['Authorization']).toBeUndefined();
   });
@@ -72,7 +72,7 @@ describe('apiFetch — Authorization header', () => {
 
     await apiFetch('/pos/dashboard');
 
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     const headers = opts.headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer pos-secret');
   });
@@ -84,7 +84,7 @@ describe('apiFetch — Authorization header', () => {
 
     await apiFetch('/test');
 
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     const headers = opts.headers as Record<string, string>;
     expect(headers['x-tenant-id']).toBe('acacia');
   });
@@ -115,7 +115,7 @@ describe('apiFetch — refreshes token on 401', () => {
     // Call 1: original 401, Call 2: refresh, Call 3: retry
     expect(fetch).toHaveBeenCalledTimes(3);
 
-    const [, refreshOpts] = vi.mocked(fetch).mock.calls[1];
+    const [, refreshOpts = {} as RequestInit] = vi.mocked(fetch).mock.calls[1];
     expect(String(vi.mocked(fetch).mock.calls[1][0])).toContain('/auth/refresh');
     expect(refreshOpts.method).toBe('POST');
     const body = JSON.parse(refreshOpts.body as string);
@@ -185,7 +185,7 @@ describe('apiFetch — retries request after refresh', () => {
 
     expect(result).toEqual({ data: 'retried-ok' });
 
-    const [, retryOpts] = vi.mocked(fetch).mock.calls[2];
+    const [, retryOpts = {} as RequestInit] = vi.mocked(fetch).mock.calls[2];
     const retryHeaders = retryOpts.headers as Record<string, string>;
     expect(retryHeaders['Authorization']).toBe('Bearer new-tok');
   });
@@ -342,7 +342,7 @@ describe('apiFetch — changePassword endpoint', () => {
 
     await changePassword('oldPass123', 'newPass456');
 
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/auth/change-password');
     expect(opts.method).toBe('POST');
     const body = JSON.parse(opts.body as string);
@@ -355,7 +355,7 @@ describe('apiFetch — changePassword endpoint', () => {
 
     await changePassword('old', 'new');
 
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     const headers = opts.headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer auth-tok');
   });

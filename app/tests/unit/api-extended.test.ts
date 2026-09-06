@@ -46,7 +46,7 @@ function mockFetch(jsonResponse: unknown, ok = true, contentType = 'application/
     status: ok ? 200 : 400,
     json: () => Promise.resolve(jsonResponse),
     headers: { get: () => contentType },
-  } as Response);
+  } as unknown as Response);
 }
 
 function mockFetchNoTenant(jsonResponse: unknown, ok = true, contentType = 'application/json') {
@@ -57,7 +57,7 @@ function mockFetchNoTenant(jsonResponse: unknown, ok = true, contentType = 'appl
     status: ok ? 200 : 400,
     json: () => Promise.resolve(jsonResponse),
     headers: { get: () => contentType },
-  } as Response);
+  } as unknown as Response);
 }
 
 function mockFetchWithStatus(status: number, jsonResponse?: unknown) {
@@ -67,7 +67,7 @@ function mockFetchWithStatus(status: number, jsonResponse?: unknown) {
     status,
     json: () => Promise.resolve(jsonResponse ?? {}),
     headers: { get: () => 'application/json' },
-  } as Response);
+  } as unknown as Response);
 }
 
 describe('report endpoints', () => {
@@ -119,9 +119,9 @@ describe('apiFetch core', () => {
       ok: true,
       json: () => Promise.resolve({ success: true }),
       headers: { get: () => 'application/json' },
-    } as Response);
+    } as unknown as Response);
     await apiFetch('/test-endpoint');
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     const headers = opts.headers as Record<string, string>;
     expect(headers['x-tenant-id']).toBe('tenant_42');
     expect(headers['Authorization']).toBe('Bearer my-token');
@@ -134,7 +134,7 @@ describe('apiFetch core', () => {
       method: 'POST',
       body: JSON.stringify({ firstName: 'John', lastName: 'Doe' }),
     });
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     const body = JSON.parse(opts.body as string);
     expect(body).toEqual({ firstName: 'John', lastName: 'Doe' });
   });
@@ -143,7 +143,7 @@ describe('apiFetch core', () => {
     localStorage.setItem('sinaicamps_token', 'token');
     mockFetch({ success: true });
     await apiFetch('/test', { method: 'POST', body: 'raw string body' });
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.body).toBe('raw string body');
   });
 
@@ -173,7 +173,7 @@ describe('apiFetch core', () => {
     // Mock window.location.href for redirect
     const origLocation = window.location;
     delete (window as any).location;
-    window.location = { ...origLocation, href: '' } as Location;
+    (window as any).location = { ...origLocation, href: '' };
 
     mockFetchWithStatus(401);
     await expect(apiFetch('/secured')).rejects.toThrow('Unauthorized');
@@ -192,7 +192,7 @@ describe('apiFetch core', () => {
       status: 401,
       json: () => Promise.resolve({}),
       headers: { get: () => 'application/json' },
-    } as Response);
+    } as unknown as Response);
 
     await expect(apiFetch('/pos/dashboard')).rejects.toThrow('Unauthorized');
     expect(localStorage.getItem('pos_token')).toBeNull();
@@ -206,7 +206,7 @@ describe('apiFetch core', () => {
       status: 500,
       json: () => Promise.reject(new Error('bad json')),
       headers: { get: () => 'application/json' },
-    } as Response);
+    } as unknown as Response);
 
     await expect(apiFetch('/bad')).rejects.toThrow('API error: 500');
   });
@@ -234,7 +234,7 @@ describe('apiFetch core', () => {
   it('sets method to GET by default', async () => {
     mockFetch({});
     await apiFetch('/test');
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBeUndefined();
   });
 });
@@ -249,7 +249,7 @@ describe('apiFetch silent refresh', () => {
       status: 401,
       json: () => Promise.resolve({}),
       headers: { get: () => 'application/json' },
-    } as Response;
+    } as unknown as Response;
   }
 
   it('silently refreshes and retries once on 401 with a valid refresh token', async () => {
@@ -264,13 +264,13 @@ describe('apiFetch silent refresh', () => {
         status: 200,
         json: () => Promise.resolve({ success: true, token: 'fresh-access', refreshToken: 'fresh-refresh' }),
         headers: { get: () => 'application/json' },
-      } as Response)
+      } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ data: 'retried-ok' }),
         headers: { get: () => 'application/json' },
-      } as Response);
+      } as unknown as Response);
 
     const result = await apiFetch('/secured');
     expect(fetch).toHaveBeenCalledTimes(3);
@@ -343,19 +343,19 @@ describe('apiFetch silent refresh', () => {
         status: 200,
         json: () => Promise.resolve({ success: true, token: 'fresh-access', refreshToken: 'fresh-refresh' }),
         headers: { get: () => 'application/json' },
-      } as Response)                                          // single refresh
+      } as unknown as Response)                                          // single refresh
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ data: 'a' }),
         headers: { get: () => 'application/json' },
-      } as Response)
+      } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ data: 'b' }),
         headers: { get: () => 'application/json' },
-      } as Response);
+      } as unknown as Response);
 
     const [r1, r2] = await Promise.all([apiFetch('/a'), apiFetch('/b')]);
     const refreshCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/auth/refresh'));
@@ -372,7 +372,7 @@ describe('auth endpoints', () => {
   it('login sends POST /auth/login', async () => {
     const res = await login('test@test.com', 'pass', 'tenant_1');
     expect(fetch).toHaveBeenCalledTimes(1);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/auth/login');
     expect(opts.method).toBe('POST');
     const body = JSON.parse(opts.body as string);
@@ -381,7 +381,7 @@ describe('auth endpoints', () => {
 
   it('logout sends POST /auth/logout', async () => {
     await logout();
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/auth/logout');
     expect(opts.method).toBe('POST');
   });
@@ -394,7 +394,7 @@ describe('auth endpoints', () => {
 
   it('forgotPassword sends POST /auth/forgot-password', async () => {
     await forgotPassword('user@test.com');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/auth/forgot-password');
     expect(opts.method).toBe('POST');
     const body = JSON.parse(opts.body as string);
@@ -403,7 +403,7 @@ describe('auth endpoints', () => {
 
   it('resetPassword sends POST /auth/reset-password', async () => {
     await resetPassword('reset-token', 'newPass123');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/auth/reset-password');
     const body = JSON.parse(opts.body as string);
     expect(body).toEqual({ token: 'reset-token', password: 'newPass123' });
@@ -411,7 +411,7 @@ describe('auth endpoints', () => {
 
   it('changePassword sends POST /auth/change-password', async () => {
     await changePassword('oldPass', 'newPass');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/auth/change-password');
     const body = JSON.parse(opts.body as string);
     expect(body).toEqual({ currentPassword: 'oldPass', newPassword: 'newPass' });
@@ -419,7 +419,7 @@ describe('auth endpoints', () => {
 
   it('registerUser sends POST /auth/register', async () => {
     await registerUser({ name: 'John', email: 'j@test.com', password: 'pass', tenantId: 't1' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/auth/register');
     const body = JSON.parse(opts.body as string);
     expect(body).toEqual({ name: 'John', email: 'j@test.com', password: 'pass', tenantId: 't1' });
@@ -442,28 +442,28 @@ describe('camp endpoints', () => {
 
   it('saveCamp with editId sends PUT /camps/5', async () => {
     await saveCamp({ name: 'Updated' }, 5);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
     expect(url).toContain('/camps/5');
   });
 
   it('saveCamp without editId sends POST /camps', async () => {
     await saveCamp({ name: 'New Camp' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/camps');
   });
 
   it('deleteCamp sends DELETE /camps/3', async () => {
     await deleteCamp(3);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/camps/3');
   });
 
   it('deleteCamp appends ?tenantId= when the owning tenant is provided', async () => {
     await deleteCamp(3, { tenantId: 'tenant-alpha' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/camps/3?tenantId=tenant-alpha');
     // The tenant id must stay readable as a single query param (URI-encoded).
@@ -488,21 +488,21 @@ describe('product endpoints', () => {
 
   it('saveProduct with editId PUT /products/2', async () => {
     await saveProduct({ name: 'Deluxe' }, 2);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
     expect(url).toContain('/products/2');
   });
 
   it('saveProduct without editId POST /products', async () => {
     await saveProduct({ name: 'Std' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/products');
   });
 
   it('deleteProduct DELETE /products/7', async () => {
     await deleteProduct(7);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/products/7');
   });
@@ -519,21 +519,21 @@ describe('room endpoints', () => {
 
   it('saveRoom with editId PUT /rooms/1', async () => {
     await saveRoom({ name: 'R1' }, 1);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
     expect(url).toContain('/rooms/1');
   });
 
   it('saveRoom without editId POST /rooms', async () => {
     await saveRoom({ name: 'R2' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/rooms');
   });
 
   it('deleteRoom DELETE /rooms/4', async () => {
     await deleteRoom(4);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/rooms/4');
   });
@@ -550,21 +550,21 @@ describe('rate plan endpoints', () => {
 
   it('saveRatePlan with editId PUT /rateplans/1', async () => {
     await saveRatePlan({ name: 'Summer' }, 1);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
     expect(url).toContain('/rateplans/1');
   });
 
   it('saveRatePlan without editId POST /rateplans', async () => {
     await saveRatePlan({ name: 'Winter' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/rateplans');
   });
 
   it('deleteRatePlan DELETE /rateplans/2', async () => {
     await deleteRatePlan(2);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/rateplans/2');
   });
@@ -598,21 +598,21 @@ describe('order endpoints', () => {
 
   it('saveOrder with editId PUT /orders/6', async () => {
     await saveOrder({ numberOfPeople: 3 }, 6);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
     expect(url).toContain('/orders/6');
   });
 
   it('saveOrder without editId POST /orders', async () => {
     await saveOrder({ numberOfPeople: 2 });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/orders');
   });
 
   it('updateOrderStatus PATCH /orders/7/status', async () => {
     await updateOrderStatus(7, 'confirmed');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PATCH');
     expect(url).toContain('/orders/7/status');
     const body = JSON.parse(opts.body as string);
@@ -621,14 +621,14 @@ describe('order endpoints', () => {
 
   it('deleteOrder DELETE /orders/20', async () => {
     await deleteOrder(20);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/orders/20');
   });
 
   it('bulkDeleteOrders POST /orders/bulk-delete', async () => {
     await bulkDeleteOrders(['10', '20']);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/orders/bulk-delete');
     const body = JSON.parse(opts.body as string);
@@ -678,7 +678,7 @@ describe('price override endpoints', () => {
     mockFetch({ success: true, productId: 'p1', count: 1 });
     const res = await setPriceOverrides({ productId: 'p1', overrides: [{ date: '2026-01-01', price: 120 }] });
     expect(res).toEqual({ success: true, productId: 'p1', count: 1 });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
     expect(url).toContain('/price-overrides');
     expect(JSON.parse(opts.body as string)).toEqual({ productId: 'p1', overrides: [{ date: '2026-01-01', price: 120 }] });
@@ -686,7 +686,7 @@ describe('price override endpoints', () => {
 
   it('deletePriceOverride DELETE /price-overrides with encoded product + date', async () => {
     await deletePriceOverride('p1', '2026-01-01');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/price-overrides?productId=p1&date=2026-01-01');
   });
@@ -708,21 +708,21 @@ describe('category endpoints', () => {
 
   it('saveCategory PUT /categories/1', async () => {
     await saveCategory({ name: 'Cat' }, 1);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
     expect(url).toContain('/categories/1');
   });
 
   it('saveCategory POST /categories', async () => {
     await saveCategory({ name: 'New' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/categories');
   });
 
   it('deleteCategory DELETE /categories/3', async () => {
     await deleteCategory(3);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/categories/3');
   });
@@ -775,8 +775,8 @@ describe('meal schedule endpoints', () => {
   });
 
   it('createMealSchedule POST /meal-schedules', async () => {
-    await createMealSchedule({ campId: '1', date: '2026-01-01', mealId: 'm1', packageType: 'standard', maxServings: 10 });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    await createMealSchedule({ campId: '1', date: '2026-01-01', mealId: 'm1', packageType: 'standard' as 'all' | 'full_board' | 'half_board', maxServings: 10 });
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/meal-schedules');
   });
@@ -853,7 +853,7 @@ describe('settings endpoints', () => {
 
   it('updateBranding PATCH /me', async () => {
     await updateBranding({ name: 'New Camp', primaryColor: '#ff6600' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PATCH');
     expect(url).toContain('/me');
     const body = JSON.parse(opts.body as string);
@@ -889,8 +889,8 @@ describe('tenant endpoints', () => {
   });
 
   it('createTenant POST /tenants', async () => {
-    await createTenant({ tenantName: 'New', subdomain: 'newcamp' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    await createTenant({ tenantName: 'New', subdomain: 'newcamp' } as any);
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/tenants');
   });
@@ -907,7 +907,7 @@ describe('super admin endpoints', () => {
 
   it('updateAdminTenant PATCH /admin/tenants/5', async () => {
     await updateAdminTenant(5, { name: 'Updated' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PATCH');
     expect(url).toContain('/admin/tenants/5');
   });
@@ -924,7 +924,7 @@ describe('super admin endpoints', () => {
 
   it('createAdminUser POST /admin/admins', async () => {
     await createAdminUser({ email: 'a@b.com', password: 'pass', role: 'admin' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/admin/admins');
   });
@@ -936,7 +936,7 @@ describe('super admin endpoints', () => {
 
   it('updateAdminUser PATCH /admin/admins/2', async () => {
     await updateAdminUser(2, { role: 'super_admin' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PATCH');
     expect(url).toContain('/admin/admins/2');
   });
@@ -948,19 +948,19 @@ describe('bulk tenant actions', () => {
 
   it('bulkSuspendTenants POST /admin/tenants/bulk/suspend', async () => {
     await bulkSuspendTenants(['1', '2']);
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1].body as string);
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
     expect(body).toEqual({ ids: ['1', '2'] });
   });
 
   it('bulkActivateTenants POST /admin/tenants/bulk/activate', async () => {
     await bulkActivateTenants(['3']);
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1].body as string);
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
     expect(body).toEqual({ ids: ['3'] });
   });
 
   it('bulkDeleteTenants POST /admin/tenants/bulk/delete', async () => {
     await bulkDeleteTenants(['1', '2', '3']);
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1].body as string);
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
     expect(body).toEqual({ ids: ['1', '2', '3'] });
   });
 });
@@ -1006,14 +1006,14 @@ describe('payment endpoints', () => {
 
   it('createPaymentIntent POST /payments/create-intent', async () => {
     await createPaymentIntent({ orderId: 'o1', amount: 5000 });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/payments/create-intent');
   });
 
   it('confirmPayment POST /payments/confirm', async () => {
     await confirmPayment({ paymentIntentId: 'pi_1', orderId: 'o2' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/payments/confirm');
   });
@@ -1025,7 +1025,7 @@ describe('POS endpoints', () => {
 
   it('posLogin POST /auth/pos-login (Phase 9 canonical path)', async () => {
     await posLogin('user', 'pass');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/auth/pos-login');
     expect(url).not.toContain('/pos/auth/login');
@@ -1052,7 +1052,7 @@ describe('POS endpoints', () => {
   });
 
   it('posCreateOrder POST /pos/orders', async () => {
-    await posCreateOrder({ items: [{ id: 1, qty: 2 }] });
+    await posCreateOrder({ items: [{ id: 1, qty: 2 }] } as any);
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/orders'), expect.objectContaining({ method: 'POST' }));
   });
 
@@ -1067,7 +1067,7 @@ describe('POS endpoints', () => {
   });
 
   it('posCloseShift POST /pos/shifts/close', async () => {
-    await posCloseShift({ closingCash: 200 });
+    await posCloseShift({ closingCash: 200 } as any);
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/pos/shifts/close'), expect.objectContaining({ method: 'POST' }));
   });
 
@@ -1091,7 +1091,7 @@ describe('inbox endpoints', () => {
 
   it('getInbox GET /inbox without params', async () => {
     await getInbox();
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/inbox');
     expect(opts.method).toBeUndefined();
   });
@@ -1107,7 +1107,7 @@ describe('inbox endpoints', () => {
 
   it('markInboxRead PATCH /inbox/read with lead body', async () => {
     await markInboxRead('lead', 'l1');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/inbox/read');
     expect(opts.method).toBe('PATCH');
     expect(JSON.parse(opts.body as string)).toEqual({ kind: 'lead', id: 'l1' });
@@ -1115,7 +1115,7 @@ describe('inbox endpoints', () => {
 
   it('markInboxRead PATCH with booking body', async () => {
     await markInboxRead('booking', 'b9');
-    const [, opts] = vi.mocked(fetch).mock.calls[0];
+    const [, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PATCH');
     expect(JSON.parse(opts.body as string)).toEqual({ kind: 'booking', id: 'b9' });
   });
@@ -1160,7 +1160,7 @@ describe('POS Users (Staff) endpoints', () => {
 
   it('createPosUser POST /pos-users', async () => {
     await createPosUser({ email: 'staff@test.com', password: 'pass', firstName: 'Jane', lastName: 'Doe' });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/pos-users');
     const body = JSON.parse(opts.body as string);
@@ -1172,7 +1172,7 @@ describe('POS Users (Staff) endpoints', () => {
       email: 'mgr@test.com', password: 'pass', firstName: 'Bob', lastName: 'Smith',
       username: 'bobsmith', phone: '555-0100', role: 'manager', department: 'Kitchen', employeeId: 'E001', storeId: 3,
     });
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1].body as string);
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
     expect(body.username).toBe('bobsmith');
     expect(body.role).toBe('manager');
     expect(body.storeId).toBe(3);
@@ -1180,7 +1180,7 @@ describe('POS Users (Staff) endpoints', () => {
 
   it('updatePosUser PATCH /pos-users/:id', async () => {
     await updatePosUser(5, { firstName: 'Updated', role: 'admin', isActive: false });
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PATCH');
     expect(url).toContain('/pos-users/5');
     const body = JSON.parse(opts.body as string);
@@ -1189,14 +1189,14 @@ describe('POS Users (Staff) endpoints', () => {
 
   it('deletePosUser DELETE /pos-users/:id', async () => {
     await deletePosUser(10);
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
     expect(url).toContain('/pos-users/10');
   });
 
   it('resetPosUserPassword POST /pos-users/:id/reset-password', async () => {
     await resetPosUserPassword(7, 'newPass123');
-    const [url, opts] = vi.mocked(fetch).mock.calls[0];
+    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
     expect(url).toContain('/pos-users/7/reset-password');
     const body = JSON.parse(opts.body as string);

@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete globalThis.EventSource;
+  delete (globalThis as any).EventSource;
   vi.useRealTimers();
 });
 
@@ -225,7 +225,7 @@ describe('useSseInbox', () => {
     });
     expect(result.current.connected).toBe(true);
 
-    rerender({ ...baseProps, token: undefined });
+    rerender({ ...baseProps, token: undefined as unknown as string });
     expect(result.current.connected).toBe(false);
     expect(FakeEventSource.instances[0].readyState).toBe(FakeEventSource.CLOSED);
   });

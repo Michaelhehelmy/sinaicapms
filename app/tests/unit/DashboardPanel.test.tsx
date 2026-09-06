@@ -61,10 +61,10 @@ const defaultHooks = {
   useProductsQuery: { data: [], isLoading: false, error: null },
   usePlansQuery: { data: [], isLoading: false, error: null },
   useMealsQuery: { data: [], isLoading: false, error: null },
-  useLowStock: { data: { items: [], total: 0, page: 1, pageSize: 20, hasMore: false }, isLoading: false, error: null },
+  useLowStock: { data: { data: [], total: 0, page: 1, pageSize: 20, hasMore: false }, isLoading: false, error: null },
 };
 
-function setupMocks(overrides: Partial<typeof defaultHooks> = {}) {
+function setupMocks(overrides: Record<string, any> = {}) {
   const merged = { ...defaultHooks, ...overrides };
   mockUseOrdersQuery.mockReturnValue(merged.useOrdersQuery);
   mockUseRoomsQuery.mockReturnValue(merged.useRoomsQuery);
@@ -181,7 +181,7 @@ describe('DashboardPanel', () => {
     setupMocks({
       useLowStock: {
         data: {
-          items: [
+          data: [
             { id: 'i1', name: 'Water Bottles', stockQuantity: 2, minStockLevel: 10, unit: 'pcs', category: 'Beverages', status: 'low' },
             { id: 'i2', name: 'Firewood', stockQuantity: 0, minStockLevel: 5, unit: 'kg', category: 'Supplies', status: 'out' },
             { id: 'i3', name: 'Sleeping Bags', stockQuantity: 1, minStockLevel: 4, unit: 'pcs', category: 'Gear', status: 'low' },
@@ -223,7 +223,7 @@ describe('DashboardPanel', () => {
     setupMocks({
       useLowStock: {
         data: {
-          items: [{ id: 'i1', name: 'Water Bottles', stockQuantity: 2, minStockLevel: 10, unit: 'pcs', category: 'Beverages', status: 'low' }],
+          data: [{ id: 'i1', name: 'Water Bottles', stockQuantity: 2, minStockLevel: 10, unit: 'pcs', category: 'Beverages', status: 'low' }],
           total: 1,
           page: 1,
           pageSize: 20,
@@ -236,5 +236,41 @@ describe('DashboardPanel', () => {
     render(<DashboardPanel campIds={['c1']} camps={[]} onNavigateToTab={onNavigateToTab} />);
     fireEvent.click(screen.getByTestId('low-stock-view-all'));
     expect(onNavigateToTab).toHaveBeenCalledWith('low-stock');
+  });
+
+  // ── First-run / next-step onboarding strip (T2) ─────────────────────
+  it('shows the onboarding strip with a Create-project CTA when the tenant has no camps', () => {
+    const onNavigateToTab = vi.fn();
+    setupMocks();
+    render(<DashboardPanel campIds={[]} camps={[]} onNavigateToTab={onNavigateToTab} />);
+    expect(screen.getByTestId('dashboard-onboarding-strip')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('onboarding-cta-projects'));
+    expect(onNavigateToTab).toHaveBeenCalledWith('camps');
+  });
+
+  it('shows the onboarding strip with an Add-room-types CTA when camps exist but products do not', () => {
+    const onNavigateToTab = vi.fn();
+    setupMocks({ useProductsQuery: { data: [], isLoading: false, error: null } });
+    render(<DashboardPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Camp Alpha' }] as never} onNavigateToTab={onNavigateToTab} />);
+    expect(screen.getByTestId('dashboard-onboarding-strip')).toBeInTheDocument();
+    expect(screen.queryByTestId('onboarding-cta-projects')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('onboarding-cta-rooms'));
+    expect(onNavigateToTab).toHaveBeenCalledWith('rooms');
+  });
+
+  it('hides the onboarding strip once the tenant has camps and products', () => {
+    setupMocks({
+      useProductsQuery: { data: [{ id: 'p1', campId: 'c1', name: 'Deluxe Room', category: 'room', basePrice: 100, stockQuantity: 5, minStockLevel: 2, status: 'active' }], isLoading: false, error: null },
+    });
+    render(<DashboardPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Camp Alpha' }] as never} />);
+    expect(screen.queryByTestId('dashboard-onboarding-strip')).not.toBeInTheDocument();
+  });
+
+  it('keeps the onboarding strip hidden while initial data is still loading', () => {
+    setupMocks({
+      useOrdersQuery: { data: { data: [], total: 0 }, isLoading: true, error: null, isFetching: false },
+    });
+    render(<DashboardPanel campIds={[]} camps={[]} />);
+    expect(screen.queryByTestId('dashboard-onboarding-strip')).not.toBeInTheDocument();
   });
 });

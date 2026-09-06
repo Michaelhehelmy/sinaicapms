@@ -8,7 +8,7 @@ import { GET as sitemapGet } from '@/pages/sitemap.xml';
 
 describe('api/health endpoint', () => {
   it('returns 200 with status ok and JSON content type', async () => {
-    const res = await healthGet();
+    const res = await (healthGet as () => Promise<Response>)();
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('application/json');
     const body = await res.json();
@@ -19,7 +19,7 @@ describe('api/health endpoint', () => {
 
 describe('robots.txt endpoint', () => {
   it('returns robots directives with text content type', async () => {
-    const res = await robotsGet();
+    const res = await (robotsGet as () => Promise<Response>)();
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('text/plain');
     const text = await res.text();
@@ -46,7 +46,7 @@ describe('sitemap.xml endpoint', () => {
       ok: true,
       json: async () => [],
     });
-    const res = await sitemapGet({ site: new URL('https://sinaicamps.com/') });
+    const res = await sitemapGet({ site: new URL('https://sinaicamps.com/') } as any);
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toContain('application/xml');
     const text = await res.text();
@@ -64,7 +64,7 @@ describe('sitemap.xml endpoint', () => {
         { id: 't2', subdomain: '', name: 'No Slug' },
       ],
     });
-    const res = await sitemapGet({ site: new URL('https://example.com') });
+    const res = await sitemapGet({ site: new URL('https://example.com') } as any);
     const text = await res.text();
     expect(text).toContain('<loc>https://example.com/camp/wadi</loc>');
     expect(text).toContain('<loc>https://example.com/camp/wadi/menu</loc>');
@@ -77,7 +77,7 @@ describe('sitemap.xml endpoint', () => {
 
   it('falls back to default site and empty tenants when fetch fails', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
-    const res = await sitemapGet({ site: undefined });
+    const res = await sitemapGet({ site: undefined } as any);
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('<loc>https://sinaicamps.com/</loc>');
@@ -88,7 +88,7 @@ describe('sitemap.xml endpoint', () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
     });
-    const res = await sitemapGet({ site: new URL('https://example.com') });
+    const res = await sitemapGet({ site: new URL('https://example.com') } as any);
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).not.toContain('/camp/');

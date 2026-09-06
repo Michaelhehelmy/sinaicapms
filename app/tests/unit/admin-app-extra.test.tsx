@@ -208,12 +208,16 @@ const queryState = vi.hoisted(() => ({
   ],
   inboxUnread: 3,
   settings: { primaryColor: '#4a7c4f' },
+  products: [{ id: 'p1', campId: 'c1', name: 'Deluxe Room', category: 'room', basePrice: 100, stockQuantity: 5, minStockLevel: 2, status: 'active' }],
+  rooms: [{ id: 'r1', campId: 'c1', productId: 'p1', name: 'Tent 1', status: 'available' }],
 }));
 
 const useQueryHooksMock = vi.hoisted(() => {
   return {
     queryKeys: { camps: ['admin', 'camps'], settings: ['admin', 'settings'], inboxUnread: ['admin', 'inbox', 'unread'] },
     useCampsQuery: () => ({ data: queryState.camps, isLoading: false }),
+    useProductsQuery: () => ({ data: queryState.products, isLoading: false }),
+    useRoomsQuery: () => ({ data: queryState.rooms, isLoading: false }),
     useInboxUnreadQuery: () => ({ data: queryState.inboxUnread }),
     useSettingsQuery: () => ({ data: queryState.settings }),
   };
@@ -464,7 +468,7 @@ describe('AdminApp extra coverage', () => {
   });
 
   it('builds the shell theme when settings has no primaryColor', () => {
-    queryState.settings = {};
+    queryState.settings = {} as unknown as { primaryColor: string };
     render(<AdminApp />);
     // Shell still renders with default theme vars.
     expect(screen.getByTestId('admin-sidebar')).toBeInTheDocument();
@@ -478,5 +482,51 @@ describe('AdminApp extra coverage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('dashboard-panel')).toBeInTheDocument();
     });
+  });
+
+  // ── Nav prerequisite pills (T2) ─────────────────────────────────────
+  it('shows Setup pills for project/product/room dependent tabs when the tenant is empty', () => {
+    queryState.camps = [];
+    queryState.products = [];
+    queryState.rooms = [];
+    render(<AdminApp />);
+    const pills = screen.getAllByTestId(/^nav-prereq-/).map((el) => el.getAttribute('data-testid'));
+    expect(pills).toEqual(
+      expect.arrayContaining([
+        'nav-prereq-rooms',
+        'nav-prereq-rateplans',
+        'nav-prereq-reservations',
+        'nav-prereq-calendar',
+        'nav-prereq-meals',
+        'nav-prereq-menu-planner',
+        'nav-prereq-menu',
+        'nav-prereq-planning',
+      ]),
+    );
+    // Ungated tabs never get a pill.
+    expect(screen.queryByTestId('nav-prereq-dashboard')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-prereq-camps')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-prereq-inbox')).not.toBeInTheDocument();
+    queryState.camps = [
+      { id: 'c1', name: 'Camp Alpha', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' },
+      { id: 'c2', name: 'Camp Beta', location: 'Cairo', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 30, status: 'active', notes: '' },
+    ];
+    queryState.products = [{ id: 'p1', campId: 'c1', name: 'Deluxe Room', category: 'room', basePrice: 100, stockQuantity: 5, minStockLevel: 2, status: 'active' }];
+    queryState.rooms = [{ id: 'r1', campId: 'c1', productId: 'p1', name: 'Tent 1', status: 'available' }];
+  });
+
+  it('shows only the product pill when camps exist but products are empty', () => {
+    queryState.products = [];
+    render(<AdminApp />);
+    expect(screen.getByTestId('nav-prereq-rateplans')).toBeInTheDocument();
+    // Project-dependent and room-dependent tabs have their prereqs satisfied.
+    expect(screen.queryByTestId('nav-prereq-rooms')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-prereq-reservations')).not.toBeInTheDocument();
+    queryState.products = [{ id: 'p1', campId: 'c1', name: 'Deluxe Room', category: 'room', basePrice: 100, stockQuantity: 5, minStockLevel: 2, status: 'active' }];
+  });
+
+  it('hides every Setup pill when camps, products, and rooms all exist', () => {
+    render(<AdminApp />);
+    expect(screen.queryByTestId(/^nav-prereq-/)).not.toBeInTheDocument();
   });
 });

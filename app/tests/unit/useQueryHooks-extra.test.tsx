@@ -96,6 +96,13 @@ vi.mock('@/lib/api', () => {
     getTenantBilling: mkObj(),
     getAdmins: mk(),
     getAdminSettings: mkObj(),
+    getAdminAudit: mk(),
+    getAdminHealth: mk(),
+    getAdminHealthMetrics: mk(),
+    getAdminPerformance: mk(),
+    getAdminReports: mk(),
+    getAdminScheduledReports: mk(),
+    getAdminSubscriptions: mk(),
   };
 });
 
@@ -192,22 +199,22 @@ function createWrapper() {
 }
 
 /** Render a query hook and wait until its data resolves. */
-async function mountQuery<H extends (...a: never[]) => unknown>(hook: H, ...args: never[]) {
+async function mountQuery<H extends (...args: any[]) => any>(hook: H, ...args: any[]) {
   const { wrapper } = createWrapper();
-  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  const { result } = renderHook(() => (hook as any)(...args), { wrapper });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   return result;
 }
 
 /** Render a query hook whose api getter rejects — covers throwOnError error path. */
-async function mountQueryError<H extends (...a: never[]) => unknown>(
+async function mountQueryError<H extends (...args: any[]) => any>(
   hook: H,
-  apiFn: () => unknown,
-  ...args: never[]
+  apiFn: (...apiArgs: any[]) => unknown,
+  ...args: any[]
 ) {
   vi.mocked(apiFn).mockRejectedValue(new Error('boom'));
   const { wrapper } = createWrapper();
-  const { result } = renderHook(() => (hook as (...a: unknown[]) => unknown)(...args), { wrapper });
+  const { result } = renderHook(() => (hook as any)(...args), { wrapper });
   await waitFor(() => expect(result.current.isError).toBe(true));
   return result;
 }
@@ -236,7 +243,7 @@ describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM
           creates: [{ key: 'color', value: 'red' }],
           updates: [{ id: 'u1', value: 'blue' }],
           deletes: ['d1'],
-        });
+        } as never);
       });
       expect(api.setProjectMeta).toHaveBeenCalledWith('p1', 'color', 'red');
       expect(api.updateProjectMeta).toHaveBeenCalledWith('p1', 'u1', 'blue');
@@ -421,7 +428,7 @@ describe('useQueryHooks — additional coverage (reports/HR/financial/supply/CRM
   });
 
   describe('throwOnError error paths (toast + return false)', () => {
-    const errorCases: Array<[string, never, () => unknown, never[]]> = [
+    const errorCases: Array<[string, never, (...args: any[]) => unknown, any[]]> = [
       ['useTopProductsQuery', useTopProductsQuery as never, api.getTopProducts, [300, 10]],
       ['useKitchenPerformanceQuery', useKitchenPerformanceQuery as never, api.getKitchenPerformance, [7]],
       ['useAnalyticsLowStockQuery', useAnalyticsLowStockQuery as never, api.getAnalyticsLowStock, []],

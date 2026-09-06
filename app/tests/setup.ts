@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
 
 // Mock scrollIntoView (not available in jsdom)
 if (!HTMLElement.prototype.scrollIntoView) {
@@ -8,7 +9,7 @@ if (!HTMLElement.prototype.scrollIntoView) {
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation((query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -22,9 +23,21 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Mock IntersectionObserver
 class MockIntersectionObserver {
+  readonly root: Element | Document | null;
+  readonly rootMargin: string;
+  readonly thresholds: ReadonlyArray<number>;
+
+  constructor(_callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+    this.root = options?.root ?? null;
+    this.rootMargin = options?.rootMargin ?? '';
+    const threshold = options?.threshold;
+    this.thresholds = Array.isArray(threshold) ? threshold : threshold != null ? [threshold] : [];
+  }
+
   observe() { return null; }
   unobserve() { return null; }
   disconnect() { return null; }
+  takeRecords() { return []; }
 }
 window.IntersectionObserver = MockIntersectionObserver;
 

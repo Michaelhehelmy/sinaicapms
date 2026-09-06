@@ -63,7 +63,7 @@ vi.mock('@/components/ui/DataTable', () => ({
     actions?: (row: unknown) => React.ReactNode;
   }) => (
     <div data-testid="data-table">
-      {data.map((row: Record<string, unknown>, i: number) => (
+      {data.map((row: any, i: number) => (
         <div key={i} data-testid="data-row">
           {columns.map((col) => (
             <span key={col.key}>{col.render ? col.render(row) : String(row[col.key] ?? '')}</span>

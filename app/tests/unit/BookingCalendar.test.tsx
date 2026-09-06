@@ -125,13 +125,13 @@ function setupApi(overrides: Partial<typeof api> = {}) {
   Object.assign(api, overrides);
 }
 
-function renderCalendar() {
+function renderCalendar(props: Partial<React.ComponentProps<typeof BookingCalendar>> = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   const utils = render(
     <QueryClientProvider client={queryClient}>
-      <BookingCalendar campIds={['c1']} camps={[camp]} />
+      <BookingCalendar campIds={['c1']} camps={[camp]} {...props} />
     </QueryClientProvider>,
   );
   return { queryClient, ...utils };
@@ -410,11 +410,14 @@ describe('BookingCalendar', () => {
     expect(await screen.findByTestId('loading-spinner')).toBeInTheDocument();
   });
 
-  it('shows an empty state when there are no room types', async () => {
+  it('shows an empty state with a rooms CTA when there are no room types', async () => {
     api.getProducts.mockResolvedValue([]);
     api.getRooms.mockResolvedValue([]);
-    renderCalendar();
+    const onNavigateToTab = vi.fn();
+    renderCalendar({ onNavigateToTab });
     expect(await screen.findByText('No rooms available')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Go to Rooms'));
+    expect(onNavigateToTab).toHaveBeenCalledWith('rooms');
   });
 
   it('supports keyboard arrow navigation between days', async () => {

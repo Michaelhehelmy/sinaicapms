@@ -232,7 +232,7 @@ describe('MenuPlannerPanel', () => {
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
     ];
     renderPanel();
-    fireEvent.click(screen.getByTitle('Remove meal'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove meal' }));
     await waitFor(() => {
       expect(screen.getByText('Confirm')).toBeInTheDocument();
     });
@@ -251,7 +251,7 @@ describe('MenuPlannerPanel', () => {
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
     ];
     renderPanel();
-    fireEvent.click(screen.getByTitle('Remove meal'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove meal' }));
     await waitFor(() => {
       expect(screen.getByText('Confirm')).toBeInTheDocument();
     });
@@ -259,7 +259,7 @@ describe('MenuPlannerPanel', () => {
     await waitFor(() => {
       expect(screen.queryByText('Confirm')).not.toBeInTheDocument();
     });
-    expect(screen.getByTitle('Remove meal')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove meal' })).toBeInTheDocument();
   });
 
   it('shows error when removing a meal fails', async () => {
@@ -270,7 +270,7 @@ describe('MenuPlannerPanel', () => {
       { id: 's1', campId: 'c1', date: dateStr, mealId: 'm1', mealName: 'Grilled Chicken', packageType: 'all', maxServings: 100, campName: 'Camp 1' },
     ];
     renderPanel();
-    fireEvent.click(screen.getByTitle('Remove meal'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove meal' }));
     await waitFor(() => {
       expect(screen.getByText('Confirm')).toBeInTheDocument();
     });

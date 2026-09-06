@@ -121,7 +121,7 @@ describe('useCamps', () => {
   });
 
   it('cleanup on unmount prevents state update', async () => {
-    let resolveFetch: (value: unknown) => void;
+    let resolveFetch: (value: any) => void;
     vi.mocked(getCamps).mockImplementation(
       () => new Promise((resolve) => { resolveFetch = resolve; }),
     );
@@ -155,7 +155,7 @@ describe('useOrders', () => {
     vi.mocked(getOrders).mockResolvedValue(mockData as never);
 
     await act(async () => {
-      render(<HookConsumer hook={useOrders} />);
+      render(<HookConsumer hook={useOrders as never} />);
     });
 
     expect(screen.getByTestId('loading').textContent).toBe('false');
@@ -183,7 +183,7 @@ describe('remaining data hooks', () => {
     ['useCategories', useCategories, getCategories, [{ id: 'c1', name: 'Category A', description: null, parentId: null, active: 1, position: 1 }]],
     ['useMealCategories', useMealCategories, getMealCategories, [{ id: 'mc1', name: 'Breakfast', position: 1 }]],
     ['useSettings', useSettings, getMe, [{ id: 't1', name: 'Tenant', primaryColor: '#fff', whatsappNumber: '', phone: '', email: '', location: '', logoUrl: '', faviconUrl: '', description: '', footerText: '', currency: 'EGP' }]],
-  ] as Array<[string, () => unknown, { mockResolvedValue: (v: unknown) => void }, unknown]>)(
+  ] as unknown as Array<[string, () => unknown, { mockResolvedValue: (v: unknown) => void }, unknown]>)(
     'resolves data for %s',
     async (_name, hook, apiFn, mockData) => {
       apiFn.mockResolvedValue(mockData);
@@ -199,7 +199,7 @@ describe('remaining data hooks', () => {
   );
 
   it('useMealSchedules passes params to the api', async () => {
-    getMealSchedules.mockResolvedValue([{ id: 'ms1', campId: 'c1', date: '2026-01-01' }]);
+    vi.mocked(getMealSchedules).mockResolvedValue([{ id: 'ms1', campId: 'c1', date: '2026-01-01' }] as never);
 
     await act(async () => {
       render(<HookConsumer hook={(() => useMealSchedules({ campId: 'c1' })) as never} />);
@@ -210,7 +210,7 @@ describe('remaining data hooks', () => {
   });
 
   it('useMealSchedules works without params', async () => {
-    getMealSchedules.mockResolvedValue([{ id: 'ms2', campId: 'c2', date: '2026-01-02' }]);
+    vi.mocked(getMealSchedules).mockResolvedValue([{ id: 'ms2', campId: 'c2', date: '2026-01-02' }] as never);
 
     await act(async () => {
       render(<HookConsumer hook={useMealSchedules as never} />);

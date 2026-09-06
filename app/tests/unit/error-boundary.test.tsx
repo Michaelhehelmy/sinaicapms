@@ -29,7 +29,7 @@ class TestErrorBoundary extends React.Component<
 }
 
 // ── Component that throws ─────────────────────────────────
-function BrokenComponent() {
+function BrokenComponent(): React.ReactNode {
   throw new Error('Test error');
 }
 

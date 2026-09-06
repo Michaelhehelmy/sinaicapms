@@ -48,7 +48,7 @@ vi.mock('@/components/ui/DataTable', () => ({
   }) => (
     <div data-testid="data-table">
       {data.length === 0 && emptyMessage && <p>{emptyMessage}</p>}
-      {data.map((row: Record<string, unknown>, i: number) => (
+      {data.map((row: any, i: number) => (
         <div key={i} data-testid="data-row">
           {columns.map((col) => (
             <span key={col.key}>{col.render ? col.render(row) : String(row[col.key] ?? '')}</span>
@@ -264,16 +264,16 @@ vi.mock('@/hooks/useQueryHooks', () => {
 const hooks = vi.mocked(await import('@/hooks/useQueryHooks'));
 
 function setData(meals: unknown[], cats: unknown[]) {
-  (hooks as Record<string, unknown>).__setMealsData(meals);
-  (hooks as Record<string, unknown>).__setCatsData(cats);
+  (hooks as Record<string, any>).__setMealsData(meals);
+  (hooks as Record<string, any>).__setCatsData(cats);
 }
 
 describe('MealsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setData([], []);
-    (hooks as Record<string, unknown>).__setMealsLoading(false);
-    (hooks as Record<string, unknown>).__setCatsLoading(false);
+    (hooks as Record<string, any>).__setMealsLoading(false);
+    (hooks as Record<string, any>).__setCatsLoading(false);
   });
 
   it('renders with meal categories in data table', () => {
@@ -312,8 +312,8 @@ describe('MealsPanel', () => {
   });
 
   it('shows loading spinner while data is loading', () => {
-    (hooks as Record<string, unknown>).__setMealsLoading(true);
-    (hooks as Record<string, unknown>).__setCatsLoading(true);
+    (hooks as Record<string, any>).__setMealsLoading(true);
+    (hooks as Record<string, any>).__setCatsLoading(true);
     renderPanel();
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
   });

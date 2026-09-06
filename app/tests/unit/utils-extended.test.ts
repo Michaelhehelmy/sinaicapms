@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { escHtml, formatCurrency, formatDate, cn, slugify, debounce, truncate } from '@/lib/utils';
 
 describe('escHtml', () => {

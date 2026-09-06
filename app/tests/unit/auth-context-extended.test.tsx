@@ -231,7 +231,7 @@ describe('AuthProvider extended', () => {
   });
 
   it('ignores auth result after unmount', async () => {
-    let resolveMe!: (v: unknown) => void;
+    let resolveMe!: (v: any) => void;
     vi.mocked(getAuthMe).mockReturnValue(new Promise((res) => { resolveMe = res; }));
     localStorage.setItem('sinaicamps_token', 'valid');
 

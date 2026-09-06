@@ -32,7 +32,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
   useProductsQuery: () => ({ data: mockProducts, isLoading: false, refetch: mockRefreshTypes }),
   useCampsQuery: () => ({ data: [] }),
   useSaveRoomMutation: (editId?: string) => ({
-    mutateAsync: async (data: unknown) => {
+    mutateAsync: async (data: any) => {
       try {
         return await api.saveRoom(data, editId);
       } catch (err) {
@@ -42,7 +42,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
   }),
   useDeleteRoomMutation: () => ({ mutateAsync: (id: string) => api.deleteRoom(id) }),
   useSaveProductMutation: (editId?: string) => ({
-    mutateAsync: async (data: unknown) => {
+    mutateAsync: async (data: any) => {
       try {
         return await api.saveProduct(data, editId);
       } catch (err) {
@@ -74,9 +74,12 @@ const mockDeleteProduct = vi.mocked(api.deleteProduct);
 
 const camps = [{ id: 'c1', name: 'Camp 1', location: 'Sinai', startDate: '2025-01-01', endDate: '2025-12-31', capacity: 50, status: 'active', notes: '' }];
 
+const defaultProducts = [...mockProducts];
+
 describe('RoomsPanel', () => {
   afterEach(() => {
     state.rooms = [];
+    mockProducts.splice(0, mockProducts.length, ...defaultProducts);
     vi.clearAllMocks();
   });
 
@@ -177,22 +180,38 @@ describe('RoomsPanel', () => {
     });
   });
 
-  it('requires a camp assignment when no camp is available', async () => {
-    mockSaveProduct.mockResolvedValue({} as any);
-    // Empty campIds/camps means activeCampId is '' — saving a product with no
-    // campIds hits the "Assign the product to the camp." guard.
-    render(<RoomsPanel campIds={[]} camps={[]} />);
-    fireEvent.click(screen.getByText('Products'));
-    await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
-    fireEvent.click(screen.getAllByText('Add Product')[0]);
-    await waitFor(() => { expect(screen.getByText('Add New Product')).toBeInTheDocument(); });
-    fireEvent.change(screen.getByPlaceholderText('Room type name'), { target: { value: 'Type A' } });
-    fireEvent.change(screen.getByLabelText('Capacity *'), { target: { value: '2' } });
-    fireEvent.click(screen.getByText('Save Product'));
+  it('shows a project-dependency empty state with CTA when no camps exist', async () => {
+    const onNavigateToTab = vi.fn();
+    // Empty campIds/camps means there is nothing to hang rooms or product
+    // types off — the panel renders a dependency EmptyState instead.
+    render(<RoomsPanel campIds={[]} camps={[]} onNavigateToTab={onNavigateToTab} />);
+    expect(screen.getByText('No projects yet')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Create project'));
+    expect(onNavigateToTab).toHaveBeenCalledWith('camps');
+    // Dependency gate: no project → no Add Room / Add Product affordances.
+    expect(screen.queryByText('Add Room')).not.toBeInTheDocument();
+    expect(screen.queryByText('Add Product')).not.toBeInTheDocument();
+  });
+
+  it('shows a room-type-dependency empty state when a camp has no product types', async () => {
+    mockProducts.splice(0, mockProducts.length);
+    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    expect(screen.getByText('No room types yet')).toBeInTheDocument();
+    // CTA flips to the Products section instead of opening a dead room form.
+    fireEvent.click(screen.getByText('Create room type'));
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith('Assign the product to the camp.', 'warning');
+      expect(screen.getByText('No products yet')).toBeInTheDocument();
     });
-    expect(mockSaveProduct).not.toHaveBeenCalled();
+  });
+
+  it('Add Room flips to the Products section when no product types exist', async () => {
+    mockProducts.splice(0, mockProducts.length);
+    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    fireEvent.click(screen.getAllByText('Add Room')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('No products yet')).toBeInTheDocument();
+      expect(screen.queryByText('Add New Room')).not.toBeInTheDocument();
+    });
   });
 
   it('auto-assigns the single camp to a new product', async () => {

@@ -156,6 +156,7 @@ function mockFetch(data: unknown = { ok: true }, ok = true) {
     ok,
     status: ok ? 200 : 400,
     json: () => Promise.resolve(data),
+    blob: () => Promise.resolve(new Blob([JSON.stringify(data)], { type: 'text/csv' })),
     headers: { get: () => 'application/json' },
   } as unknown as Response);
 }
@@ -1162,6 +1163,7 @@ describe('admin settings / subscriptions / reports / performance', () => {
   it('exportAdminPerformance', async () => {
     mockFetch({ url: 'https://example.com/export.csv' });
     const result = await exportAdminPerformance('csv');
-    expect(result).toEqual({ url: 'https://example.com/export.csv' });
+    expect(result).toBeInstanceOf(Blob);
+    expect(result.size).toBeGreaterThan(0);
   });
 });

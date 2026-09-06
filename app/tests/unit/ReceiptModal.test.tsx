@@ -19,7 +19,7 @@ const order: Order = {
 };
 
 const user: PosUser = {
-  id: 1,
+  id: 1 as unknown as string,
   username: 'ahmed',
   email: 'ahmed@example.com',
   firstName: 'Ahmed',
