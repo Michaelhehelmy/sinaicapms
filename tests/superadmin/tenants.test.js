@@ -32,12 +32,16 @@ describe('2. Super Admin - Tenant Management', () => {
   it('POST /api/tenants → creates a new tenant', async () => {
     const res = await fetch(`${API_BASE_URL}/api/tenants`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${superAdminToken}`
+      },
       body: JSON.stringify({
         id: subdomain,
         subdomain: subdomain,
         name: 'Super Tenant Test Camp',
-        location: 'Sinaicamps Mgmt Area'
+        location: 'Sinaicamps Mgmt Area',
+        admin_password: 'TenantAdmin123!'
       })
     });
     expect(res.status).toBe(200);
@@ -76,11 +80,15 @@ describe('2. Super Admin - Tenant Management', () => {
     // Create a temporary tenant first
     const createRes = await fetch(`${API_BASE_URL}/api/tenants`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${superAdminToken}`
+      },
       body: JSON.stringify({
         id: tempSubdomain,
         subdomain: tempSubdomain,
-        name: 'Temporary Deletable Camp'
+        name: 'Temporary Deletable Camp',
+        admin_password: 'TenantAdmin123!'
       })
     });
     const createData = await createRes.json();

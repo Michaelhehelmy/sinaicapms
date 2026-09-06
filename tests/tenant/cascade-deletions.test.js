@@ -29,7 +29,7 @@ describe('18. Tenant Admin - Cascade Deletions & Foreign Key Restrictions', () =
     }
   });
 
-  it('DELETE /api/camps/:id → cascades to delete rooms, plans, and staff', async () => {
+  it('DELETE /api/camps/:id → cascades to delete rooms and plans (staff is tenant-scoped)', async () => {
     // 1. Create a camp
     const campRes = await fetch(`${API_BASE_URL}/api/camps`, {
       method: 'POST',
@@ -43,7 +43,8 @@ describe('18. Tenant Admin - Cascade Deletions & Foreign Key Restrictions', () =
     const camp = await campRes.json();
     const campId = camp.id;
 
-    // 2. Create product and room
+    // 2. Create product and room (camp_id is required when a tenant has
+    //    multiple projects — always send it explicitly)
     const rtRes = await fetch(`${API_BASE_URL}/api/products`, {
       method: 'POST',
       headers: {
@@ -51,7 +52,7 @@ describe('18. Tenant Admin - Cascade Deletions & Foreign Key Restrictions', () =
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       },
-      body: JSON.stringify({ name: 'Waterfall Cabin', capacity: 2, base_price: 150, campIds: [campId] })
+      body: JSON.stringify({ name: 'Waterfall Cabin', capacity: 2, base_price: 150, camp_id: campId })
     });
     const rt = await rtRes.json();
     const productId = rt.id;
@@ -81,15 +82,15 @@ describe('18. Tenant Admin - Cascade Deletions & Foreign Key Restrictions', () =
     const plan = await planRes.json();
     const planId = plan.id;
 
-    // 4. Create staff
-    const staffRes = await fetch(`${API_BASE_URL}/api/staff`, {
+    // 4. Create staff as a tenant-scoped POS user (POST /api/pos-users)
+    const staffRes = await fetch(`${API_BASE_URL}/api/pos-users`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       },
-      body: JSON.stringify({ camp_id: campId, name: 'Hike Guide Jim', role: 'guide', email: `jim@${tenantId}.com` })
+      body: JSON.stringify({ email: `jim@${tenantId}.com`, password: 'Password123', first_name: 'Hike', last_name: 'Guide Jim', role: 'manager' })
     });
     const staff = await staffRes.json();
     const staffId = staff.id;
@@ -139,15 +140,17 @@ describe('18. Tenant Admin - Cascade Deletions & Foreign Key Restrictions', () =
     const plans = await plansRes.json();
     expect(plans.find(p => p.id === planId)).toBeUndefined();
 
-    // Verify staff is deleted
-    const staffListRes = await fetch(`${API_BASE_URL}/api/staff`, {
+    // Verify staff is NOT cascade-deleted — POS users are tenant-scoped,
+    // not camp-scoped. The camp delete must leave them intact.
+    const staffListRes = await fetch(`${API_BASE_URL}/api/pos-users`, {
       headers: {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       }
     });
-    const staffList = await staffListRes.json();
-    expect(staffList.find(s => s.id === staffId)).toBeUndefined();
+    const staffListData = await staffListRes.json();
+    const staffList = Array.isArray(staffListData) ? staffListData : staffListData.data;
+    expect(staffList.find(s => s.id === staffId)).toBeDefined();
   });
 
   it('DELETE /api/products/:id → is restricted (fails with 400) if rooms are still assigned', async () => {
@@ -172,7 +175,7 @@ describe('18. Tenant Admin - Cascade Deletions & Foreign Key Restrictions', () =
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       },
-      body: JSON.stringify({ name: 'Restricted Cabin', capacity: 2, base_price: 150, campIds: [campId] })
+      body: JSON.stringify({ name: 'Restricted Cabin', capacity: 2, base_price: 150, camp_id: campId })
     });
     const rt = await rtRes.json();
     const productId = rt.id;

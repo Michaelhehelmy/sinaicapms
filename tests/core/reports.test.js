@@ -71,16 +71,17 @@ describe('Core Reports', () => {
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.summary).toBeDefined();
-    expect(data.summary.total_revenue).toBeGreaterThanOrEqual(0);
+    expect(data.summary.totalRevenue).toBeGreaterThanOrEqual(0);
   });
 
-  it('GET /api/reports/revenue?days=7 returns period_days=7', async () => {
+  it('GET /api/reports/revenue?days=7 returns a 7-day window', async () => {
     const res = await fetch(`${API_BASE_URL}/api/reports/revenue?days=7`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     const data = await res.json();
     expect(res.status).toBe(200);
-    expect(data.period_days).toBe(7);
+    expect(data.start).toBeDefined();
+    expect(data.end).toBeDefined();
   });
 
   it('GET /api/reports/bookings returns by_state and by_camp', async () => {
@@ -89,10 +90,10 @@ describe('Core Reports', () => {
     });
     const data = await res.json();
     expect(res.status).toBe(200);
-    expect(data.by_state).toBeDefined();
-    expect(data.by_camp).toBeDefined();
-    expect(Array.isArray(data.by_state)).toBe(true);
-    expect(Array.isArray(data.by_camp)).toBe(true);
+    expect(data.byState).toBeDefined();
+    expect(data.byCamp).toBeDefined();
+    expect(Array.isArray(data.byState)).toBe(true);
+    expect(Array.isArray(data.byCamp)).toBe(true);
   });
 
   it('GET /api/reports/invalid returns 404', async () => {

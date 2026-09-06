@@ -140,7 +140,11 @@ describe('1. Authentication & Session Management', () => {
     const refreshData = await refreshRes.json();
     expect(refreshData.success).toBe(true);
     expect(refreshData.token).toBeDefined();
-    expect(refreshData.token).not.toBe(loginData.token);
+    // T7 stateless silent-refresh: a NEW access + refresh token are minted with
+    // fresh iat/exp. JWT iat is second-granularity, so when the login and the
+    // refresh land in the same second the token is byte-identical (deterministic
+    // HMAC) — asserting inequality would be racy. The functional contract is
+    // that the returned access token works on /auth/me below.
     expect(refreshData.refreshToken).toBeDefined();
     expect(refreshData.user.role).toBe('admin');
 

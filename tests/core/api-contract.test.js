@@ -110,13 +110,15 @@ describe('API Contract — Response Shape Validation', () => {
 
   // ── GET /api/orders ────────────────────────────────────
   describe('GET /api/orders', () => {
-    it('returns array', async () => {
+    it('returns paginated array', async () => {
       const res = await fetch(`${API_BASE_URL}/api/orders`, {
         headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
       });
       expect(res.ok).toBeTruthy();
       const data = await res.json();
-      expect(Array.isArray(data)).toBeTruthy();
+      // T6: orders list is a pagination envelope (data/total/page/pageSize)
+      expect(data).toHaveProperty('data');
+      expect(Array.isArray(data.data)).toBeTruthy();
     });
   });
 

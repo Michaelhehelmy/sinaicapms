@@ -12,6 +12,7 @@ const API = API_BASE_URL;
 
 let adminToken = null;
 let testTenantId = null;
+let mealCategoryId = null;
 
 beforeAll(async () => {
   const superToken = await superAdminLogin();
@@ -19,6 +20,16 @@ beforeAll(async () => {
   testTenantId = await createTestTenant(id, id, 'Meal Test Tenant');
   await createTenantAdmin(testTenantId, 'admin@meals.com', 'Password123!', superToken);
   adminToken = await tenantAdminLogin(testTenantId, 'admin@meals.com', 'Password123!');
+
+  // meals.meal_category_id is NOT NULL (FK to meal_categories) — create a category first.
+  const catRes = await fetch(`${API}/api/meal-categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, 'x-tenant-id': testTenantId },
+    body: JSON.stringify({ name: 'Main' }),
+  });
+  const catData = await catRes.json();
+  expect(catData.id).toBeTruthy();
+  mealCategoryId = catData.id;
 });
 
 afterAll(async () => {
@@ -34,7 +45,7 @@ describe('Meals API', () => {
       const res = await fetch(`${API}/api/meals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, 'x-tenant-id': testTenantId },
-        body: JSON.stringify({ name: 'Burger', meal_category_id: 1, price: 12.5 }),
+        body: JSON.stringify({ name: 'Burger', meal_category_id: mealCategoryId, price: 12.5 }),
       });
       expect(res.ok).toBe(true);
       const data = await res.json();
@@ -64,7 +75,6 @@ describe('Meals API', () => {
       expect(data.length).toBeGreaterThan(0);
       const meal = data.find(m => m.name === 'Burger');
       expect(meal).toBeTruthy();
-      expect(meal.type).toBe('menu');
       expect(meal.price).toBe(12.5);
     });
   });

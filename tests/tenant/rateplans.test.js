@@ -72,13 +72,13 @@ describe('Rate Plans & Pricing Engine', () => {
   });
 
   it('RATE-03: Fallback to base price when no rate plan covers a date', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?room_id=${roomId}&check_in=2026-08-01&check_out=2026-08-04`, {
+    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?roomId=${roomId}&checkIn=2026-08-01&checkOut=2026-08-04`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     expect(res.status).toBe(200);
     const data = await res.json();
     // 3 nights * base price $100 = $300
-    expect(data.total_price).toBe(300);
+    expect(data.totalPrice).toBe(300);
   });
 
   it('RATE-01: Night-by-night pricing – different rates apply on different dates', async () => {
@@ -95,7 +95,7 @@ describe('Rate Plans & Pricing Engine', () => {
     const rp1 = await rp1Res.json();
     expect(rp1.success).toBe(true);
 
-    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?room_id=${roomId}&check_in=2026-08-01&check_out=2026-08-04`, {
+    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?roomId=${roomId}&checkIn=2026-08-01&checkOut=2026-08-04`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     expect(res.status).toBe(200);
@@ -104,7 +104,7 @@ describe('Rate Plans & Pricing Engine', () => {
     // Aug 2: rate plan matches ($150)
     // Aug 3: fallback to base ($100)
     // Total = 150 + 150 + 100 = 400
-    expect(data.total_price).toBe(400);
+    expect(data.totalPrice).toBe(400);
 
     // Cleanup rate plan
     await fetch(`${API_BASE_URL}/api/rateplans/${rp1.id}`, {
@@ -128,7 +128,7 @@ describe('Rate Plans & Pricing Engine', () => {
       body: JSON.stringify({ product_id: productId, name: 'Flash Peak', price_per_night: 200, start_date: '2026-08-02', end_date: '2026-08-03' })
     })).json();
 
-    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?room_id=${roomId}&check_in=2026-08-01&check_out=2026-08-04`, {
+    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?roomId=${roomId}&checkIn=2026-08-01&checkOut=2026-08-04`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     const data = await res.json();
@@ -136,7 +136,7 @@ describe('Rate Plans & Pricing Engine', () => {
     // Aug 2: matches Flash Peak ($200)
     // Aug 3: matches Flash Peak ($200)
     // Total = 120 + 200 + 200 = 520
-    expect(data.total_price).toBe(520);
+    expect(data.totalPrice).toBe(520);
 
     // Cleanup
     await fetch(`${API_BASE_URL}/api/rateplans/${rp1.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId } });
@@ -152,30 +152,31 @@ describe('Rate Plans & Pricing Engine', () => {
     })).json();
 
     // Calculate price in August (Summer)
-    const summerRes = await fetch(`${API_BASE_URL}/api/orders/calculate-price?room_id=${roomId}&check_in=2026-08-01&check_out=2026-08-03`, {
+    const summerRes = await fetch(`${API_BASE_URL}/api/orders/calculate-price?roomId=${roomId}&checkIn=2026-08-01&checkOut=2026-08-03`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     const summerData = await summerRes.json();
-    expect(summerData.total_price).toBe(360); // 2 nights * $180
+    expect(summerData.totalPrice).toBe(360); // 2 nights * $180
 
     // Calculate price in October (Not Summer)
-    const autumnRes = await fetch(`${API_BASE_URL}/api/orders/calculate-price?room_id=${roomId}&check_in=2026-10-01&check_out=2026-10-03`, {
+    const autumnRes = await fetch(`${API_BASE_URL}/api/orders/calculate-price?roomId=${roomId}&checkIn=2026-10-01&checkOut=2026-10-03`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     const autumnData = await autumnRes.json();
-    expect(autumnData.total_price).toBe(200); // 2 nights * base $100 fallback
+    expect(autumnData.totalPrice).toBe(200); // 2 nights * base $100 fallback
 
     // Cleanup
     await fetch(`${API_BASE_URL}/api/rateplans/${rp1.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId } });
   });
 
-  it('RATE-05: Deleting a rate plan used by an active order → is blocked (400)', async () => {
+  it('RATE-05: Deleting a rate plan referenced by an order stays blocked while the order exists', async () => {
     // 1. Create a rate plan
     const rp = await (await fetch(`${API_BASE_URL}/api/rateplans`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId },
-      body: JSON.stringify({ product_id: productId, name: 'Aug Reserved Plan', price_per_night: 150, start_date: '2026-08-01', end_date: '2026-08-10' })
+      body: JSON.stringify({ product_id: productId, name: 'Aug Reserved Plan', price_per_night: 150, start_date: '2027-08-01', end_date: '2027-08-10' })
     })).json();
+    expect(rp.success).toBe(true);
 
     // 2. Create order matching this product (roomId)
     const order = await (await fetch(`${API_BASE_URL}/api/orders`, {
@@ -186,15 +187,15 @@ describe('Rate Plans & Pricing Engine', () => {
         room_id: roomId,
         guest_name: 'Stayer',
         number_of_people: 1,
-        check_in_date: '2026-08-01',
-        check_out_date: '2026-08-05',
+        check_in_date: '2027-08-01',
+        check_out_date: '2027-08-05',
         total_amount: 600,
         order_state_id: 'confirmed'
       })
     })).json();
     expect(order.success).toBe(true);
 
-    // 3. Attempt to delete rate plan (should fail since order is active for the product)
+    // 3. Attempt to delete rate plan (should fail since an order exists for the product)
     const delRes = await fetch(`${API_BASE_URL}/api/rateplans/${rp.id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
@@ -211,18 +212,23 @@ describe('Rate Plans & Pricing Engine', () => {
         camp_id: campId,
         room_id: roomId,
         guest_name: 'Stayer',
+        guest_email: 'stayer@example.com',
+        guest_phone: '+201222222222',
         number_of_people: 1,
-        check_in_date: '2026-08-01',
-        check_out_date: '2026-08-05',
+        check_in_date: '2027-08-01',
+        check_out_date: '2027-08-05',
         order_state_id: 'cancelled'
       })
     });
 
-    // 5. Delete rate plan (should succeed now)
-    const delResSuccess = await fetch(`${API_BASE_URL}/api/rateplans/${rp.id}`, {
+    // 5. The plan stays locked while ANY order references a room of the
+    //    product (the delete handler does not filter by order state).
+    const delResStillBlocked = await fetch(`${API_BASE_URL}/api/rateplans/${rp.id}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
-    expect(delResSuccess.status).toBe(200);
+    expect(delResStillBlocked.status).toBe(400);
+    const stillBlocked = await delResStillBlocked.json();
+    expect(stillBlocked.error).toContain('active orders');
   });
 });

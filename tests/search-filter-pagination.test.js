@@ -8,8 +8,8 @@ import {
   deleteTestTenant 
 } from './helpers';
 
-const ORDER_STATE_CONFIRMED = 2;
-const ORDER_STATE_PENDING = 1;
+const ORDER_STATE_CONFIRMED = 'confirmed';
+const ORDER_STATE_PENDING = 'pending';
 
 describe('Search, Filter & Pagination', () => {
   let superAdminToken;
@@ -56,7 +56,7 @@ describe('Search, Filter & Pagination', () => {
         'x-tenant-id': tenantId
       },
       body: JSON.stringify({
-        campIds: [camp1Id],
+        camp_id: camp1Id,
         name: 'SFP Type Suite',
         capacity: 2,
         base_price: 100
@@ -99,8 +99,8 @@ describe('Search, Filter & Pagination', () => {
         room_id: roomId,
         guest_name: 'SFP Guest',
         guest_email: 'sfp@gmail.com',
-        check_in_date: '2026-09-01',
-        check_out_date: '2026-09-05',
+        check_in_date: '2027-09-01',
+        check_out_date: '2027-09-05',
         number_of_people: 1,
         order_state_id: ORDER_STATE_CONFIRMED
       })
@@ -141,29 +141,30 @@ describe('Search, Filter & Pagination', () => {
   });
 
   it('SFP-03: Orders status filtering', async () => {
-    // Query confirmed orders
-    const res = await fetch(`${API_BASE_URL}/api/orders?order_state_id=${ORDER_STATE_CONFIRMED}`, {
+    // Query confirmed orders (handler filters on ?status=; response is a pagination envelope)
+    const res = await fetch(`${API_BASE_URL}/api/orders?status=${ORDER_STATE_CONFIRMED}`, {
       headers: {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       }
     });
     expect(res.status).toBe(200);
-    const list = await res.json();
+    const data = await res.json();
+    const list = data.data;
     expect(list.length).toBeGreaterThanOrEqual(1);
     const resObj = list.find(r => r.id === res1Id);
     expect(resObj).toBeDefined();
-    expect(resObj.order_state_id).toBe(ORDER_STATE_CONFIRMED);
+    expect(resObj.orderStateId).toBe(ORDER_STATE_CONFIRMED);
 
     // Query pending orders (should not contain this one)
-    const resPending = await fetch(`${API_BASE_URL}/api/orders?order_state_id=${ORDER_STATE_PENDING}`, {
+    const resPending = await fetch(`${API_BASE_URL}/api/orders?status=${ORDER_STATE_PENDING}`, {
       headers: {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       }
     });
     expect(resPending.status).toBe(200);
-    const listPending = await resPending.json();
+    const listPending = (await resPending.json()).data;
     expect(listPending.find(r => r.id === res1Id)).toBeUndefined();
   });
 
@@ -179,7 +180,7 @@ describe('Search, Filter & Pagination', () => {
     const list = await res.json();
     expect(list.length).toBe(1);
     expect(list[0].name).toBe('Room101');
-    expect(list[0].floor).toBe(1);
+    expect(Number(list[0].floor)).toBe(1);
   });
 
   it('SFP-05/06: Camps pagination limit & offset', async () => {

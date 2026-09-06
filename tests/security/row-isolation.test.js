@@ -99,7 +99,7 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
     res = await fetch(`${API_BASE_URL}/api/rateplans`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenA}`, 'x-tenant-id': tenantA },
-      body: JSON.stringify({ name: 'Plan A', product_id: productIdA, price: 200, camp_id: campIdA })
+      body: JSON.stringify({ name: 'Plan A', product_id: productIdA, price_per_night: 200, start_date: '2026-01-01', end_date: '2026-12-31' })
     });
     data = await res.json();
     ratePlanIdA = data.id;
@@ -108,16 +108,30 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
     res = await fetch(`${API_BASE_URL}/api/rateplans`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB },
-      body: JSON.stringify({ name: 'Plan B', product_id: productIdB, price: 120, camp_id: campIdB })
+      body: JSON.stringify({ name: 'Plan B', product_id: productIdB, price_per_night: 120, start_date: '2026-01-01', end_date: '2026-12-31' })
     });
     data = await res.json();
     ratePlanIdB = data.id;
+
+    // Meals require a real meal_category_id (NOT NULL FK). Create categories first.
+    let catRes = await fetch(`${API_BASE_URL}/api/meal-categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenA}`, 'x-tenant-id': tenantA },
+      body: JSON.stringify({ name: 'Row Iso Cat A' })
+    });
+    const catA = (await catRes.json()).id;
+    catRes = await fetch(`${API_BASE_URL}/api/meal-categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB },
+      body: JSON.stringify({ name: 'Row Iso Cat B' })
+    });
+    const catB = (await catRes.json()).id;
 
     // Create meal in Tenant A
     res = await fetch(`${API_BASE_URL}/api/meals`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenA}`, 'x-tenant-id': tenantA },
-      body: JSON.stringify({ name: 'Grilled Fish', price: 25, camp_id: campIdA })
+      body: JSON.stringify({ name: 'Grilled Fish', price: 25, meal_category_id: catA })
     });
     data = await res.json();
     mealIdA = data.id;
@@ -126,7 +140,7 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
     res = await fetch(`${API_BASE_URL}/api/meals`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB },
-      body: JSON.stringify({ name: 'Pasta Dish', price: 18, camp_id: campIdB })
+      body: JSON.stringify({ name: 'Pasta Dish', price: 18, meal_category_id: catB })
     });
     data = await res.json();
     mealIdB = data.id;
@@ -150,17 +164,22 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
     planIdB = data.id;
 
     // Create order in Tenant A
+    const today = new Date();
+    const chkIn = new Date(today.getTime() + 15 * 86400000).toISOString().split('T')[0];
+    const chkOut = new Date(today.getTime() + 17 * 86400000).toISOString().split('T')[0];
     res = await fetch(`${API_BASE_URL}/api/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenA}`, 'x-tenant-id': tenantA },
       body: JSON.stringify({
+        camp_id: campIdA,
         room_id: roomIdA,
         guest_name: 'John Doe',
         guest_email: 'john@test.com',
         guest_phone: '+1234567890',
-        check_in_date: '2026-08-10',
-        check_out_date: '2026-08-12',
-        num_guests: 2,
+        number_of_people: 2,
+        check_in_date: chkIn,
+        check_out_date: chkOut,
+        order_state_id: 'confirmed',
         total_amount: 400
       })
     });
@@ -212,7 +231,14 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB },
       body: JSON.stringify({ name: 'Hijacked Camp' })
     });
-    expect([404, 403]).toContain(res.status);
+    // Cross-tenant PUT is a scoped no-op (200 success, zero rows updated).
+    expect([404, 403, 200]).toContain(res.status);
+    // Verify the camp was NOT modified
+    const verify = await fetch(`${API_BASE_URL}/api/camps/${campIdA}`, {
+      headers: { 'Authorization': `Bearer ${tokenA}`, 'x-tenant-id': tenantA }
+    });
+    const data = await verify.json();
+    expect(data.name).toBe('Camp Alpha');
   });
 
   it('Camps → Tenant B cannot delete Tenant A camp', async () => {
@@ -240,7 +266,8 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
     const res = await fetch(`${API_BASE_URL}/api/products/${productIdA}`, {
       headers: { 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB }
     });
-    expect([404, 200]).toContain(res.status);
+    // 405 = no GET-by-ID route exists for products (list-only API).
+    expect([404, 200, 405]).toContain(res.status);
     if (res.status === 200) {
       const data = await res.json();
       expect(data.name).not.toBe('Deluxe Tent');
@@ -264,7 +291,8 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
     const res = await fetch(`${API_BASE_URL}/api/rooms/${roomIdA}`, {
       headers: { 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB }
     });
-    expect([404, 200]).toContain(res.status);
+    // 405 = no GET-by-ID route exists for rooms (list-only API).
+    expect([404, 200, 405]).toContain(res.status);
     if (res.status === 200) {
       const data = await res.json();
       expect(data.name).not.toBe('Room A1');
@@ -337,7 +365,8 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB },
       body: JSON.stringify({ order_state_id: 3 })
     });
-    expect([404, 403]).toContain(res.status);
+    // 400 = scoped validation (Tenant B's scope cannot resolve Tenant A's room).
+    expect([404, 403, 400]).toContain(res.status);
   });
 
   // ───── Category Isolation ─────
@@ -353,14 +382,20 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
   // ───── Availability Cross-Tenant Check ─────
 
   it('Availability → Tenant B rooms not returned for Tenant A room query', async () => {
+    const today = new Date();
+    const chkIn = new Date(today.getTime() + 20 * 86400000).toISOString().split('T')[0];
+    const chkOut = new Date(today.getTime() + 22 * 86400000).toISOString().split('T')[0];
     const res = await fetch(
-      `${API_BASE_URL}/api/availability?check_in=2026-08-10&check_out=2026-08-12&room_id=${roomIdB}`,
+      `${API_BASE_URL}/api/availability?checkIn=${chkIn}&checkOut=${chkOut}&productId=${productIdB}`,
       { headers: { 'Authorization': `Bearer ${tokenA}`, 'x-tenant-id': tenantA } }
     );
     expect(res.status).toBe(200);
     const data = await res.json();
-    const roomIds = (data.rooms || data || []).map(r => r.room_id || r.id);
-    expect(roomIds).not.toContain(roomIdA);
+    // Tenant B's product queried under Tenant A scope → no rooms returned.
+    expect(data.available).toBe(false);
+    expect(data.availableCount).toBe(0);
+    expect(Array.isArray(data.rooms)).toBe(true);
+    expect(data.rooms).not.toContain(roomIdB);
   });
 
   // ───── Reports Cross-Tenant Check ─────
@@ -383,7 +418,8 @@ describe('Row-Level Tenant Isolation — Cross-Tenant Data Leakage', () => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenB}`, 'x-tenant-id': tenantB },
       body: JSON.stringify({ name: 'Renamed by Tenant B' })
     });
-    expect([404, 403]).toContain(res.status);
+    // Cross-tenant PUT is a scoped no-op (200 success, zero rows updated).
+    expect([404, 403, 200]).toContain(res.status);
 
     // Verify original name intact
     const verify = await fetch(`${API_BASE_URL}/api/camps/${campIdA}`, {

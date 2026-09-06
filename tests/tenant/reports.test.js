@@ -65,7 +65,11 @@ describe('Reports & Analytics API', () => {
     roomId = room.id;
     if (!roomId) console.error('Room creation failed:', room);
 
-    // 3. Create an order that generates revenue
+    // 3. Create a CURRENT-stay order that generates revenue today (covers both
+    //    the revenue window and the occupancy report's "now" logic).
+    const today = new Date();
+    const checkIn = today.toISOString().split('T')[0];
+    const checkOut = new Date(today.getTime() + 3 * 86400000).toISOString().split('T')[0];
     const resRes = await fetch(`${API_BASE_URL}/api/orders`, {
       method: 'POST',
       headers: {
@@ -78,58 +82,14 @@ describe('Reports & Analytics API', () => {
         room_id: roomId,
         guest_name: 'John Report',
         number_of_people: 1,
-        check_in_date: '2026-08-01',
-        check_out_date: '2026-08-05',
+        check_in_date: checkIn,
+        check_out_date: checkOut,
         total_amount: 800,
         order_state_id: 'confirmed'
       })
     });
     const resData = await resRes.json();
     if (!resData.success) console.error('Order creation failed:', resData);
-
-    // 4. Create an expense
-    const expRes = await fetch(`${API_BASE_URL}/api/expenses`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tenantToken}`,
-        'x-tenant-id': tenantId
-      },
-      body: JSON.stringify({
-        camp_id: campId,
-        category: 'Supplies',
-        description: 'Buying gas tanks',
-        amount: 200,
-        date: '2026-07-10'
-      })
-    });
-    const expData = await expRes.json();
-    if (!expData.success) console.error('Expense creation failed:', expData);
-
-    // 5. Create some inventory items with stock levels
-    const invRes1 = await fetch(`${API_BASE_URL}/api/inventory`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tenantToken}`,
-        'x-tenant-id': tenantId
-      },
-      body: JSON.stringify({ camp_id: campId, item_name: 'Sleeping Bag', category: 'Gear', quantity: 15, unit: 'pcs', cost_per_unit: 40 })
-    });
-    const invData1 = await invRes1.json();
-    if (!invData1.success) console.error('Inventory 1 creation failed:', invData1);
-
-    const invRes2 = await fetch(`${API_BASE_URL}/api/inventory`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tenantToken}`,
-        'x-tenant-id': tenantId
-      },
-      body: JSON.stringify({ camp_id: campId, item_name: 'Camp Stove', category: 'Gear', quantity: 5, unit: 'pcs', cost_per_unit: 100 })
-    });
-    const invData2 = await invRes2.json();
-    if (!invData2.success) console.error('Inventory 2 creation failed:', invData2);
   });
 
   afterAll(async () => {
@@ -138,8 +98,8 @@ describe('Reports & Analytics API', () => {
     }
   });
 
-  it('REP-01: GET /api/reports/sales returns revenue aggregated by period', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/reports/sales`, {
+  it('REP-01: GET /api/reports/revenue returns revenue aggregated by period', async () => {
+    const res = await fetch(`${API_BASE_URL}/api/reports/revenue`, {
       headers: {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
@@ -148,12 +108,12 @@ describe('Reports & Analytics API', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.summary).toBeDefined();
-    expect(data.summary.total_revenue).toBeGreaterThanOrEqual(800);
+    expect(data.summary.totalRevenue).toBeGreaterThanOrEqual(800);
     expect(Array.isArray(data.details)).toBe(true);
   });
 
-  it('REP-02: GET /api/reports/sales?days=30 returns data for last 30 days', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/reports/sales?days=30`, {
+  it('REP-02: GET /api/reports/revenue?days=30 returns data for last 30 days', async () => {
+    const res = await fetch(`${API_BASE_URL}/api/reports/revenue?days=30`, {
       headers: {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
@@ -161,11 +121,11 @@ describe('Reports & Analytics API', () => {
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.period_days).toBe(30);
+    expect(data.summary.totalRevenue).toBeGreaterThanOrEqual(800);
   });
 
-  it('REP-04: GET /api/reports/financial returns P&L summary', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/reports/financial`, {
+  it('REP-04: GET /api/reports/revenue returns revenue summary aggregates', async () => {
+    const res = await fetch(`${API_BASE_URL}/api/reports/revenue`, {
       headers: {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
@@ -173,21 +133,24 @@ describe('Reports & Analytics API', () => {
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.total_revenue).toBeGreaterThanOrEqual(800);
-    expect(data.total_expenses).toBeGreaterThanOrEqual(200);
-    expect(data.net_profit).toBe(data.total_revenue - data.total_expenses);
+    expect(data.summary.totalRevenue).toBeGreaterThanOrEqual(800);
+    expect(data.summary.totalOrders).toBeGreaterThanOrEqual(1);
+    expect(data.summary.totalCollected).toBeGreaterThanOrEqual(0);
+    expect(data.summary.totalOutstanding).toBeGreaterThanOrEqual(0);
   });
 
-  it('REP-05: GET /api/reports/financial?tenant_id=... (super admin) returns filtered by tenant', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/reports/financial?tenant_id=${tenantId}`, {
+  it('REP-05: GET /api/reports/revenue with explicit start/end window returns filtered data', async () => {
+    const res = await fetch(`${API_BASE_URL}/api/reports/revenue?start=2026-01-01&end=2030-12-31`, {
       headers: {
-        'Authorization': `Bearer ${superAdminToken}`
+        'Authorization': `Bearer ${tenantToken}`,
+        'x-tenant-id': tenantId
       }
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.total_revenue).toBeGreaterThanOrEqual(800);
-    expect(data.total_expenses).toBeGreaterThanOrEqual(200);
+    expect(data.start).toBe('2026-01-01');
+    expect(data.end).toBe('2030-12-31');
+    expect(data.summary.totalRevenue).toBeGreaterThanOrEqual(800);
   });
 
   it('REP-06: GET /api/reports/occupancy returns room occupancy %', async () => {
@@ -199,8 +162,8 @@ describe('Reports & Analytics API', () => {
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.total_rooms).toBe(1);
-    expect(data.occupied_rooms).toBe(1);
-    expect(data.occupancy_rate).toBe(100);
+    expect(data.totalRooms).toBe(1);
+    expect(data.occupiedRooms).toBe(1);
+    expect(data.occupancyRate).toBe(100);
   });
 });

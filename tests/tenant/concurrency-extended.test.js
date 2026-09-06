@@ -18,6 +18,7 @@ describe('Concurrency Extended', () => {
   let campId;
   let productId;
   let roomId;
+  let mealCategoryId;
 
   beforeAll(async () => {
     superAdminToken = await superAdminLogin();
@@ -60,6 +61,19 @@ describe('Concurrency Extended', () => {
     });
     const room = await roomRes.json();
     roomId = room.id;
+
+    // meals.meal_category_id is NOT NULL — a category must exist first
+    const mcatRes = await fetch(`${API_BASE_URL}/api/meal-categories`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tenantToken}`,
+        'x-tenant-id': tenantId
+      },
+      body: JSON.stringify({ name: 'Concurrency Meal Cat' })
+    });
+    const mcat = await mcatRes.json();
+    mealCategoryId = mcat.id;
   });
 
   afterAll(async () => {
@@ -76,7 +90,7 @@ describe('Concurrency Extended', () => {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       },
-      body: JSON.stringify({ name: 'Concurrent Meal', price: 10 })
+      body: JSON.stringify({ name: 'Concurrent Meal', price: 10, meal_category_id: mealCategoryId })
     });
     const meal = await mealRes.json();
     const mealId = meal.id;
@@ -126,7 +140,16 @@ describe('Concurrency Extended', () => {
         'Authorization': `Bearer ${tenantToken}`,
         'x-tenant-id': tenantId
       },
-      body: JSON.stringify({ order_state_id: 'cancelled' })
+      body: JSON.stringify({
+        camp_id: campId,
+        room_id: roomId,
+        guest_name: 'Concurrency Guest',
+        guest_email: 'concurrency@example.com',
+        guest_phone: '+201111111111',
+        check_in_date: '2027-06-01',
+        check_out_date: '2027-06-03',
+        order_state_id: 'cancelled'
+      })
     });
     expect(cancelRes.ok).toBe(true);
 
@@ -138,7 +161,7 @@ describe('Concurrency Extended', () => {
     });
     expect(getRes.status).toBe(200);
     const data = await getRes.json();
-    expect(data.order_state_id).toBe('cancelled');
+    expect(data.orderStateId).toBe('cancelled');
   });
 
   it('Double-booking same room on overlapping dates is rejected', async () => {

@@ -14,17 +14,18 @@ describe('3. Super Admin - Aggregated Stats', () => {
     });
     expect(res.status).toBe(200);
     const stats = await res.json();
-    expect(stats.total_tenants).toBeDefined();
-    expect(stats.total_camps).toBeDefined();
-    expect(stats.total_rooms).toBeDefined();
-    expect(stats.total_reservations).toBeDefined();
-    expect(stats.total_revenue).toBeDefined();
+    // /api/admin/stats responses run through toCamel (T3 wire contract)
+    expect(stats.totalTenants).toBeDefined();
+    expect(stats.totalCamps).toBeDefined();
+    expect(stats.totalRooms).toBeDefined();
+    expect(stats.totalOrders).toBeDefined();
+    expect(stats.totalRevenue).toBeDefined();
 
-    expect(typeof stats.total_tenants).toBe('number');
-    expect(typeof stats.total_camps).toBe('number');
-    expect(typeof stats.total_rooms).toBe('number');
-    expect(typeof stats.total_reservations).toBe('number');
-    expect(typeof stats.total_revenue).toBe('number');
+    expect(typeof stats.totalTenants).toBe('number');
+    expect(typeof stats.totalCamps).toBe('number');
+    expect(typeof stats.totalRooms).toBe('number');
+    expect(typeof stats.totalOrders).toBe('number');
+    expect(typeof stats.totalRevenue).toBe('number');
   });
 
   it('GET /api/admin/stats with tenant token → is forbidden (403)', async () => {

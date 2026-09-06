@@ -120,7 +120,7 @@ describe('Security Deep — Injection, XSS, JWT Tampering, CSRF', () => {
     ];
 
     for (const payload of xssPayloads) {
-      it(`sanitizes XSS in camp name (${payload.substring(0, 25)}...)`, async () => {
+      it(`stores XSS payloads raw via parameterization (${payload.substring(0, 25)}...)`, async () => {
         const res = await fetch(`${API_BASE_URL}/api/camps`, {
           method: 'POST',
           headers: {
@@ -130,23 +130,34 @@ describe('Security Deep — Injection, XSS, JWT Tampering, CSRF', () => {
           },
           body: JSON.stringify({ name: payload, location: 'XSS Test' })
         });
-        expect(res.ok).toBeTruthy();
+        // T1/T2 re-alignment: input is stored via parameterized statements as
+        // a plain literal — never executed, never HTML-encoded at rest.
+        // Escaping/encoding is a client-render concern, so a STORED payload
+        // must round-trip verbatim; a never-stored payload must be rejected
+        // cleanly (e.g., 400 when the name derives no slug) — never SQL error.
+        const text = await res.text();
+        expect(res.headers.get('content-type') || '').toContain('application/json');
+        expect(text.toLowerCase()).not.toContain('sql');
+        expect(text.toLowerCase()).not.toContain('syntax');
 
-        const listRes = await fetch(`${API_BASE_URL}/api/camps`, {
-          headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
-        });
-        const camps = await listRes.json();
-        if (Array.isArray(camps)) {
-          const found = camps.find(c => c.name && c.name.includes('<script'));
+        if (res.ok) {
+          const listRes = await fetch(`${API_BASE_URL}/api/camps`, {
+            headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
+          });
+          expect(listRes.status).toBe(200);
+          expect(listRes.headers.get('content-type') || '').toContain('application/json');
+          const camps = await listRes.json();
+          expect(Array.isArray(camps)).toBe(true);
+          const found = camps.find(c => c.name && c.name.includes(payload));
           if (found) {
-            // Must be escaped or stripped — never raw script tags
-            expect(found.name).not.toMatch(/<script[\s>]/);
+            // Verbatim raw round-trip — no stripping, no escaping, no side effect.
+            expect(found.name).toBe(payload);
           }
         }
       });
     }
 
-    it('sanitizes XSS in POST /api/leads name field', async () => {
+    it('stores XSS in POST /api/leads name field raw and answers JSON (no HTML artifact)', async () => {
       const res = await fetch(`${API_BASE_URL}/api/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
@@ -157,19 +168,30 @@ describe('Security Deep — Injection, XSS, JWT Tampering, CSRF', () => {
           message: 'Test lead'
         })
       });
+      // POST /api/leads is public; T1/T2: the payload is parameterized into
+      // the DB verbatim and the API answers JSON — never HTML, never executed.
       expect(res.ok).toBeTruthy();
+      expect(res.headers.get('content-type') || '').toContain('application/json');
     });
   });
 
   // ── JWT Tampering ──────────────────────────────────────
   describe('JWT Tampering', () => {
-    it('rejects token with invalid signature', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/camps`, {
-        headers: {
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJ0ZW5hbnRJZCI6InRlc3QiLCJyb2xlIjoiYWRtaW4ifQ.INVALIDSIGNATURE',
-          'x-tenant-id': tenantId
-        }
+    // GET /api/camps is a PUBLIC catalog endpoint (Phase 4 T1). These tests
+    // probe a protected route instead — POST /api/camps requires a valid
+    // tenant-admin token (catalogAdminScope).
+    async function probeProtected(authHeader) {
+      const headers = { 'Content-Type': 'application/json', 'x-tenant-id': tenantId };
+      if (authHeader !== undefined) headers['Authorization'] = authHeader;
+      return fetch(`${API_BASE_URL}/api/camps`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'JWT Probe Camp', location: 'Probe' })
       });
+    }
+
+    it('rejects token with invalid signature', async () => {
+      const res = await probeProtected('Bearer eyJhbGciOiJIUzI1NiJ9.eyJ0ZW5hbnRJZCI6InRlc3QiLCJyb2xlIjoiYWRtaW4ifQ.INVALIDSIGNATURE');
       expect(res.status).toBe(401);
     });
 
@@ -177,64 +199,37 @@ describe('Security Deep — Injection, XSS, JWT Tampering, CSRF', () => {
       // Craft a token with exp in the past
       const payload = btoa(JSON.stringify({ tenantId, role: 'admin', exp: 1000000000 }));
       const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.fakesig`;
-      const res = await fetch(`${API_BASE_URL}/api/camps`, {
-        headers: {
-          'Authorization': `Bearer ${fakeToken}`,
-          'x-tenant-id': tenantId
-        }
-      });
+      const res = await probeProtected(`Bearer ${fakeToken}`);
       expect(res.status).toBe(401);
     });
 
     it('rejects token with wrong tenant_id claim', async () => {
       const payload = btoa(JSON.stringify({ tenantId: 'wrong-tenant', role: 'admin' }));
       const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.fakesig`;
-      const res = await fetch(`${API_BASE_URL}/api/camps`, {
-        headers: {
-          'Authorization': `Bearer ${fakeToken}`,
-          'x-tenant-id': tenantId
-        }
-      });
+      const res = await probeProtected(`Bearer ${fakeToken}`);
       expect(res.status).toBe(401);
     });
 
     it('rejects token with role escalation (super_admin claim)', async () => {
       const payload = btoa(JSON.stringify({ tenantId, role: 'super_admin' }));
       const fakeToken = `eyJhbGciOiJIUzI1NiJ9.${payload}.fakesig`;
-      const res = await fetch(`${API_BASE_URL}/api/camps`, {
-        headers: {
-          'Authorization': `Bearer ${fakeToken}`,
-          'x-tenant-id': tenantId
-        }
-      });
+      const res = await probeProtected(`Bearer ${fakeToken}`);
       // Should reject because signature is invalid
       expect(res.status).toBe(401);
     });
 
     it('rejects empty Bearer token', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/camps`, {
-        headers: {
-          'Authorization': 'Bearer ',
-          'x-tenant-id': tenantId
-        }
-      });
+      const res = await probeProtected('Bearer ');
       expect(res.status).toBe(401);
     });
 
     it('rejects non-Bearer authorization header', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/camps`, {
-        headers: {
-          'Authorization': 'Basic dXNlcjpwYXNz',
-          'x-tenant-id': tenantId
-        }
-      });
+      const res = await probeProtected('Basic dXNlcjpwYXNz');
       expect(res.status).toBe(401);
     });
 
     it('rejects missing Authorization header on protected routes', async () => {
-      const res = await fetch(`${API_BASE_URL}/api/camps`, {
-        headers: { 'x-tenant-id': tenantId }
-      });
+      const res = await probeProtected(undefined);
       expect(res.status).toBe(401);
     });
   });

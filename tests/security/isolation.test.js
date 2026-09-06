@@ -43,7 +43,8 @@ describe('16. Security & Partition Isolation', () => {
   });
 
   it('Tenant Isolation → Tenant A admin token cannot read Tenant B data (403)', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/camps`, {
+    // /api/camps GET is intentionally public; use a private endpoint (/api/leads)
+    const res = await fetch(`${API_BASE_URL}/api/leads`, {
       headers: {
         'Authorization': `Bearer ${tokenA}`,
         'x-tenant-id': tenantB
@@ -77,16 +78,16 @@ describe('16. Security & Partition Isolation', () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
-  it('Missing Tenant Context → Accessing private endpoint with invalid/non-existent tenant ID returns 404', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/camps`, {
+  it('Missing Tenant Context → Accessing a private endpoint with invalid/non-existent tenant ID is rejected (401)', async () => {
+    const res = await fetch(`${API_BASE_URL}/api/leads`, {
       headers: {
         'Authorization': `Bearer ${tokenA}`,
         'x-tenant-id': 'non-existent-tenant-id'
       }
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
     const data = await res.json();
-    expect(data.error).toContain('Tenant not found');
+    expect(data.error).toContain('missing tenant context');
   });
 
   it('Cross-Tenant Mutation Blocked → Tenant A admin token cannot create a camp for Tenant B (403)', async () => {
@@ -105,11 +106,15 @@ describe('16. Security & Partition Isolation', () => {
   });
 
   it('Empty or Invalid Tokens → Rejects requests with invalid JWT tokens (401)', async () => {
+    // GET /api/camps is intentionally public; use an auth-gated mutation
     const res = await fetch(`${API_BASE_URL}/api/camps`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer malformed-token-xyz`,
         'x-tenant-id': tenantA
-      }
+      },
+      body: JSON.stringify({ name: 'Hacked Camp' })
     });
     expect(res.status).toBe(401);
     const data = await res.json();

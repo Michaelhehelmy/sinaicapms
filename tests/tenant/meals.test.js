@@ -16,12 +16,27 @@ describe('12. Tenant Admin - Meals & Ingredient Consumption Sync', () => {
   const adminPassword = 'Password123';
   let tenantToken;
   let mealId;
+  let mealCategoryId;
 
   beforeAll(async () => {
     superAdminToken = await superAdminLogin();
     tenantId = await createTestTenant(tenantSubdomain, tenantSubdomain, 'Meals Test Camp');
     await createTenantAdmin(tenantId, adminEmail, adminPassword, superAdminToken);
     tenantToken = await tenantAdminLogin(tenantId, adminEmail, adminPassword);
+
+    // meals.meal_category_id is NOT NULL (FK to meal_categories) — create a category first.
+    const catRes = await fetch(`${API_BASE_URL}/api/meal-categories`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tenantToken}`,
+        'x-tenant-id': tenantId
+      },
+      body: JSON.stringify({ name: 'Main' })
+    });
+    const catData = await catRes.json();
+    expect(catData.id).toBeDefined();
+    mealCategoryId = catData.id;
   });
 
   afterAll(async () => {
@@ -40,7 +55,7 @@ describe('12. Tenant Admin - Meals & Ingredient Consumption Sync', () => {
       },
       body: JSON.stringify({
         name: 'Sinai Fried Rice',
-        meal_category_id: null,
+        meal_category_id: mealCategoryId,
         price: 15.0,
         description: 'Traditional fried rice dish'
       })

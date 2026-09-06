@@ -22,7 +22,6 @@ describe('Core Orders — Extras', () => {
     });
     const campData = await campRes.json();
     campId = campData.id;
-    if (campRes.status !== 200) console.log('campRes failed:', campRes.status, campData);
 
     const prodRes = await fetch(`${API_BASE_URL}/api/products`, {
       method: 'POST',
@@ -31,7 +30,6 @@ describe('Core Orders — Extras', () => {
     });
     const prodData = await prodRes.json();
     productId = prodData.id;
-    if (prodRes.status !== 200) console.log('prodRes failed:', prodRes.status, prodData);
 
     const roomRes = await fetch(`${API_BASE_URL}/api/rooms`, {
       method: 'POST',
@@ -40,7 +38,6 @@ describe('Core Orders — Extras', () => {
     });
     const roomData = await roomRes.json();
     roomId = roomData.id;
-    if (roomRes.status !== 200) console.log('roomRes failed:', roomRes.status, roomData);
 
     const roomRes2 = await fetch(`${API_BASE_URL}/api/rooms`, {
       method: 'POST',
@@ -49,7 +46,6 @@ describe('Core Orders — Extras', () => {
     });
     const roomData2 = await roomRes2.json();
     const roomId2 = roomData2.id;
-    if (roomRes2.status !== 200) console.log('roomRes2 failed:', roomRes2.status, roomData2);
 
     const orderRes1 = await fetch(`${API_BASE_URL}/api/orders`, {
       method: 'POST',
@@ -61,7 +57,6 @@ describe('Core Orders — Extras', () => {
     });
     const orderData1 = await orderRes1.json();
     orderId = orderData1.id;
-    if (orderRes1.status !== 200) console.log('orderRes1 failed:', orderRes1.status, orderData1);
 
     const orderRes2 = await fetch(`${API_BASE_URL}/api/orders`, {
       method: 'POST',
@@ -73,7 +68,6 @@ describe('Core Orders — Extras', () => {
     });
     const orderData2 = await orderRes2.json();
     orderId2 = orderData2.id;
-    if (orderRes2.status !== 200) console.log('orderRes2 failed:', orderRes2.status, orderData2);
   });
 
   afterAll(async () => {
@@ -103,7 +97,7 @@ describe('Core Orders — Extras', () => {
   });
 
   it('GET /api/orders/calculate-price returns total_price for valid room', async () => {
-    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?room_id=${roomId}&check_in=2027-02-01&check_out=2027-02-05`, {
+    const res = await fetch(`${API_BASE_URL}/api/orders/calculate-price?roomId=${roomId}&checkIn=2027-02-01&checkOut=2027-02-05`, {
       headers: { 'Authorization': `Bearer ${tenantToken}`, 'x-tenant-id': tenantId }
     });
     const data = await res.json();
@@ -138,6 +132,9 @@ describe('Core Orders — Extras', () => {
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data.id).toBe(newOrderId);
-    expect(data.guest_name || data.customer_first_name).toBeDefined();
+    // GET by id joins the customer row; findOrCreateCustomer splits the guest
+    // name on the first space into first/last (camelCased by the API contract)
+    expect(data.customerFirstName).toBe('Detail');
+    expect(data.customerLastName).toBe('Customer');
   });
 });

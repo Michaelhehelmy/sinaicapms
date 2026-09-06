@@ -188,8 +188,9 @@ describe('Staff Activation Lifecycle — Registration → Active → Deactivated
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-    const found = data.find(a => a.email === `supercreated-${ts}@test.com`);
+    // T6: paginated envelope { data, total, page, pageSize, hasMore }
+    expect(Array.isArray(data.data)).toBe(true);
+    const found = data.data.find(a => a.email === `supercreated-${ts}@test.com`);
     expect(found).toBeDefined();
     expect(found.isActive).toBe(1);
   });
@@ -202,8 +203,8 @@ describe('Staff Activation Lifecycle — Registration → Active → Deactivated
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.email).toBe(adminEmail);
-    expect(data.role).toBe('admin');
+    expect(data.user.email).toBe(adminEmail);
+    expect(data.user.role).toBe('admin');
   });
 
   it('Active admin → can read camps', async () => {
@@ -296,7 +297,8 @@ describe('Staff Activation Lifecycle — Registration → Active → Deactivated
     });
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toContain('tenantId');
+    // validationError shape: { errors: [{ field, message }] } keyed by field
+    expect(data.errors.some(e => e.field === 'tenantId')).toBe(true);
   });
 
   // ───── Login Missing Fields ─────

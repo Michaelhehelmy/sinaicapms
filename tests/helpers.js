@@ -29,11 +29,27 @@ export async function superAdminLogin() {
   throw new Error(`Super admin login failed. Tried all passwords. Last error: ${lastErr}`);
 }
 
+// P0-7 supersedes the old open tenant creation: POST /api/tenants requires a
+// super-admin bearer token AND an admin_password (used to create the tenant's
+// default admin). Tests never log in with that default admin — they either
+// reuse the same email via createTenantAdmin (which UPDATEs the row's hash,
+// matching the route's upsert) or create a separate admin — so any valid
+// default password works.
 export async function createTestTenant(id, subdomain, name) {
+  const token = await superAdminLogin();
   const res = await fetch(`${API_BASE_URL}/api/tenants`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, subdomain, name })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      id,
+      subdomain,
+      name,
+      location: 'Sinai Test Area',
+      admin_password: 'TestAdmin123!'
+    })
   });
   if (!res.ok) {
     throw new Error(`Create tenant failed: ${res.status} ${await res.text()}`);

@@ -8,7 +8,7 @@ import {
   deleteTestTenant 
 } from './helpers';
 
-const ORDER_STATE_CONFIRMED = 2;
+const ORDER_STATE_CONFIRMED = 'confirmed';
 
 describe('Concurrent Operations', () => {
   let superAdminToken;
@@ -39,8 +39,8 @@ describe('Concurrent Operations', () => {
       body: JSON.stringify({
         name: 'Concurrency Camp',
         location: 'Sinai Desert',
-        start_date: '2026-09-01',
-        end_date: '2026-09-30',
+        start_date: '2027-09-01',
+        end_date: '2027-09-30',
         capacity: 100
       })
     });
@@ -56,7 +56,7 @@ describe('Concurrent Operations', () => {
         'x-tenant-id': tenantId
       },
       body: JSON.stringify({
-        campIds: [campId],
+        camp_id: campId,
         name: 'Concurrency Suite',
         capacity: 2,
         base_price: 120
@@ -102,7 +102,7 @@ describe('Concurrent Operations', () => {
       })
     });
     const prod = await prodRes.json();
-    productId = prod.data.id;
+    productId = prod.id;
   });
 
   afterAll(async () => {
@@ -118,8 +118,8 @@ describe('Concurrent Operations', () => {
       room_id: roomId,
       guest_name: 'Concurrent Guest',
       guest_email: 'cguest@gmail.com',
-      check_in_date: '2026-09-10',
-      check_out_date: '2026-09-15',
+      check_in_date: '2027-09-10',
+      check_out_date: '2027-09-15',
       number_of_people: 1,
       order_state_id: ORDER_STATE_CONFIRMED
     };
@@ -138,7 +138,7 @@ describe('Concurrent Operations', () => {
 
     const statuses = [response1.status, response2.status];
     expect(statuses).toContain(200); // One succeeds
-    expect(statuses).toContain(400); // One is rejected
+    expect(statuses).toContain(409); // One is rejected (dual-booking conflict → 409)
   });
 
   it('CON-02: Concurrent updates to same camp', async () => {
@@ -152,8 +152,8 @@ describe('Concurrent Operations', () => {
       body: JSON.stringify({
         name,
         location: 'Sinai Desert',
-        start_date: '2026-09-01',
-        end_date: '2026-09-30',
+        start_date: '2027-09-01',
+        end_date: '2027-09-30',
         capacity: 100
       })
     });

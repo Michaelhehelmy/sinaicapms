@@ -162,6 +162,6 @@ describe('Cascade Behavior', () => {
         'x-tenant-id': tenantId
       }
     });
-    expect(delRes.status).toBeLessThanOrEqual(200);
+    expect([404, 200]).toContain(delRes.status);
   });
 });

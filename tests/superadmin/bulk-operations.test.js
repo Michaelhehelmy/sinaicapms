@@ -182,10 +182,11 @@ describe('Super Admin & Tenant Bulk Operations', () => {
           room_id: room.id,
           guest_name: 'Bulk Guest',
           guest_email: 'bguest@gmail.com',
+          guest_phone: '+201234567890',
           check_in_date: checkIn,
           check_out_date: checkOut,
           number_of_people: 2,
-          order_state_id: ORDER_STATE_CONFIRMED,
+          order_state_id: 'confirmed',
           notes: 'Test'
         })
       });
@@ -193,8 +194,11 @@ describe('Super Admin & Tenant Bulk Operations', () => {
       return resJson;
     };
 
-    const res1 = await createRes('2026-08-02', '2026-08-05');
-    const res2 = await createRes('2026-08-10', '2026-08-15');
+    // Future dynamic dates relative to today (past check-ins are rejected).
+    const today = new Date();
+    const d = (offset) => new Date(today.getTime() + offset * 86400000).toISOString().split('T')[0];
+    const res1 = await createRes(d(10), d(13));
+    const res2 = await createRes(d(20), d(25));
 
     // 5. Bulk delete the orders
     const bulkDelRes = await fetch(`${API_BASE_URL}/api/orders/bulk-delete`, {

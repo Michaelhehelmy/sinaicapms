@@ -112,8 +112,8 @@ describe('Validation & Edge Cases', () => {
         room_id: roomId,
         guest_name: 'Over Capacity Guest',
         number_of_people: 5, // Capacity of Standard Tent is 2
-        check_in_date: '2026-08-01',
-        check_out_date: '2026-08-05'
+        check_in_date: '2027-08-01',
+        check_out_date: '2027-08-05'
       })
     });
     expect(res.status).toBe(400);

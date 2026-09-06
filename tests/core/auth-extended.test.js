@@ -35,8 +35,8 @@ describe('Core Auth — Extended', () => {
     });
     const data = await res.json();
     expect(res.status).toBe(200);
-    expect(data.email).toBe(adminEmail);
-    expect(data.role).toBeDefined();
+    expect(data.user.email).toBe(adminEmail);
+    expect(data.user.role).toBeDefined();
   });
 
   it('GET /api/auth/me returns 401 without token', async () => {
