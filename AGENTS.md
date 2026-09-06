@@ -137,19 +137,20 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 ## 6. Running Tests
 
 ```bash
-# Frontend unit tests (1465 tests / 74 files)
+# Frontend unit tests (3417 tests / 132 files)
 cd app && npx vitest run
 
-# Backend unit tests (1082 tests / 36 files)
+# Backend unit tests (2096 tests / 81 files)
 cd backend && npx vitest run
 
 # POS integration tests
 cd backend && npx vitest run tests/pos/
 
-# Root integration tests (169 tests / 10 files)
-npx vitest run
+# Root integration tests (262 tests / 37 files)
+npx vitest run --config vitest.integration.config.ts
 
-# E2E tests (566 total — 552 gate passing · 14 env-skipped in CI mode; boots both servers)
+# E2E tests (~929 total — 919 gate passing · 1 flaky (retry-pass) · ≤15 env-skipped in CI mode; boots both servers)
+# Run per-project when wrangler dev is under load (documented workerd crash — see AGENT_LOGBOOK 2026-09-06)
 CI=true npx playwright test
 ```
 

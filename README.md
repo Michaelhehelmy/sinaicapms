@@ -138,7 +138,7 @@ sinaicamps/
 | **3. Database** | Cloudflare D1 (SQLite) — `campmaster-db` (+ isolated `campmaster-db-staging`) |
 | **4. Cache / Rate Limiting** | Cloudflare KV (`RATE_LIMIT_KV`, `KV_CACHE`) + R2 (`MEDIA_BUCKET`) |
 | **Auth** | JWT (HS256) + bcrypt password hashing; POS uses a separate `pos_token` |
-| **Unit Tests** | Vitest (backend 1082 · frontend 1465 · integration 169) |
+| **Unit Tests** | Vitest (backend 2096 · frontend 3417 · integration 262) |
 | **E2E Tests** | Playwright (566 total — 552 gate passing · 14 env-skipped in CI mode) |
 | **Deployment** | Cloudflare Pages (frontend) + Cloudflare Workers (API) via `deploy.sh` (`--staging` supported) |
 
@@ -220,10 +220,10 @@ npm run dev        # http://localhost:4321 (Astro default), proxies /api/* → :
 ### 3. Run Tests
 
 ```bash
-# Backend unit + POS integration tests (1082 tests / 36 files)
+# Backend unit + POS integration tests (2096 tests / 81 files)
 cd backend && npx vitest run
 
-# Frontend app unit tests (1465 tests / 74 files)
+# Frontend app unit tests (3417 tests / 132 files)
 cd app && npx vitest run
 
 # Root integration tests (169 tests / 10 files)
