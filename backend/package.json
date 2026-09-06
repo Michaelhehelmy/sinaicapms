@@ -8,7 +8,7 @@
     "@hono/zod-openapi": "^0.19.0",
     "@tsndr/cloudflare-worker-jwt": "^3.2.1",
     "bcryptjs": "^3.0.3",
-    "hono": "^4.12.29",
+    "hono": "^4.13.7",
     "zod": "^3.25.76"
   },
   "devDependencies": {
