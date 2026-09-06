@@ -8,9 +8,25 @@
  * All endpoints are public (no auth required).
  */
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { jsonResponse, errorResponse, toCamel } from '../utils/response.js';
+import { validationError } from '../utils/errors.js';
+import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
 
 const router = new Hono();
+
+// T15 (M8): review submission was validated with ad-hoc checks
+// (`!project_id || !rating || rating < 1 || rating > 5`). Rating is now a
+// real number 1–5 (strings/NaN/booleans rejected instead of slipping through).
+const reviewPostSchema = z.object({
+  project_id: z.string().min(1, 'project_id is required'),
+  reviewer_name: z.string().optional(),
+  // DB column: INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5) — enforce the
+  // same contract at the boundary (whole numbers only, like the old
+  // `rating < 1 || rating > 5` guard plus integer affinity).
+  rating: z.number('rating must be a number').int('rating must be a whole number').min(1, 'rating must be between 1 and 5').max(5, 'rating must be between 1 and 5'),
+  comment: z.string().optional(),
+});
 
 // ── GET /marketplace — Directory listing with search + category filter ──
 router.get('/', async (c) => {
@@ -18,9 +34,10 @@ router.get('/', async (c) => {
   try {
     const search = c.req.query('search') || '';
     const categoryId = c.req.query('category') || '';
-    const page = Math.max(1, parseInt(c.req.query('page') || '1'));
-    const pageSize = Math.min(50, Math.max(1, parseInt(c.req.query('pageSize') || '12')));
-    const offset = (page - 1) * pageSize;
+    // T16 (M7): standardized on parsePagination + paginationEnvelope (kept the
+    // original 12/50 page-size budget this directory has always used).
+    const url = new URL(c.req.url);
+    const { page, pageSize, offset } = parsePagination(url, { defaultPageSize: 12, maxPageSize: 50 });
 
     let whereClause = `WHERE t.status = 'active' AND t.onboarding_status = 'completed'`;
     const params = [];
@@ -62,13 +79,7 @@ router.get('/', async (c) => {
 
     const { results } = await env.DB.prepare(dataSql).bind(...params).all();
 
-    return jsonResponse({
-      data: results.map(toCamel),
-      total,
-      page,
-      pageSize,
-      hasMore: page * pageSize < total,
-    });
+    return jsonResponse(paginationEnvelope(results.map(toCamel), total, page, pageSize));
   } catch (e) {
     return errorResponse('Failed to load marketplace', 500);
   }
@@ -142,11 +153,11 @@ router.post('/reviews', async (c) => {
   const env = c.env;
   try {
     const body = await c.req.json();
-    const { project_id, reviewer_name, rating, comment } = body;
-
-    if (!project_id || !rating || rating < 1 || rating > 5) {
-      return errorResponse('project_id and rating (1-5) are required', 400);
+    const parsed = reviewPostSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError(parsed);
     }
+    const { project_id, reviewer_name, rating, comment } = parsed.data;
 
     // Verify project exists
     const project = await env.DB.prepare(

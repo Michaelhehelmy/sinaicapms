@@ -1,5 +1,15 @@
+/**
+ * Meal-plans sub-router.
+ *
+ * Mounted by index.js as:
+ *   app.use('/api/projects/:id/meal-plans', mealPlansPublicScope);
+ *   app.route('/api/projects', mealPlanRoutes);
+ *
+ * T12 (M5): the router deliberately has NO catch-all `all('*')` route so that
+ * mounting it at /api/projects cannot shadow the other /api/projects/:projectId/*
+ * mounts. Non-GET or unknown paths fall through to Hono's default 404.
+ */
 import { jsonResponse, errorResponse } from '../utils/response';
-import { getScope } from '../middleware/resolveScope.js';
 import { Hono } from 'hono';
 
 const mealPlanRoutes = new Hono();
@@ -37,7 +47,5 @@ mealPlanRoutes.get('/:id/meal-plans', async (c) => {
     return errorResponse('Failed to fetch meal plans');
   }
 });
-
-mealPlanRoutes.all('*', () => errorResponse('Method not allowed', 405));
 
 export default mealPlanRoutes;

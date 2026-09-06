@@ -435,9 +435,13 @@ router.put('/items/:id/pricing', async (c) => {
 // GET /public/:slug — public catalog for a tenant (no auth required)
 router.get('/public/:slug', async (c) => {
   const { slug } = c.req.param();
-  // Find tenant by slug
+  // T5 (M2): tenants has no `slug`/`is_active` columns — the tenant handle is
+  // its `subdomain`, liveness is `status = 'active'`, and soft-deleted tenants
+  // are excluded. Previously this SELECT always threw ("no such column") and
+  // the public services catalog was unreachable.
   const tenant = await c.env.DB.prepare(
-    'SELECT id, name FROM tenants WHERE slug = ? AND is_active = 1'
+    `SELECT id, name FROM tenants
+     WHERE subdomain = ? AND status = 'active' AND (deleted_at IS NULL OR deleted_at = '')`
   ).bind(slug).first();
   if (!tenant) return errorResponse('Tenant not found', 404);
   // Get active definitions with items
@@ -447,17 +451,31 @@ router.get('/public/:slug', async (c) => {
      WHERE sd.tenant_id = ? AND sd.is_active = 1
      ORDER BY sd.name`
   ).bind(tenant.id).all();
+  const defResults = defs.results || [];
   const definitions = [];
-  for (const def of defs.results) {
-    const items = await c.env.DB.prepare(
-      `SELECT id, name, description, base_price, meta_data
-       FROM service_items WHERE service_definition_id = ? AND status = 'active'
+
+  // T19: was N+1 child SELECT per definition — now one IN() fetch, grouped in JS.
+  const defIds = defResults.map((d) => d.id);
+  const itemsByDef = new Map();
+  if (defIds.length > 0) {
+    const placeholders = defIds.map(() => '?').join(',');
+    const { results: itemResults } = await c.env.DB.prepare(
+      `SELECT id, name, description, base_price, meta_data, service_definition_id
+       FROM service_items WHERE service_definition_id IN (${placeholders}) AND status = 'active'
        ORDER BY name`
-    ).bind(def.id).all();
+    ).bind(...defIds).all();
+    for (const item of itemResults) {
+      const list = itemsByDef.get(item.service_definition_id) || [];
+      list.push(item);
+      itemsByDef.set(item.service_definition_id, list);
+    }
+  }
+
+  for (const def of defResults) {
     definitions.push({
       ...toCamel(def),
       fields_schema: typeof def.fields_schema === 'string' ? JSON.parse(def.fields_schema) : def.fields_schema,
-      items: items.results.map(toCamel),
+      items: (itemsByDef.get(def.id) || []).map(toCamel),
     });
   }
   return jsonResponse({ tenant: { id: tenant.id, name: tenant.name }, definitions });

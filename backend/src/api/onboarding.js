@@ -19,9 +19,22 @@ const signupSchema = z.object({
   subdomain: z.string().min(3, 'Subdomain must be at least 3 characters'),
   business_type: z.enum(['camp', 'supermarket', 'transportation', 'other']).default('camp'),
   email: z.string().email('Valid email is required'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),
+}).strip();
+
+// ── Partial wizard update schema ─────────────────────────────────────────
+// T1 (P0.1): whitelist is the ONLY source of tenant columns for dynamic
+// UPDATEs. Any key outside this list is stripped by .strip() and can never
+// reach the SET clause — closes the SQL injection via column-name smuggling.
+const tenantUpdateSchema = z.object({
+  location: z.string().optional(),
+  phone: z.string().optional(),
+  description: z.string().optional(),
+  primary_color: z.string().optional(),
+  capacity: z.number().optional(),
+  currency: z.string().optional(),
 }).strip();
 
 // ── Setup step schema ───────────────────────────────────────────────────
@@ -83,10 +96,13 @@ onboardingRoutes.post('/public/signup', async (c) => {
       ) VALUES (?, ?, ?, ?, ?, 'pending_setup', ?, 'pending_setup', '#4a7c4f', 50, 'EGP', datetime('now'), datetime('now'))`
     ).bind(tid, subdomain, name, business_type || 'camp', email, onboardingToken).run();
 
-    // Create admin account
+    // Create admin account — T6 (P0.2): starts INACTIVE. Login queries already
+    // gate `is_active = 1` (auth.js), so the account cannot be used until the
+    // onboarding wizard completes (setup flow flips it active). Mirrors the
+    // pending-approval pattern used by the /register route.
     await env.DB.prepare(
       `INSERT INTO admins (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'admin', ?, ?, 1, datetime('now'), datetime('now'))`
+       VALUES (?, ?, ?, ?, 'admin', ?, ?, 0, datetime('now'), datetime('now'))`
     ).bind(adminId, tid, email, hashedPassword, first_name, last_name).run();
 
     // Create default POS organization for the tenant
@@ -99,7 +115,7 @@ onboardingRoutes.post('/public/signup', async (c) => {
       success: true,
       tenant_id: tid,
       onboarding_token: onboardingToken,
-      message: 'Account created. Check your email for next steps.',
+      message: 'Account created and is pending activation. Complete the onboarding wizard to activate your login.',
     }, 201);
   } catch (e) {
     return errorResponse('Signup failed: ' + (e.message || 'Unknown error'), 500);
@@ -188,9 +204,15 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
       ).bind(...bindArgs).run();
     }
 
-    // Mark onboarding complete
+    // Mark onboarding complete — T1 (P0.1): the onboarding token is cleared
+    // once consumed so it can never be reused or echoed after use.
     await env.DB.prepare(
-      `UPDATE tenants SET onboarding_status = 'completed', status = 'active', updated_at = datetime('now') WHERE id = ?`
+      `UPDATE tenants SET onboarding_status = 'completed', status = 'active', onboarding_token = NULL, updated_at = datetime('now') WHERE id = ?`
+    ).bind(tenant.id).run();
+
+    // T6 (P0.2): activate the tenant's admin only after the wizard completes.
+    await env.DB.prepare(
+      `UPDATE admins SET is_active = 1 WHERE tenant_id = ? AND role = 'admin'`
     ).bind(tenant.id).run();
 
     // C1.1: Generate auto-login token (24-hour expiry) for the tenant's admin
@@ -220,9 +242,17 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
 onboardingRoutes.post('/onboarding/tenant', async (c) => {
   const env = c.env;
   try {
+    // T1 (P0.1): body is validated against the tenantUpdateSchema whitelist.
+    // token is read before parsing because .strip() drops it from parsed.data;
+    // every key that reaches the SET clause is a fixed, schema-declared column.
     const body = await c.req.json();
-    const { token, ...fields } = body;
+    const token = typeof body?.token === 'string' ? body.token : '';
     if (!token) return errorResponse('Token is required');
+
+    const parsed = tenantUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
 
     const { results } = await env.DB.prepare(
       'SELECT id FROM tenants WHERE onboarding_token = ?'
@@ -236,7 +266,7 @@ onboardingRoutes.post('/onboarding/tenant', async (c) => {
 
     const updates = [];
     const bindArgs = [];
-    for (const [key, value] of Object.entries(fields)) {
+    for (const [key, value] of Object.entries(parsed.data)) {
       if (value !== undefined && value !== null && value !== '') {
         updates.push(`${key} = ?`);
         bindArgs.push(value);

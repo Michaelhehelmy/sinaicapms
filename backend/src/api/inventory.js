@@ -1,7 +1,19 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { jsonResponse, errorResponse } from '../utils/response';
-import { parsePagination } from '../utils/pagination';
+import { validationError } from '../utils/errors';
+import { parsePagination, paginationEnvelope } from '../utils/pagination';
 import { getScope } from '../middleware/resolveScope.js';
+
+// T15 (M8): the ad-hoc `typeof adjustment !== 'number'` check let non-finite
+// numbers through and produced a plain 400 string; zod now owns validation.
+const adjustmentPostSchema = z.object({
+  product_id: z.string().min(1, 'product_id is required'),
+  adjustment: z.number('adjustment must be a number').finite('adjustment must be a finite number'),
+  reason: z.string().max(255).optional(),
+  reference: z.string().max(255).optional(),
+  notes: z.string().max(2000).optional(),
+}).strict();
 
 /**
  * Inventory sub-router (Phase 4 T1).
@@ -36,8 +48,9 @@ inventoryRoutes.get('/low-stock', async (c) => {
     ).bind(tenantId).all();
 
     if (!orgRows.length) {
-      // Phase 3: `data` mirrors `items` (paginated-envelope convergence).
-      return jsonResponse({ data: [], items: [], total: 0, page: 1, pageSize: 50, hasMore: false });
+      // T16 (M7): single envelope — no `items` alias anymore.
+      const { page, pageSize } = parsePagination(new URL(c.req.url));
+      return jsonResponse(paginationEnvelope([], 0, page, pageSize));
     }
 
     const organizationId = orgRows[0].organization_id;
@@ -78,15 +91,7 @@ inventoryRoutes.get('/low-stock', async (c) => {
       status: r.stock_quantity <= 0 ? 'out' : 'low',
     }));
 
-    return jsonResponse({
-      // Phase 3: `data` mirrors `items` — consumers converge on the envelope key.
-      data: items,
-      items,
-      total,
-      page,
-      pageSize,
-      hasMore: page * pageSize < total,
-    });
+    return jsonResponse(paginationEnvelope(items, total, page, pageSize));
   } catch (e) {
     return errorResponse('Failed to load low-stock inventory', 500);
   }
@@ -109,10 +114,11 @@ inventoryRoutes.post('/adjustments', async (c) => {
   const env = c.env;
   const tenantId = getScope(c).tenantId;
   const body = await c.req.json();
-  const { product_id, adjustment, reason, reference, notes } = body;
-  if (!product_id || typeof adjustment !== 'number') {
-    return errorResponse('product_id and adjustment (number) are required', 400);
+  const parsed = adjustmentPostSchema.safeParse(body);
+  if (!parsed.success) {
+    return validationError(parsed);
   }
+  const { product_id, adjustment, reason, reference, notes } = parsed.data;
   const product = await env.DB.prepare(
     'SELECT id, stock_quantity FROM pos_products WHERE id = ? AND tenant_id = ?'
   ).bind(product_id, tenantId).first();

@@ -39,6 +39,9 @@ export const RATE_LIMIT_POLICIES = {
   '/api/pos/*': { max: 60 },
   '/api/leads': { max: 10 },
   '/api/contact': { max: 10 },
+  // T15 (M8): public review submission is floodable spam — bound it; no
+  // broader `/api/marketplace*` prefix exists (default covers the rest).
+  'POST /api/marketplace/reviews': { max: 10, window: '1m' },
   default: { max: 100 },
 };
 

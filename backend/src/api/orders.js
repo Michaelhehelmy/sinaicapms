@@ -173,7 +173,12 @@ async function updateOrCreateCustomer(env, tenantId, customerId, guestName, gues
 }
 
 function generateReference() {
-  const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+  // T25: crypto instead of Math.random — collision-resistant order refs
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  let rand = '';
+  for (let i = 0; i < bytes.length; i++) rand += chars[bytes[i] % chars.length];
   return `ORD-${rand}`;
 }
 
@@ -752,10 +757,10 @@ ordersRoutes.post('/', async (c) => {
       const productIds = mealPlanList.map(mp => mp.product_id);
       const uniqueIds = [...new Set(productIds)];
 
-      // Scope the order's tenant to its organization BEFORE reading products.
-      // pos_products is org-scoped (organization_id INTEGER) — meal-plans.js
-      // browse uses the same convention. Resolving org first lets the product
-      // lookup below stay server-authoritative and org-scoped.
+      // Scope the order's tenant to its POS products. The canonical product
+      // dimension is tenant_id (T14/M2); organization_id here is resolved
+      // 1:1 through tenant_org_mapping for the dual-column read used by the
+      // meal-plans.browse convention.
       const { results: orgMapping } = await c.env.DB.prepare(
         'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
       ).bind(tenantId).all();

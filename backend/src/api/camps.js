@@ -435,8 +435,11 @@ productsRoutes.get('/', async (c) => {
      FROM pos_products p`;
   const where = marketplace
     ? ' WHERE p.deleted_at IS NULL'
-    : ' WHERE p.tenant_id = ? AND p.deleted_at IS NULL';
-  const bindings = marketplace ? [] : [tenantId];
+    // T6: hide products whose camp is a soft-deleted project. Legacy
+    // unassigned products (camp_id IS NULL) stay visible.
+    : ` WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND (p.camp_id IS NULL OR p.camp_id IN
+        (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL))`;
+  const bindings = marketplace ? [] : [tenantId, tenantId];
   const { results } = await c.env.DB.prepare(select + where).bind(...bindings).all();
 
   // image_url fallback: image_url column → first element of images JSON
@@ -503,11 +506,13 @@ productsRoutes.post('/', async (c) => {
     }
 
     // The product must belong to the tenant's POS organization so it shows
-    // up in that tenant's POS grid (pos_products.organization_id). The
-    // column default is 1 (single-org legacy); resolving the tenant's real
-    // org here keeps marketplace-created products visible in the POS after
-    // 0051 removed the org-1 seed. Fall back to 1 for legacy tenants with
-    // no mapping.
+    // up in that tenant's POS grid (pos_products.organization_id is resolved
+    // through tenant_org_mapping; the POS reads products on the tenant_id
+    // dimension, and both are written here so the dual dimension stays 1:1).
+    // The org column default was 1 (single-org legacy); resolving the tenant's
+    // real org here keeps marketplace-created products visible in the POS
+    // after 0051 removed the org-1 seed. Fall back to 1 for legacy tenants
+    // with no mapping.
     const { results: orgRows } = await c.env.DB.prepare(
       'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
     ).bind(tenantId).all();
@@ -525,15 +530,8 @@ productsRoutes.post('/', async (c) => {
       productCampId
     ).run();
 
-    if (camp_ids && Array.isArray(camp_ids) && camp_ids.length > 0) {
-      // Batch insert — P-H2 fix
-      const placeholders = camp_ids.map(() => '(?, ?)').join(',');
-      const bindings = [];
-      for (const cid of camp_ids) { bindings.push(pid, cid); }
-      await c.env.DB.prepare(
-        `INSERT OR IGNORE INTO product_camps (product_id, camp_id) VALUES ${placeholders}`
-      ).bind(...bindings).run();
-    }
+    // product_camps junction is legacy (0053: pos_products.camp_id is the
+    // source of truth; the junction is never read) — no INSERT here.
 
     return jsonResponse({ id: pid, success: true });
   } catch (e) {
@@ -588,16 +586,9 @@ productsRoutes.put('/:id', async (c) => {
     ).run();
 
     if (camp_ids && Array.isArray(camp_ids)) {
+      // Legacy cleanup only: keep the junction empty, but never re-insert —
+      // pos_products.camp_id (0053) is the single source of truth.
       await c.env.DB.prepare("DELETE FROM product_camps WHERE product_id = ?").bind(pid).run();
-      if (camp_ids.length > 0) {
-        // Batch insert — P-H2 fix
-        const placeholders = camp_ids.map(() => '(?, ?)').join(',');
-        const bindings = [];
-        for (const cid of camp_ids) { bindings.push(pid, cid); }
-        await c.env.DB.prepare(
-          `INSERT OR IGNORE INTO product_camps (product_id, camp_id) VALUES ${placeholders}`
-        ).bind(...bindings).run();
-      }
     }
 
     return jsonResponse({ success: true });
@@ -854,7 +845,15 @@ export const ratePlansRoutes = new Hono();
 
 ratePlansRoutes.get('/', async (c) => {
   const tenantId = getScope(c).tenantId;
-  const { results } = await c.env.DB.prepare("SELECT * FROM rate_plans_new WHERE tenant_id = ?").bind(tenantId).all();
+  // T6: hide rate plans whose product was soft-deleted or whose camp is a
+  // soft-deleted project. Legacy camp-less products keep their plans visible.
+  const { results } = await c.env.DB.prepare(
+    `SELECT rp.* FROM rate_plans_new rp
+     JOIN pos_products p ON p.id = rp.product_id AND p.tenant_id = rp.tenant_id
+     WHERE rp.tenant_id = ?
+       AND p.deleted_at IS NULL
+       AND (p.camp_id IS NULL OR p.camp_id IN (SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL))`
+  ).bind(tenantId, tenantId).all();
   return jsonResponse(results);
 });
 
@@ -871,9 +870,11 @@ ratePlansRoutes.post('/', async (c) => {
     await ensureProductInProductsTable(c.env.DB, tenantId, product_id);
     // 0053: the INSERT only selects a row when the product belongs to this
     // tenant, so a foreign product_id can never be stored on a rate plan.
+    // 0091: camp_id is taken from the product row (p.camp_id) — bind count is
+    // unchanged; the rate plan always scopes to its product's camp.
     const insertResult = await c.env.DB.prepare(
-      `INSERT INTO rate_plans_new (id, tenant_id, product_id, name, price_per_night, start_date, end_date, season, min_stay, is_active, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+      `INSERT INTO rate_plans_new (id, tenant_id, product_id, camp_id, name, price_per_night, start_date, end_date, season, min_stay, is_active, created_at, updated_at)
+       SELECT ?, ?, ?, p.camp_id, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
        FROM pos_products p
        WHERE p.id = ? AND p.tenant_id = ?`
     ).bind(rpid, tenantId, product_id, name, price_per_night, start_date || null, end_date || null, season || 'all', min_stay || 1, is_active !== undefined ? is_active : 1, product_id, tenantId).run();
@@ -915,6 +916,14 @@ ratePlansRoutes.put('/:id', async (c) => {
       is_active !== undefined ? is_active : null,
       tenantId, rpid
     ).run();
+    // 0091: resync camp_id from the product's current camp (the product may
+    // have switched camps since the rate plan was created).
+    await c.env.DB.prepare(
+      `UPDATE rate_plans_new
+         SET camp_id = (SELECT camp_id FROM pos_products WHERE id = rate_plans_new.product_id),
+             updated_at = datetime('now')
+       WHERE tenant_id = ? AND id = ?`
+    ).bind(tenantId, rpid).run();
     return jsonResponse({ success: true });
   } catch (e) {
     return errorResponse('Failed to update rate plan');
@@ -926,8 +935,8 @@ ratePlansRoutes.delete('/:id', async (c) => {
     const tenantId = getScope(c).tenantId;
     const rpid = c.req.param('id');
     const { results: rpInfo } = await c.env.DB.prepare(
-      "SELECT product_id FROM rate_plans_new WHERE id = ?"
-    ).bind(rpid).all();
+      "SELECT product_id FROM rate_plans_new WHERE id = ? AND tenant_id = ?"
+    ).bind(rpid, tenantId).all();
     if (rpInfo.length > 0) {
       const prodId = rpInfo[0].product_id;
       const { results: existingOrders } = await c.env.DB.prepare(

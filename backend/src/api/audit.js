@@ -12,7 +12,7 @@ import { z } from 'zod';
  *   audit_log(id TEXT PK, tenant_id TEXT NOT NULL,
  *             user_id TEXT NOT NULL,
  *             action TEXT CHECK IN ('create','update','delete'),
- *             entity_type TEXT CHECK IN ('tenant','project','admin'),
+ *   entity_type TEXT CHECK IN ('tenant','project','admin','order','pos_table'),
  *             entity_id TEXT NOT NULL,
  *             old_values TEXT JSON, new_values TEXT JSON,
  *             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)
@@ -33,7 +33,10 @@ import { z } from 'zod';
 
 // ─── Zod Schemas ───────────────────────────────────────────────
 export const AUDIT_ACTIONS = ['create', 'update', 'delete'];
-export const AUDIT_ENTITY_TYPES = ['tenant', 'project', 'admin'];
+// T9 (M10): must mirror the audit_log CHECK (0069) — 'order' and 'pos_table'
+// are valid entity types the admin UI can filter by; a narrower API enum made
+// valid filters 400.
+export const AUDIT_ENTITY_TYPES = ['tenant', 'project', 'admin', 'order', 'pos_table'];
 
 export const auditQuerySchema = z.object({
   entity_type: z.enum(AUDIT_ENTITY_TYPES).optional(),
@@ -50,7 +53,7 @@ export const auditPostSchema = z.object({
   }),
   entity_type: z.enum(AUDIT_ENTITY_TYPES, {
     required_error: 'Entity type is required',
-    invalid_type_error: 'Entity type must be one of tenant, project, admin',
+    invalid_type_error: 'Entity type must be one of tenant, project, admin, order, pos_table',
   }),
   entity_id: z.string({ required_error: 'Entity id is required' }).min(1, 'Entity id is required'),
   old_values: z.unknown().optional(), // object | string | null — stringified on insert
@@ -65,7 +68,7 @@ export const auditPostSchema = z.object({
  *
  * @param {D1Database} DB
  * @param {{ tenantId: string, userId: string, action: 'create'|'update'|'delete',
- *           entityType: 'tenant'|'project'|'admin', entityId: string,
+ *           entityType: 'tenant'|'project'|'admin'|'order'|'pos_table', entityId: string,
  *           oldValues?: unknown, newValues?: unknown }} params
  * @returns {Promise<string|null>} generated audit id (null when the write failed)
  */

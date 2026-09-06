@@ -22,15 +22,15 @@ import { loadPaymentConfig } from '../services/paymentConfig.js';
 
 // ── Schema ──────────────────────────────────────────────────────────────────
 
-const orderItemSchema = z.object({
-  type: z.string().min(1),
-  name: z.string().min(1),
-  quantity: z.number().int().min(1),
-  unit_price: z.number().min(0),
-});
+// T7 (M1): the wire contract is the OpenAPI-registered camelCase shape
+// (backend/src/routes/registry.js → PublicReservationRequest). The old schema
+// here accepted a DIFFERENT shape — client-priced generic line items
+// ({ type, name, quantity, unit_price }) plus a camp_id the frontend never
+// sends — which (a) let callers set their own order total and (b) rejected the
+// real UI payload. Line items are now meal-plan ONLY: { productId, quantity },
+// and every price is resolved server-side from pos_products.
 
 export const publicReservationSchema = z.object({
-  camp_id: z.string().min(1, 'Camp ID is required'),
   room_id: z.string().min(1, 'Room ID is required'),
   check_in_date: z.string().min(1, 'Check-in date is required'),
   check_out_date: z.string().min(1, 'Check-out date is required'),
@@ -38,17 +38,29 @@ export const publicReservationSchema = z.object({
   guest_name: z.string().min(1, 'Guest name is required'),
   guest_phone: z.string().optional(),
   guest_email: z.string().email().optional(),
-  items: z.array(orderItemSchema).optional(),
+  // Meal-plan line items. Client sends prices for nothing — server prices from
+  // pos_products (tenant-scoped below); any extra key (e.g. unit_price) is
+  // stripped by .strip() and never affects the total.
+  items: z.array(z.object({
+    product_id: z.string().min(1),
+    quantity: z.number().int().min(1),
+  })).optional(),
+  // Legacy alias handled identically to `items`.
   meal_plans: z.array(z.object({
     product_id: z.string().min(1),
     quantity: z.number().int().min(1),
   })).optional(),
-}).strip();
+}).strict();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function generateReference() {
-  const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+  // T25: crypto instead of Math.random — collision-resistant order refs
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  let rand = '';
+  for (let i = 0; i < bytes.length; i++) rand += chars[bytes[i] % chars.length];
   return `ORD-${rand}`;
 }
 
@@ -170,7 +182,7 @@ reservationsRoutes.post('/', async (c) => {
     if (!parsed.success) return validationError(parsed);
     const data = parsed.data;
     const {
-      camp_id, room_id, check_in_date, check_out_date,
+      room_id, check_in_date, check_out_date,
       number_of_people, guest_name, guest_phone, guest_email,
       items, meal_plans,
     } = data;
@@ -179,13 +191,13 @@ reservationsRoutes.post('/', async (c) => {
     const tenantId = getScope(c).tenantId;
     if (!tenantId) return errorResponse('Tenant not found', 404);
 
-    // 3. Verify room belongs to this camp and tenant
+    // 3. Verify room belongs to this tenant (camp id is implied by the room)
     const room = await c.env.DB.prepare(
-      `SELECT r.id, r.max_guests
+      `SELECT r.id, r.max_guests, r.camp_id
        FROM rooms_new r
        JOIN projects camp ON r.camp_id = camp.id
-       WHERE r.id = ? AND camp.id = ? AND camp.tenant_id = ?`
-    ).bind(room_id, camp_id, tenantId).first();
+       WHERE r.id = ? AND camp.tenant_id = ?`
+    ).bind(room_id, tenantId).first();
     if (!room) return errorResponse('Room not found', 404);
 
     // 4. Basic validation
@@ -219,23 +231,23 @@ reservationsRoutes.post('/', async (c) => {
       return errorResponse('Room is not available for the selected dates', 409);
     }
 
-    // 6. Server-side authoritative pricing
+    // 6. Server-side authoritative pricing — only DB-sourced prices exist here.
+    //    The room price is derived from rate_plans_new / price_overrides /
+    //    pos_products.selling_price; meal plans are priced from pos_products
+    //    (tenant-scoped) below. Client payloads carry no prices at all.
     const roomPrice = await calculatePriceOnServer(c.env, tenantId, room_id, check_in_date, check_out_date);
     let effectiveTotal = roomPrice;
 
-    const orderItems = Array.isArray(items) ? items : [];
-    if (orderItems.length > 0) {
-      effectiveTotal += orderItems.reduce((sum, it) => sum + it.quantity * it.unit_price, 0);
-    }
-
-    const mealPlanList = meal_plans || [];
+    // `items` and `meal_plans` carry the same { product_id, quantity } shape.
+    const mealPlanList = Array.isArray(items) && items.length > 0 ? items : (meal_plans || []);
     let mealPlanTotal = 0;
     if (mealPlanList.length > 0) {
       const productIds = mealPlanList.map(mp => mp.product_id);
       const placeholders = productIds.map(() => '?').join(',');
       const { results: products } = await c.env.DB.prepare(
-        `SELECT id, selling_price FROM pos_products WHERE id IN (${placeholders})`
-      ).bind(...productIds).all();
+        `SELECT id, selling_price FROM pos_products
+         WHERE id IN (${placeholders}) AND tenant_id = ? AND is_active = 1`
+      ).bind(...productIds, tenantId).all();
       const productMap = new Map(products.map(p => [p.id, p]));
       for (const mp of mealPlanList) {
         const product = productMap.get(mp.product_id);
@@ -267,7 +279,7 @@ reservationsRoutes.post('/', async (c) => {
            AND order_state_id != 'cancelled'
        )`
     ).bind(
-      ordId, tenantId, camp_id, room_id, customerId,
+      ordId, tenantId, room.camp_id, room_id, customerId,
       check_in_date, check_out_date, number_of_people || 1,
       effectiveTotal, reference,
       tenantId, room_id, check_out_date, check_in_date
@@ -278,26 +290,15 @@ reservationsRoutes.post('/', async (c) => {
       return errorResponse('Room no longer available', 409);
     }
 
-    // 9. Persist line items AFTER guarded INSERT (second batch — a lost-race 409 must not leave orphaned items)
-    if (orderItems.length > 0) {
-      const itemStmts = orderItems.map((it) => c.env.DB.prepare(
-        `INSERT INTO order_items
-           (id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
-      ).bind(
-        'oi_' + crypto.randomUUID().slice(0, 12),
-        ordId, it.type, null, it.name, it.quantity, it.unit_price,
-        Math.round(it.quantity * it.unit_price * 100) / 100
-      ));
-      await c.env.DB.batch(itemStmts);
-    }
-
+    // 9. Persist line items AFTER guarded INSERT (second batch — a lost-race 409 must not leave orphaned items).
+    //    Meal-plan items only — see step 6; client payloads carry no priced line items.
     if (mealPlanList.length > 0) {
       const productIds = mealPlanList.map(mp => mp.product_id);
       const placeholders = productIds.map(() => '?').join(',');
       const { results: products } = await c.env.DB.prepare(
-        `SELECT id, name, selling_price FROM pos_products WHERE id IN (${placeholders})`
-      ).bind(...productIds).all();
+        `SELECT id, name, selling_price FROM pos_products
+         WHERE id IN (${placeholders}) AND tenant_id = ? AND is_active = 1`
+      ).bind(...productIds, tenantId).all();
       const productMap = new Map(products.map(p => [p.id, p]));
 
       const { results: orgMapping } = await c.env.DB.prepare(

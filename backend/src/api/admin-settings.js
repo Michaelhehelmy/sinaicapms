@@ -1,4 +1,5 @@
 import { jsonResponse, errorResponse, toSnake } from '../utils/response';
+import { validationError } from '../utils/errors';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -147,7 +148,7 @@ adminSettingsRoutes.put('/', async (c) => {
     const body = toSnake(rawBody);
     const parsed = settingsUpdateSchema.safeParse(body);
     if (!parsed.success) {
-      return jsonResponse({ success: false, error: 'Invalid settings data', errors: parsed.error.issues }, 400);
+      return validationError(parsed);
     }
 
     const current = await c.env.DB.prepare('SELECT * FROM platform_settings WHERE id = 1').first();
@@ -226,7 +227,16 @@ adminSettingsRoutes.get('/feature-flags', async (c) => {
       enabled: !!enabled,
       label: key.charAt(0).toUpperCase() + key.slice(1),
     }));
-    return jsonResponse({ data: list, total: list.length });
+    return jsonResponse({
+      data: list,
+      total: list.length,
+      // T16 (M7): feature flags are a fixed enumeration (never client-paginated),
+      // but the list speaks the shared envelope shape so a single `data` access
+      // works everywhere.
+      page: 1,
+      pageSize: Math.max(list.length, 1),
+      hasMore: false,
+    });
   } catch (e) {
     return errorResponse('Failed to load feature flags');
   }

@@ -288,15 +288,18 @@ pos.use('/*', posAuth);
 // ─── GET /products ─────────────────────────────────────────
 pos.get('/products', async (c) => {
   const env = c.env;
-  const orgId = c.get('posUser').organizationId;
+  // T14 (M2): products are read on the tenant dimension everywhere else
+  // (storefront, barcode, writes in camps.js) — POS must agree. `posUser`
+  // carries the tenant id resolved from tenant_org_mapping at login/refresh.
+  const tenantId = c.get('posUser').tenantId;
   try {
     const { results } = await env.DB.prepare(
       `SELECT id, sku, name, description, selling_price, cost_price, category_id,
               type, image_url, is_active, stock_quantity
        FROM pos_products
-       WHERE organization_id = ? AND deleted_at IS NULL AND is_active = 1
+       WHERE tenant_id = ? AND deleted_at IS NULL AND is_active = 1
        ORDER BY name`
-    ).bind(orgId).all();
+    ).bind(tenantId).all();
     return jsonResponse(results);
   } catch (e) {
     return errorResponse('Failed to fetch products', 500);
@@ -377,13 +380,14 @@ pos.post('/orders', async (c) => {
     const orderNumber = 'ORD-' + Date.now().toString(36).toUpperCase();
     let subtotal = 0;
 
-    // Bulk-fetch all ordered products in one query (was N+1 per line item)
+    // Bulk-fetch all ordered products in one query (was N+1 per line item).
+    // T14 (M2): tenant dimension — matches storefront/barcode/write paths.
     const productIds = items.map((i) => i.productId);
     const placeholders = productIds.map(() => '?').join(',');
     const { results: productRows } = await env.DB.prepare(
       `SELECT id, selling_price, name, category_id FROM pos_products
-       WHERE id IN (${placeholders}) AND organization_id = ?`
-    ).bind(...productIds, organizationId).all();
+       WHERE id IN (${placeholders}) AND tenant_id = ?`
+    ).bind(...productIds, tenantId).all();
     const productMap = new Map(productRows.map((p) => [p.id, p]));
 
     const itemRows = [];
@@ -537,30 +541,57 @@ pos.post('/orders', async (c) => {
       finalAmountCash = totalAmount;
     }
 
-    // ── Recipe inventory deduction ─────────────────────────
+    // ── Recipe inventory deduction (T17: was N+1 — now 2 queries) ────
+    // Query 1: bulk-fetch recipe ingredients for every line item at once.
+    // Query 2: bulk-fetch ingredient stock in one IN() — then accumulate and
+    // pre-validate required deductions in JS (same 400 semantics as before).
     const stockDeductions = [];
+    const itemsByProduct = new Map();
     for (const item of itemRows) {
-      const { results: recipes } = await env.DB.prepare(
-        `SELECT ingredient_id, quantity FROM pos_recipe_ingredients WHERE product_id = ? AND tenant_id = ?`
-      ).bind(item.productId, tenantId).all();
+      const list = itemsByProduct.get(item.productId) || [];
+      list.push(item);
+      itemsByProduct.set(item.productId, list);
+    }
+    const recipeProductIds = [...itemsByProduct.keys()];
+    if (recipeProductIds.length > 0) {
+      const recipePlaceholders = recipeProductIds.map(() => '?').join(',');
+      const { results: recipeRows } = await env.DB.prepare(
+        `SELECT product_id, ingredient_id, quantity
+         FROM pos_recipe_ingredients
+         WHERE product_id IN (${recipePlaceholders}) AND tenant_id = ?`
+      ).bind(...recipeProductIds, tenantId).all();
 
-      for (const recipe of recipes) {
-        const required = item.quantity * recipe.quantity;
+      // Accumulate required ingredient quantities across all line items
+      // (two products may share one ingredient; totals must not clobber).
+      const requiredByIngredient = new Map();
+      for (const recipe of recipeRows) {
+        const qtyForProduct = itemsByProduct.get(recipe.product_id)
+          .reduce((sum, it) => sum + it.quantity, 0);
+        const current = requiredByIngredient.get(recipe.ingredient_id) || 0;
+        requiredByIngredient.set(recipe.ingredient_id, current + qtyForProduct * recipe.quantity);
+      }
+
+      const ingredientIds = [...requiredByIngredient.keys()];
+      if (ingredientIds.length > 0) {
+        const ingPlaceholders = ingredientIds.map(() => '?').join(',');
         const { results: stockRows } = await env.DB.prepare(
-          `SELECT id, name, stock_quantity FROM pos_products WHERE id = ? AND organization_id = ?`
-        ).bind(recipe.ingredient_id, organizationId).all();
+          `SELECT id, name, stock_quantity FROM pos_products
+           WHERE id IN (${ingPlaceholders}) AND tenant_id = ?`
+        ).bind(...ingredientIds, tenantId).all();
+        const stockMap = new Map(stockRows.map((s) => [s.id, s]));
 
-        if (stockRows.length === 0) continue;
-        const ingredient = stockRows[0];
-        const stock = parseFloat(ingredient.stock_quantity) || 0;
-
-        if (stock < required) {
-          return errorResponse(
-            `Insufficient stock for ingredient: ${ingredient.name} (Need ${required}, Have ${stock})`,
-            400
-          );
+        for (const [ingredientId, required] of requiredByIngredient) {
+          const ingredient = stockMap.get(ingredientId);
+          if (!ingredient) continue;
+          const stock = parseFloat(ingredient.stock_quantity) || 0;
+          if (stock < required) {
+            return errorResponse(
+              `Insufficient stock for ingredient: ${ingredient.name} (Need ${required}, Have ${stock})`,
+              400
+            );
+          }
+          stockDeductions.push({ id: ingredientId, deduct: required });
         }
-        stockDeductions.push({ id: recipe.ingredient_id, deduct: required });
       }
     }
 
@@ -603,8 +634,8 @@ pos.post('/orders', async (c) => {
       statements.push(
         env.DB.prepare(
           `UPDATE pos_products SET stock_quantity = stock_quantity - ?
-           WHERE id = ? AND organization_id = ? AND stock_quantity >= ?`
-        ).bind(deduction.deduct, deduction.id, organizationId, deduction.deduct)
+           WHERE id = ? AND tenant_id = ? AND stock_quantity >= ?`
+        ).bind(deduction.deduct, deduction.id, tenantId, deduction.deduct)
       );
     }
 
@@ -727,8 +758,8 @@ pos.post('/orders', async (c) => {
         const stockPlaceholders = soldIds.map(() => '?').join(',');
         const { results: stockRows } = await env.DB.prepare(
           `SELECT id, name, stock_quantity, min_stock_level FROM pos_products
-           WHERE id IN (${stockPlaceholders}) AND organization_id = ?`
-        ).bind(...soldIds, organizationId).all();
+           WHERE id IN (${stockPlaceholders}) AND tenant_id = ?`
+        ).bind(...soldIds, tenantId).all();
 
         const alertStmts = [];
         for (const product of stockRows) {
@@ -945,8 +976,8 @@ pos.get('/dashboard', async (c) => {
     const { results: productCountRows } = await env.DB.prepare(
       `SELECT COUNT(*) AS count
        FROM pos_products
-       WHERE organization_id = ? AND deleted_at IS NULL AND is_active = 1`
-    ).bind(posUser.organizationId).all();
+       WHERE tenant_id = ? AND deleted_at IS NULL AND is_active = 1`
+    ).bind(posUser.tenantId).all();
 
     const { results: recentOrders } = await env.DB.prepare(
       `SELECT t.id, t.order_number, t.total_amount, t.payment_method, t.status, t.created_at

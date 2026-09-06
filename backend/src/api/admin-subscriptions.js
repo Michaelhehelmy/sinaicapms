@@ -1,4 +1,5 @@
 import { jsonResponse, errorResponse, toSnake } from '../utils/response';
+import { validationError } from '../utils/errors';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { parsePagination, paginationEnvelope } from '../utils/pagination';
 import { Hono } from 'hono';
@@ -138,7 +139,7 @@ adminSubscriptionsRoutes.put('/:id', async (c) => {
     const body = toSnake(await c.req.json());
     const parsed = updateSubscriptionSchema.safeParse(body);
     if (!parsed.success) {
-      return jsonResponse({ success: false, error: 'Invalid subscription data', errors: parsed.error.issues }, 400);
+      return validationError(parsed);
     }
 
     // Upsert subscription record

@@ -375,18 +375,23 @@ router.post('/payroll/runs', async (c) => {
   totalDeductions = Math.round(totalDeductions * 100) / 100;
   totalNet = Math.round(totalNet * 100) / 100;
 
-  await c.env.DB.prepare(
-    `INSERT INTO payroll_runs (id, tenant_id, period_start, period_end, run_date, status, total_gross, total_deductions, total_net, created_by)
-     VALUES (?, ?, ?, ?, date('now'), 'draft', ?, ?, ?, ?)`
-  ).bind(runId, tenantId, periodStart, periodEnd, totalGross, totalDeductions, totalNet, scope.user?.userId || null).run();
-
-  for (const line of lines) {
-    const lineId = crypto.randomUUID();
-    await c.env.DB.prepare(
+  // T19: was run INSERT then N sequential line INSERTs (partial-run risk on
+  // failure). Now the run row and every payroll line commit in ONE batch —
+  // all-or-nothing.
+  const lineStatements = lines.map((line) =>
+    c.env.DB.prepare(
       `INSERT INTO payroll_lines (id, payroll_run_id, employee_id, gross_pay, deductions, net_pay, bank_account)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(lineId, runId, line.employeeId, line.grossPay, line.deductions, line.netPay, line.bankAccount).run();
-  }
+    ).bind(crypto.randomUUID(), runId, line.employeeId, line.grossPay, line.deductions, line.netPay, line.bankAccount)
+  );
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO payroll_runs (id, tenant_id, period_start, period_end, run_date, status, total_gross, total_deductions, total_net, created_by)
+       VALUES (?, ?, ?, ?, date('now'), 'draft', ?, ?, ?, ?)`
+    ).bind(runId, tenantId, periodStart, periodEnd, totalGross, totalDeductions, totalNet, scope.user?.userId || null),
+    ...lineStatements,
+  ]);
 
   return jsonResponse({
     id: runId, periodStart, periodEnd,

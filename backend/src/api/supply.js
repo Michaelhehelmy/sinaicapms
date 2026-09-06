@@ -395,34 +395,61 @@ router.patch('/purchase-orders/:id/receive', async (c) => {
   const lineResults = lines.results || [];
   if (lineResults.length === 0) return errorResponse('PO has no lines', 400);
 
-  // Receive all lines (set received_quantity = quantity)
+  // Receive all lines (set received_quantity = quantity).
+  // T19: was sequential per-line UPDATE + read + UPDATE/INSERT (N+1 round
+  // trips, non-atomic partial receive). Now: one stock pre-fetch IN() + a
+  // single DB.batch committing line receipt, stock movement, and the PO
+  // status flip together — either all land or none.
+  const statements = [];
   for (const line of lineResults) {
-    await c.env.DB.prepare(
-      'UPDATE purchase_order_lines SET received_quantity = quantity WHERE id = ?'
-    ).bind(line.id).run();
+    statements.push(
+      c.env.DB.prepare(
+        'UPDATE purchase_order_lines SET received_quantity = quantity WHERE id = ?'
+      ).bind(line.id)
+    );
+  }
 
-    // Add to stock (use first active warehouse or we could make warehouseId a param)
-    // For now, we create/update stock_quant for product in a generic way
-    const existingStock = await c.env.DB.prepare(
-      'SELECT id, quantity FROM stock_quant WHERE product_id = ? AND tenant_id = ? LIMIT 1'
-    ).bind(line.product_id, tenantId).first();
+  // Pre-fetch existing stock rows for the received products (one query).
+  const productIds = [...new Set(lineResults.map((l) => l.product_id))];
+  const stockRowsByProduct = new Map();
+  const pPlaceholders = productIds.map(() => '?').join(',');
+  const { results: stockRows } = await c.env.DB.prepare(
+    `SELECT id, quantity, product_id FROM stock_quant
+     WHERE product_id IN (${pPlaceholders}) AND tenant_id = ?`
+  ).bind(...productIds, tenantId).all();
+  for (const row of stockRows) stockRowsByProduct.set(row.product_id, row);
 
+  // Deduplicate by product: two lines may share a product — their additions
+  // must SUM (a snapshot-based double UPDATE would clobber the first add).
+  const stockAddByProduct = new Map();
+  for (const line of lineResults) {
+    stockAddByProduct.set(line.product_id, (stockAddByProduct.get(line.product_id) || 0) + line.quantity);
+  }
+  for (const [pid, added] of stockAddByProduct) {
+    const existingStock = stockRowsByProduct.get(pid);
     if (existingStock) {
-      await c.env.DB.prepare(
-        'UPDATE stock_quant SET quantity = ? WHERE id = ?'
-      ).bind(existingStock.quantity + line.quantity, existingStock.id).run();
+      statements.push(
+        c.env.DB.prepare('UPDATE stock_quant SET quantity = ? WHERE id = ?')
+          .bind(existingStock.quantity + added, existingStock.id)
+      );
     } else {
-      const stockId = crypto.randomUUID();
-      await c.env.DB.prepare(
-        `INSERT INTO stock_quant (id, tenant_id, product_id, warehouse_id, quantity)
-         VALUES (?, ?, ?, 'default', ?)`
-      ).bind(stockId, tenantId, line.product_id, line.quantity).run();
+      statements.push(
+        c.env.DB.prepare(
+          `INSERT INTO stock_quant (id, tenant_id, product_id, warehouse_id, quantity)
+           VALUES (?, ?, ?, 'default', ?)`
+        ).bind(crypto.randomUUID(), tenantId, pid, added)
+      );
     }
   }
 
-  await c.env.DB.prepare(
-    "UPDATE purchase_orders SET status = 'received' WHERE id = ? AND tenant_id = ?"
-  ).bind(id, tenantId).run();
+  // Mark PO received in the SAME atomic batch as stock movements.
+  statements.push(
+    c.env.DB.prepare(
+      "UPDATE purchase_orders SET status = 'received' WHERE id = ? AND tenant_id = ?"
+    ).bind(id, tenantId)
+  );
+
+  await c.env.DB.batch(statements);
 
   return jsonResponse({ success: true });
 });
@@ -537,31 +564,52 @@ router.patch('/manufacturing-orders/:id/progress', async (c) => {
   const binds = [producedQuantity];
   if (status) { sets.push('status = ?'); binds.push(status); }
 
-  // If completing, consume BOM components from stock
+  // If completing, consume BOM components from stock.
+  // T19: was SELECT + UPDATE per component (N+1, non-atomic). Now one stock
+  // pre-fetch IN() and the MO status flip join the component deductions in a
+  // single DB.batch (all-or-nothing).
+  const moUpdate = () => c.env.DB.prepare(
+    `UPDATE manufacturing_orders SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`
+  ).bind(...binds, id, tenantId);
+
   if (status === 'completed') {
     const bomLines = await c.env.DB.prepare(
       'SELECT * FROM bom_lines WHERE bom_id = ?'
     ).bind(mo.bom_id).all();
     const components = bomLines.results || [];
 
-    for (const comp of components) {
-      const consumeQty = comp.quantity * producedQuantity;
-      const stock = await c.env.DB.prepare(
-        'SELECT id, quantity FROM stock_quant WHERE product_id = ? AND tenant_id = ? LIMIT 1'
-      ).bind(comp.component_id, tenantId).first();
-      if (stock) {
+    const consumeStatements = [];
+    if (components.length > 0) {
+      const componentIds = [...new Set(components.map((c) => c.component_id))];
+      const cPlaceholders = componentIds.map(() => '?').join(',');
+      const { results: stockRows } = await c.env.DB.prepare(
+        `SELECT id, quantity, product_id FROM stock_quant
+         WHERE product_id IN (${cPlaceholders}) AND tenant_id = ?`
+      ).bind(...componentIds, tenantId).all();
+      const stockById = new Map(stockRows.map((s) => [s.product_id, s]));
+
+      // Accumulate consumption per component (bom_lines may repeat components)
+      const consumeByComponent = new Map();
+      for (const comp of components) {
+        const qty = comp.quantity * producedQuantity;
+        consumeByComponent.set(comp.component_id, (consumeByComponent.get(comp.component_id) || 0) + qty);
+      }
+
+      for (const [componentId, consumeQty] of consumeByComponent) {
+        const stock = stockById.get(componentId);
+        if (!stock) continue; // no stock row — skip silently (original behavior)
         const newQty = Math.max(0, stock.quantity - consumeQty);
-        await c.env.DB.prepare(
-          'UPDATE stock_quant SET quantity = ? WHERE id = ?'
-        ).bind(newQty, stock.id).run();
+        consumeStatements.push(
+          c.env.DB.prepare('UPDATE stock_quant SET quantity = ? WHERE id = ?').bind(newQty, stock.id)
+        );
       }
     }
-  }
 
-  binds.push(id, tenantId);
-  await c.env.DB.prepare(
-    `UPDATE manufacturing_orders SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`
-  ).bind(...binds).run();
+    consumeStatements.push(moUpdate());
+    await c.env.DB.batch(consumeStatements);
+  } else {
+    await moUpdate().run();
+  }
 
   return jsonResponse({ success: true });
 });

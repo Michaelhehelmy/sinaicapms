@@ -104,7 +104,9 @@ export async function restoreTenant(DB, tenantId) {
 const ORGS_OF_TENANT = '(SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?)';
 const PROJECTS_OF_TENANT = '(SELECT id FROM projects WHERE tenant_id = ?)';
 const TAGS_OF_TENANT = '(SELECT id FROM tags WHERE tenant_id = ?)';
-// pos_products carries organization_id only (INTEGER) — no tenant_id column.
+// pos_products carries both tenant_id (TEXT) and organization_id (INTEGER);
+// the mapped-org subquery is equivalent to the tenant dimension (1:1 via
+// tenant_org_mapping, 0041) and works for the DELETE statement below.
 const POS_PRODUCTS_OF_TENANT =
   `(SELECT p.id FROM pos_products p WHERE p.organization_id IN ${ORGS_OF_TENANT})`;
 const LEGACY_PRODUCTS_OF_TENANT = '(SELECT id FROM products WHERE tenant_id = ?)';

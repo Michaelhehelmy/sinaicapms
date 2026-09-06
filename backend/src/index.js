@@ -8,7 +8,7 @@ import { handleAuthRoute } from './api/auth';
 import { handleTenants } from './api/tenants';
 import meRoutes from './api/tenants';
 import { handleAdminRoute } from './api/admin';
-// NOTE: admin-stats.js and admin-users.js handlers are NOT mounted.
+// NOTE: admin-stats.js and admin-users.js were deleted (T27) — never mounted.
 // Stats work via the legacy admin.js catch-all (/api/admin/stats).
 // User management works via /api/admin/admins (also legacy admin.js).
 // These files exist for reference but are dead code — do not import.
@@ -44,7 +44,6 @@ import categoriesRoutes from './api/categories';
 import mealsRoutes from './api/meals';
 import promotionsRoutes from './api/promotions';
 import onboardingRoutes from './api/onboarding';
-import { sanitizeInput } from './middleware/sanitize.js';
 import { resolveScope } from './middleware/resolveScope.js';
 import leadsRoutes, { createLead } from './api/leads';
 import inboxRoutes from './api/inbox';
@@ -52,6 +51,7 @@ import { tenantMetaRoutes, projectMetaRoutes } from './api/meta';
 import tagsRoutes, { projectTagsRoutes } from './api/tags';
 import auditRoutes from './api/audit';
 import posTablesRoutes from './api/pos-tables';
+import mealPlanRoutes from './api/meal-plans';
 import servicesRoutes from './api/services';
 import marketplaceRoutes from './api/marketplace';
 import { buildOpenApiDocument } from './routes/registry';
@@ -140,7 +140,13 @@ app.use('*', cors({
 // scattered explicit rateLimitMiddleware mount. First matching entry wins;
 // SSE streams are exempted inside policyLimiter.
 app.use('/api/*', policyLimiter());
-app.use('/api/*', sanitizeInput());
+
+// T2 (P0.3): sanitizeInput middleware REMOVED. It was a silent no-op since
+// Hono 4.12 (c.req is getter-only — reassignment threw inside try/catch and
+// the original body passed through untouched), giving a false sense of XSS
+// protection. Sanitization contract is now explicit: zod validation at the
+// API boundary + escHtml() at render. Stored user content is never mutated
+// (storage boundary), it is escaped at the presentation boundary.
 
 app.get('/', (c) => c.html(`<!DOCTYPE html>
 <html><head><title>SinaiCamps API</title></head>
@@ -698,43 +704,13 @@ app.use('/api/pos-tables/*', posTablesDualScope);
 app.route('/api/pos-tables', posTablesRoutes);
 
 // ── Meal plans (0070): public read for project meal plan options ──────────
-// Registered as a direct endpoint (not app.route) to avoid the sub-router's
-// catch-all interfering with existing /api/projects/:projectId/* routes.
+// T12 (M5): the real router is mounted here — the previous inline GET handler
+// was a dead duplicate that tests could never exercise. The router defines a
+// single GET /:id/meal-plans route and intentionally no catch-all, so mounting
+// it at /api/projects cannot interfere with the other /api/projects/* mounts.
 const mealPlansPublicScope = resolveScope({ public: true });
 app.use('/api/projects/:id/meal-plans', mealPlansPublicScope);
-app.get('/api/projects/:id/meal-plans', async (c) => {
-  try {
-    const projectId = c.req.param('id');
-
-    const project = await c.env.DB.prepare(
-      'SELECT tenant_id, meal_plan_category_id FROM projects WHERE id = ? AND deleted_at IS NULL'
-    ).bind(projectId).first();
-
-    if (!project || !project.meal_plan_category_id) {
-      return jsonResponse({ meal_plans: [] });
-    }
-
-    const { results: orgMapping } = await c.env.DB.prepare(
-      'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
-    ).bind(project.tenant_id).all();
-
-    if (orgMapping.length === 0) {
-      return jsonResponse({ meal_plans: [] });
-    }
-
-    const organizationId = orgMapping[0].organization_id;
-
-    const { results: products } = await c.env.DB.prepare(
-      `SELECT id, name, selling_price, description, image_url
-       FROM pos_products
-       WHERE category_id = ? AND organization_id = ? AND is_active = 1`
-    ).bind(project.meal_plan_category_id, organizationId).all();
-
-    return jsonResponse({ meal_plans: products });
-  } catch (e) {
-    return errorResponse('Failed to fetch meal plans');
-  }
-});
+app.route('/api/projects', mealPlanRoutes);
 
 // ── Business OS Pillars (2026-08-26 Expansion) ──────────────────────────────
 // Financial Management — double-entry accounting, invoicing, payments, tax

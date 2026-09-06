@@ -28,7 +28,7 @@ const auditQuerySchema = z.object({
   tenantId: z.string().optional(),
   userId: z.string().optional(),
   action: z.enum(['create', 'update', 'delete']).optional(),
-  entityType: z.enum(['tenant', 'project', 'admin']).optional(),
+  entityType: z.enum(['tenant', 'project', 'admin', 'order', 'pos_table']).optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
 }).strip();

@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { jsonResponse, errorResponse } from '../utils/response.js';
 import { validationError } from '../utils/errors.js';
+import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
 import { getScope } from '../middleware/resolveScope.js';
 
 const router = new Hono();
@@ -55,6 +56,32 @@ const blogCategoryCreateSchema = z.object({
 
 const blogCategoryUpdateSchema = blogCategoryCreateSchema.partial().strip();
 
+// T3 (M1): public product projection — explicitly excludes cost_price,
+// profit_margin, supplier/brand ids, and internal inventory fields so the
+// public catalog can never leak margin data. Admin/POS code paths keep their
+// own full-row queries (that is where cost_price legitimately belongs).
+const PUBLIC_PRODUCT_COLUMNS = [
+  'id',
+  'sku',
+  'name',
+  'description',
+  'short_description',
+  'images',
+  'selling_price',
+  'compare_price',
+  'unit',
+  'category_id',
+  'type',
+  'image_url',
+  'is_active',
+  'is_featured',
+  'camp_id',
+  'capacity',
+  'stock_quantity',
+  'created_at',
+  'updated_at',
+].join(', ');
+
 // ════════════════════════════════════════════════════════════════════════════
 // PUBLIC ENDPOINTS (no auth required)
 // ════════════════════════════════════════════════════════════════════════════
@@ -69,25 +96,29 @@ router.get('/products', async (c) => {
   const url = new URL(c.req.url);
   const category = url.searchParams.get('category');
   const search = url.searchParams.get('search');
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));
-  const offset = (page - 1) * limit;
+  // T16 (M7): this list previously returned the ad-hoc dialect
+  // `{ items, total, page, limit }`; it now speaks the shared wire envelope
+  // `{ data, total, page, pageSize, hasMore }` like every other list.
+  const { page, pageSize, offset } = parsePagination(url, { defaultPageSize: 20, maxPageSize: 100 });
 
-  let sql = 'SELECT * FROM pos_products WHERE tenant_id = ? AND deleted_at IS NULL';
+  // T3: filter is built against the FROM clause so the count query and the
+  // data query share one WHERE definition (a bare `SELECT *` was previously
+  // string-replaced for COUNT — impossible once the projection is explicit).
+  let fromSql = 'FROM pos_products WHERE tenant_id = ? AND deleted_at IS NULL';
   const binds = [tenantId];
 
-  if (category) { sql += ' AND category = ?'; binds.push(category); }
-  if (search) { sql += ' AND (name LIKE ? OR description LIKE ?)'; binds.push(`%${search}%`, `%${search}%`); }
+  if (category) { fromSql += ' AND category = ?'; binds.push(category); }
+  if (search) { fromSql += ' AND (name LIKE ? OR description LIKE ?)'; binds.push(`%${search}%`, `%${search}%`); }
 
-  let countSql = sql.replace('SELECT *', 'SELECT COUNT(*) as total');
-  const countResult = await c.env.DB.prepare(countSql).bind(...binds).first();
+  const countResult = await c.env.DB.prepare(
+    `SELECT COUNT(*) as total ${fromSql}`
+  ).bind(...binds).first();
   const total = countResult?.total || 0;
 
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  binds.push(limit, offset);
-
-  const rows = await c.env.DB.prepare(sql).bind(...binds).all();
-  return jsonResponse({ items: rows.results || [], total, page, limit });
+  const rows = await c.env.DB.prepare(
+    `SELECT ${PUBLIC_PRODUCT_COLUMNS} ${fromSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(...binds, pageSize, offset).all();
+  return jsonResponse(paginationEnvelope(rows.results || [], total, page, pageSize));
 });
 
 router.get('/products/:id', async (c) => {
@@ -97,7 +128,7 @@ router.get('/products/:id', async (c) => {
   const { id } = c.req.param();
 
   const product = await c.env.DB.prepare(
-    'SELECT * FROM pos_products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL'
+    `SELECT ${PUBLIC_PRODUCT_COLUMNS} FROM pos_products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`
   ).bind(id, tenantId).first();
   if (!product) return errorResponse('Product not found', 404);
   return jsonResponse(product);

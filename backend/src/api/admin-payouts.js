@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { jsonResponse, errorResponse } from '../utils/response.js';
+import { validationError } from '../utils/errors.js';
 import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
 
 const router = new Hono();
@@ -59,6 +60,12 @@ router.get('/eligible', async (c) => {
       data: results || [],
       total: agg?.total || 0,
       totalNet: agg?.total_net || 0,
+      // T16 (M7): complete the shared envelope. `limit` (default 200) caps the
+      // eligible window, so the page is the single batch; totalNet is a
+      // documented extra field on top of the standard shape.
+      page: 1,
+      pageSize: results?.length || 0,
+      hasMore: false,
     });
   } catch (e) {
     console.error('[ADMIN PAYOUTS ELIGIBLE]', e.message);
@@ -75,7 +82,7 @@ router.post('/', async (c) => {
     const raw = await c.req.json();
     const parsed = createPayoutBody.safeParse(raw);
     if (!parsed.success) {
-      return errorResponse('Validation failed', 400, parsed.error.issues);
+      return validationError(parsed);
     }
 
     const { tenantId, paymentIds, method, reference, notes } = parsed.data;

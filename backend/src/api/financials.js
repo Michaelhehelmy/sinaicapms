@@ -236,11 +236,24 @@ router.get('/journal-entries', async (c) => {
   const rows = await c.env.DB.prepare(sql).bind(...binds).all();
   const entries = rows.results || [];
 
+  // T19: was N+1 child SELECT per entry — now one IN() fetch, grouped in JS.
+  const entryIds = entries.map((e) => e.id);
+  const linesByEntry = new Map();
+  if (entryIds.length > 0) {
+    const placeholders = entryIds.map(() => '?').join(',');
+    const { results: lineResults } = await c.env.DB.prepare(
+      `SELECT el.*, a.name as account_name, a.code as account_code
+       FROM entry_lines el LEFT JOIN accounts a ON el.account_id = a.id
+       WHERE el.entry_id IN (${placeholders})`
+    ).bind(...entryIds).all();
+    for (const line of lineResults) {
+      const list = linesByEntry.get(line.entry_id) || [];
+      list.push(line);
+      linesByEntry.set(line.entry_id, list);
+    }
+  }
   for (const entry of entries) {
-    const lines = await c.env.DB.prepare(
-      'SELECT el.*, a.name as account_name, a.code as account_code FROM entry_lines el LEFT JOIN accounts a ON el.account_id = a.id WHERE el.entry_id = ?'
-    ).bind(entry.id).all();
-    entry.lines = lines.results || [];
+    entry.lines = linesByEntry.get(entry.id) || [];
   }
 
   return jsonResponse(entries);

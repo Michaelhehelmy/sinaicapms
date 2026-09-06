@@ -1,5 +1,6 @@
 import { jsonResponse, errorResponse } from '../utils/response';
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { getScope } from '../middleware/resolveScope.js';
 
 // Max uploaded image size: 8 MB (matches the wizard's client-side limit).
@@ -18,16 +19,25 @@ const CONTENT_TYPE_MAP = {
   gif: 'image/gif',
 };
 
+// T15 (M8): the helper input checks below were hand-rolled
+// (`typeof filename !== 'string'`, `rawKey.includes('..')` a.o.) — converted to
+// zod safeParse. Both helpers keep their exact contract (return null on
+// invalid input): they are called from the MEDIA route (404 path), so they
+// must never throw.
+const filenameSchema = z.string().min(1).max(255);
+
 /**
  * Returns the lowercase extension of `filename` when it is on the allowlist,
  * otherwise null. `filename` is the multipart file name or the ?filename=
  * query param of a raw octet-stream upload.
  */
 export function allowedExt(filename) {
-  if (typeof filename !== 'string' || !filename) return null;
-  const idx = filename.lastIndexOf('.');
-  if (idx < 0 || idx === filename.length - 1) return null;
-  const ext = filename.slice(idx + 1).toLowerCase();
+  const parsed = filenameSchema.safeParse(filename);
+  if (!parsed.success) return null;
+  const valid = parsed.data;
+  const idx = valid.lastIndexOf('.');
+  if (idx < 0 || idx === valid.length - 1) return null;
+  const ext = valid.slice(idx + 1).toLowerCase();
   return ALLOWED_EXTENSIONS.includes(ext) ? ext : null;
 }
 
@@ -51,15 +61,17 @@ export function makeObjectKey(tenantId, ext) {
  *  - must match the {media}/{tenantId}/{uuid}.{ext} shape (tenantId + UUID are
  *    both token-only, so no separators/slashes can hide in them).
  */
+const mediaKeySchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine((k) => !k.includes('\0'), 'null byte')
+  .refine((k) => !k.includes('..'), 'path traversal')
+  .refine((k) => /^media\/[A-Za-z0-9_-]+\/[A-Fa-f0-9-]{36}\.(jpg|jpeg|png|webp|gif)$/.test(k), 'malformed media key');
+
 export function sanitizeMediaKey(rawKey) {
-  if (typeof rawKey !== 'string' || rawKey.length === 0) return null;
-  if (rawKey.includes('\0')) return null;
-  if (rawKey.includes('..')) return null;
-  if (!rawKey.startsWith('media/')) return null;
-  if (!/^media\/[A-Za-z0-9_-]+\/[A-Fa-f0-9-]{36}\.(jpg|jpeg|png|webp|gif)$/.test(rawKey)) {
-    return null;
-  }
-  return rawKey;
+  const parsed = mediaKeySchema.safeParse(rawKey);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
