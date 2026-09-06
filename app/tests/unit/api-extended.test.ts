@@ -21,7 +21,6 @@ import {
   bulkSuspendTenants, bulkActivateTenants, bulkDeleteTenants,
   saveLead, getLeads, updateLead, deleteLead,
   getInbox, markInboxRead, deleteInboxLead,
-  createPaymentIntent, confirmPayment,
   posLogin, posGetDashboard, posGetProducts,
   posGetOrders, posGetOrder, posCreateOrder,
   posGetActiveShift, posOpenShift, posCloseShift,
@@ -1001,25 +1000,6 @@ describe('lead endpoints', () => {
 });
 
 describe('payment endpoints', () => {
-  beforeEach(() => { mockFetch({}); });
-  afterEach(() => { vi.restoreAllMocks(); });
-
-  it('createPaymentIntent POST /payments/create-intent', async () => {
-    await createPaymentIntent({ orderId: 'o1', amount: 5000 });
-    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
-    expect(opts.method).toBe('POST');
-    expect(url).toContain('/payments/create-intent');
-  });
-
-  it('confirmPayment POST /payments/confirm', async () => {
-    await confirmPayment({ paymentIntentId: 'pi_1', orderId: 'o2' });
-    const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
-    expect(opts.method).toBe('POST');
-    expect(url).toContain('/payments/confirm');
-  });
-});
-
-describe('POS endpoints', () => {
   beforeEach(() => { mockFetch({}); });
   afterEach(() => { vi.restoreAllMocks(); });
 

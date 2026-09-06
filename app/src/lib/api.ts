@@ -759,20 +759,6 @@ export function deleteInboxLead(id: string) {
   return apiFetch<Schemas['SuccessResponse']>(`/inbox/lead/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-// ─── Payments ─────────────────────────────────────────────────────────
-export function createPaymentIntent(data: { orderId: string; amount: number; currency?: string }) {
-  return apiFetch<Schemas['PaymentIntentResponse']>('/payments/create-intent', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export function confirmPayment(data: { paymentIntentId: string; orderId: string }) {
-  return apiFetch<Schemas['ConfirmPaymentResponse']>('/payments/confirm', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
 
 // ─── Public Reservations (Paymob flow) ────────────────────────────────
 /** Create a public reservation (no auth required). Returns Paymob intention if enabled. */
@@ -2313,7 +2299,7 @@ export function getAdminPayoutEligible(params: { tenantId?: number; limit?: numb
   if (params.limit) qs.set('limit', String(params.limit));
   const query = qs.toString();
   return apiFetch<Paginated<PublicPayment> & { totalNet: number }>(
-    `/admin/financials/payouts/eligible${query ? `?${query}` : ''}`
+    `/admin/payouts/eligible${query ? `?${query}` : ''}`
   );
 }
 
@@ -2325,29 +2311,29 @@ export function getAdminPayouts(params: { page?: number; pageSize?: number; tena
   if (params.status) qs.set('status', params.status);
   const query = qs.toString();
   return apiFetch<Paginated<MarketplacePayout>>(
-    `/admin/financials/payouts${query ? `?${query}` : ''}`
+    `/admin/payouts${query ? `?${query}` : ''}`
   );
 }
 
 export function getAdminPayout(id: string) {
-  return apiFetch<MarketplacePayoutDetail>(`/admin/financials/payouts/${encodeURIComponent(id)}`);
+  return apiFetch<MarketplacePayoutDetail>(`/admin/payouts/${encodeURIComponent(id)}`);
 }
 
 export function createAdminPayout(body: CreatePayoutRequest) {
-  return apiFetch<MarketplacePayoutDetail>('/admin/financials/payouts', {
+  return apiFetch<MarketplacePayoutDetail>('/admin/payouts', {
     method: 'POST',
     body: JSON.stringify(body),
   });
 }
 
 export function markAdminPayoutPaid(id: string) {
-  return apiFetch<MarketplacePayoutDetail>(`/admin/financials/payouts/${encodeURIComponent(id)}/paid`, {
+  return apiFetch<MarketplacePayoutDetail>(`/admin/payouts/${encodeURIComponent(id)}/pay`, {
     method: 'POST',
   });
 }
 
 export function cancelAdminPayout(id: string) {
-  return apiFetch<MarketplacePayoutDetail>(`/admin/financials/payouts/${encodeURIComponent(id)}/cancel`, {
+  return apiFetch<MarketplacePayoutDetail>(`/admin/payouts/${encodeURIComponent(id)}/cancel`, {
     method: 'POST',
   });
 }
