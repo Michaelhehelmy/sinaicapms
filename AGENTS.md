@@ -137,16 +137,16 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 ## 6. Running Tests
 
 ```bash
-# Frontend unit tests (3417 tests / 132 files)
+# Frontend unit tests (3415 tests / 132 files)
 cd app && npx vitest run
 
-# Backend unit tests (2096 tests / 81 files)
+# Backend unit tests (2073 tests / 80 files)
 cd backend && npx vitest run
 
 # POS integration tests
 cd backend && npx vitest run tests/pos/
 
-# Root integration tests (262 tests / 37 files)
+# Root integration tests (262 tests / 37 files — full-config run has a pre-existing /api/auth 30-min login-limit 429 flake; verify targeted or per-file)
 npx vitest run --config vitest.integration.config.ts
 
 # E2E tests (~929 total — 919 gate passing · 1 flaky (retry-pass) · ≤15 env-skipped in CI mode; boots both servers)
