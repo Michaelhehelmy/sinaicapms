@@ -56,7 +56,20 @@ describe('Toast', () => {
       </ToastProvider>,
     );
     fireEvent.click(screen.getByText('Show'));
+    // Default (info) toasts are polite status announcements
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('renders error toast with alert role', () => {
+    render(
+      <ToastProvider>
+        <TestConsumer />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByText('Error'));
     expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveAttribute('aria-live', 'assertive');
   });
 
   it('renders region with aria-label', () => {

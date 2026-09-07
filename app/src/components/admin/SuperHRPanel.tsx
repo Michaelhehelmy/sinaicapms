@@ -27,38 +27,38 @@ interface HROverview {
   pendingLeaveRequests: number;
   totalPayrollRuns: number;
   tenantBreakdown: Array<{
-    tenant_id: string;
-    tenant_name: string;
-    employee_count: number;
-    active_count: number;
+    tenantId: string;
+    tenantName: string;
+    employeeCount: number;
+    activeCount: number;
   }>;
 }
 
 interface EmployeeRecord {
   id: string;
-  first_name: string;
-  last_name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   department: string;
   position: string;
   status: string;
-  tenant_name: string;
-  hire_date: string;
+  tenantName: string;
+  hireDate: string;
   [key: string]: unknown;
 }
 
 const employeeColumns = [
   {
-    key: 'first_name',
+    key: 'firstName',
     header: 'Name',
     sortable: true,
-    render: (r: EmployeeRecord) => <span className="font-medium text-gray-800">{[r.first_name, r.last_name].filter(Boolean).join(' ') || '—'}</span>,
+    render: (r: EmployeeRecord) => <span className="font-medium text-gray-800">{[r.firstName, r.lastName].filter(Boolean).join(' ') || '—'}</span>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
-    render: (r: EmployeeRecord) => <span className="text-gray-600">{r.tenant_name || '—'}</span>,
+    render: (r: EmployeeRecord) => <span className="text-gray-600">{r.tenantName || '—'}</span>,
   },
   {
     key: 'department',
@@ -77,10 +77,10 @@ const employeeColumns = [
     render: (r: EmployeeRecord) => <Badge variant={r.status === 'active' ? 'success' : 'info'}>{r.status}</Badge>,
   },
   {
-    key: 'hire_date',
+    key: 'hireDate',
     header: 'Hire Date',
     sortable: true,
-    render: (r: EmployeeRecord) => <span className="text-gray-500">{r.hire_date ? formatDate(r.hire_date) : '—'}</span>,
+    render: (r: EmployeeRecord) => <span className="text-gray-500">{r.hireDate ? formatDate(r.hireDate) : '—'}</span>,
   },
 ];
 
@@ -167,11 +167,11 @@ export default function SuperHRPanel() {
           <h3 className="text-sm font-bold text-gray-700 mb-3">Employees by Tenant</h3>
           <div className="space-y-2">
             {overview.tenantBreakdown.slice(0, 5).map((t) => (
-              <div key={t.tenant_id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{t.tenant_name}</span>
+              <div key={t.tenantId} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{t.tenantName}</span>
                 <div className="flex items-center gap-4">
-                  <span className="text-gray-500">{t.active_count} active</span>
-                  <span className="font-medium text-gray-800">{t.employee_count} total</span>
+                  <span className="text-gray-500">{t.activeCount} active</span>
+                  <span className="font-medium text-gray-800">{t.employeeCount} total</span>
                 </div>
               </div>
             ))}

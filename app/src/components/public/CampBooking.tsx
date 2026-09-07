@@ -450,6 +450,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
                                 ...prev,
                                 [mp.id]: Math.max(0, (prev[mp.id] || 0) - 1)
                               }))}
+                              aria-label={`Decrease ${mp.name} quantity`}
                               className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600 active:scale-95"
                             >
                               −
@@ -460,6 +461,7 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
                                 ...prev,
                                 [mp.id]: Math.min(guests, (prev[mp.id] || 0) + 1)
                               }))}
+                              aria-label={`Increase ${mp.name} quantity`}
                               className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600 active:scale-95"
                             >
                               +

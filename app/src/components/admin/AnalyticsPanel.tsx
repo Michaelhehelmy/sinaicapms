@@ -167,9 +167,9 @@ function OverviewTab({ days }: { days: number }) {
 
       <Card>
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Kitchen Status ({days} day summary)</h3>
-        {kitchen?.by_status?.length ? (
+        {kitchen?.byStatus?.length ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {kitchen.by_status.map((s) => {
+            {kitchen.byStatus.map((s) => {
               const lbl = KITCHEN_STATUS_LABEL[s.status] || { text: s.status, variant: 'neutral' as const };
               return (
                 <div key={s.status} className="text-center p-3 bg-gray-50 rounded-lg">
@@ -187,24 +187,24 @@ function OverviewTab({ days }: { days: number }) {
 
       <Card>
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Monthly Revenue Trend</h3>
-        {seasonal?.accommodation_monthly?.length ? (
+        {seasonal?.accommodationMonthly?.length ? (
           <div className="space-y-3">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Accommodation Revenue</p>
             <HorizontalBarChart
-              items={seasonal.accommodation_monthly.map((m) => ({ label: m.month, revenue: m.revenue }))}
+              items={seasonal.accommodationMonthly.map((m) => ({ label: m.month, revenue: m.revenue }))}
               labelKey="label"
               valueKey="revenue"
-              maxValue={Math.max(...seasonal.accommodation_monthly.map((m) => m.revenue))}
+              maxValue={Math.max(...seasonal.accommodationMonthly.map((m) => m.revenue))}
               color="bg-teal-500"
             />
-            {seasonal.pos_monthly?.length ? (
+            {seasonal.posMonthly?.length ? (
               <>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mt-6 mb-2">POS Revenue</p>
                 <HorizontalBarChart
-                  items={seasonal.pos_monthly.map((m) => ({ label: m.month, revenue: m.revenue }))}
+                  items={seasonal.posMonthly.map((m) => ({ label: m.month, revenue: m.revenue }))}
                   labelKey="label"
                   valueKey="revenue"
-                  maxValue={Math.max(...seasonal.pos_monthly.map((m) => m.revenue))}
+                  maxValue={Math.max(...seasonal.posMonthly.map((m) => m.revenue))}
                   color="bg-violet-500"
                 />
               </>
@@ -221,7 +221,7 @@ function OverviewTab({ days }: { days: number }) {
 function ProductsTab({ days }: { days: number }) {
   const { data: topProductsData, isLoading: tpLoading } = useTopProductsQuery(days, 10);
 
-  const topProducts = useMemo(() => topProductsData?.top_products ?? [], [topProductsData]);
+  const topProducts = useMemo(() => topProductsData?.topProducts ?? [], [topProductsData]);
 
   if (tpLoading) return <LoadingSpinner text="Loading analytics..." />;
 
@@ -231,10 +231,10 @@ function ProductsTab({ days }: { days: number }) {
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Best Sellers (by quantity)</h3>
         {topProducts.length ? (
           <HorizontalBarChart
-            items={topProducts.map((p) => ({ name: p.name, total_qty: p.total_qty }))}
+            items={topProducts.map((p) => ({ name: p.name, totalQty: p.totalQty }))}
             labelKey="name"
             valueKey="total_qty"
-            maxValue={Math.max(...topProducts.map((p) => p.total_qty))}
+            maxValue={Math.max(...topProducts.map((p) => p.totalQty))}
             color="bg-blue-500"
           />
         ) : (
@@ -246,10 +246,10 @@ function ProductsTab({ days }: { days: number }) {
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Revenue by Product</h3>
         {topProducts.length ? (
           <HorizontalBarChart
-            items={topProducts.map((p) => ({ name: p.name, revenue: p.total_revenue }))}
+            items={topProducts.map((p) => ({ name: p.name, revenue: p.totalRevenue }))}
             labelKey="name"
             valueKey="revenue"
-            maxValue={Math.max(...topProducts.map((p) => p.total_revenue))}
+            maxValue={Math.max(...topProducts.map((p) => p.totalRevenue))}
             color="bg-violet-500"
           />
         ) : (
@@ -274,9 +274,9 @@ function ProductsTab({ days }: { days: number }) {
                 {topProducts.map((p) => (
                   <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="py-2.5 pr-4 font-medium text-gray-900">{p.name}</td>
-                    <td className="py-2.5 pr-4 text-right text-gray-700">{p.total_qty}</td>
-                    <td className="py-2.5 pr-4 text-right text-gray-700">{formatCurrency(p.total_revenue)}</td>
-                    <td className="py-2.5 text-right text-gray-500">{p.order_count}</td>
+                    <td className="py-2.5 pr-4 text-right text-gray-700">{p.totalQty}</td>
+                    <td className="py-2.5 pr-4 text-right text-gray-700">{formatCurrency(p.totalRevenue)}</td>
+                    <td className="py-2.5 text-right text-gray-500">{p.orderCount}</td>
                   </tr>
                 ))}
               </tbody>
@@ -297,25 +297,25 @@ function KitchenTab({ days }: { days: number }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {kitchen?.by_status?.map((s) => {
+        {kitchen?.byStatus?.map((s) => {
           const lbl = KITCHEN_STATUS_LABEL[s.status] || { text: s.status, variant: 'neutral' as const };
           return (
             <StatCard key={s.status} label={lbl.text} value={s.count} sub="orders" color={lbl.variant === 'success' ? 'text-emerald-600' : lbl.variant === 'warning' ? 'text-amber-600' : lbl.variant === 'danger' ? 'text-rose-600' : 'text-blue-600'} />
           );
         })}
-        {(!kitchen?.by_status || kitchen.by_status.length === 0) && (
+        {(!kitchen?.byStatus || kitchen.byStatus.length === 0) && (
           <div className="col-span-4"><EmptyState title="No kitchen orders in this period" /></div>
         )}
       </div>
 
       <Card>
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Daily Kitchen Trend</h3>
-        {kitchen?.daily_trend?.length ? (
-          <StackedBarChart items={kitchen.daily_trend} labelKey="date" stacks={KITCHEN_STACKS} />
+        {kitchen?.dailyTrend?.length ? (
+          <StackedBarChart items={kitchen.dailyTrend} labelKey="date" stacks={KITCHEN_STACKS} />
         ) : (
           <EmptyState title="No daily trend data" />
         )}
-        {kitchen?.daily_trend?.length ? (
+        {kitchen?.dailyTrend?.length ? (
           <div className="flex gap-4 mt-4 pt-3 border-t border-gray-100">
             {KITCHEN_STACKS.map((s) => (
               <div key={s.key} className="flex items-center gap-1.5">
@@ -333,7 +333,7 @@ function KitchenTab({ days }: { days: number }) {
 function InventoryTab() {
   const { data: lowStockData, isLoading: lsLoading } = useAnalyticsLowStockQuery();
 
-  const lowStock = useMemo(() => lowStockData?.low_stock ?? [], [lowStockData]);
+  const lowStock = useMemo(() => lowStockData?.lowStock ?? [], [lowStockData]);
 
   if (lsLoading) return <LoadingSpinner text="Loading analytics..." />;
 
@@ -362,8 +362,8 @@ function InventoryTab() {
                 {lowStock.map((p) => (
                   <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="py-2.5 pr-4 font-medium text-gray-900">{p.name}</td>
-                    <td className="py-2.5 pr-4 text-right text-gray-700">{p.stock_quantity} {p.unit || ''}</td>
-                    <td className="py-2.5 pr-4 text-right text-gray-500">{p.min_stock_level}</td>
+                    <td className="py-2.5 pr-4 text-right text-gray-700">{p.stockQuantity} {p.unit || ''}</td>
+                    <td className="py-2.5 pr-4 text-right text-gray-500">{p.minStockLevel}</td>
                     <td className="py-2.5">
                       <Badge variant={p.status === 'out_of_stock' ? 'error' : 'warning'} dot size="sm">
                         {p.status === 'out_of_stock' ? 'Out of Stock' : 'Low Stock'}
@@ -389,19 +389,19 @@ function RevenueTab({ days }: { days: number }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard label="Accommodation Revenue" value={revenueBreakdown ? formatCurrency(revenueBreakdown.accommodation.revenue) : '-'} sub={`${revenueBreakdown?.accommodation.order_count ?? 0} orders`} color="text-teal-600" />
-        <StatCard label="POS Revenue" value={revenueBreakdown ? formatCurrency(revenueBreakdown.by_product_type.reduce((s, t) => s + t.revenue, 0)) : '-'} sub={`${revenueBreakdown?.by_product_type.reduce((s, t) => s + t.order_count, 0) ?? 0} orders`} color="text-violet-600" />
-        <StatCard label="Payment Methods" value={revenueBreakdown?.by_payment_method.length ?? '-'} sub="active methods" />
+        <StatCard label="Accommodation Revenue" value={revenueBreakdown ? formatCurrency(revenueBreakdown.accommodation.revenue) : '-'} sub={`${revenueBreakdown?.accommodation.orderCount ?? 0} orders`} color="text-teal-600" />
+        <StatCard label="POS Revenue" value={revenueBreakdown ? formatCurrency(revenueBreakdown.byProductType.reduce((s, t) => s + t.revenue, 0)) : '-'} sub={`${revenueBreakdown?.byProductType.reduce((s, t) => s + t.orderCount, 0) ?? 0} orders`} color="text-violet-600" />
+        <StatCard label="Payment Methods" value={revenueBreakdown?.byPaymentMethod.length ?? '-'} sub="active methods" />
       </div>
 
       <Card>
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Revenue by Product Type</h3>
-        {revenueBreakdown?.by_product_type?.length ? (
+        {revenueBreakdown?.byProductType?.length ? (
           <HorizontalBarChart
-            items={revenueBreakdown.by_product_type.map((t) => ({ type: t.type, revenue: t.revenue }))}
+            items={revenueBreakdown.byProductType.map((t) => ({ type: t.type, revenue: t.revenue }))}
             labelKey="type"
             valueKey="revenue"
-            maxValue={Math.max(...revenueBreakdown.by_product_type.map((t) => t.revenue))}
+            maxValue={Math.max(...revenueBreakdown.byProductType.map((t) => t.revenue))}
             color="bg-emerald-500"
           />
         ) : (
@@ -411,12 +411,12 @@ function RevenueTab({ days }: { days: number }) {
 
       <Card>
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Revenue by Payment Method</h3>
-        {revenueBreakdown?.by_payment_method?.length ? (
+        {revenueBreakdown?.byPaymentMethod?.length ? (
           <HorizontalBarChart
-            items={revenueBreakdown.by_payment_method.map((m) => ({ method: m.method, revenue: m.revenue }))}
+            items={revenueBreakdown.byPaymentMethod.map((m) => ({ method: m.method, revenue: m.revenue }))}
             labelKey="method"
             valueKey="revenue"
-            maxValue={Math.max(...revenueBreakdown.by_payment_method.map((m) => m.revenue))}
+            maxValue={Math.max(...revenueBreakdown.byPaymentMethod.map((m) => m.revenue))}
             color="bg-amber-500"
           />
         ) : (
@@ -434,10 +434,10 @@ function CustomersTab({ days }: { days: number }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Customers" value={customerMetrics?.total_customers ?? '-'} />
-        <StatCard label="New Customers" value={customerMetrics?.new_customers ?? '-'} color="text-emerald-600" sub={customerMetrics ? `${Math.round((customerMetrics.new_customers / Math.max(customerMetrics.total_customers, 1)) * 100)}% of total` : undefined} />
-        <StatCard label="Repeat Customers" value={customerMetrics?.repeat_customers ?? '-'} color="text-blue-600" sub={customerMetrics ? `${Math.round((customerMetrics.repeat_customers / Math.max(customerMetrics.total_customers, 1)) * 100)}% of total` : undefined} />
-        <StatCard label="Avg Order Value" value={customerMetrics ? formatCurrency(customerMetrics.avg_order_value) : '-'} color="text-violet-600" sub={customerMetrics ? `Avg collected: ${formatCurrency(customerMetrics.avg_collected)}` : undefined} />
+        <StatCard label="Total Customers" value={customerMetrics?.totalCustomers ?? '-'} />
+        <StatCard label="New Customers" value={customerMetrics?.newCustomers ?? '-'} color="text-emerald-600" sub={customerMetrics ? `${Math.round((customerMetrics.newCustomers / Math.max(customerMetrics.totalCustomers, 1)) * 100)}% of total` : undefined} />
+        <StatCard label="Repeat Customers" value={customerMetrics?.repeatCustomers ?? '-'} color="text-blue-600" sub={customerMetrics ? `${Math.round((customerMetrics.repeatCustomers / Math.max(customerMetrics.totalCustomers, 1)) * 100)}% of total` : undefined} />
+        <StatCard label="Avg Order Value" value={customerMetrics ? formatCurrency(customerMetrics.avgOrderValue) : '-'} color="text-violet-600" sub={customerMetrics ? `Avg collected: ${formatCurrency(customerMetrics.avgCollected)}` : undefined} />
       </div>
 
       <Card>
@@ -449,11 +449,11 @@ function CustomersTab({ days }: { days: number }) {
               <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
                 <div
                   className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                  style={{ width: `${customerMetrics.total_customers > 0 ? (customerMetrics.new_customers / customerMetrics.total_customers) * 100 : 0}%` }}
+                  style={{ width: `${customerMetrics.totalCustomers > 0 ? (customerMetrics.newCustomers / customerMetrics.totalCustomers) * 100 : 0}%` }}
                 />
               </div>
               <span className="text-sm font-semibold text-gray-800 w-20 text-right shrink-0">
-                {customerMetrics.total_customers > 0 ? Math.round((customerMetrics.new_customers / customerMetrics.total_customers) * 100) : 0}%
+                {customerMetrics.totalCustomers > 0 ? Math.round((customerMetrics.newCustomers / customerMetrics.totalCustomers) * 100) : 0}%
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -461,17 +461,17 @@ function CustomersTab({ days }: { days: number }) {
               <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
                 <div
                   className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                  style={{ width: `${customerMetrics.total_customers > 0 ? (customerMetrics.repeat_customers / customerMetrics.total_customers) * 100 : 0}%` }}
+                  style={{ width: `${customerMetrics.totalCustomers > 0 ? (customerMetrics.repeatCustomers / customerMetrics.totalCustomers) * 100 : 0}%` }}
                 />
               </div>
               <span className="text-sm font-semibold text-gray-800 w-20 text-right shrink-0">
-                {customerMetrics.total_customers > 0 ? Math.round((customerMetrics.repeat_customers / customerMetrics.total_customers) * 100) : 0}%
+                {customerMetrics.totalCustomers > 0 ? Math.round((customerMetrics.repeatCustomers / customerMetrics.totalCustomers) * 100) : 0}%
               </span>
             </div>
             <div className="pt-3 border-t border-gray-100 flex gap-6 text-xs text-gray-500">
-              <span>Total: {customerMetrics.total_customers}</span>
-              <span>New: {customerMetrics.new_customers}</span>
-              <span>Repeat: {customerMetrics.repeat_customers}</span>
+              <span>Total: {customerMetrics.totalCustomers}</span>
+              <span>New: {customerMetrics.newCustomers}</span>
+              <span>Repeat: {customerMetrics.repeatCustomers}</span>
             </div>
           </div>
         ) : (

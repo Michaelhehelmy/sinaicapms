@@ -121,21 +121,21 @@ export default function SubscriptionsPanel() {
 
   const columns = [
     {
-      key: 'tenant_name',
+      key: 'tenantName',
       header: 'Tenant',
       render: (item: Record<string, unknown>) => (
         <div>
-          <div className="font-medium text-gray-800 text-sm">{String(item.tenantName || item.tenant_id)}</div>
+          <div className="font-medium text-gray-800 text-sm">{String(item.tenantName || item.tenantId)}</div>
           <div className="text-xs text-gray-500">{String(item.tenantId)}</div>
         </div>
       ),
     },
     {
-      key: 'plan',
+      key: 'planName',
       header: 'Plan',
       render: (item: Record<string, unknown>) => (
-        <Badge variant={PLAN_BADGE_VARIANTS[String(item.plan)] || 'default'} size="sm">
-          {String(item.plan).charAt(0).toUpperCase() + String(item.plan).slice(1)}
+        <Badge variant={PLAN_BADGE_VARIANTS[String(item.planName || item.planSlug)] || 'default'} size="sm">
+          {String(item.planName || item.planSlug).charAt(0).toUpperCase() + String(item.planName || item.planSlug).slice(1)}
         </Badge>
       ),
     },
@@ -162,7 +162,7 @@ export default function SubscriptionsPanel() {
       },
     },
     {
-      key: 'total_paid',
+      key: 'totalPaid',
       header: 'Total Paid',
       render: (item: Record<string, unknown>) => (
         <span className="text-sm font-medium text-gray-800">
@@ -182,9 +182,9 @@ export default function SubscriptionsPanel() {
           setEditingTenant({
             tenantId: String(item.tenantId),
             tenantName: String(item.tenantName || item.tenantId),
-            plan: String(item.plan),
+            plan: String(item.planName || item.planSlug || 'free').toLowerCase(),
           });
-          setNewPlan(String(item.plan));
+          setNewPlan(String(item.planName || item.planSlug || 'free').toLowerCase());
         }}
       >
         Change Plan
@@ -237,7 +237,7 @@ export default function SubscriptionsPanel() {
       {/* Plan Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {['free', 'starter', 'pro', 'enterprise'].map((plan) => {
-          const count = data?.data?.filter((s) => s.plan === plan).length || 0;
+          const count = data?.data?.filter((s) => (s.planName ?? s.planSlug ?? '').toLowerCase() === plan).length || 0;
           return (
             <Card key={plan} padding="sm" hover>
               <div className="text-center">

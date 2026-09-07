@@ -109,9 +109,9 @@ vi.mock('@/components/ui/DataTable', () => ({
 }));
 
 const mockAuditEntries = [
-  { id: 'log1', created_at: '2025-01-15T10:30:00Z', tenant_name: 'Camp Alpha', tenant_id: 't1', user_email: 'admin@camp.com', user_id: 'u1', action: 'create', entity_type: 'tenant', entity_id: 'abc123def456', oldValues: null, newValues: { name: 'Camp Alpha' } },
-  { id: 'log2', created_at: '2025-01-16T14:00:00Z', tenant_name: 'Camp Beta', tenant_id: 't2', user_email: 'manager@camp.com', user_id: 'u2', action: 'update', entity_type: 'project', entity_id: 'xyz789', oldValues: { status: 'draft' }, newValues: { status: 'active' } },
-  { id: 'log3', created_at: '2025-01-17T09:00:00Z', tenant_name: null, tenant_id: 't3', user_email: null, user_id: 'u3', action: 'delete', entity_type: 'admin', entity_id: 'del123', oldValues: '{"key":"val"}', newValues: '{"key":"updated"}' },
+  { id: 'log1', createdAt: '2025-01-15T10:30:00Z', tenantName: 'Camp Alpha', tenantId: 't1', userEmail: 'admin@camp.com', userId: 'u1', action: 'create', entityType: 'tenant', entityId: 'abc123def456', oldValues: null, newValues: { name: 'Camp Alpha' } },
+  { id: 'log2', createdAt: '2025-01-16T14:00:00Z', tenantName: 'Camp Beta', tenantId: 't2', userEmail: 'manager@camp.com', userId: 'u2', action: 'update', entityType: 'project', entityId: 'xyz789', oldValues: { status: 'draft' }, newValues: { status: 'active' } },
+  { id: 'log3', createdAt: '2025-01-17T09:00:00Z', tenantName: null, tenantId: 't3', userEmail: null, userId: 'u3', action: 'delete', entityType: 'admin', entityId: 'del123', oldValues: '{"key":"val"}', newValues: '{"key":"updated"}' },
 ];
 
 describe('AuditLogPanel', () => {
@@ -240,7 +240,7 @@ describe('AuditLogPanel', () => {
 
   it('handles invalid JSON string in JsonDiff', () => {
     auditData = {
-      data: [{ id: 'log4', created_at: '2025-01-15T10:30:00Z', tenant_name: 'T', tenant_id: 't', user_email: 'e', user_id: 'u', action: 'create', entity_type: 'x', entity_id: 'y', oldValues: 'not-json{', newValues: 'also-not[' }],
+      data: [{ id: 'log4', createdAt: '2025-01-15T10:30:00Z', tenantName: 'T', tenantId: 't', userEmail: 'e', userId: 'u', action: 'create', entityType: 'x', entityId: 'y', oldValues: 'not-json{', newValues: 'also-not[' }],
       total: 1,
       page: 1,
       pageSize: 25,
@@ -308,14 +308,14 @@ describe('AuditLogPanel', () => {
   });
 
   it('renders action badge for unknown action', () => {
-    auditData = { data: [{ id: 'log5', created_at: '2025-01-15T10:30:00Z', tenant_name: 'T', tenant_id: 't', user_email: 'e', user_id: 'u', action: 'archive', entity_type: 'x', entity_id: 'y', oldValues: null, newValues: null }], total: 1, page: 1, pageSize: 25 };
+    auditData = { data: [{ id: 'log5', createdAt: '2025-01-15T10:30:00Z', tenantName: 'T', tenantId: 't', userEmail: 'e', userId: 'u', action: 'archive', entityType: 'x', entityId: 'y', oldValues: null, newValues: null }], total: 1, page: 1, pageSize: 25 };
     renderPanel();
     expect(screen.getByText('archive')).toBeInTheDocument();
   });
 
   it('shows "No changes recorded" for empty object values', () => {
     auditData = {
-      data: [{ id: 'log6', created_at: '2025-01-18T10:30:00Z', tenant_name: 'T', tenant_id: 't', user_email: 'e', user_id: 'u', action: 'update', entity_type: 'x', entity_id: 'y', oldValues: '{}', newValues: '{}' }],
+      data: [{ id: 'log6', createdAt: '2025-01-18T10:30:00Z', tenantName: 'T', tenantId: 't', userEmail: 'e', userId: 'u', action: 'update', entityType: 'x', entityId: 'y', oldValues: '{}', newValues: '{}' }],
       total: 1,
       page: 1,
       pageSize: 25,

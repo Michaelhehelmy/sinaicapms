@@ -9814,6 +9814,14 @@ export interface components {
             id: string;
         };
         PublicReservationResponse: {
+            success?: boolean;
+            duplicate?: boolean;
+            order?: {
+                id: string;
+                reference: string;
+                totalAmount: number;
+                currency: string;
+            };
             orderId: string;
             reference: string;
             totalAmount: number;
@@ -9835,6 +9843,7 @@ export interface components {
             guestName: string;
             guestPhone?: string;
             guestEmail?: string;
+            idempotencyKey?: string;
             items?: {
                 productId: string;
                 quantity: number;

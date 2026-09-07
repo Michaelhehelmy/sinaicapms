@@ -112,10 +112,10 @@ export default function AuditLogPanel() {
 
   const columns = [
     {
-      key: 'created_at',
+      key: 'createdAt',
       header: 'Time',
       render: (item: Record<string, unknown>) => {
-        const date = new Date(String(item.created_at || ''));
+        const date = new Date(String(item.createdAt || ''));
         return (
           <span className="text-sm text-gray-600">
             {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -126,19 +126,19 @@ export default function AuditLogPanel() {
       width: '160px',
     },
     {
-      key: 'tenant_name',
+      key: 'tenantName',
       header: 'Tenant',
       render: (item: Record<string, unknown>) => (
         <span className="text-sm font-medium text-gray-800">
-          {String(item.tenant_name || item.tenant_id || '-')}
+          {String(item.tenantName || item.tenantId || '-')}
         </span>
       ),
     },
     {
-      key: 'user_email',
+      key: 'userEmail',
       header: 'User',
       render: (item: Record<string, unknown>) => (
-        <span className="text-sm text-gray-600">{String(item.user_email || item.user_id || '-')}</span>
+        <span className="text-sm text-gray-600">{String(item.userEmail || item.userId || '-')}</span>
       ),
     },
     {
@@ -151,17 +151,17 @@ export default function AuditLogPanel() {
       ),
     },
     {
-      key: 'entity_type',
+      key: 'entityType',
       header: 'Entity Type',
       render: (item: Record<string, unknown>) => (
-        <span className="text-sm text-gray-600 capitalize">{String(item.entity_type)}</span>
+        <span className="text-sm text-gray-600 capitalize">{String(item.entityType)}</span>
       ),
     },
     {
-      key: 'entity_id',
+      key: 'entityId',
       header: 'Entity ID',
       render: (item: Record<string, unknown>) => (
-        <span className="text-xs font-mono text-gray-500">{String(item.entity_id).slice(0, 16)}...</span>
+        <span className="text-xs font-mono text-gray-500">{String(item.entityId).slice(0, 16)}...</span>
       ),
     },
   ];

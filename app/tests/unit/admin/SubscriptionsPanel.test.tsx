@@ -136,9 +136,9 @@ function renderPanel() {
 }
 
 const mockSubs = [
-  { tenantId: 't1', tenantName: 'Camp Alpha', plan: 'pro', status: 'active', usage: { bookings: 500, limit: 10000, percent: 5 }, totalPaid: 999 },
-  { tenantId: 't2', tenantName: 'Camp Beta', plan: 'free', status: 'canceled', usage: { bookings: 50, limit: 100, percent: 50 }, totalPaid: 0 },
-  { tenantId: 't3', tenantName: 'Camp Gamma', plan: 'starter', status: 'active', usage: { bookings: 900, limit: 1000, percent: 90 }, totalPaid: 250 },
+  { tenantId: 't1', tenantName: 'Camp Alpha', planName: 'Pro', status: 'active', usage: { bookings: 500, limit: 10000, percent: 5 }, totalPaid: 999 },
+  { tenantId: 't2', tenantName: 'Camp Beta', planName: 'Free', status: 'canceled', usage: { bookings: 50, limit: 100, percent: 50 }, totalPaid: 0 },
+  { tenantId: 't3', tenantName: 'Camp Gamma', planName: 'Starter', status: 'active', usage: { bookings: 900, limit: 1000, percent: 90 }, totalPaid: 250 },
 ];
 
 describe('SubscriptionsPanel', () => {
@@ -357,7 +357,7 @@ describe('SubscriptionsPanel', () => {
 
   it('usage bar shows critical color for >90% usage', () => {
     const redSubscribe = [
-      { tenantId: 't4', tenantName: 'Camp Red', plan: 'pro', status: 'active', usage: { bookings: 950, limit: 1000, percent: 95 }, totalPaid: 999 },
+      { tenantId: 't4', tenantName: 'Camp Red', planName: 'Pro', status: 'active', usage: { bookings: 950, limit: 1000, percent: 95 }, totalPaid: 999 },
     ];
     subscriptionsData = { data: redSubscribe, total: 1, page: 1, pageSize: 20 };
     renderPanel();
@@ -366,7 +366,7 @@ describe('SubscriptionsPanel', () => {
 
   it('usage bar shows warning color for >70% usage', () => {
     const yellowSubscribe = [
-      { tenantId: 't5', tenantName: 'Camp Yellow', plan: 'pro', status: 'active', usage: { bookings: 800, limit: 1000, percent: 80 }, totalPaid: 999 },
+      { tenantId: 't5', tenantName: 'Camp Yellow', planName: 'Pro', status: 'active', usage: { bookings: 800, limit: 1000, percent: 80 }, totalPaid: 999 },
     ];
     subscriptionsData = { data: yellowSubscribe, total: 1, page: 1, pageSize: 20 };
     renderPanel();
@@ -375,7 +375,7 @@ describe('SubscriptionsPanel', () => {
 
   it('renders a row with no usage data', () => {
     const noUsage = [
-      { tenantId: 't6', tenantName: 'Camp None', plan: 'free', status: 'active', totalPaid: 0 },
+      { tenantId: 't6', tenantName: 'Camp None', planName: 'Free', status: 'active', totalPaid: 0 },
     ];
     subscriptionsData = { data: noUsage, total: 1, page: 1, pageSize: 20 };
     renderPanel();
@@ -384,7 +384,7 @@ describe('SubscriptionsPanel', () => {
 
   it('renders row with undefined plan to fallback badge', () => {
     const weirdPlan = [
-      { tenantId: 't7', tenantName: 'Camp Weird', plan: 'mystery', status: 'bizarre', totalPaid: 0 },
+      { tenantId: 't7', tenantName: 'Camp Weird', planName: 'Mystery', status: 'bizarre', totalPaid: 0 },
     ];
     subscriptionsData = { data: weirdPlan, total: 1, page: 1, pageSize: 20 };
     renderPanel();

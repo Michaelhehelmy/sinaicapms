@@ -1074,7 +1074,7 @@ export function useDeleteInboxLeadMutation() {
 /** Fetch top products (by quantity) for a given period */
 export function useTopProductsQuery(days?: number, limit?: number) {
   const toastError = useErrorToast();
-  return useQuery<{ days: number; top_products: api.TopProduct[] }>({
+  return useQuery<{ days: number; topProducts: api.TopProduct[] }>({
     queryKey: ['reports', 'topProducts', days, limit] as const,
     queryFn: () => api.getTopProducts(days, limit),
     throwOnError: (err) => {
@@ -1087,7 +1087,7 @@ export function useTopProductsQuery(days?: number, limit?: number) {
 /** Fetch kitchen performance stats */
 export function useKitchenPerformanceQuery(days?: number) {
   const toastError = useErrorToast();
-  return useQuery<{ days: number; by_status: api.KitchenStatusCount[]; daily_trend: api.KitchenTrend[] }>({
+  return useQuery<{ days: number; byStatus: api.KitchenStatusCount[]; dailyTrend: api.KitchenTrend[] }>({
     queryKey: ['reports', 'kitchenPerformance', days] as const,
     queryFn: () => api.getKitchenPerformance(days),
     throwOnError: (err) => {
@@ -1100,7 +1100,7 @@ export function useKitchenPerformanceQuery(days?: number) {
 /** Fetch analytics low-stock items */
 export function useAnalyticsLowStockQuery() {
   const toastError = useErrorToast();
-  return useQuery<{ low_stock: api.LowStockItem[] }>({
+  return useQuery<{ lowStock: api.LowStockItem[] }>({
     queryKey: ['reports', 'analyticsLowStock'] as const,
     queryFn: () => api.getAnalyticsLowStock(),
     throwOnError: (err) => {

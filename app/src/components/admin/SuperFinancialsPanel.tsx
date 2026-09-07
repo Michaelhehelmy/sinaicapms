@@ -41,11 +41,11 @@ interface FinancialOverview {
   totalCollected: number;
   overdueCount: number;
   tenantBreakdown: Array<{
-    tenant_id: string;
-    tenant_name: string;
-    invoice_count: number;
-    total_revenue: number;
-    total_collected: number;
+    tenantId: string;
+    tenantName: string;
+    invoiceCount: number;
+    totalRevenue: number;
+    totalCollected: number;
   }>;
   // P2: marketplace payment settlement totals + per-tenant breakdown
   totalGross: number;
@@ -65,27 +65,27 @@ interface FinancialOverview {
 
 interface InvoiceRecord {
   id: string;
-  invoice_number: string;
+  invoiceNumber: string;
   type: string;
   status: string;
-  total_amount: number;
-  tenant_name: string;
-  issue_date: string;
+  totalAmount: number;
+  tenantName: string;
+  issueDate: string;
   [key: string]: unknown;
 }
 
 const invoiceColumns = [
   {
-    key: 'invoice_number',
+    key: 'invoiceNumber',
     header: 'Invoice #',
     sortable: true,
-    render: (r: InvoiceRecord) => <span className="font-medium text-gray-800">{r.invoice_number || '—'}</span>,
+    render: (r: InvoiceRecord) => <span className="font-medium text-gray-800">{r.invoiceNumber || '—'}</span>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
-    render: (r: InvoiceRecord) => <span className="text-gray-600">{r.tenant_name || '—'}</span>,
+    render: (r: InvoiceRecord) => <span className="text-gray-600">{r.tenantName || '—'}</span>,
   },
   {
     key: 'type',
@@ -98,10 +98,10 @@ const invoiceColumns = [
     render: (r: InvoiceRecord) => <Badge variant={r.status === 'paid' ? 'success' : r.status === 'overdue' ? 'danger' : 'warning'}>{r.status}</Badge>,
   },
   {
-    key: 'total_amount',
+    key: 'totalAmount',
     header: 'Amount',
     sortable: true,
-    render: (r: InvoiceRecord) => <span className="text-right font-medium text-gray-800">{formatCurrency(r.total_amount ?? 0)}</span>,
+    render: (r: InvoiceRecord) => <span className="text-right font-medium text-gray-800">{formatCurrency(r.totalAmount ?? 0)}</span>,
   },
 ];
 
@@ -128,13 +128,13 @@ type PayoutRecord = MarketplacePayout & Record<string, unknown>;
 
 const paymentColumns = [
   {
-    key: 'order_reference',
+    key: 'orderReference',
     header: 'Reference',
     sortable: true,
     render: (r: PaymentRecord) => <span className="font-medium text-gray-800">{r.orderReference || '—'}</span>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
     render: (r: PaymentRecord) => <span className="text-gray-600">{r.tenantName || '—'}</span>,
@@ -145,30 +145,30 @@ const paymentColumns = [
     render: (r: PaymentRecord) => <Badge variant="neutral">{r.channel}</Badge>,
   },
   {
-    key: 'gross_amount',
+    key: 'grossAmount',
     header: 'Gross',
     sortable: true,
     render: (r: PaymentRecord) => <span className="font-medium text-gray-800">{formatCurrency(r.grossAmount ?? 0, r.currency || 'USD')}</span>,
   },
   {
-    key: 'marketplace_fee',
+    key: 'marketplaceFee',
     header: 'Marketplace Fee',
     sortable: true,
     render: (r: PaymentRecord) => <span className="text-gray-600">{formatCurrency(r.marketplaceFee ?? 0, r.currency || 'USD')}</span>,
   },
   {
-    key: 'net_amount',
+    key: 'netAmount',
     header: 'Net',
     sortable: true,
     render: (r: PaymentRecord) => <span className="font-medium text-success-700">{formatCurrency(r.netAmount ?? 0, r.currency || 'USD')}</span>,
   },
   {
-    key: 'payment_status',
+    key: 'paymentStatus',
     header: 'Status',
     render: (r: PaymentRecord) => <Badge variant={PAYMENT_STATUS_VARIANTS[r.paymentStatus] ?? 'neutral'}>{r.paymentStatus}</Badge>,
   },
   {
-    key: 'captured_at',
+    key: 'capturedAt',
     header: 'Captured at',
     sortable: true,
     render: (r: PaymentRecord) => <span className="text-gray-500">{r.capturedAt ? formatDate(r.capturedAt) : '—'}</span>,
@@ -177,13 +177,13 @@ const paymentColumns = [
 
 const payoutColumns = [
   {
-    key: 'created_at',
+    key: 'createdAt',
     header: 'Date',
     sortable: true,
     render: (r: PayoutRecord) => <span className="text-gray-600">{r.createdAt ? formatDate(r.createdAt) : '—'}</span>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
     render: (r: PayoutRecord) => <span className="font-medium text-gray-800">{r.tenantName || '—'}</span>,
@@ -210,13 +210,13 @@ const payoutColumns = [
     render: (r: PayoutRecord) => <span className="text-gray-500">{r.reference || '—'}</span>,
   },
   {
-    key: 'item_count',
+    key: 'itemCount',
     header: 'Items',
     sortable: true,
     render: (r: PayoutRecord) => <span className="text-gray-600">{r.itemCount ?? 0}</span>,
   },
   {
-    key: 'paid_at',
+    key: 'paidAt',
     header: 'Paid at',
     sortable: true,
     render: (r: PayoutRecord) => <span className="text-gray-500">{r.paidAt ? formatDate(r.paidAt) : '—'}</span>,
@@ -504,11 +504,11 @@ export default function SuperFinancialsPanel() {
           <h3 className="text-sm font-bold text-gray-700 mb-3">Revenue by Tenant</h3>
           <div className="space-y-2">
             {overview.tenantBreakdown.slice(0, 5).map((t) => (
-              <div key={t.tenant_id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{t.tenant_name}</span>
+              <div key={t.tenantId} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{t.tenantName}</span>
                 <div className="flex items-center gap-4">
-                  <span className="text-gray-500">{t.invoice_count} invoices</span>
-                  <span className="font-medium text-gray-800">{formatCurrency(t.total_revenue)}</span>
+                  <span className="text-gray-500">{t.invoiceCount} invoices</span>
+                  <span className="font-medium text-gray-800">{formatCurrency(t.totalRevenue)}</span>
                 </div>
               </div>
             ))}

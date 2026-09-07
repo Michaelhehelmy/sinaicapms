@@ -237,8 +237,8 @@ const samplePerf = {
 
 const sampleAudit = {
   data: [
-    { id: '1', created_at: '2026-08-01T10:00:00Z', tenant_name: 'Camp Alpha', user_email: 'admin@test.com', action: 'create', entity_type: 'tenant', entity_id: 'tenant-abcd', oldValues: { name: 'Old' }, newValues: { name: 'New' } },
-    { id: '2', created_at: '2026-08-02T10:00:00Z', tenant_id: 't2', user_id: 'user2', action: 'update', entity_type: 'project', entity_id: 'proj-1234', oldValues: 'not-json', newValues: 'also-not-json' },
+    { id: '1', createdAt: '2026-08-01T10:00:00Z', tenantName: 'Camp Alpha', userEmail: 'admin@test.com', action: 'create', entityType: 'tenant', entityId: 'tenant-abcd', oldValues: { name: 'Old' }, newValues: { name: 'New' } },
+    { id: '2', createdAt: '2026-08-02T10:00:00Z', tenantId: 't2', userId: 'user2', action: 'update', entityType: 'project', entityId: 'proj-1234', oldValues: 'not-json', newValues: 'also-not-json' },
   ],
   page: 1,
   total: 2,

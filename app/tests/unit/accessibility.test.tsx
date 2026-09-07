@@ -74,7 +74,7 @@ describe('A11y: Input aria-describedby', () => {
 });
 
 /* ────────────────────────────────────────────────────────── */
-/*  Toast — role="alert"                                      */
+/*  Toast — tiered roles (status/alert)                       */
 /* ────────────────────────────────────────────────────────── */
 function ToastTrigger() {
   const { showToast } = useToast();
@@ -85,14 +85,14 @@ function ToastTrigger() {
   );
 }
 
-describe('A11y: Toast role="alert"', () => {
-  it('renders toast with role="alert" and aria-live="assertive"', () => {
+describe('A11y: Toast roles', () => {
+  it('renders success toast with role="status" and aria-live="polite"', () => {
     renderWithToast(<ToastTrigger />);
     fireEvent.click(screen.getByRole('button', { name: 'Show Toast' }));
-    const alert = screen.getByRole('alert');
-    expect(alert).toBeInTheDocument();
-    expect(alert).toHaveAttribute('aria-live', 'assertive');
-    expect(alert).toHaveTextContent('Item saved successfully');
+    const status = screen.getByRole('status');
+    expect(status).toBeInTheDocument();
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).toHaveTextContent('Item saved successfully');
   });
 
   it('dismiss button has accessible name', () => {
@@ -204,18 +204,18 @@ describe('A11y: DataTable aria-sort', () => {
     expect(emailHeader).not.toHaveAttribute('aria-sort');
   });
 
-  it('clicking sortable header sets aria-sort="ascending"', () => {
+  it('clicking sortable header button sets aria-sort="ascending"', () => {
     render(<DataTable columns={columns} data={data} />);
     const nameHeader = table().getByText('Name').closest('th')!;
-    fireEvent.click(nameHeader);
+    fireEvent.click(table().getByRole('button', { name: 'Sort by Name' }));
     expect(nameHeader).toHaveAttribute('aria-sort', 'ascending');
   });
 
   it('clicking again toggles to aria-sort="descending"', () => {
     render(<DataTable columns={columns} data={data} />);
     const nameHeader = table().getByText('Name').closest('th')!;
-    fireEvent.click(nameHeader);
-    fireEvent.click(nameHeader);
+    fireEvent.click(table().getByRole('button', { name: 'Sort by Name' }));
+    fireEvent.click(table().getByRole('button', { name: 'Sort by Name' }));
     expect(nameHeader).toHaveAttribute('aria-sort', 'descending');
   });
 
@@ -294,7 +294,7 @@ describe('A11y: Badge role="status"', () => {
         Error
       </Badge>,
     );
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Error' })).toBeInTheDocument();
   });
 });
 

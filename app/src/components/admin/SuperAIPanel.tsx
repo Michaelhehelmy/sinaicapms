@@ -27,10 +27,10 @@ interface AIOverview {
   totalLogs: number;
   totalPriceRules: number;
   tenantBreakdown: Array<{
-    tenant_id: string;
-    tenant_name: string;
-    prediction_count: number;
-    automation_count: number;
+    tenantId: string;
+    tenantName: string;
+    predictionCount: number;
+    ruleCount: number;
   }>;
 }
 
@@ -38,8 +38,8 @@ interface PredictionRecord {
   id: string;
   type: string;
   confidence: number;
-  tenant_name: string;
-  created_at: string;
+  tenantName: string;
+  createdAt: string;
   [key: string]: unknown;
 }
 
@@ -51,10 +51,10 @@ const predictionColumns = [
     render: (r: PredictionRecord) => <Badge variant="info">{r.type || '—'}</Badge>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
-    render: (r: PredictionRecord) => <span className="text-gray-600">{r.tenant_name || '—'}</span>,
+    render: (r: PredictionRecord) => <span className="text-gray-600">{r.tenantName || '—'}</span>,
   },
   {
     key: 'confidence',
@@ -63,10 +63,10 @@ const predictionColumns = [
     render: (r: PredictionRecord) => <span className="font-medium text-gray-800">{typeof r.confidence === 'number' ? `${(r.confidence * 100).toFixed(0)}%` : '—'}</span>,
   },
   {
-    key: 'created_at',
+    key: 'createdAt',
     header: 'Created',
     sortable: true,
-    render: (r: PredictionRecord) => <span className="text-gray-500">{r.created_at ? formatDate(r.created_at) : '—'}</span>,
+    render: (r: PredictionRecord) => <span className="text-gray-500">{r.createdAt ? formatDate(r.createdAt) : '—'}</span>,
   },
 ];
 
@@ -153,11 +153,11 @@ export default function SuperAIPanel() {
           <h3 className="text-sm font-bold text-gray-700 mb-3">AI Activity by Tenant</h3>
           <div className="space-y-2">
             {overview.tenantBreakdown.slice(0, 5).map((t) => (
-              <div key={t.tenant_id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{t.tenant_name}</span>
+              <div key={t.tenantId} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{t.tenantName}</span>
                 <div className="flex items-center gap-4">
-                  <span className="text-gray-500">{t.automation_count} rules</span>
-                  <span className="font-medium text-gray-800">{t.prediction_count} predictions</span>
+                  <span className="text-gray-500">{t.ruleCount} rules</span>
+                  <span className="font-medium text-gray-800">{t.predictionCount} predictions</span>
                 </div>
               </div>
             ))}

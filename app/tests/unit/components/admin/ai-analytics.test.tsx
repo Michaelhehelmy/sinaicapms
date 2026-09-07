@@ -39,9 +39,9 @@ const h = vi.hoisted(() => {
     mockAiLoading: false,
     mockRevenueData: null as unknown,
     mockOccupancyData: null as unknown,
-    mockTopProducts: { top_products: [] } as unknown,
+    mockTopProducts: { topProducts: [] } as unknown,
     mockKitchen: null as unknown,
-    mockLowStock: { low_stock: [] } as unknown,
+    mockLowStock: { lowStock: [] } as unknown,
     mockRevenueBreakdown: null as unknown,
     mockCustomerMetrics: null as unknown,
     mockSeasonal: null as unknown,
@@ -240,9 +240,9 @@ beforeEach(() => {
   // AnalyticsPanel
   S.mockRevenueData = null;
   S.mockOccupancyData = null;
-  S.mockTopProducts = { top_products: [] };
+  S.mockTopProducts = { topProducts: [] };
   S.mockKitchen = null;
-  S.mockLowStock = { low_stock: [] };
+  S.mockLowStock = { lowStock: [] };
   S.mockRevenueBreakdown = null;
   S.mockCustomerMetrics = null;
   S.mockSeasonal = null;
@@ -531,15 +531,15 @@ describe('AnalyticsPanel', () => {
     S.mockRevenueData = revenueSummary;
     S.mockOccupancyData = occupancy;
     S.mockKitchen = {
-      by_status: [
+      byStatus: [
         { status: 'completed', count: 8 },
         { status: 'pending', count: 3 },
       ],
-      daily_trend: [{ date: '2025-07-01', completed: 5, ready: 2, pending: 1 }],
+      dailyTrend: [{ date: '2025-07-01', completed: 5, ready: 2, pending: 1 }],
     };
     S.mockSeasonal = {
-      accommodation_monthly: [{ month: '2025-07', revenue: 4000 }],
-      pos_monthly: [{ month: '2025-07', revenue: 1200 }],
+      accommodationMonthly: [{ month: '2025-07', revenue: 4000 }],
+      posMonthly: [{ month: '2025-07', revenue: 1200 }],
     };
     render(<AnalyticsPanel />);
     expect(screen.getByText('Total Revenue')).toBeInTheDocument();
@@ -575,8 +575,8 @@ describe('AnalyticsPanel', () => {
 
   it('renders seasonal chart when max value is zero', () => {
     S.mockSeasonal = {
-      accommodation_monthly: [{ month: '2025-07', revenue: 0 }],
-      pos_monthly: [{ month: '2025-07', revenue: 0 }],
+      accommodationMonthly: [{ month: '2025-07', revenue: 0 }],
+      posMonthly: [{ month: '2025-07', revenue: 0 }],
     };
     render(<AnalyticsPanel />);
     expect(screen.getByText('Monthly Revenue Trend')).toBeInTheDocument();
@@ -586,9 +586,9 @@ describe('AnalyticsPanel', () => {
 
   it('renders top products tab with table', () => {
     S.mockTopProducts = {
-      top_products: [
-        { id: 1, name: 'Tea', total_qty: 40, total_revenue: 200, order_count: 25 },
-        { id: 2, name: 'Cake', total_qty: 30, total_revenue: 150, order_count: 20 },
+      topProducts: [
+        { id: 1, name: 'Tea', totalQty: 40, totalRevenue: 200, orderCount: 25 },
+        { id: 2, name: 'Cake', totalQty: 30, totalRevenue: 150, orderCount: 20 },
       ],
     };
     render(<AnalyticsPanel />);
@@ -603,12 +603,12 @@ describe('AnalyticsPanel', () => {
 
   it('renders kitchen tab with status cards and daily trend', () => {
     S.mockKitchen = {
-      by_status: [
+      byStatus: [
         { status: 'completed', count: 8 },
         { status: 'pending', count: 3 },
         { status: 'in_progress', count: 2 },
       ],
-      daily_trend: [
+      dailyTrend: [
         { date: '2025-07-01', completed: 5, ready: 2, pending: 1 },
       ],
     };
@@ -622,9 +622,9 @@ describe('AnalyticsPanel', () => {
 
   it('renders inventory tab with low stock table', () => {
     S.mockLowStock = {
-      low_stock: [
-        { id: 1, name: 'Tomatoes', stock_quantity: 2, min_stock_level: 10, status: 'low', unit: 'kg' },
-        { id: 2, name: 'Salt', stock_quantity: 4, min_stock_level: 8, status: 'low', unit: 'kg' },
+      lowStock: [
+        { id: 1, name: 'Tomatoes', stockQuantity: 2, minStockLevel: 10, status: 'low', unit: 'kg' },
+        { id: 2, name: 'Salt', stockQuantity: 4, minStockLevel: 8, status: 'low', unit: 'kg' },
       ],
     };
     render(<AnalyticsPanel />);
@@ -638,7 +638,7 @@ describe('AnalyticsPanel', () => {
   });
 
   it('renders inventory empty state', () => {
-    S.mockLowStock = { low_stock: [] };
+    S.mockLowStock = { lowStock: [] };
     render(<AnalyticsPanel />);
     fireEvent.click(screen.getByTestId('analytics-tab-inventory'));
     expect(screen.getByText('All products are well-stocked')).toBeInTheDocument();
@@ -646,9 +646,9 @@ describe('AnalyticsPanel', () => {
 
   it('renders revenue breakdown tab', () => {
     S.mockRevenueBreakdown = {
-      accommodation: { revenue: 8000, order_count: 20 },
-      by_product_type: [{ type: 'food', revenue: 4000, order_count: 30 }],
-      by_payment_method: [{ method: 'card', revenue: 3000 }],
+      accommodation: { revenue: 8000, orderCount: 20 },
+      byProductType: [{ type: 'food', revenue: 4000, orderCount: 30 }],
+      byPaymentMethod: [{ method: 'card', revenue: 3000 }],
     };
     render(<AnalyticsPanel />);
     fireEvent.click(screen.getByTestId('analytics-tab-revenue'));
@@ -660,11 +660,11 @@ describe('AnalyticsPanel', () => {
 
   it('renders customers tab with metrics and composition', () => {
     S.mockCustomerMetrics = {
-      total_customers: 100,
-      new_customers: 60,
-      repeat_customers: 40,
-      avg_order_value: 25,
-      avg_collected: 22,
+      totalCustomers: 100,
+      newCustomers: 60,
+      repeatCustomers: 40,
+      avgOrderValue: 25,
+      avgCollected: 22,
     };
     render(<AnalyticsPanel />);
     fireEvent.click(screen.getByTestId('analytics-tab-customers'));
@@ -768,14 +768,14 @@ describe('SuperAIPanel', () => {
           totalLogs: 30,
           totalPriceRules: 3,
           tenantBreakdown: [
-            { tenant_id: 't1', tenant_name: 'Acacia Camp', prediction_count: 8, automation_count: 4 },
-            { tenant_id: 't2', tenant_name: 'Sinai Lodge', prediction_count: 4, automation_count: 1 },
+            { tenantId: 't1', tenantName: 'Acacia Camp', predictionCount: 8, ruleCount: 4 },
+            { tenantId: 't2', tenantName: 'Sinai Lodge', predictionCount: 4, ruleCount: 1 },
           ],
         });
       }
       return Promise.resolve({
         data: [
-          { id: 'pr1', type: 'demand', confidence: 0.9, tenant_name: 'Acacia Camp', created_at: '2025-07-01' },
+          { id: 'pr1', type: 'demand', confidence: 0.9, tenantName: 'Acacia Camp', createdAt: '2025-07-01' },
         ],
         total: 1,
       });
@@ -825,7 +825,7 @@ describe('SuperAIPanel', () => {
           return Promise.resolve({ data: [], total: 0 });
         }
         return Promise.resolve({
-          data: [{ id: 'pr1', type: 'demand', confidence: 0.8, tenant_name: 'Acacia Camp', created_at: '2025-07-01' }],
+          data: [{ id: 'pr1', type: 'demand', confidence: 0.8, tenantName: 'Acacia Camp', createdAt: '2025-07-01' }],
           total: 1,
         });
       }

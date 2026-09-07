@@ -224,6 +224,14 @@ const heroStats: { value: number; label: string }[] = (() => {
 
   async function handleOnboarding(e) {
     e.preventDefault();
+    var form = document.getElementById('onboardingForm');
+    var submitBtn = form.querySelector('button[type="submit"]');
+    // Duplicate-submit guard: ignore re-triggers until the fetch settles.
+    if (submitBtn.dataset.submitting === '1') return;
+    submitBtn.dataset.submitting = '1';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+
     var name = document.getElementById('tenantName').value.trim();
     var subdomain = document.getElementById('tenantSubdomain').value.trim().toLowerCase();
     var primary_color = document.getElementById('tenantColor').value;
@@ -249,6 +257,10 @@ const heroStats: { value: number; label: string }[] = (() => {
       window.location.reload();
     } catch (err) {
       alert('Error setting up camp: ' + err.message);
+    } finally {
+      submitBtn.dataset.submitting = '0';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Your Portal';
     }
   }
 </script>

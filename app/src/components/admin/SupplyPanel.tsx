@@ -25,13 +25,13 @@ import {
 
 type Tab = 'warehouses' | 'stock' | 'transfers' | 'purchaseOrders' | 'boms' | 'manufacturing';
 
-interface Warehouse { id: string; name: string; location: string; is_active: number; }
-interface StockRow { id: string; product_id: string; warehouse_id: string; quantity: number; reserved: number; product_name: string; warehouse_name: string; }
-interface Transfer { id: string; from_warehouse_id: string; to_warehouse_id: string; product_id: string; quantity: number; status: string; from_warehouse_name: string; to_warehouse_name: string; product_name: string; }
-interface PurchaseOrder { id: string; po_number: string; vendor_id: string; order_date: string; total_amount: number; status: string; }
-interface BOM { id: string; product_id: string; name: string; version: number; product_name: string; lines: BOMLine[]; }
-interface BOMLine { id?: string; component_id: string; quantity: number; unit: string; }
-interface MO { id: string; product_id: string; quantity: number; status: string; produced_quantity: number; product_name: string; bom_name: string; }
+interface Warehouse { id: string; name: string; location: string; isActive: number; }
+interface StockRow { id: string; productId: string; warehouseId: string; quantity: number; reserved: number; productName: string; warehouseName: string; }
+interface Transfer { id: string; fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: number; status: string; fromWarehouseName: string; toWarehouseName: string; productName: string; }
+interface PurchaseOrder { id: string; poNumber: string; vendorId: string; orderDate: string; totalAmount: number; status: string; }
+interface BOM { id: string; productId: string; name: string; version: number; productName: string; lines: BOMLine[]; }
+interface BOMLine { id?: string; componentId: string; quantity: number; unit: string; }
+interface MO { id: string; productId: string; quantity: number; status: string; producedQuantity: number; productName: string; bomName: string; }
 
 interface WhForm { name: string; location: string; }
 interface StockForm { productId: string; warehouseId: string; quantity: string; }
@@ -363,7 +363,7 @@ export default function SupplyPanel() {
               columns={[
                 { key: 'name', header: 'Name', sortable: true, render: (w) => <strong className="text-gray-900">{String(w.name)}</strong> },
                 { key: 'location', header: 'Location', render: (w) => <span className="text-sm text-gray-600">{String(w.location || '-')}</span> },
-                { key: 'is_active', header: 'Status', render: (w) => <Badge variant={Number(w.is_active) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(w.is_active) === 1 ? 'Active' : 'Inactive'}</Badge> },
+                { key: 'isActive', header: 'Status', render: (w) => <Badge variant={Number(w.isActive) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(w.isActive) === 1 ? 'Active' : 'Inactive'}</Badge> },
               ]}
               data={warehouses as (Warehouse & Record<string, unknown>)[]}
               emptyMessage="No warehouses."
@@ -389,8 +389,8 @@ export default function SupplyPanel() {
           ) : (
             <DataTable<StockRow & Record<string, unknown>>
               columns={[
-                { key: 'product_name', header: 'Product', sortable: true, render: (r) => <strong className="text-gray-900">{String(r.product_name || r.product_id)}</strong> },
-                { key: 'warehouse_name', header: 'Warehouse', render: (r) => <span className="text-sm text-gray-600">{String(r.warehouse_name || '-')}</span> },
+                { key: 'productName', header: 'Product', sortable: true, render: (r) => <strong className="text-gray-900">{String(r.productName || r.productId)}</strong> },
+                { key: 'warehouseName', header: 'Warehouse', render: (r) => <span className="text-sm text-gray-600">{String(r.warehouseName || '-')}</span> },
                 { key: 'quantity', header: 'Qty', render: (r) => <span className="font-medium">{Number(r.quantity)}</span> },
                 { key: 'reserved', header: 'Reserved', render: (r) => <span className="text-sm text-gray-600">{Number(r.reserved)}</span> },
                 { key: 'quantity', header: 'Available', render: (r) => <span className="font-medium text-emerald-700">{Number(r.quantity) - Number(r.reserved)}</span> },
@@ -413,9 +413,9 @@ export default function SupplyPanel() {
           ) : (
             <DataTable<Transfer & Record<string, unknown>>
               columns={[
-                { key: 'from_warehouse_name', header: 'From', render: (t) => <span className="text-sm text-gray-600">{String(t.from_warehouse_name || '-')}</span> },
-                { key: 'to_warehouse_name', header: 'To', render: (t) => <span className="text-sm text-gray-600">{String(t.to_warehouse_name || '-')}</span> },
-                { key: 'product_name', header: 'Product', render: (t) => <strong className="text-gray-900">{String(t.product_name || t.product_id)}</strong> },
+                { key: 'fromWarehouseName', header: 'From', render: (t) => <span className="text-sm text-gray-600">{String(t.fromWarehouseName || '-')}</span> },
+                { key: 'toWarehouseName', header: 'To', render: (t) => <span className="text-sm text-gray-600">{String(t.toWarehouseName || '-')}</span> },
+                { key: 'productName', header: 'Product', render: (t) => <strong className="text-gray-900">{String(t.productName || t.productId)}</strong> },
                 { key: 'quantity', header: 'Qty', render: (t) => <span className="font-medium">{Number(t.quantity)}</span> },
                 { key: 'status', header: 'Status', render: (t) => statusBadge(String(t.status)) },
               ]}
@@ -440,10 +440,10 @@ export default function SupplyPanel() {
           ) : (
             <DataTable<PurchaseOrder & Record<string, unknown>>
               columns={[
-                { key: 'po_number', header: 'PO#', sortable: true, render: (p) => <strong className="text-gray-900">{String(p.po_number)}</strong> },
-                { key: 'vendor_id', header: 'Vendor', render: (p) => <span className="text-sm text-gray-600">{String(p.vendor_id || '-')}</span> },
-                { key: 'order_date', header: 'Date', render: (p) => <span className="text-sm text-gray-600">{String(p.order_date).slice(0, 10)}</span> },
-                { key: 'total_amount', header: 'Amount', render: (p) => <span className="font-medium">{formatCurrency(Number(p.total_amount))}</span> },
+                { key: 'poNumber', header: 'PO#', sortable: true, render: (p) => <strong className="text-gray-900">{String(p.poNumber)}</strong> },
+                { key: 'vendorId', header: 'Vendor', render: (p) => <span className="text-sm text-gray-600">{String(p.vendorId || '-')}</span> },
+                { key: 'orderDate', header: 'Date', render: (p) => <span className="text-sm text-gray-600">{String(p.orderDate).slice(0, 10)}</span> },
+                { key: 'totalAmount', header: 'Amount', render: (p) => <span className="font-medium">{formatCurrency(Number(p.totalAmount))}</span> },
                 { key: 'status', header: 'Status', render: (p) => statusBadge(String(p.status)) },
               ]}
               data={pos as (PurchaseOrder & Record<string, unknown>)[]}
@@ -468,7 +468,7 @@ export default function SupplyPanel() {
             <DataTable<BOM & Record<string, unknown>>
               columns={[
                 { key: 'name', header: 'Name', sortable: true, render: (b) => <strong className="text-gray-900">{String(b.name)}</strong> },
-                { key: 'product_name', header: 'Product', render: (b) => <span className="text-sm text-gray-600">{String(b.product_name || b.product_id)}</span> },
+                { key: 'productName', header: 'Product', render: (b) => <span className="text-sm text-gray-600">{String(b.productName || b.productId)}</span> },
                 { key: 'version', header: 'Version', render: (b) => <span className="text-sm text-gray-600">v{Number(b.version)}</span> },
                 { key: 'lines', header: 'Components', render: (b) => <span className="font-medium">{(b.lines || []).length}</span> },
               ]}
@@ -490,15 +490,15 @@ export default function SupplyPanel() {
           ) : (
             <DataTable<MO & Record<string, unknown>>
               columns={[
-                { key: 'product_name', header: 'Product', sortable: true, render: (m) => <strong className="text-gray-900">{String(m.product_name || m.product_id)}</strong> },
+                { key: 'productName', header: 'Product', sortable: true, render: (m) => <strong className="text-gray-900">{String(m.productName || m.productId)}</strong> },
                 { key: 'quantity', header: 'Qty', render: (m) => <span className="font-medium">{Number(m.quantity)}</span> },
                 { key: 'status', header: 'Status', render: (m) => statusBadge(String(m.status)) },
-                { key: 'produced_quantity', header: 'Progress', render: (m) => <span className="text-sm text-gray-600">{Number(m.produced_quantity)}/{Number(m.quantity)}</span> },
+                { key: 'producedQuantity', header: 'Progress', render: (m) => <span className="text-sm text-gray-600">{Number(m.producedQuantity)}/{Number(m.quantity)}</span> },
               ]}
               data={mos as (MO & Record<string, unknown>)[]}
               emptyMessage="No manufacturing orders."
               actions={(m) => String(m.status) !== 'completed' && String(m.status) !== 'canceled' ? (
-                <Button variant="ghost" size="sm" onClick={() => { setProgressTarget(m as unknown as MO); setProgressQty(String(m.produced_quantity)); }}>Progress</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setProgressTarget(m as unknown as MO); setProgressQty(String(m.producedQuantity)); }}>Progress</Button>
               ) : null}
             />
           )}
@@ -517,7 +517,7 @@ export default function SupplyPanel() {
       <FormModal open={showStockForm} title="Adjust Stock" onClose={() => setShowStockForm(false)} onSubmit={handleSaveStock} submitLabel={saving ? 'Saving...' : 'Save'} submitDisabled={saving}>
         <div className="space-y-4">
           <Input label="Product ID *" type="text" value={stockForm.productId} onChange={(e) => setStockForm((p) => ({ ...p, productId: e.target.value }))} placeholder="Product ID" />
-          <Select label="Warehouse *" options={warehouses.filter((w: any) => Number(w.is_active) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={stockForm.warehouseId} onChange={(e) => setStockForm((p) => ({ ...p, warehouseId: e.target.value }))} />
+          <Select label="Warehouse *" options={warehouses.filter((w: any) => Number(w.isActive) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={stockForm.warehouseId} onChange={(e) => setStockForm((p) => ({ ...p, warehouseId: e.target.value }))} />
           <Input label="Quantity (positive to add, negative to deduct) *" type="number" value={stockForm.quantity} onChange={(e) => setStockForm((p) => ({ ...p, quantity: e.target.value }))} />
         </div>
       </FormModal>
@@ -526,8 +526,8 @@ export default function SupplyPanel() {
       <FormModal open={showTransferForm} title="New Transfer" onClose={() => setShowTransferForm(false)} onSubmit={handleSaveTransfer} submitLabel={saving ? 'Saving...' : 'Save'} submitDisabled={saving}>
         <div className="space-y-4">
           <Input label="Product ID *" type="text" value={transferForm.productId} onChange={(e) => setTransferForm((p) => ({ ...p, productId: e.target.value }))} placeholder="Product ID" />
-          <Select label="From Warehouse *" options={warehouses.filter((w: any) => Number(w.is_active) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={transferForm.fromWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, fromWarehouseId: e.target.value }))} />
-          <Select label="To Warehouse *" options={warehouses.filter((w: any) => Number(w.is_active) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={transferForm.toWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, toWarehouseId: e.target.value }))} />
+          <Select label="From Warehouse *" options={warehouses.filter((w: any) => Number(w.isActive) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={transferForm.fromWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, fromWarehouseId: e.target.value }))} />
+          <Select label="To Warehouse *" options={warehouses.filter((w: any) => Number(w.isActive) === 1).map((w: any) => ({ value: w.id, label: w.name }))} value={transferForm.toWarehouseId} onChange={(e) => setTransferForm((p) => ({ ...p, toWarehouseId: e.target.value }))} />
           <Input label="Quantity *" type="number" value={transferForm.quantity} onChange={(e) => setTransferForm((p) => ({ ...p, quantity: e.target.value }))} min="1" />
         </div>
       </FormModal>
@@ -575,7 +575,7 @@ export default function SupplyPanel() {
       {/* ── MO Form Modal ───────────────────────────────────── */}
       <FormModal open={showMOForm} title="New Manufacturing Order" onClose={() => setShowMOForm(false)} onSubmit={handleSaveMO} submitLabel={saving ? 'Saving...' : 'Create'} submitDisabled={saving}>
         <div className="space-y-4">
-          <Select label="BOM *" options={boms.map((b: any) => ({ value: b.id, label: `${b.name} (${b.product_name || b.product_id})` }))} value={moForm.bomId} onChange={(e) => setMOForm((p) => ({ ...p, bomId: e.target.value }))} />
+          <Select label="BOM *" options={boms.map((b: any) => ({ value: b.id, label: `${b.name} (${b.productName || b.productId})` }))} value={moForm.bomId} onChange={(e) => setMOForm((p) => ({ ...p, bomId: e.target.value }))} />
           <Input label="Product ID *" type="text" value={moForm.productId} onChange={(e) => setMOForm((p) => ({ ...p, productId: e.target.value }))} placeholder="Product ID" />
           <Input label="Quantity *" type="number" value={moForm.quantity} onChange={(e) => setMOForm((p) => ({ ...p, quantity: e.target.value }))} min="1" />
           <Input label="Start Date" type="date" value={moForm.startDate} onChange={(e) => setMOForm((p) => ({ ...p, startDate: e.target.value }))} />
@@ -587,7 +587,7 @@ export default function SupplyPanel() {
       {progressTarget && (
         <FormModal open title="Update Production Progress" onClose={() => { setProgressTarget(null); setProgressQty('0'); }} onSubmit={handleProgressMO} submitLabel={saving ? 'Saving...' : 'Update'} submitDisabled={saving}>
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">Product: <strong>{progressTarget.product_name || progressTarget.product_id}</strong></p>
+            <p className="text-sm text-gray-600">Product: <strong>{progressTarget.productName || progressTarget.productId}</strong></p>
             <p className="text-sm text-gray-600">Target: {progressTarget.quantity}</p>
             <Input label="Produced Quantity" type="number" value={progressQty} onChange={(e) => setProgressQty(e.target.value)} min="0" />
           </div>

@@ -94,7 +94,7 @@ describe('Badge', () => {
   // Removable tests
   it('renders remove button when removable', () => {
     render(<Badge removable onRemove={() => {}}>Removable</Badge>);
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Removable' })).toBeInTheDocument();
   });
 
   it('does not render remove button by default', () => {
@@ -105,7 +105,7 @@ describe('Badge', () => {
   it('calls onRemove when remove button is clicked', () => {
     const onRemove = vi.fn();
     render(<Badge removable onRemove={onRemove}>Removable</Badge>);
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Removable' }));
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 

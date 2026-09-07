@@ -127,6 +127,9 @@ const heroImage = normalizeAssetUrl(
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
 
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, 15000);
+
     try {
       var host = window.location.hostname;
       var isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost') || host.endsWith('.127.0.0.1');
@@ -144,7 +147,8 @@ const heroImage = normalizeAssetUrl(
           email: email,
           message: msg,
           source: 'contact_form'
-        })
+        }),
+        signal: controller.signal
       });
 
       var successBox = document.getElementById('contactSuccess');
@@ -161,6 +165,7 @@ const heroImage = normalizeAssetUrl(
       errorBox.className = 'mt-4 rounded-xl bg-red-50 p-4 text-center text-sm font-semibold text-red-700';
       form.reset();
     } finally {
+      clearTimeout(timeoutId);
       submitBtn.disabled = false;
       submitBtn.textContent = 'Send Message';
     }

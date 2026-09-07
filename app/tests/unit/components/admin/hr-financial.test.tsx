@@ -456,14 +456,14 @@ const mockHrOverview = {
   pendingLeaveRequests: 2,
   totalPayrollRuns: 3,
   tenantBreakdown: [
-    { tenant_id: 't1', tenant_name: 'Acacia Camp', employee_count: 6, active_count: 4 },
-    { tenant_id: 't2', tenant_name: 'Sinai Lodge', employee_count: 4, active_count: 4 },
+    { tenantId: 't1', tenantName: 'Acacia Camp', employeeCount: 6, activeCount: 4 },
+    { tenantId: 't2', tenantName: 'Sinai Lodge', employeeCount: 4, activeCount: 4 },
   ],
 };
 
 const mockSuperEmployees = [
-  { id: 'e1', first_name: 'John', last_name: 'Doe', email: 'j@x.com', department: 'Front Desk', position: 'Clerk', status: 'active', tenant_name: 'Acacia Camp', hire_date: '2024-01-01' },
-  { id: 'e2', first_name: 'Jane', last_name: 'Smith', email: 'j2@x.com', department: 'Kitchen', position: 'Cook', status: 'active', tenant_name: 'Sinai Lodge', hire_date: '2023-05-01' },
+  { id: 'e1', firstName: 'John', lastName: 'Doe', email: 'j@x.com', department: 'Front Desk', position: 'Clerk', status: 'active', tenantName: 'Acacia Camp', hireDate: '2024-01-01' },
+  { id: 'e2', firstName: 'Jane', lastName: 'Smith', email: 'j2@x.com', department: 'Kitchen', position: 'Cook', status: 'active', tenantName: 'Sinai Lodge', hireDate: '2023-05-01' },
 ];
 
 const mockFinancialOverview = {
@@ -473,8 +473,8 @@ const mockFinancialOverview = {
   totalCollected: 3000,
   overdueCount: 1,
   tenantBreakdown: [
-    { tenant_id: 't1', tenant_name: 'Acacia Camp', invoice_count: 5, total_revenue: 2000, total_collected: 1000 },
-    { tenant_id: 't2', tenant_name: 'Sinai Lodge', invoice_count: 7, total_revenue: 3000, total_collected: 2000 },
+    { tenantId: 't1', tenantName: 'Acacia Camp', invoiceCount: 5, totalRevenue: 2000, totalCollected: 1000 },
+    { tenantId: 't2', tenantName: 'Sinai Lodge', invoiceCount: 7, totalRevenue: 3000, totalCollected: 2000 },
   ],
   // P2: marketplace settlement totals + per-tenant breakdown
   totalGross: 1000,
@@ -487,8 +487,8 @@ const mockFinancialOverview = {
 };
 
 const mockSuperInvoices = [
-  { id: 'i1', invoice_number: 'INV-100', type: 'sales', status: 'paid', total_amount: 150, tenant_name: 'Acacia Camp', issue_date: '2025-06-01' },
-  { id: 'i2', invoice_number: 'INV-101', type: 'purchase', status: 'overdue', total_amount: 250, tenant_name: 'Sinai Lodge', issue_date: '2025-05-01' },
+  { id: 'i1', invoiceNumber: 'INV-100', type: 'sales', status: 'paid', totalAmount: 150, tenantName: 'Acacia Camp', issueDate: '2025-06-01' },
+  { id: 'i2', invoiceNumber: 'INV-101', type: 'purchase', status: 'overdue', totalAmount: 250, tenantName: 'Sinai Lodge', issueDate: '2025-05-01' },
 ];
 
 // P2: marketplace payments ledger rows (camelCase per the jsonResponse choke point)

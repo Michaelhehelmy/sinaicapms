@@ -261,7 +261,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('renders pages with data and edits page', async () => {
-    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', meta_title: '', meta_description: '', is_published: 1, created_at: '2025-01-01', updated_at: '2025-01-02' }];
+    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', metaTitle: '', metaDescription: '', isPublished: 1, createdAt: '2025-01-01', updatedAt: '2025-01-02' }];
     mockSaveStorefrontPage.mockResolvedValue({} as never);
     renderPanel();
     expect(screen.getByText('Home')).toBeInTheDocument();
@@ -274,7 +274,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('deletes page via confirm dialog', async () => {
-    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', meta_title: '', meta_description: '', is_published: 1, created_at: '2025-01-01', updated_at: '2025-01-02' }];
+    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', metaTitle: '', metaDescription: '', isPublished: 1, createdAt: '2025-01-01', updatedAt: '2025-01-02' }];
     mockDeleteStorefrontPage.mockResolvedValue({} as never);
     renderPanel();
     fireEvent.click(screen.getByText('Delete'));
@@ -287,7 +287,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('cancel delete does nothing', async () => {
-    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', meta_title: '', meta_description: '', is_published: 1, created_at: '2025-01-01', updated_at: '2025-01-02' }];
+    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', metaTitle: '', metaDescription: '', isPublished: 1, createdAt: '2025-01-01', updatedAt: '2025-01-02' }];
     renderPanel();
     fireEvent.click(screen.getByText('Delete'));
     fireEvent.click(screen.getByTestId('confirm-no'));
@@ -396,7 +396,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('edits and deletes blog post', async () => {
-    postsData = [{ id: 'bp1', slug: 'hello', title: 'Hello World', content: 'Hi', excerpt: '', category: 'news', tags: '', author_id: 'u1', is_published: 1, published_at: '', created_at: '', updated_at: '' }];
+    postsData = [{ id: 'bp1', slug: 'hello', title: 'Hello World', content: 'Hi', excerpt: '', category: 'news', tags: '', authorId: 'u1', isPublished: 1, publishedAt: '', createdAt: '', updatedAt: '' }];
     mockSaveStorefrontBlogPost.mockResolvedValue({} as never);
     mockDeleteStorefrontBlogPost.mockResolvedValue({} as never);
     renderPanel();
@@ -440,7 +440,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('delete error shows toast', async () => {
-    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', meta_title: '', meta_description: '', is_published: 1, created_at: '2025-01-01', updated_at: '2025-01-02' }];
+    pagesData = [{ id: 'p1', slug: 'home', title: 'Home', content: '', metaTitle: '', metaDescription: '', isPublished: 1, createdAt: '2025-01-01', updatedAt: '2025-01-02' }];
     mockDeleteStorefrontPage.mockRejectedValue(new Error('delete fail'));
     renderPanel();
     fireEvent.click(screen.getByText('Delete'));
@@ -499,7 +499,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('deletes category', async () => {
-    categoriesData = [{ id: 'c1', name: 'Tech', slug: 'tech', created_at: '2025-01-01' }];
+    categoriesData = [{ id: 'c1', name: 'Tech', slug: 'tech', createdAt: '2025-01-01' }];
     mockDeleteStorefrontBlogCategory.mockResolvedValue({} as never);
     renderPanel();
     fireEvent.click(screen.getByTestId('tab-blogCategories'));
@@ -512,7 +512,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('renders categories with data', () => {
-    categoriesData = [{ id: 'c1', name: 'Tech', slug: 'tech', created_at: '2025-01-01' }];
+    categoriesData = [{ id: 'c1', name: 'Tech', slug: 'tech', createdAt: '2025-01-01' }];
     renderPanel();
     fireEvent.click(screen.getByTestId('tab-blogCategories'));
     expect(screen.getByText('Tech')).toBeInTheDocument();
@@ -526,7 +526,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('renders carts with data', () => {
-    cartsData = [{ id: 'cart1', session_id: 'sess1', user_id: '', item_count: 3, total: 150, created_at: '2025-01-01T00:00:00Z' }];
+    cartsData = [{ id: 'cart1', sessionId: 'sess1', userId: '', itemCount: 3, total: 150, createdAt: '2025-01-01T00:00:00Z' }];
     renderPanel();
     fireEvent.click(screen.getByTestId('tab-carts'));
     expect(screen.getByText('sess1')).toBeInTheDocument();
@@ -540,7 +540,7 @@ describe('StorefrontPanel', () => {
   });
 
   it('renders orders with data', () => {
-    ordersData = [{ id: 'o1', order_number: 'ORD001', customer_email: 'test@test.com', total_amount: 200, status: 'completed', payment_status: 'paid', created_at: '2025-01-01T00:00:00Z' }];
+    ordersData = [{ id: 'o1', orderNumber: 'ORD001', customerEmail: 'test@test.com', totalAmount: 200, status: 'completed', paymentStatus: 'paid', createdAt: '2025-01-01T00:00:00Z' }];
     renderPanel();
     fireEvent.click(screen.getByTestId('tab-orders'));
     expect(screen.getByText('ORD001')).toBeInTheDocument();
@@ -548,8 +548,8 @@ describe('StorefrontPanel', () => {
 
   // === Tab labels ===
   it('shows tab labels with counts', () => {
-    ordersData = [{ id: 'o1', order_number: 'ORD001', customer_email: '', total_amount: 0, status: 'pending', payment_status: '', created_at: '' }];
-    cartsData = [{ id: 'c1', session_id: '', user_id: '', item_count: 0, total: 0, created_at: '' }];
+    ordersData = [{ id: 'o1', orderNumber: 'ORD001', customerEmail: '', totalAmount: 0, status: 'pending', paymentStatus: '', createdAt: '' }];
+    cartsData = [{ id: 'c1', sessionId: '', userId: '', itemCount: 0, total: 0, createdAt: '' }];
     renderPanel();
     expect(screen.getByText('Carts (1)')).toBeInTheDocument();
     expect(screen.getByText('Orders (1)')).toBeInTheDocument();

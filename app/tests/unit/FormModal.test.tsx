@@ -99,4 +99,63 @@ describe('FormModal', () => {
     fireEvent.click(screen.getByTestId('modal-overlay'));
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it('moves focus to the first input when opened', () => {
+    render(
+      <FormModal open={true} title="Edit" onClose={vi.fn()} onSubmit={vi.fn()}>
+        <label htmlFor="fName">Name</label>
+        <input id="fName" />
+      </FormModal>,
+    );
+    expect(screen.getByLabelText('Name')).toHaveFocus();
+  });
+
+  it('restores focus to the trigger element when closed', () => {
+    const { rerender } = render(
+      <div>
+        <button type="button">Open</button>
+        <FormModal open={false} title="Edit" onClose={vi.fn()} onSubmit={vi.fn()}>
+          <input aria-label="Field" />
+        </FormModal>
+      </div>,
+    );
+    screen.getByRole('button', { name: 'Open' }).focus();
+    rerender(
+      <div>
+        <button type="button">Open</button>
+        <FormModal open={true} title="Edit" onClose={vi.fn()} onSubmit={vi.fn()}>
+          <input aria-label="Field" />
+        </FormModal>
+      </div>,
+    );
+    expect(screen.getByLabelText('Field')).toHaveFocus();
+    rerender(
+      <div>
+        <button type="button">Open</button>
+        <FormModal open={false} title="Edit" onClose={vi.fn()} onSubmit={vi.fn()}>
+          <input aria-label="Field" />
+        </FormModal>
+      </div>,
+    );
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveFocus();
+  });
+
+  it('traps Tab focus within the modal', () => {
+    render(
+      <FormModal open={true} title="Edit" onClose={vi.fn()} onSubmit={vi.fn()}>
+        <input aria-label="First field" />
+        <input aria-label="Second field" />
+      </FormModal>,
+    );
+    const panel = screen.getByTestId('modal-content');
+    // Initial focus lands on the first control.
+    expect(screen.getByLabelText('First field')).toHaveFocus();
+    // Tab from the last focusable wraps back to the first.
+    screen.getByRole('button', { name: 'Save' }).focus();
+    fireEvent.keyDown(panel, { key: 'Tab' });
+    expect(screen.getByRole('button', { name: 'Close dialog' })).toHaveFocus();
+    // Shift+Tab from the first focusable wraps to the last.
+    fireEvent.keyDown(panel, { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveFocus();
+  });
 });

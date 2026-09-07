@@ -66,12 +66,62 @@ export function FormModal({
     return () => document.removeEventListener('keydown', handleKey);
   }, [open, closeOnEscape, handleClose]);
 
-  /* Focus trap: focus the panel when modal opens */
+  /* Focus management: remember the trigger, move focus to the first control
+     when the modal opens, restore focus to the trigger on close. */
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  const getFocusable = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) return [];
+    return Array.from(
+      panel.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+  }, []);
+
   useEffect(() => {
-    if (open && panelRef.current) {
-      panelRef.current.focus();
+    if (!open) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    if (panel) {
+      /* Prefer the first editable control over the header close button. */
+      const controls = panel.querySelectorAll<HTMLElement>('input, select, textarea');
+      const focusables = getFocusable();
+      const target = controls.length > 0 ? controls[0] : focusables[0] ?? panel;
+      target.focus();
     }
-  }, [open]);
+    return () => {
+      previouslyFocusedRef.current?.focus?.();
+      previouslyFocusedRef.current = null;
+    };
+  }, [open, getFocusable]);
+
+  /* Tab trap: keep focus cycling inside the open modal. */
+  const handlePanelKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Tab') return;
+      const panel = panelRef.current;
+      const focusables = getFocusable();
+      if (!panel || focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !panel.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !panel.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [getFocusable],
+  );
 
   if (!open) return null;
 
@@ -91,6 +141,7 @@ export function FormModal({
         ref={panelRef}
         tabIndex={-1}
         data-testid="modal-content"
+        onKeyDown={handlePanelKeyDown}
         className={cn(
           'w-full rounded-2xl bg-white shadow-2xl border',
           danger ? 'border-error-200' : 'border-warm-200',

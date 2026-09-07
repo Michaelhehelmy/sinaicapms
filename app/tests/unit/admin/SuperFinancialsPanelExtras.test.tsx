@@ -189,8 +189,8 @@ const mockOverview = {
   totalFees: 100,
   totalNet: 900,
   tenantBreakdown: [
-    { tenant_id: 't1', tenant_name: 'Acacia Camp', invoice_count: 5, total_revenue: 2000, total_collected: 1000 },
-    { tenant_id: 't2', tenant_name: 'Sinai Lodge', invoice_count: 7, total_revenue: 3000, total_collected: 2000 },
+    { tenantId: 't1', tenantName: 'Acacia Camp', invoiceCount: 5, totalRevenue: 2000, totalCollected: 1000 },
+    { tenantId: 't2', tenantName: 'Sinai Lodge', invoiceCount: 7, totalRevenue: 3000, totalCollected: 2000 },
   ],
   marketplaceBreakdown: [
     { tenantId: 't1', tenantName: 'Acacia Camp', paymentCount: 3, gross: 600, fees: 60, net: 540 },
@@ -220,8 +220,8 @@ const mockPayouts = [
 ];
 
 const mockInvoices = [
-  { id: 'i1', invoice_number: 'INV-100', type: 'sales', status: 'paid', total_amount: 150, tenant_name: 'Acacia Camp', issue_date: '2025-06-01' },
-  { id: 'i2', invoice_number: 'INV-101', type: 'purchase', status: 'overdue', total_amount: 250, tenant_name: 'Sinai Lodge', issue_date: '2025-05-01' },
+  { id: 'i1', invoiceNumber: 'INV-100', type: 'sales', status: 'paid', totalAmount: 150, tenantName: 'Acacia Camp', issueDate: '2025-06-01' },
+  { id: 'i2', invoiceNumber: 'INV-101', type: 'purchase', status: 'overdue', totalAmount: 250, tenantName: 'Sinai Lodge', issueDate: '2025-05-01' },
 ];
 
 function renderPanel() {

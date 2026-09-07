@@ -264,64 +264,64 @@ const sampleTenants = [
 ];
 
 const sampleWarehouses = [
-  { id: 'wh1', name: 'Main Warehouse', location: 'Cairo', is_active: 1 },
-  { id: 'wh2', name: 'Overflow', location: '', is_active: 0 },
+  { id: 'wh1', name: 'Main Warehouse', location: 'Cairo', isActive: 1 },
+  { id: 'wh2', name: 'Overflow', location: '', isActive: 0 },
 ];
 
 const sampleStock = [
-  { id: 's1', product_id: 'p1', warehouse_id: 'wh1', quantity: 25, reserved: 5, product_name: 'Tent', warehouse_name: 'Main Warehouse' },
-  { id: 's2', product_id: 'p2', warehouse_id: 'wh1', quantity: 10, reserved: 10, product_name: '', warehouse_name: '' },
+  { id: 's1', productId: 'p1', warehouseId: 'wh1', quantity: 25, reserved: 5, productName: 'Tent', warehouseName: 'Main Warehouse' },
+  { id: 's2', productId: 'p2', warehouseId: 'wh1', quantity: 10, reserved: 10, productName: '', warehouseName: '' },
 ];
 
 const sampleTransfers = [
-  { id: 'tr1', from_warehouse_id: 'wh1', to_warehouse_id: 'wh2', product_id: 'p1', quantity: 4, status: 'draft', from_warehouse_name: 'Main Warehouse', to_warehouse_name: 'Overflow', product_name: 'Tent' },
-  { id: 'tr2', from_warehouse_id: 'wh1', to_warehouse_id: 'wh2', product_id: 'p1', quantity: 6, status: 'in_transit', from_warehouse_name: 'Main Warehouse', to_warehouse_name: 'Overflow', product_name: 'Tent' },
-  { id: 'tr3', from_warehouse_id: 'wh1', to_warehouse_id: 'wh2', product_id: 'p2', quantity: 2, status: 'completed', from_warehouse_name: '', to_warehouse_name: '', product_name: '' },
+  { id: 'tr1', fromWarehouseId: 'wh1', toWarehouseId: 'wh2', productId: 'p1', quantity: 4, status: 'draft', fromWarehouseName: 'Main Warehouse', toWarehouseName: 'Overflow', productName: 'Tent' },
+  { id: 'tr2', fromWarehouseId: 'wh1', toWarehouseId: 'wh2', productId: 'p1', quantity: 6, status: 'in_transit', fromWarehouseName: 'Main Warehouse', toWarehouseName: 'Overflow', productName: 'Tent' },
+  { id: 'tr3', fromWarehouseId: 'wh1', toWarehouseId: 'wh2', productId: 'p2', quantity: 2, status: 'completed', fromWarehouseName: '', toWarehouseName: '', productName: '' },
 ];
 
 const samplePOs = [
-  { id: 'po1', po_number: 'PO-1001', vendor_id: 'v1', order_date: '2026-08-01T00:00:00Z', total_amount: 1250.5, status: 'draft' },
-  { id: 'po2', po_number: 'PO-1002', vendor_id: '', order_date: '', total_amount: 0, status: 'received' },
-  { id: 'po3', po_number: 'PO-1003', vendor_id: null, order_date: '2026-08-02T00:00:00Z', total_amount: 99, status: 'sent' },
-  { id: 'po4', po_number: 'PO-1004', vendor_id: 'v2', order_date: '2026-08-03T00:00:00Z', total_amount: 10, status: 'canceled' },
+  { id: 'po1', poNumber: 'PO-1001', vendorId: 'v1', orderDate: '2026-08-01T00:00:00Z', totalAmount: 1250.5, status: 'draft' },
+  { id: 'po2', poNumber: 'PO-1002', vendorId: '', orderDate: '', totalAmount: 0, status: 'received' },
+  { id: 'po3', poNumber: 'PO-1003', vendorId: null, orderDate: '2026-08-02T00:00:00Z', totalAmount: 99, status: 'sent' },
+  { id: 'po4', poNumber: 'PO-1004', vendorId: 'v2', orderDate: '2026-08-03T00:00:00Z', totalAmount: 10, status: 'canceled' },
 ];
 
 const sampleBOMs = [
-  { id: 'bom1', product_id: 'p1', name: 'Widget Assembly', version: 1, product_name: 'Widget', lines: [{ id: 'l1', component_id: 'c1', quantity: 2, unit: 'each' }, { id: 'l2', component_id: 'c2', quantity: 1, unit: 'kg' }] },
-  { id: 'bom2', product_id: 'p5', name: 'Empty BOM', version: 2, product_name: '', lines: [] },
+  { id: 'bom1', productId: 'p1', name: 'Widget Assembly', version: 1, productName: 'Widget', lines: [{ id: 'l1', componentId: 'c1', quantity: 2, unit: 'each' }, { id: 'l2', componentId: 'c2', quantity: 1, unit: 'kg' }] },
+  { id: 'bom2', productId: 'p5', name: 'Empty BOM', version: 2, productName: '', lines: [] },
 ];
 
 const sampleMOs = [
-  { id: 'mo1', product_id: 'p1', quantity: 10, status: 'planned', produced_quantity: 0, product_name: 'Widget', bom_name: 'Widget Assembly' },
-  { id: 'mo2', product_id: 'p1', quantity: 10, status: 'in_production', produced_quantity: 4, product_name: 'Widget', bom_name: 'Widget Assembly' },
-  { id: 'mo3', product_id: 'p2', quantity: 5, status: 'completed', produced_quantity: 5, product_name: 'Gadget', bom_name: 'Gadget Assembly' },
-  { id: 'mo4', product_id: 'p3', quantity: 3, status: 'canceled', produced_quantity: 0, product_name: '', bom_name: '' },
+  { id: 'mo1', productId: 'p1', quantity: 10, status: 'planned', producedQuantity: 0, productName: 'Widget', bomName: 'Widget Assembly' },
+  { id: 'mo2', productId: 'p1', quantity: 10, status: 'in_production', producedQuantity: 4, productName: 'Widget', bomName: 'Widget Assembly' },
+  { id: 'mo3', productId: 'p2', quantity: 5, status: 'completed', producedQuantity: 5, productName: 'Gadget', bomName: 'Gadget Assembly' },
+  { id: 'mo4', productId: 'p3', quantity: 3, status: 'canceled', producedQuantity: 0, productName: '', bomName: '' },
 ];
 
 const samplePages = [
-  { id: 'pg1', slug: 'about', title: 'About Us', content: '<p>Hello</p>', meta_title: 'About', meta_description: 'desc', is_published: 1, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z' },
-  { id: 'pg2', slug: 'draft-page', title: 'Draft Page', content: '', meta_title: '', meta_description: '', is_published: 0, created_at: '2026-01-03T00:00:00Z', updated_at: null },
+  { id: 'pg1', slug: 'about', title: 'About Us', content: '<p>Hello</p>', metaTitle: 'About', metaDescription: 'desc', isPublished: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z' },
+  { id: 'pg2', slug: 'draft-page', title: 'Draft Page', content: '', metaTitle: '', metaDescription: '', isPublished: 0, createdAt: '2026-01-03T00:00:00Z', updatedAt: null },
 ];
 
 const samplePosts = [
-  { id: 'bp1', slug: 'hello', title: 'Hello World', content: '<p>x</p>', excerpt: 'Intro', category: 'News', tags: 'a,b', author_id: 'u1', is_published: 1, published_at: '2026-01-01T00:00:00Z', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
-  { id: 'bp2', slug: 'draft', title: 'Draft Post', content: '', excerpt: '', category: null, tags: '', author_id: null, is_published: 0, published_at: null, created_at: '2026-02-01T00:00:00Z', updated_at: null },
+  { id: 'bp1', slug: 'hello', title: 'Hello World', content: '<p>x</p>', excerpt: 'Intro', category: 'News', tags: 'a,b', authorId: 'u1', isPublished: 1, publishedAt: '2026-01-01T00:00:00Z', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'bp2', slug: 'draft', title: 'Draft Post', content: '', excerpt: '', category: null, tags: '', authorId: null, isPublished: 0, publishedAt: null, createdAt: '2026-02-01T00:00:00Z', updatedAt: null },
 ];
 
 const sampleCategories = [
-  { id: 'cat1', name: 'News', slug: 'news', created_at: '2026-01-01T00:00:00Z' },
-  { id: 'cat2', name: 'Guides', slug: 'guides', created_at: '2026-01-02T00:00:00Z' },
+  { id: 'cat1', name: 'News', slug: 'news', createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'cat2', name: 'Guides', slug: 'guides', createdAt: '2026-01-02T00:00:00Z' },
 ];
 
 const sampleCarts = [
-  { id: 'cart1', session_id: 'sess-abc', user_id: null, item_count: 3, total: 250, created_at: '2026-01-05T00:00:00Z' },
-  { id: 'cart2', session_id: '', user_id: 'u9', item_count: 0, total: 0, created_at: null },
+  { id: 'cart1', sessionId: 'sess-abc', userId: null, itemCount: 3, total: 250, createdAt: '2026-01-05T00:00:00Z' },
+  { id: 'cart2', sessionId: '', userId: 'u9', itemCount: 0, total: 0, createdAt: null },
 ];
 
 const sampleOrders = [
-  { id: 'o1', order_number: 'ORD-1', customer_email: 'a@b.com', total_amount: 300, status: 'completed', payment_status: 'paid', created_at: '2026-01-06T00:00:00Z' },
-  { id: 'o2', order_number: 'ORD-2', customer_email: '', total_amount: 0, status: 'pending', payment_status: 'unpaid', created_at: null },
-  { id: 'o3', order_number: 'ORD-3', customer_email: 'c@d.com', total_amount: 55, status: 'canceled', payment_status: 'refunded', created_at: '2026-01-07T00:00:00Z' },
+  { id: 'o1', orderNumber: 'ORD-1', customerEmail: 'a@b.com', totalAmount: 300, status: 'completed', paymentStatus: 'paid', createdAt: '2026-01-06T00:00:00Z' },
+  { id: 'o2', orderNumber: 'ORD-2', customerEmail: '', totalAmount: 0, status: 'pending', paymentStatus: 'unpaid', createdAt: null },
+  { id: 'o3', orderNumber: 'ORD-3', customerEmail: 'c@d.com', totalAmount: 55, status: 'canceled', paymentStatus: 'refunded', createdAt: '2026-01-07T00:00:00Z' },
 ];
 
 const mockSupplyOverview = {
@@ -329,13 +329,13 @@ const mockSupplyOverview = {
   totalProducts: 34,
   pendingPurchaseOrders: 5,
   lowStockItems: 2,
-  tenantBreakdown: [{ tenant_id: 't1', tenant_name: 'Camp Alpha', warehouse_count: 8, product_count: 20 }],
+  tenantBreakdown: [{ tenantId: 't1', tenantName: 'Camp Alpha', warehouseCount: 8, productCount: 20 }],
 };
 
 const mockSuperPOs = [
-  { id: 'po-1', reference: 'PO-500', status: 'received', total_amount: 1500, tenant_name: 'Camp Alpha', created_at: '2026-07-01T00:00:00Z' },
-  { id: 'po-2', reference: '', status: 'canceled', total_amount: 0, tenant_name: '', created_at: null },
-  { id: 'po-3', reference: 'PO-501', status: 'draft', total_amount: 75.5, tenant_name: 'Camp Beta', created_at: '2026-07-02T00:00:00Z' },
+  { id: 'po-1', reference: 'PO-500', status: 'received', totalAmount: 1500, tenantName: 'Camp Alpha', createdAt: '2026-07-01T00:00:00Z' },
+  { id: 'po-2', reference: '', status: 'canceled', totalAmount: 0, tenantName: '', createdAt: null },
+  { id: 'po-3', reference: 'PO-501', status: 'draft', totalAmount: 75.5, tenantName: 'Camp Beta', createdAt: '2026-07-02T00:00:00Z' },
 ];
 
 const mockStorefrontOverview = {
@@ -343,12 +343,12 @@ const mockStorefrontOverview = {
   activeProducts: 80,
   totalPOSTransactions: 42,
   totalPOSRevenue: 12500.5,
-  tenantBreakdown: [{ tenant_id: 't1', tenant_name: 'Camp Alpha', product_count: 40, pos_transaction_count: 10, pos_revenue: 3000 }],
+  tenantBreakdown: [{ tenantId: 't1', tenantName: 'Camp Alpha', productCount: 40, activeCount: 20 }],
 };
 
 const mockSuperProducts = [
-  { id: 'prod1', name: 'Tent', sku: 'TNT-1', price: 150, tenant_name: 'Camp Alpha', status: 'active' },
-  { id: 'prod2', name: '', sku: '', price: 0, tenant_name: '', status: 'draft' },
+  { id: 'prod1', name: 'Tent', sku: 'TNT-1', price: 150, tenantName: 'Camp Alpha', status: 'active' },
+  { id: 'prod2', name: '', sku: '', price: 0, tenantName: '', status: 'draft' },
 ];
 
 // Default apiFetch route table: super overview/lists + storefront admin lists.
@@ -636,7 +636,7 @@ describe('SupplyPanel', () => {
     // Both warehouses must be active so they appear in the transfer selects.
     mockGetSupplyWarehouses.mockResolvedValue([
       { ...sampleWarehouses[0] },
-      { ...sampleWarehouses[1], is_active: 1 },
+      { ...sampleWarehouses[1], isActive: 1 },
     ]);
     renderWithQuery(<SupplyPanel />);
     await waitFor(() => {
@@ -954,7 +954,7 @@ describe('SupplyPanel', () => {
 
   it('renders unknown status fallback badge', async () => {
     mockGetSupplyTransfers.mockResolvedValue([
-      { id: 'mystery', from_warehouse_id: 'wh1', to_warehouse_id: 'wh2', product_id: 'p1', quantity: 1, status: 'mystery', from_warehouse_name: 'A', to_warehouse_name: 'B', product_name: 'P' },
+      { id: 'mystery', fromWarehouseId: 'wh1', toWarehouseId: 'wh2', productId: 'p1', quantity: 1, status: 'mystery', fromWarehouseName: 'A', toWarehouseName: 'B', productName: 'P' },
     ]);
     renderWithQuery(<SupplyPanel />);
     await waitFor(() => {
@@ -1565,8 +1565,8 @@ describe('SuperStorefrontPanel', () => {
     expect(within(cards[2]).getByText('42')).toBeInTheDocument();
     expect(within(cards[3]).getByText('$12500.50')).toBeInTheDocument();
     expect(screen.getByText('Storefront by Tenant')).toBeInTheDocument();
-    expect(screen.getByText('10 transactions')).toBeInTheDocument();
-    expect(screen.getByText('$3000.00')).toBeInTheDocument();
+    expect(screen.getByText('40 products')).toBeInTheDocument();
+    expect(screen.getByText('20 active')).toBeInTheDocument();
   });
 
   it('renders products table with fallbacks', async () => {

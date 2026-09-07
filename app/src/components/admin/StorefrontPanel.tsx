@@ -19,28 +19,28 @@ type Tab = 'pages' | 'blog' | 'blogCategories' | 'carts' | 'orders';
 
 interface PageItem {
   id: string; slug: string; title: string; content: string;
-  meta_title: string; meta_description: string; is_published: number;
-  created_at: string; updated_at: string;
+  metaTitle: string; metaDescription: string; isPublished: number;
+  createdAt: string; updatedAt: string;
 }
 
 interface BlogPost {
   id: string; slug: string; title: string; content: string; excerpt: string;
-  category: string; tags: string; author_id: string; is_published: number;
-  published_at: string; created_at: string; updated_at: string;
+  category: string; tags: string; authorId: string; isPublished: number;
+  publishedAt: string; createdAt: string; updatedAt: string;
 }
 
 interface BlogCategory {
-  id: string; name: string; slug: string; created_at: string;
+  id: string; name: string; slug: string; createdAt: string;
 }
 
 interface CartOverview {
-  id: string; session_id: string; user_id: string; item_count: number;
-  total: number; created_at: string;
+  id: string; sessionId: string; userId: string; itemCount: number;
+  total: number; createdAt: string;
 }
 
 interface OrderItem {
-  id: string; order_number: string; customer_email: string; total_amount: number;
-  status: string; payment_status: string; created_at: string;
+  id: string; orderNumber: string; customerEmail: string; totalAmount: number;
+  status: string; paymentStatus: string; createdAt: string;
 }
 
 interface PageForm {
@@ -95,7 +95,7 @@ export default function StorefrontPanel() {
   const openAddPage = useCallback(() => { setEditPageId(null); setPageForm(emptyPageForm); setShowPageForm(true); }, []);
   const openEditPage = useCallback((p: PageItem) => {
     setEditPageId(p.id);
-    setPageForm({ slug: p.slug, title: p.title, content: p.content || '', metaTitle: p.meta_title || '', metaDescription: p.meta_description || '', isPublished: !!p.is_published });
+    setPageForm({ slug: p.slug, title: p.title, content: p.content || '', metaTitle: p.metaTitle || '', metaDescription: p.metaDescription || '', isPublished: !!p.isPublished });
     setShowPageForm(true);
   }, []);
 
@@ -123,7 +123,7 @@ export default function StorefrontPanel() {
   const openAddBlog = useCallback(() => { setEditBlogId(null); setBlogForm(emptyBlogForm); setShowBlogForm(true); }, []);
   const openEditBlog = useCallback((p: BlogPost) => {
     setEditBlogId(p.id);
-    setBlogForm({ slug: p.slug, title: p.title, content: p.content || '', excerpt: p.excerpt || '', category: p.category || '', tags: p.tags || '', authorId: p.author_id || '', isPublished: !!p.is_published });
+    setBlogForm({ slug: p.slug, title: p.title, content: p.content || '', excerpt: p.excerpt || '', category: p.category || '', tags: p.tags || '', authorId: p.authorId || '', isPublished: !!p.isPublished });
     setShowBlogForm(true);
   }, []);
 
@@ -211,8 +211,8 @@ export default function StorefrontPanel() {
             columns={[
               { key: 'title', header: 'Title', sortable: true, render: (p) => <strong className="text-gray-900">{String(p.title)}</strong> },
               { key: 'slug', header: 'Slug', render: (p) => <span className="text-sm text-gray-500 font-mono">/{String(p.slug)}</span> },
-              { key: 'is_published', header: 'Status', render: (p) => <Badge variant={Number(p.is_published) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(p.is_published) === 1 ? 'Published' : 'Draft'}</Badge> },
-              { key: 'updated_at', header: 'Updated', render: (p) => <span className="text-sm text-gray-500">{p.updated_at ? String(p.updated_at).slice(0, 10) : '-'}</span> },
+              { key: 'isPublished', header: 'Status', render: (p) => <Badge variant={Number(p.isPublished) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(p.isPublished) === 1 ? 'Published' : 'Draft'}</Badge> },
+              { key: 'updatedAt', header: 'Updated', render: (p) => <span className="text-sm text-gray-500">{p.updatedAt ? String(p.updatedAt).slice(0, 10) : '-'}</span> },
             ]}
             data={pages as unknown as (PageItem & Record<string, unknown>)[]}
             emptyMessage="No pages yet."
@@ -234,8 +234,8 @@ export default function StorefrontPanel() {
             columns={[
               { key: 'title', header: 'Title', sortable: true, render: (p) => <strong className="text-gray-900">{String(p.title)}</strong> },
               { key: 'category', header: 'Category', render: (p) => <span className="text-sm text-gray-600">{String(p.category || '-')}</span> },
-              { key: 'is_published', header: 'Status', render: (p) => <Badge variant={Number(p.is_published) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(p.is_published) === 1 ? 'Published' : 'Draft'}</Badge> },
-              { key: 'author_id', header: 'Author', render: (p) => <span className="text-sm text-gray-500">{String(p.author_id || '-')}</span> },
+              { key: 'isPublished', header: 'Status', render: (p) => <Badge variant={Number(p.isPublished) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(p.isPublished) === 1 ? 'Published' : 'Draft'}</Badge> },
+              { key: 'authorId', header: 'Author', render: (p) => <span className="text-sm text-gray-500">{String(p.authorId || '-')}</span> },
             ]}
             data={posts as unknown as (BlogPost & Record<string, unknown>)[]}
             emptyMessage="No blog posts."
@@ -273,10 +273,10 @@ export default function StorefrontPanel() {
         ) : (
           <DataTable<CartOverview & Record<string, unknown>>
             columns={[
-              { key: 'session_id', header: 'Session', render: (c) => <span className="text-sm text-gray-600 font-mono truncate max-w-[140px] block">{String(c.session_id || c.user_id || '-')}</span> },
-              { key: 'item_count', header: 'Items', render: (c) => <span className="font-medium">{String(c.item_count)}</span> },
+              { key: 'sessionId', header: 'Session', render: (c) => <span className="text-sm text-gray-600 font-mono truncate max-w-[140px] block">{String(c.sessionId || c.userId || '-')}</span> },
+              { key: 'itemCount', header: 'Items', render: (c) => <span className="font-medium">{String(c.itemCount)}</span> },
               { key: 'total', header: 'Total', render: (c) => <span className="font-medium">{formatCurrency(Number(c.total))}</span> },
-              { key: 'created_at', header: 'Created', render: (c) => <span className="text-sm text-gray-500">{c.created_at ? String(c.created_at).slice(0, 10) : '-'}</span> },
+              { key: 'createdAt', header: 'Created', render: (c) => <span className="text-sm text-gray-500">{c.createdAt ? String(c.createdAt).slice(0, 10) : '-'}</span> },
             ]}
             data={carts as (CartOverview & Record<string, unknown>)[]}
             emptyMessage="No active carts."
@@ -290,11 +290,11 @@ export default function StorefrontPanel() {
         ) : (
           <DataTable<OrderItem & Record<string, unknown>>
             columns={[
-              { key: 'order_number', header: 'Order #', sortable: true, render: (o) => <strong className="text-gray-900">{String(o.order_number)}</strong> },
-              { key: 'customer_email', header: 'Customer', render: (o) => <span className="text-sm text-gray-600">{String(o.customer_email || '-')}</span> },
-              { key: 'total_amount', header: 'Total', render: (o) => <span className="font-medium">{formatCurrency(Number(o.total_amount))}</span> },
+              { key: 'orderNumber', header: 'Order #', sortable: true, render: (o) => <strong className="text-gray-900">{String(o.orderNumber)}</strong> },
+              { key: 'customerEmail', header: 'Customer', render: (o) => <span className="text-sm text-gray-600">{String(o.customerEmail || '-')}</span> },
+              { key: 'totalAmount', header: 'Total', render: (o) => <span className="font-medium">{formatCurrency(Number(o.totalAmount))}</span> },
               { key: 'status', header: 'Status', render: (o) => <Badge variant={String(o.status) === 'completed' ? 'success' : String(o.status) === 'pending' ? 'warning' : 'neutral'} dot size="sm">{String(o.status)}</Badge> },
-              { key: 'created_at', header: 'Date', render: (o) => <span className="text-sm text-gray-500">{o.created_at ? String(o.created_at).slice(0, 10) : '-'}</span> },
+              { key: 'createdAt', header: 'Date', render: (o) => <span className="text-sm text-gray-500">{o.createdAt ? String(o.createdAt).slice(0, 10) : '-'}</span> },
             ]}
             data={orders as (OrderItem & Record<string, unknown>)[]}
             emptyMessage="No orders yet."

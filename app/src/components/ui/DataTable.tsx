@@ -332,11 +332,9 @@ export function DataTable<T extends Record<string, unknown>>({
                   className={cn(
                     headerPad[size],
                     'text-left text-xs font-bold uppercase tracking-wider text-warm-500',
-                    col.sortable && 'cursor-pointer select-none hover:text-warm-700',
                     variant === 'bordered' && 'border-x border-warm-200',
                   )}
                   style={col.width ? { width: col.width } : undefined}
-                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
                   {...(col.sortable
                     ? {
                         'aria-sort':
@@ -348,23 +346,33 @@ export function DataTable<T extends Record<string, unknown>>({
                       }
                     : {})}
                 >
-                  <span className="inline-flex items-center gap-1">
-                    {col.header}
-                    {col.sortable && sortKey === col.key && (
-                      <svg className="h-3 w-3 text-brand-500" fill="currentColor" viewBox="0 0 20 20">
-                        {sortDir === 'asc' ? (
+                  {col.sortable ? (
+                    /* Real <button> inside the <th> so keyboard users can focus,
+                       activate (Enter/Space) and get an accessible name. */
+                    <button
+                      type="button"
+                      onClick={() => handleSort(col.key)}
+                      aria-label={`Sort by ${col.header}`}
+                      className="inline-flex w-full cursor-pointer select-none items-center gap-1 text-left hover:text-warm-700"
+                    >
+                      {col.header}
+                      {sortKey === col.key ? (
+                        <svg className="h-3 w-3 text-brand-500" fill="currentColor" viewBox="0 0 20 20">
+                          {sortDir === 'asc' ? (
+                            <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                          ) : (
+                            <path d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" />
+                          )}
+                        </svg>
+                      ) : (
+                        <svg className="h-3 w-3 text-warm-300" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                        ) : (
-                          <path d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" />
-                        )}
-                      </svg>
-                    )}
-                    {col.sortable && sortKey !== col.key && (
-                      <svg className="h-3 w-3 text-warm-300" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                      </svg>
-                    )}
-                  </span>
+                        </svg>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">{col.header}</span>
+                  )}
                 </th>
               ))}
               {actions && (
@@ -426,6 +434,18 @@ export function DataTable<T extends Record<string, unknown>>({
                       isSelected && 'bg-brand-50/60',
                     )}
                     onClick={onRowClick ? () => onRowClick(item) : undefined}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onKeyDown={
+                      onRowClick
+                        ? (e) => {
+                            if (e.key !== 'Enter' && e.key !== ' ') return;
+                            const target = e.target as HTMLElement;
+                            if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
+                            e.preventDefault();
+                            onRowClick(item);
+                          }
+                        : undefined
+                    }
                   >
                     {selectable && (
                       <td className={cn(cellPad[size], 'w-10')}>
@@ -499,6 +519,18 @@ export function DataTable<T extends Record<string, unknown>>({
                         isSelected && 'border-brand-300 bg-brand-50/60',
                       )}
                       onClick={onRowClick ? () => onRowClick(item) : undefined}
+                      tabIndex={onRowClick ? 0 : undefined}
+                      onKeyDown={
+                        onRowClick
+                          ? (e) => {
+                              if (e.key !== 'Enter' && e.key !== ' ') return;
+                              const target = e.target as HTMLElement;
+                              if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
+                              e.preventDefault();
+                              onRowClick(item);
+                            }
+                          : undefined
+                      }
                     >
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">

@@ -1407,9 +1407,9 @@ export function getPublicServiceCatalog(slug: string) {
 export interface TopProduct {
   id: string;
   name: string;
-  total_qty: number;
-  total_revenue: number;
-  order_count: number;
+  totalQty: number;
+  totalRevenue: number;
+  orderCount: number;
 }
 
 export interface KitchenStatusCount {
@@ -1428,14 +1428,14 @@ export interface KitchenTrend {
 export interface LowStockItem {
   id: string;
   name: string;
-  stock_quantity: number;
-  min_stock_level: number;
+  stockQuantity: number;
+  minStockLevel: number;
   unit: string;
   status: string;
 }
 
 export function getAnalyticsLowStock() {
-  return apiFetch<{ low_stock: LowStockItem[] }>('/reports/low-stock');
+  return apiFetch<{ lowStock: LowStockItem[] }>('/reports/low-stock');
 }
 
 export function getTopProducts(days?: number, limit?: number) {
@@ -1443,12 +1443,12 @@ export function getTopProducts(days?: number, limit?: number) {
   if (days) params.set('days', String(days));
   if (limit) params.set('limit', String(limit));
   const qs = params.toString() ? `?${params.toString()}` : '';
-  return apiFetch<{ days: number; top_products: TopProduct[] }>(`/reports/top-products${qs}`);
+  return apiFetch<{ days: number; topProducts: TopProduct[] }>(`/reports/top-products${qs}`);
 }
 
 export function getKitchenPerformance(days?: number) {
   const qs = days ? `?days=${days}` : '';
-  return apiFetch<{ days: number; by_status: KitchenStatusCount[]; daily_trend: KitchenTrend[] }>(`/reports/kitchen-performance${qs}`);
+  return apiFetch<{ days: number; byStatus: KitchenStatusCount[]; dailyTrend: KitchenTrend[] }>(`/reports/kitchen-performance${qs}`);
 }
 
 // ─── Self-Service Onboarding ────────────────────────────────────────────
@@ -1676,11 +1676,11 @@ export function getReorderSuggestions() {
   return apiFetch<{ suggestions: Array<{
     id: string;
     name: string;
-    stock_quantity: number;
-    reorder_point: number;
-    min_stock_level: number;
-    supplier_name: string | null;
-    suggested_order_qty: number;
+    stockQuantity: number;
+    reorderPoint: number;
+    minStockLevel: number;
+    supplierName: string | null;
+    suggestedOrderQty: number;
   }> }>('/inventory/reorder-suggestions');
 }
 
@@ -1754,9 +1754,9 @@ export function getRevenueBreakdown(days?: number) {
   const qs = days ? `?days=${days}` : '';
   return apiFetch<{
     days: number;
-    by_product_type: Array<{ type: string; revenue: number; order_count: number }>;
-    by_payment_method: Array<{ method: string; revenue: number; count: number }>;
-    accommodation: { revenue: number; order_count: number };
+    byProductType: Array<{ type: string; revenue: number; orderCount: number }>;
+    byPaymentMethod: Array<{ method: string; revenue: number; count: number }>;
+    accommodation: { revenue: number; orderCount: number };
   }>(`/reports/revenue-breakdown${qs}`);
 }
 
@@ -1764,18 +1764,18 @@ export function getCustomerMetrics(days?: number) {
   const qs = days ? `?days=${days}` : '';
   return apiFetch<{
     days: number;
-    total_customers: number;
-    new_customers: number;
-    repeat_customers: number;
-    avg_order_value: number;
-    avg_collected: number;
+    totalCustomers: number;
+    newCustomers: number;
+    repeatCustomers: number;
+    avgOrderValue: number;
+    avgCollected: number;
   }>(`/reports/customer-metrics${qs}`);
 }
 
 export function getSeasonalComparison() {
   return apiFetch<{
-    accommodation_monthly: Array<{ month: string; revenue: number; order_count: number }>;
-    pos_monthly: Array<{ month: string; revenue: number; tx_count: number }>;
+    accommodationMonthly: Array<{ month: string; revenue: number; orderCount: number }>;
+    posMonthly: Array<{ month: string; revenue: number; txCount: number }>;
   }>('/reports/seasonal');
 }
 

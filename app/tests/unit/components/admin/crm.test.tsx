@@ -280,12 +280,12 @@ const mockOverview = {
   totalLeads: 12,
   openOpportunities: 5,
   openTickets: 3,
-  tenantBreakdown: [{ tenant_id: 't1', tenant_name: 'Camp Alpha', contact_count: 20, lead_count: 8, opportunity_count: 3 }],
+  tenantBreakdown: [{ tenantId: 't1', tenantName: 'Camp Alpha', contactCount: 20, leadCount: 8, opportunityCount: 3 }],
 };
 
 const mockSuperContacts = [
-  { id: 1, first_name: 'Alice', last_name: 'Morgan', email: 'alice@x.com', company: 'Acme', tenant_name: 'Camp Alpha', created_at: '2026-01-02' },
-  { id: 2, first_name: 'Bob', last_name: 'Tanner', email: '', company: '', tenant_name: 'Camp Beta', created_at: null },
+  { id: 1, firstName: 'Alice', lastName: 'Morgan', email: 'alice@x.com', company: 'Acme', tenantName: 'Camp Alpha', createdAt: '2026-01-02' },
+  { id: 2, firstName: 'Bob', lastName: 'Tanner', email: '', company: '', tenantName: 'Camp Beta', createdAt: null },
 ];
 
 // Default apiFetch route table: super overview/contacts + generic {} for everything else.

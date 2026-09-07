@@ -181,29 +181,29 @@ vi.mock('@/components/ui/Card', () => ({
 
 // ─── Representative data ─────────────────────────────────────────────────────
 const sampleWarehouses = [
-  { id: 'wh1', name: 'Main Warehouse', location: 'Cairo', is_active: 1 },
-  { id: 'wh2', name: 'Overflow', location: '', is_active: 1 },
+  { id: 'wh1', name: 'Main Warehouse', location: 'Cairo', isActive: 1 },
+  { id: 'wh2', name: 'Overflow', location: '', isActive: 1 },
 ];
 
 const sampleStock = [
-  { id: 's1', product_id: 'p1', warehouse_id: 'wh1', quantity: 25, reserved: 5, product_name: 'Tent', warehouse_name: 'Main Warehouse' },
+  { id: 's1', productId: 'p1', warehouseId: 'wh1', quantity: 25, reserved: 5, productName: 'Tent', warehouseName: 'Main Warehouse' },
 ];
 
 const sampleTransfers = [
-  { id: 'tr1', from_warehouse_id: 'wh1', to_warehouse_id: 'wh2', product_id: 'p1', quantity: 4, status: 'draft', from_warehouse_name: 'Main Warehouse', to_warehouse_name: 'Overflow', product_name: 'Tent' },
+  { id: 'tr1', fromWarehouseId: 'wh1', toWarehouseId: 'wh2', productId: 'p1', quantity: 4, status: 'draft', fromWarehouseName: 'Main Warehouse', toWarehouseName: 'Overflow', productName: 'Tent' },
 ];
 
 const samplePOs = [
-  { id: 'po1', po_number: 'PO-1001', vendor_id: 'v1', order_date: '2026-08-01T00:00:00Z', total_amount: 1250.5, status: 'draft' },
-  { id: 'po2', po_number: 'PO-1002', vendor_id: 'v2', order_date: '2026-08-02T00:00:00Z', total_amount: 100, status: 'sent' },
+  { id: 'po1', poNumber: 'PO-1001', vendorId: 'v1', orderDate: '2026-08-01T00:00:00Z', totalAmount: 1250.5, status: 'draft' },
+  { id: 'po2', poNumber: 'PO-1002', vendorId: 'v2', orderDate: '2026-08-02T00:00:00Z', totalAmount: 100, status: 'sent' },
 ];
 
 const sampleBOMs = [
-  { id: 'bom1', product_id: 'p1', name: 'Widget Assembly', version: 1, product_name: 'Widget', lines: [{ id: 'l1', component_id: 'c1', quantity: 2, unit: 'each' }] },
+  { id: 'bom1', productId: 'p1', name: 'Widget Assembly', version: 1, productName: 'Widget', lines: [{ id: 'l1', componentId: 'c1', quantity: 2, unit: 'each' }] },
 ];
 
 const sampleMOs = [
-  { id: 'mo1', product_id: 'p1', quantity: 10, status: 'planned', produced_quantity: 0, product_name: 'Widget', bom_name: 'Widget Assembly' },
+  { id: 'mo1', productId: 'p1', quantity: 10, status: 'planned', producedQuantity: 0, productName: 'Widget', bomName: 'Widget Assembly' },
 ];
 
 function renderSupply() {

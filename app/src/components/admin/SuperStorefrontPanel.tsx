@@ -27,11 +27,10 @@ interface StorefrontOverview {
   totalPOSTransactions: number;
   totalPOSRevenue: number;
   tenantBreakdown: Array<{
-    tenant_id: string;
-    tenant_name: string;
-    product_count: number;
-    pos_transaction_count: number;
-    pos_revenue: number;
+    tenantId: string;
+    tenantName: string;
+    productCount: number;
+    activeCount: number;
   }>;
 }
 
@@ -40,7 +39,7 @@ interface ProductRecord {
   name: string;
   sku: string;
   price: number;
-  tenant_name: string;
+  tenantName: string;
   status: string;
   [key: string]: unknown;
 }
@@ -53,10 +52,10 @@ const productColumns = [
     render: (r: ProductRecord) => <span className="font-medium text-gray-800">{r.name || '—'}</span>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
-    render: (r: ProductRecord) => <span className="text-gray-600">{r.tenant_name || '—'}</span>,
+    render: (r: ProductRecord) => <span className="text-gray-600">{r.tenantName || '—'}</span>,
   },
   {
     key: 'sku',
@@ -159,11 +158,11 @@ export default function SuperStorefrontPanel() {
           <h3 className="text-sm font-bold text-gray-700 mb-3">Storefront by Tenant</h3>
           <div className="space-y-2">
             {overview.tenantBreakdown.slice(0, 5).map((t) => (
-              <div key={t.tenant_id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{t.tenant_name}</span>
+              <div key={t.tenantId} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{t.tenantName}</span>
                 <div className="flex items-center gap-4">
-                  <span className="text-gray-500">{t.pos_transaction_count} transactions</span>
-                  <span className="font-medium text-gray-800">{formatCurrency(t.pos_revenue)}</span>
+                  <span className="text-gray-500">{t.productCount} products</span>
+                  <span className="font-medium text-gray-800">{t.activeCount} active</span>
                 </div>
               </div>
             ))}

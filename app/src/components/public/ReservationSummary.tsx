@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { escHtml, readableTextOn } from '@/lib/utils';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
@@ -139,6 +139,10 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState('');
   const { showToast } = useToast();
+  // Stable idempotency key for the whole booking session (generated ONCE on
+  // mount, reused across retries/double-clicks) — the backend dedupes on it so
+  // a retry after a timeout cannot create a duplicate order.
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   const t = T;
 
@@ -253,6 +257,7 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
         numberOfPeople: item.guests,
         guestName,
         guestPhone: guestPhone || undefined,
+        idempotencyKey: idempotencyKeyRef.current,
         items: mealPlanItems && mealPlanItems.length > 0 ? mealPlanItems : undefined,
       });
 

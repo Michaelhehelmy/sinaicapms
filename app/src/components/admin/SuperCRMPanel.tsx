@@ -27,37 +27,37 @@ interface CRMOverview {
   openOpportunities: number;
   openTickets: number;
   tenantBreakdown: Array<{
-    tenant_id: string;
-    tenant_name: string;
-    contact_count: number;
-    lead_count: number;
-    opportunity_count: number;
+    tenantId: string;
+    tenantName: string;
+    contactCount: number;
+    leadCount: number;
+    opportunityCount: number;
   }>;
 }
 
 interface ContactRecord {
   id: string;
-  first_name: string;
-  last_name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   company: string;
-  tenant_name: string;
-  created_at: string;
+  tenantName: string;
+  createdAt: string;
   [key: string]: unknown;
 }
 
 const contactColumns = [
   {
-    key: 'first_name',
+    key: 'firstName',
     header: 'Name',
     sortable: true,
-    render: (r: ContactRecord) => <span className="font-medium text-gray-800">{[r.first_name, r.last_name].filter(Boolean).join(' ') || '—'}</span>,
+    render: (r: ContactRecord) => <span className="font-medium text-gray-800">{[r.firstName, r.lastName].filter(Boolean).join(' ') || '—'}</span>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
-    render: (r: ContactRecord) => <span className="text-gray-600">{r.tenant_name || '—'}</span>,
+    render: (r: ContactRecord) => <span className="text-gray-600">{r.tenantName || '—'}</span>,
   },
   {
     key: 'email',
@@ -70,10 +70,10 @@ const contactColumns = [
     render: (r: ContactRecord) => <span className="text-gray-600">{r.company || '—'}</span>,
   },
   {
-    key: 'created_at',
+    key: 'createdAt',
     header: 'Created',
     sortable: true,
-    render: (r: ContactRecord) => <span className="text-gray-500">{r.created_at ? formatDate(r.created_at) : '—'}</span>,
+    render: (r: ContactRecord) => <span className="text-gray-500">{r.createdAt ? formatDate(r.createdAt) : '—'}</span>,
   },
 ];
 
@@ -160,12 +160,12 @@ export default function SuperCRMPanel() {
           <h3 className="text-sm font-bold text-gray-700 mb-3">CRM by Tenant</h3>
           <div className="space-y-2">
             {overview.tenantBreakdown.slice(0, 5).map((t) => (
-              <div key={t.tenant_id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{t.tenant_name}</span>
+              <div key={t.tenantId} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{t.tenantName}</span>
                 <div className="flex items-center gap-4">
-                  <span className="text-gray-500">{t.lead_count} leads</span>
-                  <span className="text-gray-500">{t.opportunity_count} opps</span>
-                  <span className="font-medium text-gray-800">{t.contact_count} contacts</span>
+                  <span className="text-gray-500">{t.leadCount} leads</span>
+                  <span className="text-gray-500">{t.opportunityCount} opps</span>
+                  <span className="font-medium text-gray-800">{t.contactCount} contacts</span>
                 </div>
               </div>
             ))}

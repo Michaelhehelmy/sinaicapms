@@ -85,6 +85,12 @@ export function Badge({
 }: BadgeProps & React.HTMLAttributes<HTMLSpanElement>) {
   const style = variantStyles[variant];
 
+  /* Descriptive remove label: announce which badge would be removed. */
+  const removeLabel =
+    typeof children === 'string' || typeof children === 'number'
+      ? `Remove ${children}`
+      : 'Remove';
+
   return (
     <span
       className={cn(
@@ -115,7 +121,7 @@ export function Badge({
             'transition-colors duration-150',
             'hover:bg-black/10 focus:outline-none focus:ring-1 focus:ring-current',
           )}
-          aria-label="Remove"
+          aria-label={removeLabel}
         >
           <svg
             className="h-2.5 w-2.5"

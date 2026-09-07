@@ -149,6 +149,11 @@ function ToastItemComponent({
     setTimeout(() => onDismiss(toast.id), 200);
   }, [onDismiss, toast.id]);
 
+  /* Error toasts interrupt immediately (alert/assertive); success, info and
+     warning toasts are polite announcements (status/polite) so screen readers
+     finish the current utterance before reading them (ARIA APG 2.4). */
+  const isAlert = toast.type === 'error';
+
   return (
     <div
       className={cn(
@@ -158,8 +163,8 @@ function ToastItemComponent({
         typeStyles[toast.type],
         exiting ? 'opacity-0 translate-x-4' : 'animate-[toastSlideIn_0.35s_cubic-bezier(0.22,1,0.36,1)]',
       )}
-      role="alert"
-      aria-live="assertive"
+      role={isAlert ? 'alert' : 'status'}
+      aria-live={isAlert ? 'assertive' : 'polite'}
     >
       {typeIcons[toast.type]}
       <span className="flex-1">{toast.message}</span>

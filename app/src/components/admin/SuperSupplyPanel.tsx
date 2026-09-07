@@ -27,10 +27,10 @@ interface SupplyOverview {
   pendingPurchaseOrders: number;
   lowStockItems: number;
   tenantBreakdown: Array<{
-    tenant_id: string;
-    tenant_name: string;
-    warehouse_count: number;
-    product_count: number;
+    tenantId: string;
+    tenantName: string;
+    warehouseCount: number;
+    productCount: number;
   }>;
 }
 
@@ -38,9 +38,9 @@ interface PORecord {
   id: string;
   reference: string;
   status: string;
-  total_amount: number;
-  tenant_name: string;
-  created_at: string;
+  totalAmount: number;
+  tenantName: string;
+  createdAt: string;
   [key: string]: unknown;
 }
 
@@ -52,10 +52,10 @@ const poColumns = [
     render: (r: PORecord) => <span className="font-medium text-gray-800">{r.reference || r.id?.slice(0, 8) || '—'}</span>,
   },
   {
-    key: 'tenant_name',
+    key: 'tenantName',
     header: 'Tenant',
     sortable: true,
-    render: (r: PORecord) => <span className="text-gray-600">{r.tenant_name || '—'}</span>,
+    render: (r: PORecord) => <span className="text-gray-600">{r.tenantName || '—'}</span>,
   },
   {
     key: 'status',
@@ -63,16 +63,16 @@ const poColumns = [
     render: (r: PORecord) => <Badge variant={r.status === 'received' ? 'success' : r.status === 'canceled' ? 'danger' : 'warning'}>{r.status}</Badge>,
   },
   {
-    key: 'total_amount',
+    key: 'totalAmount',
     header: 'Amount',
     sortable: true,
-    render: (r: PORecord) => <span className="text-right font-medium text-gray-800">{formatCurrency(r.total_amount ?? 0)}</span>,
+    render: (r: PORecord) => <span className="text-right font-medium text-gray-800">{formatCurrency(r.totalAmount ?? 0)}</span>,
   },
   {
-    key: 'created_at',
+    key: 'createdAt',
     header: 'Created',
     sortable: true,
-    render: (r: PORecord) => <span className="text-gray-500">{r.created_at ? formatDate(r.created_at) : '—'}</span>,
+    render: (r: PORecord) => <span className="text-gray-500">{r.createdAt ? formatDate(r.createdAt) : '—'}</span>,
   },
 ];
 
@@ -159,11 +159,11 @@ export default function SuperSupplyPanel() {
           <h3 className="text-sm font-bold text-gray-700 mb-3">Inventory by Tenant</h3>
           <div className="space-y-2">
             {overview.tenantBreakdown.slice(0, 5).map((t) => (
-              <div key={t.tenant_id} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">{t.tenant_name}</span>
+              <div key={t.tenantId} className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">{t.tenantName}</span>
                 <div className="flex items-center gap-4">
-                  <span className="text-gray-500">{t.warehouse_count} warehouses</span>
-                  <span className="font-medium text-gray-800">{t.product_count} products</span>
+                  <span className="text-gray-500">{t.warehouseCount} warehouses</span>
+                  <span className="font-medium text-gray-800">{t.productCount} products</span>
                 </div>
               </div>
             ))}
