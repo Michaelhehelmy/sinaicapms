@@ -21,7 +21,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify",
-    "gen:openapi": "vite-node scripts/generate-openapi.js"
+    "gen:openapi": "vite-node scripts/generate-openapi.js",
+    "test:coverage": "vitest run --coverage"
   },
   "overrides": {
     "sharp": ">=0.35.0",
