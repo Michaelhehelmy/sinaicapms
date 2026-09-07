@@ -54,9 +54,35 @@ export default defineConfig({
     build: {
       target: 'es2022',
     },
-    resolve: {
-      alias: {
-        '@': '/src',
+    // GH withastro/astro#17868: duplicate `@` aliases (here vs tsconfig.json
+    // compilerOptions.paths) trigger workerd SSR alias-resolution mismatches in
+    // `astro dev` ("Unable to resolve [@/components/...tsx]"). Astro 7 inherits
+    // tsconfig paths into Vite automatically, so no vite.resolve.alias here.
+    // noDiscovery + excludes prevent mid-flight SSR dep discovery from wiping
+    // .vite/deps_ssr and invalidating running workerd module handles.
+    optimizeDeps: {
+      exclude: [
+        'astro',
+        'astro/actions',
+        'astro:actions',
+        'astro/content',
+        'astro:content',
+        '@astrojs/cloudflare',
+        '@astrojs/react',
+      ],
+    },
+    ssr: {
+      optimizeDeps: {
+        noDiscovery: true,
+        exclude: [
+          'astro',
+          'astro/actions',
+          'astro:actions',
+          'astro/content',
+          'astro:content',
+          '@astrojs/cloudflare',
+          '@astrojs/react',
+        ],
       },
     },
   },
