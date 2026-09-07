@@ -63,7 +63,7 @@ interface ApiBackendBinding {
 /**
  * Binding-aware SSR API fetcher factory.
  *
- * On Cloudflare Pages production the backend Worker (`campmaster-backend`)
+ * On Cloudflare Workers production the backend Worker (`campmaster-backend`)
  * is reached through a service binding named `API_BACKEND`. Same-zone
  * `fetch()` to `https://sinaicamps.com/api/*` is rejected by Cloudflare with
  * error 1042 on the root host, so SSR must call the binding instead. The
@@ -72,15 +72,23 @@ interface ApiBackendBinding {
  * the worker entrypoint rewrites it back to `/api/*` before dispatch.
  *
  * Falls back to a plain cross-origin `fetch(\`${apiBase}${path}\`)` when the
- * binding is absent (local dev / preview / tests) — there the cross-origin
- * request routes to the backend Worker correctly.
+ * binding is absent OR when running in local dev (`apiBase` is a
+ * localhost/127.0.0.1 URL). In local dev the binding target
+ * (`campmaster-backend`) runs as a separate `wrangler dev` process that the
+ * @astrojs/cloudflare v14 dev pipeline (workerd via the Vite plugin) cannot
+ * discover, so the binding fetch dead-ends and every SSR load resolves
+ * tenant=null. The cross-origin fetch to the standalone backend on
+ * `localhost:8787` matches the pre-Astro-7 behavior.
  */
 export function resolveApiFetcher(
   runtimeEnv: Record<string, unknown> | undefined,
   apiBase: string,
 ): ApiFetcher {
+  const isLocalDev =
+    apiBase.startsWith('http://localhost:') ||
+    apiBase.startsWith('http://127.0.0.1:');
   const binding = runtimeEnv?.API_BACKEND as ApiBackendBinding | undefined;
-  if (binding && typeof binding?.fetch === 'function') {
+  if (!isLocalDev && binding && typeof binding?.fetch === 'function') {
     return (path, init) => binding.fetch(new URL(`/api/v1${path}`, 'https://campmaster-backend/'), init);
   }
   return (path, init) => {

@@ -465,11 +465,11 @@ describe('zone model locals (marketplace vs tenant exclusivity)', () => {
 });
 
 describe('resolveApiFetcher', () => {
-  it('uses the API_BACKEND service binding when available', async () => {
+  it('uses the API_BACKEND service binding when available (production origin)', async () => {
     const bindingFetch = vi.fn().mockResolvedValue(new Response('ok'));
     const runtimeEnv = { API_BACKEND: { fetch: bindingFetch } };
 
-    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api/v1');
+    const fetcher = resolveApiFetcher(runtimeEnv, 'https://sinaicamps.com/api/v1');
     await fetcher('/tenants/123');
 
     expect(bindingFetch).toHaveBeenCalledTimes(1);
@@ -479,16 +479,33 @@ describe('resolveApiFetcher', () => {
     expect(request.origin).toBe('https://campmaster-backend');
   });
 
-  it('passes init options through the binding', async () => {
+  it('passes init options through the binding (production origin)', async () => {
     const bindingFetch = vi.fn().mockResolvedValue(new Response('ok'));
     const runtimeEnv = { API_BACKEND: { fetch: bindingFetch } };
 
-    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api/v1');
+    const fetcher = resolveApiFetcher(runtimeEnv, 'https://sinaicamps.com/api/v1');
     await fetcher('/camps', { method: 'POST', headers: { 'x-tenant-id': 't1' } });
 
     const [, init] = bindingFetch.mock.calls[0];
     expect(init.method).toBe('POST');
     expect(init.headers).toEqual({ 'x-tenant-id': 't1' });
+  });
+
+  it('falls back to cross-origin fetch in local dev even when a binding is present', async () => {
+    const bindingFetch = vi.fn().mockResolvedValue(new Response('ok'));
+    const runtimeEnv = { API_BACKEND: { fetch: bindingFetch } };
+
+    // Local dev: the binding target (campmaster-backend) runs as a separate
+    // `wrangler dev` process that the @astrojs/cloudflare v14 Vite-plugin
+    // workerd cannot discover, so the binding fetch dead-ends and every SSR
+    // load resolves tenant=null. The plain cross-origin fetch to the
+    // standalone backend on localhost:8787 restores the pre-Astro-7 behavior.
+    const fetcher = resolveApiFetcher(runtimeEnv, 'http://localhost:8787/api/v1');
+    await fetcher('/tenants/123');
+
+    expect(bindingFetch).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/v1/tenants/123');
   });
 
   it('falls back to cross-origin fetch when binding is absent', async () => {
