@@ -62,7 +62,7 @@ SinaiCamps is built as **four independent layers that are isolated from each oth
 
 ### How they are physically connected
 
-- **Frontend ↔ Backend**: In production both live on the same zone (`sinaicamps.com`). Cloudflare **Worker routes** send `/api/*` to the `campmaster-backend` Worker; everything else is served by the Pages build of the frontend. In dev, Astro's dev server proxies `/api/*` to `wrangler dev` on `:8787`. The API client (`app/src/lib/api.ts`) is the single shared contract — one function per endpoint, typed responses (`app/src/lib/api-types.ts` regenerated from `backend/openapi.json`).
+- **Frontend ↔ Backend**: Both live as Workers on the same zone (`sinaicamps.com`). Cloudflare **Worker routes** send `/api/*` to the `campmaster-backend` Worker; everything else is served by the `campmaster-marketplace` Worker (Astro SSR, built with `@astrojs/cloudflare`). The frontend Worker calls the backend through the `API_BACKEND` **service binding** (not a same-zone `fetch()`, which Cloudflare rejects with error 1042), resolved in `app/src/middleware/tenant.ts` from the `cloudflare:workers` `env`. In dev, Astro's dev server proxies `/api/*` to `wrangler dev` on `:8787`. The API client (`app/src/lib/api.ts`) is the single shared contract — one function per endpoint, typed responses (`app/src/lib/api-types.ts` regenerated from `backend/openapi.json`).
 - **Backend ↔ Database**: D1 binding `env.DB` (`campmaster-db`) declared in `backend/wrangler.toml`. Every schema change is a numbered migration in `backend/migrations/` (currently **53**, head `0053_camp_ownership.sql`) applied with `wrangler d1 migrations apply`. No ORM — parameterized SQL.
 - **Backend ↔ KV / R2 / DO**: `RATE_LIMIT_KV` (rate limiting), `KV_CACHE` (bound; read caching is done with `Cache-Control` headers on public responses — no KV writes), `MEDIA_BUCKET` (R2 uploads), and `BROADCASTER` (Durable Object for SSE) — all declared in `backend/wrangler.toml`. Rate limiting is **KV-backed with an in-memory fallback** (see [Rate Limiting & KV](#rate-limiting--kv-free-plan-warning)).
 - **Tenant isolation is enforced twice**: `app/src/middleware/tenant.ts` resolves the tenant/zone for rendering, and `backend/src/middleware/` re-validates tenant context + JWT on every API call. The frontend can never bypass the backend's checks.
@@ -133,14 +133,14 @@ sinaicamps/
 
 | Layer | Technology |
 |-------|-----------|
-| **1. Frontend** | Astro 5.18.x + React 19.2.x + Tailwind CSS v4 (TypeScript); `sharpImageService()` image pipeline with `SafeImage.astro` |
+| **1. Frontend** | Astro 7.x + React 19.2.x + Tailwind CSS v4 (TypeScript); `sharpImageService()` image pipeline with `SafeImage.astro` |
 | **2. API / Backend** | Hono on Cloudflare Workers (JavaScript); SSE via Durable Object `BROADCASTER` |
 | **3. Database** | Cloudflare D1 (SQLite) — `campmaster-db` (+ isolated `campmaster-db-staging`) |
 | **4. Cache / Rate Limiting** | Cloudflare KV (`RATE_LIMIT_KV`, `KV_CACHE`) + R2 (`MEDIA_BUCKET`) |
 | **Auth** | JWT (HS256) + bcrypt password hashing; POS uses a separate `pos_token` |
 | **Unit Tests** | Vitest (backend 2096 · frontend 3417 · integration 262) |
 | **E2E Tests** | Playwright (566 total — 552 gate passing · 14 env-skipped in CI mode) |
-| **Deployment** | Cloudflare Pages (frontend) + Cloudflare Workers (API) via `deploy.sh` (`--staging` supported) |
+| **Deployment** | Cloudflare Workers (frontend `campmaster-marketplace` + API `campmaster-backend`) via `deploy.sh` (`--staging` supported) |
 
 ---
 
@@ -240,7 +240,7 @@ CI=true npx playwright test
 ```bash
 ./deploy.sh            # full deploy: D1 backup → migrations → backend → frontend
 ./deploy.sh --backend  # backend Worker + migrations only
-./deploy.sh --frontend # frontend build + Pages deploy only
+./deploy.sh --frontend # frontend build + Worker deploy only
 ./deploy.sh --staging  # staging environment (validates [env.staging] first)
 ./deploy.sh --no-health  # skip health checks (emergency)
 ```
@@ -250,7 +250,7 @@ CI=true npx playwright test
 | Artifact | Goes to | Serves |
 |---|---|---|
 | `backend/` | Cloudflare **Worker** `campmaster-backend` | `sinaicamps.com/api/*` + `*.sinaicamps.com/api/*` (Worker routes) |
-| `app/` (build) | Cloudflare **Pages** project `campmaster-marketplace` | everything else on the zone + custom domains |
+| `app/` (build) | Cloudflare **Worker** `campmaster-marketplace` (Astro SSR via `@astrojs/cloudflare`) | everything else on the zone + custom domains |
 | D1 migrations | `campmaster-db` (remote) | only reachable inside the Worker |
 
 **Output URLs:**

@@ -113,7 +113,7 @@ Zero errors appear for `app/src/lib/api-types.ts` in the tsc output. The generat
 | `ws` | high | no | uninitialized memory disclosure + memory-exhaustion DoS (via `miniflare`) |
 | `miniflare` / `postcss` / `wrangler` / `uuid` / `@storybook/addon-actions` / `@storybook/addon-essentials` | moderate | essence only | dev/build tooling |
 
-**Key takeaways (same for all three manifests):** zero CRITICAL findings. Nearly all transitive high-severity findings route through **`miniflare` → `undici`/`ws`** (dev tooling pulled by `wrangler`), the two `nanoid` instances, and CI `postcss`. The only **production** exposures are `hono` (backend, needs `>=4.12.34`, currently `4.12.31`) and `astro` (app, needs major `7.x` — currently `5.18.2`). All findings have `fixAvailable: true`. The `astro`/`@astrojs/cloudflare` fixes are semver-major, so remediation is a planned upgrade, not a drop-in patch.
+ **Key takeaways (same for all three manifests):** zero CRITICAL findings. Nearly all transitive high-severity findings route through **`miniflare` → `undici`/`ws`** (dev tooling pulled by `wrangler`), the two `nanoid` instances, and CI `postcss`. The only **production** exposures are `hono` (backend, needs `>=4.12.34`, currently `4.12.31`) and `astro` (app, needs major `7.x` — **UPGRADED to `7.3.1` on `feat/astro-7`**, resolving its HIGH advisories). All findings have `fixAvailable: true`. The `astro`/`@astrojs/cloudflare` fixes are semver-major, so remediation is a planned upgrade, not a drop-in patch.
 
 ---
 
@@ -136,12 +136,13 @@ Zero errors appear for `app/src/lib/api-types.ts` in the tsc output. The generat
 | `zod` | 3.25.76 | **4.5.4** | yes (major) |
 
 ### App
-| Package | Current | Latest | Major bump |
+| Package | Current | **On `feat/astro-7`** | Major bump |
 |---|---|---|---|
-| `astro` | 5.18.2 | **7.3.1** | yes (also the unfixed-advisory fix) |
-| `@astrojs/cloudflare` | 12.6.13 | 14.3.0 | yes |
-| `@astrojs/react` | 4.4.2 | 6.0.5 | yes |
-| `vite` | 6.4.3 | 8.2.2 | yes |
+| `astro` | 5.18.2 | **7.3.1** ✅ upgraded | yes (also the unfixed-advisory fix) |
+| `@astrojs/cloudflare` | 12.6.13 | **14.3.0** ✅ upgraded | yes |
+| `@astrojs/react` | 4.4.2 | **6.0.5** ✅ upgraded | yes |
+| `vite` | 6.4.3 | 8.2.2 | yes (Astro 7 bundles Vite 8 internally; direct `vite` dep only feeds vitest/storybook tooling) |
+| `wrangler` | (app: absent) | **4.129.0** ✅ added | — (required peer of `@astrojs/cloudflare@14`) |
 | `@vitejs/plugin-react` | 4.7.0 | 6.1.1 | yes |
 | `typescript` | 5.9.3 | **7.0.2** | yes (major) |
 | `storybook` + 3 addons | 8.6.18 | 10.6.0 | yes |

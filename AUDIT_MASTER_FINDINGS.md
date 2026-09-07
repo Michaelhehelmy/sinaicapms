@@ -106,9 +106,9 @@
 | Strictness | `strict: true` via `astro/tsconfigs/strict`, actively enforcing |
 | React types | runtime `react@19.2.8` vs `@types/react` 18.3.x — types a full major behind |
 | npm audit | **0 critical** all 3 manifests |
-| Prod-sensitive advisories | **`hono` 4.12.31 → 4 advisories** (incl. `memo()` SSR cross-user disclosure) fixed in ≥4.12.34 — patch-only; **`astro` 5.18.2 → 9 advisories** (SSRF/XSS) fixed only in major **7.3.1** |
+| Prod-sensitive advisories | **`hono` 4.12.31 → 4 advisories** (incl. `memo()` SSR cross-user disclosure) fixed in ≥4.12.34 — patch-only; **`astro` → REMEDIATED on `feat/astro-7`** (5.18.2 → **7.3.1** clears its SSRF/XSS HIGHs; `@astrojs/cloudflare` 12→**14.3.0** clears the SSRF/image-binding advisory) |
 | Transitive pattern | every manifest: `wrangler → miniflare → undici/ws` (dev-only) |
-| Outdated majors | astro 5→7, vite 6→8, TS 5→7, storybook 8→10, eslint 9→10, zod 3→4 (backend), hono-zod-openapi/zod-to-openapi majors, vitest 4→5, jsdom 25→30, better-sqlite3 12→13, @astrojs/cloudflare 12→14 |
+| Outdated majors | ✅ astro 5→7 **and** @astrojs/cloudflare 12→14 **done** on `feat/astro-7`; remaining: vite 6→8, TS 5→7, storybook 8→10, eslint 9→10, zod 3→4 (backend), hono-zod-openapi/zod-to-openapi majors, vitest 4→5, jsdom 25→30, better-sqlite3 12→13 |
 
 ---
 
@@ -182,12 +182,12 @@
 25. M8 Zod for 4 hand-rolled validators + rate-limit marketplace reviews
 26. M7 pagination envelope unification
 27. tsc: fix 5 src hotspots (97 → ~0 src errors), then test-fixture debt (329)
-28. React 18 typings → 19 typings; `hono` ≥4.12.34 patch; plan astro 7.x upgrade
+28. React 18 typings → 19 typings; `hono` ≥4.12.34 patch; ✅ **astro 7.x upgrade EXECUTED on `feat/astro-7`** (7.3.1 + @astrojs/cloudflare 14.3.0 + @astrojs/react 6.0.5, Pages→Workers deploy; see `ASTRO_DEPLOY_CUTOVER.md`)
 29. E2E: online-payment happy path, payout lifecycle, public-booking→order conversion, 23 blind panels
 30. Sweep: delete 9 dead frontend files, dead modules (`admin-users.js`/`admin-stats.js`), dead table `tenant_usage`, `key={index}` lists, a11y label pass, `Math.random()` refs → crypto
 
 **Deferred/decision items**
 - `s-maxage`/cache-rule for public catalogue (D7) — browser-only caching is currently the documented intent.
 - `FEATURE_*` flags — wire 2FA/captcha or remove the flags.
-- astro 7.x + TS 7 upgrades — plan as a dedicated migration task.
+- TS 7 upgrade — plan as a dedicated migration task (astro 7.x already done).
 - Staging/prod deploy remains blocked on user re-running `wrangler login` (Cloudflare OAuth) — audit changes are report-only, nothing pending deploy.

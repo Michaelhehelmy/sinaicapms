@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SinaiCamps Unified App Deployment
-# Deploys: Backend Worker + D1 migrations, then unified frontend to Cloudflare Pages
+# Deploys: Backend Worker + D1 migrations, then unified frontend to Cloudflare Workers
 #
 # Usage:
 #   ./deploy.sh              — full deploy (production)
@@ -268,13 +268,13 @@ if [ "$DEPLOY_ENV" = "staging" ]; then
   ENV_FLAG="--env staging"
 fi
 
-# Per-environment resource names — staging must NEVER touch prod D1/Pages.
+# Per-environment resource names — staging must NEVER touch prod D1/Pages/Workers.
 if [ "$DEPLOY_ENV" = "staging" ]; then
   D1_NAME="campmaster-db-staging"
-  PAGES_PROJECT="campmaster-marketplace-staging"
+  WORKER_NAME="campmaster-marketplace-staging"
 else
   D1_NAME="campmaster-db"
-  PAGES_PROJECT="campmaster-marketplace"
+  WORKER_NAME="campmaster-marketplace"
 fi
 
 if [ "$SKIP_HEALTH" = true ]; then
@@ -364,8 +364,8 @@ deploy_frontend() {
     exit 1
   fi
 
-  log "Deploying to Cloudflare Pages ($PAGES_PROJECT)..."
-  if retry "npx wrangler pages deploy dist --project-name=$PAGES_PROJECT --branch=main --commit-dirty=true 2>&1" "Pages deploy"; then
+  log "Deploying to Cloudflare Workers ($WORKER_NAME)..."
+  if retry "npx wrangler deploy $ENV_FLAG 2>&1" "Worker deploy"; then
     log "✅ Frontend deployed"
   else
     log "❌ Frontend deploy failed — check network and try again"
