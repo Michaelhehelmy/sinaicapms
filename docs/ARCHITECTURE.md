@@ -51,7 +51,7 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 ## 3. Frontend (app/)
 
 - **Astro 5** pages under `app/src/pages/` — static prerendering by default, zone-aware.
-- **React 19 islands** only where interactivity is required (`client:*` directives). Currently just 3 public islands: `CampBooking` (`client:visible`), `ReservationSummary` (`client:load`), `TenantMenu` (`client:load`).
+- **React 19 islands** only where interactivity is required (`client:*` directives). Currently just 4 public islands: `CampBooking` (`client:visible`), `MarketplaceDirectory` (`client:visible` on `/marketplace`), `ReservationSummary` (`client:load`), `TenantMenu` (`client:load`).
 - **TanStack Query** for all admin data (`useQueryHooks`, `useAdminData`). The admin SPA was fully migrated off raw `fetch` — no `window.*` cross-file globals remain.
 - **Design system**: 26 primitives in `app/src/components/ui/` (see `COMPONENT_CATALOG.md`), Tailwind CSS v4 tokens, `cn()` util.
 - **Images**: `astro.config.mjs` uses `sharpImageService()` with `image.remotePatterns: [{ protocol: 'https' }]`. `SafeImage.astro` normalizes URLs, runs `getImage`, and falls back to a plain `<img>` on any error so pages never 500 on remote fetch failure.

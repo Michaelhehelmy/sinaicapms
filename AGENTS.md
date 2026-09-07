@@ -101,7 +101,7 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 - **No i18n** — the frontend is hard-coded English LTR (Arabic RTL cancelled as a product decision; there is no `app/src/i18n/`).
 - **Read caching is header-only**: `cachedJsonResponse` (backend/src/utils/response.js) sets `Cache-Control: public, max-age=300, stale-while-revalidate=600` (availability uses 60s). `KV_CACHE` is bound but NEVER written — do not add KV writes for caching (free-plan 1,000 writes/day quota).
 - **Media lives in R2** (`MEDIA_BUCKET` = `campmaster-media`) and **SSE** broadcasts through the `BROADCASTER` Durable Object (admin inbox/orders) — bindings in `backend/wrangler.toml`.
-- **Only 3 public islands** exist (CampBooking `client:visible`, ReservationSummary + TenantMenu `client:load`) — add islands sparingly and prefer `client:visible` for below-fold content (T15).
+- **Only 4 public islands** exist (CampBooking `client:visible`, MarketplaceDirectory `client:visible` on `/marketplace`, ReservationSummary + TenantMenu `client:load`) — add islands sparingly and prefer `client:visible` for below-fold content (T15).
 
 ---
 
@@ -137,10 +137,10 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 ## 6. Running Tests
 
 ```bash
-# Frontend unit tests (3415 tests / 132 files)
+# Frontend unit tests (3419 tests / 132 files)
 cd app && npx vitest run
 
-# Backend unit tests (2073 tests / 80 files)
+# Backend unit tests (2084 tests / 80 files), coverage gate = `npm run test:coverage` (thresholds 83/72/89/89)
 cd backend && npx vitest run
 
 # POS integration tests
