@@ -47,6 +47,10 @@ export default defineConfig({
       // stub so the middleware modules can be unit-tested (see
       // tests/mocks/astro-middleware.ts).
       'astro:middleware': path.resolve(__dirname, 'tests/mocks/astro-middleware.ts'),
+      // `cloudflare:workers` only exists in the Workerd runtime (Cloudflare
+      // Vite plugin). Map it to a stub so the middleware modules can be
+      // unit-tested in Node (see tests/mocks/cloudflare-workers.ts).
+      'cloudflare:workers': path.resolve(__dirname, 'tests/mocks/cloudflare-workers.ts'),
     },
   },
 });

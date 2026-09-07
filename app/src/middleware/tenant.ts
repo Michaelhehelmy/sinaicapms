@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'astro';
 import { defineMiddleware } from 'astro:middleware';
+import { env } from 'cloudflare:workers';
 import { isRouteForbidden, resolveZone } from '@/lib/routeZones';
 import { buildTenantTheme, type TenantTheme } from '@/lib/theme';
 
@@ -133,7 +134,7 @@ function getApiBase(url: URL): string {
 
 export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<TenantSSRData> {
   const API_BASE = getApiBase(url);
-  const apiFetch = fetcher ?? resolveApiFetcher(undefined, API_BASE);
+  const apiFetch = fetcher ?? resolveApiFetcher(env as unknown as Record<string, unknown> | undefined, API_BASE);
   const lookupKey = resolveTenantId(url);
 
   let tenant: TenantData | null = null;
@@ -193,8 +194,8 @@ export const onRequest: MiddlewareHandler = defineMiddleware(async (context, nex
   const tenantId = resolveTenantId(url);
 
   // SSR API fetcher: uses the `API_BACKEND` service binding when available
-  // (Pages production), falling back to a plain cross-origin fetch otherwise.
-  const runtimeEnv = context.locals.runtime?.env as Record<string, unknown> | undefined;
+  // (Workers), falling back to a plain cross-origin fetch otherwise.
+  const runtimeEnv = env as unknown as Record<string, unknown> | undefined;
   const apiFetch = resolveApiFetcher(runtimeEnv, API_BASE);
 
   const resolvedTenantId = tenantId || '';
