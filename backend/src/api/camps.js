@@ -535,6 +535,18 @@ productsRoutes.post('/', async (c) => {
 
     return jsonResponse({ id: pid, success: true });
   } catch (e) {
+    // Idempotent re-seed: POST /api/products with an existing id (or the
+    // derived SKU `PROD-<ID>`) hits a UNIQUE constraint. That is a client
+    // conflict, not a server error. errorResponse's default status changed
+    // to 500 (2026-09-06), which silently turned the old implicit 400 for
+    // duplicates into a 500 and broke the e2e seed's idempotency contract
+    // (the seed tolerates 400/409 but throws on 500, killing global setup
+    // on every gate re-run). Return 409 like the other create routes
+    // (tenants/admins/POS users) so duplicates are safe; genuine D1 errors
+    // stay loud as 500.
+    if (e && typeof e.message === 'string' && e.message.includes('UNIQUE constraint failed')) {
+      return errorResponse('Product already exists', 409);
+    }
     return errorResponse('Failed to create product');
   }
 });
@@ -883,6 +895,14 @@ ratePlansRoutes.post('/', async (c) => {
     }
     return jsonResponse({ id: rpid, success: true });
   } catch (e) {
+    // Same re-seed idempotency contract as POST /api/products: a duplicate
+    // rate-plan id hits rate_plans_new.id's UNIQUE constraint. That is a
+    // client conflict — return 409 instead of the errorResponse 500 default
+    // (which the 2026-09-06 default-status change introduced, leaking the
+    // D1 error into the body and alarming the e2e seed logs every run).
+    if (e && typeof e.message === 'string' && e.message.includes('UNIQUE constraint failed')) {
+      return errorResponse('Rate plan already exists', 409);
+    }
     return errorResponse('Failed to create rate plan: ' + (e?.message || String(e)));
   }
 });

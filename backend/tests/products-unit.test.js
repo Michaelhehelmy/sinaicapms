@@ -304,6 +304,37 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect(sqls[2]).not.toContain('product_lang');
   });
 
+  it('POST duplicate id/SKU returns 409 (idempotent re-seed contract)', async () => {
+    // Wave-5 (2026-09-06) changed errorResponse's default status to 500;
+    // without the UNIQUE-constraint branch a duplicate re-seed 500s with
+    // "Failed to create product" and kills e2e global setup on every gate
+    // re-run (the seed tolerates 400/409 but throws on 500). UNIQUE
+    // violations must map to 409 exactly like the tenant/admin/POS-user
+    // create routes.
+    let callIdx = 0;
+    const db = {
+      prepare: vi.fn(() => {
+        const idx = callIdx++;
+        const ch = {
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn(async () => ({ results: idx === 0 ? [{ id: 'acaciacamp' }] : [] })),
+          run: vi.fn(),
+          first: vi.fn(),
+        };
+        if (idx === 2) ch.run.mockRejectedValue(new Error('UNIQUE constraint failed: pos_products.sku'));
+        return ch;
+      }),
+    };
+    const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products', {
+      id: 'e2e-rt-1', name: 'Standard Tent', basePrice: 80, capacity: 2, campId: 'acaciacamp'
+    });
+    const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('Product already exists');
+  });
+
   it('PUT updates pos_products and only cleans the legacy product_camps junction', async () => {
     const { db } = makeDbMock();
     const req = makeRequest('PUT', 'https://acacia.sinaicamps.com/api/products/p1', {

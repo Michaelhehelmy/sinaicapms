@@ -99,9 +99,10 @@ export async function seedTestData(): Promise<void> {
     // historically fire-and-forget, which masked multi-project drift
     // (products 400'd without camp_id and the POS stock seed only failed
     // later with a confusing 404). Surface product failures immediately —
-    // except re-seeds: a duplicate id hits the unique constraint and the
-    // handler returns 400 with the generic "Failed to create product"
-    // (idempotent-safe); every other 400 (missing camp_id, auth, …) throws.
+    // except re-seeds: a duplicate id (or the derived SKU `PROD-<ID>`) hits
+    // a UNIQUE constraint and the handler returns 409 "Product already
+    // exists" (idempotent-safe: the `res.status !== 409` gate above skips
+    // it); every other non-2xx (missing camp_id, auth, 500s, …) throws.
     if (!res.ok && res.status !== 409) {
       const body = await res.text();
       if (!(res.status === 400 && body.includes('Failed to create product'))) {
