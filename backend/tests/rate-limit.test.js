@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { rateLimitMiddleware } from '../src/middleware/rateLimit.js';
+import { rateLimitMiddleware, policyLimiter, RATE_LIMIT_POLICIES } from '../src/middleware/rateLimit.js';
 
-function makeHonoCtx(path = '/api/test', ip = '1.2.3.4', envOverrides = {}) {
+function makeHonoCtx(path = '/api/test', ip = '1.2.3.4', envOverrides = {}, method) {
   return {
     req: {
       path,
+      method,
       header: (name) => {
         if (name === 'cf-connecting-ip') return ip;
         return null;
@@ -235,6 +236,122 @@ describe('rateLimitMiddleware', () => {
       expect(next).not.toHaveBeenCalled();
 
       delete globalThis._rateLimitMap;
+    });
+  });
+
+  describe('env override wiring (RATE_LIMIT_LOGIN / RATE_LIMIT_API)', () => {
+    it('envKey raises the effective limit from the env var', async () => {
+      const next = vi.fn();
+      const middleware = rateLimitMiddleware({ windowMs: 60000, max: 2, envKey: 'RATE_LIMIT_API' });
+
+      for (let i = 0; i < 5; i++) {
+        const c = makeHonoCtx('/api/test', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '5' });
+        await middleware(c, next);
+      }
+      const c6 = makeHonoCtx('/api/test', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '5' });
+      c6.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(c6, next);
+      expect(c6.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(5);
+    });
+
+    it('envKey tightens the effective limit from the env var', async () => {
+      const next = vi.fn();
+      const middleware = rateLimitMiddleware({ windowMs: 60000, max: 500, envKey: 'RATE_LIMIT_API' });
+
+      const c1 = makeHonoCtx('/api/test', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '2' });
+      await middleware(c1, next);
+      const c2 = makeHonoCtx('/api/test', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '2' });
+      await middleware(c2, next);
+      const c3 = makeHonoCtx('/api/test', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '2' });
+      c3.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(c3, next);
+      expect(c3.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+    });
+
+    it('falls back to hardcoded max for absent and invalid env values', async () => {
+      const next = vi.fn();
+      const middleware = rateLimitMiddleware({ windowMs: 60000, max: 3, envKey: 'RATE_LIMIT_API' });
+
+      // Absent env var
+      for (let i = 0; i < 3; i++) {
+        const c = makeHonoCtx('/api/a', '1.2.3.4', { ENVIRONMENT: 'production' });
+        await middleware(c, next);
+      }
+      const c4 = makeHonoCtx('/api/a', '1.2.3.4', { ENVIRONMENT: 'production' });
+      c4.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(c4, next);
+      expect(c4.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(3);
+
+      // Non-numeric env value
+      next.mockClear();
+      for (let i = 0; i < 3; i++) {
+        const c = makeHonoCtx('/api/b', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: 'abc' });
+        await middleware(c, next);
+      }
+      const cb = makeHonoCtx('/api/b', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: 'abc' });
+      cb.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(cb, next);
+      expect(cb.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(3);
+
+      // Zero/negative env value
+      next.mockClear();
+      for (let i = 0; i < 3; i++) {
+        const c = makeHonoCtx('/api/c', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '0' });
+        await middleware(c, next);
+      }
+      const cc = makeHonoCtx('/api/c', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '0' });
+      cc.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(cc, next);
+      expect(cc.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('policyLimiter env dials', () => {
+    it('RATE_LIMIT_LOGIN dials the /api/auth/* bucket', async () => {
+      const next = vi.fn();
+      const limiter = policyLimiter(RATE_LIMIT_POLICIES);
+
+      for (let i = 0; i < 2; i++) {
+        const c = makeHonoCtx('/api/auth/login', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_LOGIN: '2' });
+        await limiter(c, next);
+      }
+      const c3 = makeHonoCtx('/api/auth/login', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_LOGIN: '2' });
+      c3.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await limiter(c3, next);
+      expect(c3.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not dial the strict pos-login sub-bucket', async () => {
+      const next = vi.fn();
+      const limiter = policyLimiter(RATE_LIMIT_POLICIES);
+
+      // 3 calls to POST /api/auth/pos-login with RATE_LIMIT_LOGIN='2' — the strict
+      // sub-bucket (hardcoded max 15) must IGNORE the dial and keep passing.
+      for (let i = 0; i < 3; i++) {
+        const c = makeHonoCtx('/api/auth/pos-login', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_LOGIN: '2' }, 'POST');
+        await limiter(c, next);
+      }
+      expect(next).toHaveBeenCalledTimes(3);
+    });
+
+    it('RATE_LIMIT_API dials the default bucket for unmatched paths', async () => {
+      const next = vi.fn();
+      const limiter = policyLimiter(RATE_LIMIT_POLICIES);
+
+      for (let i = 0; i < 2; i++) {
+        const c = makeHonoCtx('/api/unmatched', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '2' });
+        await limiter(c, next);
+      }
+      const c3 = makeHonoCtx('/api/unmatched', '1.2.3.4', { ENVIRONMENT: 'production', RATE_LIMIT_API: '2' });
+      c3.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await limiter(c3, next);
+      expect(c3.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(2);
     });
   });
 });

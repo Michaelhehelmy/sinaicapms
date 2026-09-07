@@ -819,7 +819,7 @@ pos.post('/orders', async (c) => {
       },
     });
   } catch (e) {
-    console.error('[POS CREATE ORDER ERROR]', e.message);
+    console.error('[POS CREATE ORDER ERROR]', e?.message || e);
     return errorResponse('Failed to create order', 500);
   }
 });
@@ -851,7 +851,7 @@ pos.get('/orders', async (c) => {
     if (raw) return jsonResponse(results);
     return jsonResponse(paginationEnvelope(results, countResult?.[0]?.total || 0, page, pageSize));
   } catch (e) {
-    console.error('[POS ORDERS ERROR]', e.message);
+    console.error('[POS ORDERS ERROR]', e?.message || e);
     return errorResponse('Failed to fetch orders', 500);
   }
 });

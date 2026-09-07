@@ -38,6 +38,11 @@ export const publicReservationSchema = z.object({
   guest_name: z.string().min(1, 'Guest name is required'),
   guest_phone: z.string().optional(),
   guest_email: z.string().email().optional(),
+  // Optional client idempotency key (max 64). When supplied, the handler
+  // derives a deterministic `reference` from it and dedupes on the existing
+  // UNIQUE `orders.reference` column — a retried POST with the same key returns
+  // the existing order instead of creating a duplicate.
+  idempotency_key: z.string().max(64, 'Idempotency key is too long').optional(),
   // Meal-plan line items. Client sends prices for nothing — server prices from
   // pos_products (tenant-scoped below); any extra key (e.g. unit_price) is
   // stripped by .strip() and never affects the total.
@@ -62,6 +67,43 @@ function generateReference() {
   let rand = '';
   for (let i = 0; i < bytes.length; i++) rand += chars[bytes[i] % chars.length];
   return `ORD-${rand}`;
+}
+
+// Deterministic reference derived from a client idempotency key. The same
+// (tenantId, idempotencyKey) pair always maps to the same reference, so a
+// retry hits the same UNIQUE `orders.reference` row and dedupes instead of
+// creating a second order. Uses hex SHA-1 — collision-resistant and printable.
+async function referenceFromIdempotencyKey(tenantId, idempotencyKey) {
+  const bytes = new TextEncoder().encode(`${tenantId}:${idempotencyKey}`);
+  const digest = await crypto.subtle.digest('SHA-1', bytes);
+  let hex = '';
+  for (const b of new Uint8Array(digest)) hex += b.toString(16).padStart(2, '0');
+  return `ORD-${hex}`;
+}
+
+// Build the duplicate/order envelope for an idempotency replay. Mirrors the
+// successful-creation shape (with `duplicate: true`) so clients treat it
+// uniformly, but never re-runs Paymob.
+function buildDuplicateResponse({ orderId, reference, totalAmount, currency, paymobEnabled }) {
+  return {
+    success: true,
+    duplicate: true,
+    order: {
+      id: orderId,
+      reference,
+      totalAmount,
+      currency,
+    },
+    order_id: orderId,
+    reference,
+    total_amount: totalAmount,
+    currency,
+    paymob_enabled: paymobEnabled,
+    paymob_intention: null,
+    payment_methods: null,
+    public_key: null,
+    fallback_whats_app: true,
+  };
 }
 
 async function findOrCreateCustomer(env, tenantId, guestName, guestEmail, guestPhone) {
@@ -184,7 +226,7 @@ reservationsRoutes.post('/', async (c) => {
     const {
       room_id, check_in_date, check_out_date,
       number_of_people, guest_name, guest_phone, guest_email,
-      items, meal_plans,
+      idempotency_key, items, meal_plans,
     } = data;
 
     // 2. Resolve tenant (public scope — host / x-tenant-id header)
@@ -260,9 +302,33 @@ reservationsRoutes.post('/', async (c) => {
     // 7. Find or create customer
     const customerId = await findOrCreateCustomer(c.env, tenantId, guest_name, guest_email, guest_phone);
 
-    // 8. Race-safe guarded INSERT
+    // 8. Race-safe guarded INSERT with idempotency.
+    //    When a client idempotency key is supplied, derive a deterministic
+    //    `reference` from it and dedupe on the existing UNIQUE orders.reference
+    //    column. This makes double-submits (double-click, retry-after-timeout)
+    //    return the SAME order instead of creating duplicates.
+    const idempotencyKey = typeof idempotency_key === 'string' ? idempotency_key.trim() : '';
+    const hasIdempotencyKey = idempotencyKey.length > 0 && idempotencyKey.length <= 64;
     const ordId = 'ord_' + crypto.randomUUID().slice(0, 12);
-    const reference = generateReference();
+    const reference = hasIdempotencyKey
+      ? await referenceFromIdempotencyKey(tenantId, idempotencyKey)
+      : generateReference();
+
+    // 8a. Replay pre-check: if an order already exists for this reference, the
+    //     request is a duplicate — return the existing order without inserting.
+    const { results: existingOrder } = await c.env.DB.prepare(
+      'SELECT id, total_amount, payment_status, payment_intent_id FROM orders WHERE tenant_id = ? AND reference = ?'
+    ).bind(tenantId, reference).all();
+    if (existingOrder.length > 0) {
+      const existing = existingOrder[0];
+      return jsonResponse(buildDuplicateResponse({
+        orderId: existing.id,
+        reference,
+        totalAmount: parseFloat(existing.total_amount || 0),
+        currency: 'EGP',
+        paymobEnabled: existing.payment_status === 'awaiting_payment' || Boolean(existing.payment_intent_id),
+      }), 200);
+    }
 
     const insertStmt = c.env.DB.prepare(
       `INSERT INTO orders
@@ -274,19 +340,38 @@ reservationsRoutes.post('/', async (c) => {
               datetime('now'), datetime('now')
        WHERE NOT EXISTS (
          SELECT 1 FROM orders
-         WHERE tenant_id = ? AND room_id = ?
-           AND (check_in_date < ? AND check_out_date > ?)
-           AND order_state_id != 'cancelled'
+         WHERE (
+           tenant_id = ? AND room_id = ?
+             AND (check_in_date < ? AND check_out_date > ?)
+             AND order_state_id != 'cancelled'
+         ) OR (tenant_id = ? AND reference = ?)
        )`
     ).bind(
       ordId, tenantId, room.camp_id, room_id, customerId,
       check_in_date, check_out_date, number_of_people || 1,
       effectiveTotal, reference,
-      tenantId, room_id, check_out_date, check_in_date
+      tenantId, room_id, check_out_date, check_in_date,
+      tenantId, reference
     );
 
     const [insertResult] = await c.env.DB.batch([insertStmt]);
     if (!insertResult?.meta || insertResult.meta.changes === 0) {
+      // The guarded INSERT lost the race. Distinguish a duplicate-key replay
+      // (an order with this reference was concurrently inserted → return it)
+      // from a genuine room-unavailable conflict.
+      const { results: raced } = await c.env.DB.prepare(
+        'SELECT id, total_amount, payment_status, payment_intent_id FROM orders WHERE tenant_id = ? AND reference = ?'
+      ).bind(tenantId, reference).all();
+      if (raced.length > 0) {
+        const existing = raced[0];
+        return jsonResponse(buildDuplicateResponse({
+          orderId: existing.id,
+          reference,
+          totalAmount: parseFloat(existing.total_amount || 0),
+          currency: 'EGP',
+          paymobEnabled: existing.payment_status === 'awaiting_payment' || Boolean(existing.payment_intent_id),
+        }), 200);
+      }
       return errorResponse('Room no longer available', 409);
     }
 
@@ -355,6 +440,8 @@ reservationsRoutes.post('/', async (c) => {
 
     if (!pm.enabled || !pm.secretKey || !pm.baseUrl) {
       return jsonResponse({
+        success: true,
+        duplicate: false,
         order_id: ordId,
         reference,
         total_amount: effectiveTotal,
@@ -402,6 +489,8 @@ reservationsRoutes.post('/', async (c) => {
       ).bind(ordId).run();
 
       return jsonResponse({
+        success: true,
+        duplicate: false,
         order_id: ordId,
         reference,
         total_amount: effectiveTotal,
@@ -420,6 +509,8 @@ reservationsRoutes.post('/', async (c) => {
     ).bind(String(pmIntention.id), ordId).run();
 
     return jsonResponse({
+      success: true,
+      duplicate: false,
       order_id: ordId,
       reference,
       total_amount: effectiveTotal,

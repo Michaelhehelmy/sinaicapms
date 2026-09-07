@@ -381,8 +381,10 @@ router.get('/blog', async (c) => {
 
   const url = new URL(c.req.url);
   const category = url.searchParams.get('category');
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)));
+  const rawPage = parseInt(url.searchParams.get('page') || '1', 10);
+  const rawLimit = parseInt(url.searchParams.get('limit') || '20', 10);
+  const page = Math.max(1, Number.isFinite(rawPage) ? rawPage : 1);
+  const limit = Math.min(100, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 20));
   const offset = (page - 1) * limit;
 
   let sql = 'SELECT id, slug, title, excerpt, category, tags, author_id, published_at, created_at FROM blog_posts WHERE tenant_id = ? AND is_published = 1';

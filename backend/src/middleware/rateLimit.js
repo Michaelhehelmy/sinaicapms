@@ -26,8 +26,12 @@ export const RATE_LIMIT_POLICIES = {
   // Phase 9: consolidated POS login keeps its stricter brute-force budget on
   // the new /api/auth surface. MUST stay above '/api/auth/*' — entries match
   // in declaration order and the first hit wins.
+  // `envKey` dials the entry's max via env at request time (see
+  // readLimitInt); the hardcoded `max` is the fallback when the env var is
+  // absent/invalid. The deliberately-stricter login sub-buckets below stay
+  // hardcoded so the RATE_LIMIT_LOGIN dial cannot weaken them.
   'POST /api/auth/pos-login': { max: 15 },
-  '/api/auth/*': { max: 30, window: '1m' },
+  '/api/auth/*': { max: 30, window: '1m', envKey: 'RATE_LIMIT_LOGIN' },
   'POST /api/tenants': { max: 5, window: '5m' },
   'GET /api/tenants*': { max: 60 },
   '/api/admin*': { max: 20 },
@@ -42,8 +46,22 @@ export const RATE_LIMIT_POLICIES = {
   // T15 (M8): public review submission is floodable spam — bound it; no
   // broader `/api/marketplace*` prefix exists (default covers the rest).
   'POST /api/marketplace/reviews': { max: 10, window: '1m' },
-  default: { max: 100 },
+  default: { max: 100, envKey: 'RATE_LIMIT_API' },
 };
+
+/**
+ * Resolve a per-request rate-limit override from env vars.
+ * Applies to any policy flagged with an `envKey` (e.g. RATE_LIMIT_LOGIN /
+ * RATE_LIMIT_API). Falls back to the policy's hardcoded `max` when the var is
+ * absent, empty, or not a positive integer.
+ */
+function readLimitInt(env, key, fallback) {
+  if (!key || !env) return fallback;
+  const raw = env[key];
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const n = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 export const policyLimiter = (policies = RATE_LIMIT_POLICIES) => {
   const compiled = [];
@@ -55,12 +73,17 @@ export const policyLimiter = (policies = RATE_LIMIT_POLICIES) => {
       method: parsed ? parsed[1] : null,
       prefix: pattern.endsWith('*'),
       base: pattern.endsWith('*') ? pattern.slice(0, -1) : pattern,
-      run: rateLimitMiddleware({ windowMs: windowToMs(policy.window), max: policy.max }),
+      run: rateLimitMiddleware({
+        windowMs: windowToMs(policy.window),
+        max: policy.max,
+        envKey: policy.envKey,
+      }),
     });
   }
   const fallback = rateLimitMiddleware({
     windowMs: windowToMs(policies.default?.window),
     max: policies.default?.max ?? 100,
+    envKey: policies.default?.envKey,
   });
 
   return async (c, next) => {
@@ -85,6 +108,10 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
       return;
     }
 
+    // Per-request env override (e.g. RATE_LIMIT_LOGIN / RATE_LIMIT_API) with
+    // the policy's hardcoded max as fallback.
+    const max = readLimitInt(c.env, options.envKey, options.max);
+
     // Use cf-connecting-ip only (Cloudflare-populated, not spoofable)
     const ip = c.req.header('cf-connecting-ip') || 'unknown';
     const path = c.req.path;
@@ -98,7 +125,7 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
         const current = await c.env.RATE_LIMIT_KV.get(windowKey);
         const count = current ? parseInt(current, 10) : 0;
 
-        if (count >= options.max) {
+        if (count >= max) {
           return c.json({ success: false, error: 'Too many requests' }, 429);
         }
 
@@ -137,7 +164,7 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
         }
       }
 
-      if (record.count > options.max) {
+      if (record.count > max) {
         return c.json({ success: false, error: 'Too many requests' }, 429);
       }
 

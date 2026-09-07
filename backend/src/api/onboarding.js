@@ -118,7 +118,8 @@ onboardingRoutes.post('/public/signup', async (c) => {
       message: 'Account created and is pending activation. Complete the onboarding wizard to activate your login.',
     }, 201);
   } catch (e) {
-    return errorResponse('Signup failed: ' + (e.message || 'Unknown error'), 500);
+    console.error('[ONBOARDING SIGNUP]', e?.message || e);
+    return errorResponse('Signup failed. Please try again.', 500);
   }
 });
 
@@ -157,7 +158,8 @@ onboardingRoutes.get('/onboarding/status/:token', async (c) => {
       },
     });
   } catch (e) {
-    return errorResponse('Failed to check onboarding status');
+    console.error('[ONBOARDING STATUS]', e?.message || e);
+    return errorResponse('Failed to check onboarding status', 500);
   }
 });
 
@@ -233,7 +235,8 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
       auto_login_token: autoLoginToken,
     });
   } catch (e) {
-    return errorResponse('Onboarding setup failed');
+    console.error('[ONBOARDING SETUP]', e?.message || e);
+    return errorResponse('Onboarding setup failed', 500);
   }
 });
 
@@ -283,7 +286,8 @@ onboardingRoutes.post('/onboarding/tenant', async (c) => {
 
     return jsonResponse({ success: true, tenant_id: tenantId });
   } catch (e) {
-    return errorResponse('Failed to update tenant');
+    console.error('[ONBOARDING TENANT UPDATE]', e?.message || e);
+    return errorResponse('Failed to update tenant', 500);
   }
 });
 

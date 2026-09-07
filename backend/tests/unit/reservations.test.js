@@ -190,3 +190,112 @@ describe('GET /api/public/reservations (public reservation)', () => {
     expect(data.paymobIntention.clientSecret).toBeTruthy();
   });
 });
+
+describe('POST /api/public/reservations — idempotency', () => {
+  /** Full routing DB pre-populated with the price/overlap/customer stubs needed
+   *  to reach the guarded INSERT for the happy-path / lost-race branches. */
+  function makeIdempotencyDb({ referenceSelect = () => ({ results: [] }), batchResult = null } = {}) {
+    const db = makeRoutingDb()
+      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4, camp_id: 'camp_1' }] }))
+      .on(/from orders[\s\S]*order_state_id != 'cancelled'/i, () => ({ results: [] }))
+      .on(/r\.product_id[\s\S]*join projects c/i, () => ({ results: [{ product_id: 'prod_1' }] }))
+      .on(/from pos_products where id = \? and tenant_id/i, () => ({ results: [{ base_price: '100' }] }))
+      .on(/from rate_plans_new/i, () => ({ results: [] }))
+      .on(/from price_overrides/i, () => ({ results: [] }))
+      .on(/from customers where tenant_id = \? and email/i, () => ({ results: [] }))
+      .on(/from customers where tenant_id = \? and phone/i, () => ({ results: [] }))
+      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }))
+      .on(/from orders[\s\S]*reference/i, referenceSelect);
+    if (batchResult !== null) db.batch = vi.fn(async () => [batchResult]);
+    return db;
+  }
+
+  function postWithKey(app, env, key) {
+    return post(app, env, validReservationBody({ idempotency_key: key }));
+  }
+
+  it('returns duplicate:false on a fresh create with an idempotency key', async () => {
+    const db = makeIdempotencyDb();
+    const app = mount('t1');
+    const env = makeEnv(db); // Paymob disabled -> fallback envelope
+    const res = await postWithKey(app, env, 'session-key-A');
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data.duplicate).toBe(false);
+    expect(data.success).toBe(true);
+    expect(data.orderId).toBeTruthy();
+    // Deterministic reference derived from tenantId + key.
+    expect(data.reference).toMatch(/^ORD-[0-9a-f]{40}$/);
+  });
+
+  it('returns the existing order (duplicate:true, same order id) on replay of the same idempotency key', async () => {
+    const existing = { id: 'ord_existing', total_amount: 100, payment_status: 'awaiting_payment', payment_intent_id: 'int_123' };
+    const db = makeIdempotencyDb({ referenceSelect: () => ({ results: [existing] }) });
+    const app = mount('t1');
+    const res = await postWithKey(app, makeEnv(db), 'session-key-A');
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data.duplicate).toBe(true);
+    expect(data.success).toBe(true);
+    expect(data.orderId).toBe(existing.id);
+    expect(data.order.id).toBe(existing.id);
+    expect(data.order.reference).toBe(data.reference);
+    // No INSERT / line-item batch should run on a replay.
+    expect(db.batch).not.toHaveBeenCalled();
+  });
+
+  it('replays the existing order when a concurrent identical submit loses the guarded-INSERT race (exactly one row)', async () => {
+    // Model two concurrent POSTs with the same key landing before either
+    // INSERT settles: request 1 inserts (batch changes:1); request 2's
+    // pre-check SELECT returns nothing, its guarded INSERT loses the race
+    // (changes:0), and the post-race SELECT finds the row -> returns duplicate.
+    const existing = { id: 'ord_existing', total_amount: 100, payment_status: 'awaiting_payment', payment_intent_id: 'int_123' };
+
+    // First request: no existing row yet; INSERT succeeds.
+    const db1 = makeIdempotencyDb({ batchResult: { meta: { changes: 1 } } });
+    let insertRan = 0;
+    const spyInsert = vi.fn(async () => [{ meta: { changes: insertRan++ === 0 ? 1 : 0 } }]);
+    db1.batch = spyInsert;
+    const app1 = mount('t1');
+    const res1 = await postWithKey(app1, makeEnv(db1), 'session-key-A');
+    const data1 = await res1.json();
+    expect(data1.duplicate).toBe(false);
+    expect(spyInsert).toHaveBeenCalledTimes(1);
+
+    // Second request: pre-check finds nothing (simulates the race window),
+    // the guarded INSERT then reports 0 changes (already committed by #1),
+    // and the follow-up SELECT locates the row -> duplicate.
+    let referenceLookups = 0;
+    const db2 = makeIdempotencyDb({
+      referenceSelect: () => ({ results: referenceLookups++ === 0 ? [] : [existing] }),
+      batchResult: { meta: { changes: 0 } },
+    });
+    const app2 = mount('t1');
+    const res2 = await postWithKey(app2, makeEnv(db2), 'session-key-A');
+    const data2 = await res2.json();
+    expect(res2.status).toBe(200);
+    expect(data2.duplicate).toBe(true);
+    expect(data2.orderId).toBe(existing.id);
+  });
+
+  it('stays a hard 409 when only the room-overlap guard rejects (not a replay)', async () => {
+    const db = makeIdempotencyDb({ batchResult: { meta: { changes: 0 } } });
+    // Reference pre-check + post-race follow-up both find nothing -> genuine
+    // room-unavailable conflict, NOT a duplicate.
+    db.on(/from orders[\s\S]*reference/i, () => ({ results: [] }));
+    const app = mount('t1');
+    const res = await postWithKey(app, makeEnv(db), 'session-key-A');
+    const data = await res.json();
+    expect(res.status).toBe(409);
+    expect(data.error).toContain('Room no longer available');
+  });
+
+  it('rejects an idempotency key longer than 64 chars with 400', async () => {
+    const db = makeIdempotencyDb();
+    const app = mount('t1');
+    const res = await postWithKey(app, makeEnv(db), 'k'.repeat(65));
+    expect(res.status).toBe(400);
+    // No DB work should happen.
+    expect(db.prepare).not.toHaveBeenCalled();
+  });
+});

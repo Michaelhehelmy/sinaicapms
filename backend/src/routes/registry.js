@@ -104,6 +104,7 @@ const publicReservationRequestSchema = z
     guestName: z.string(),
     guestPhone: z.string().optional(),
     guestEmail: z.string().optional(),
+    idempotencyKey: z.string().max(64).optional(),
     items: z
       .array(z.object({ productId: z.string(), quantity: z.number() }))
       .optional(),
@@ -112,6 +113,16 @@ const publicReservationRequestSchema = z
 
 const publicReservationResponseSchema = z
   .object({
+    success: z.boolean().optional(),
+    duplicate: z.boolean().optional(),
+    order: z
+      .object({
+        id: z.string(),
+        reference: z.string(),
+        totalAmount: z.number(),
+        currency: z.string(),
+      })
+      .optional(),
     orderId: z.string(),
     reference: z.string(),
     totalAmount: z.number(),

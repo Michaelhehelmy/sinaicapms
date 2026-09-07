@@ -49,25 +49,18 @@ ENVIRONMENT = "production"
 # KV rate limiting by setting this to "true" once the account's KV write quota
 # (free plan: 1,000/day) is no longer exhausted or the plan is upgraded.
 RATE_LIMIT_KV_ENABLED = "false"
-MAX_LOGIN_ATTEMPTS = "5"
-LOCKOUT_DURATION = "1800"
-SESSION_TIMEOUT = "86400"
 # Phase 5 (opt-in): shorter access-token lifetime for org/POS sessions, in
 # seconds. Clamped to [300 .. 86400]; unset keeps the legacy 24h. Leave it
 # DISABLED until Phase 6 ships the silent-refresh session kernel — enabling
 # it now would strand cashiers mid-shift when the 24h token expires with no
 # client-side renewal path.
 # POS_ACCESS_TTL_SECONDS = "900"
+# Rate-limit dials — read by src/middleware/rateLimit.js when a policy is
+# flagged with the matching envKey (RATE_LIMIT_LOGIN → /api/auth/*,
+# RATE_LIMIT_API → default bucket); invalid/absent values fall back to the
+# hardcoded policy max.
 RATE_LIMIT_LOGIN = "20"
 RATE_LIMIT_API = "100"
-DEFAULT_CURRENCY = "USD"
-DEFAULT_TAX_RATE = "0.08"
-LOG_LEVEL = "info"
-FEATURE_USER_REGISTRATION = "true"
-FEATURE_FORGOT_PASSWORD = "true"
-FEATURE_TWO_FACTOR_AUTH = "false"
-FEATURE_MULTI_LOCATION = "false"
-FEATURE_AI_FEATURES = "false"
 
 # Paymob (marketplace online reservations) — https://accept.paymob.com
 # PM_ENABLED must be "true" to activate; real PM_SECRET_KEY / PM_HMAC_SECRET /
@@ -90,20 +83,10 @@ PM_CURRENCY = "EGP"
 [env.staging.vars]
 ENVIRONMENT = "staging"
 RATE_LIMIT_KV_ENABLED = "false"
-MAX_LOGIN_ATTEMPTS = "5"
-LOCKOUT_DURATION = "1800"
-SESSION_TIMEOUT = "86400"
 # POS_ACCESS_TTL_SECONDS = "900"  # Phase 5 opt-in — see production [vars]
+# Rate-limit dials — see production [vars] for the wiring explanation.
 RATE_LIMIT_LOGIN = "20"
 RATE_LIMIT_API = "100"
-DEFAULT_CURRENCY = "USD"
-DEFAULT_TAX_RATE = "0.08"
-LOG_LEVEL = "debug"
-FEATURE_USER_REGISTRATION = "true"
-FEATURE_FORGOT_PASSWORD = "true"
-FEATURE_TWO_FACTOR_AUTH = "false"
-FEATURE_MULTI_LOCATION = "false"
-FEATURE_AI_FEATURES = "false"
 
 [[env.staging.routes]]
 pattern = "staging.sinaicamps.com/api/*"

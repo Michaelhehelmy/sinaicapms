@@ -243,7 +243,7 @@ export async function handlePaymobWebhook(request, env) {
         intentionId, orderRef,
       ).run();
     } catch (ledgerErr) {
-      console.error('[PAYMOB WEBHOOK] Failed to insert marketplace_payments ledger row', ledgerErr);
+      console.error('[PAYMOB WEBHOOK] Failed to insert marketplace_payments ledger row', ledgerErr?.message || ledgerErr);
     }
 
     if (env.ENVIRONMENT !== 'production') {
@@ -251,7 +251,7 @@ export async function handlePaymobWebhook(request, env) {
     }
   } catch (e) {
     if (env.ENVIRONMENT !== 'production') {
-      console.error('[PAYMOB WEBHOOK] Processing failed', e.stack || e.message);
+      console.error('[PAYMOB WEBHOOK] Processing failed', e?.message || e);
     }
     return errorResponse('Webhook processing failed', 500);
   }

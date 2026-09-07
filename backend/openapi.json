@@ -4441,6 +4441,35 @@
       "PublicReservationResponse": {
         "type": "object",
         "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "duplicate": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reference": {
+                "type": "string"
+              },
+              "totalAmount": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "reference",
+              "totalAmount",
+              "currency"
+            ]
+          },
           "orderId": {
             "type": "string"
           },
@@ -4518,6 +4547,10 @@
           },
           "guestEmail": {
             "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "maxLength": 64
           },
           "items": {
             "type": "array",
