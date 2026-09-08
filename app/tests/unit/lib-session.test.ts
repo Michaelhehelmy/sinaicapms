@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   session,
-  TOKEN_KEY,
   REFRESH_TOKEN_KEY,
-  POS_TOKEN_KEY,
-  USER_KEY,
 } from '@/lib/session';
 
 beforeEach(() => {
@@ -17,11 +14,8 @@ afterEach(() => {
 });
 
 describe('lib/session — constants', () => {
-  it('exposes legacy key names', () => {
-    expect(TOKEN_KEY).toBe('sinaicamps_token');
+  it('exposes the legacy refresh-token key name', () => {
     expect(REFRESH_TOKEN_KEY).toBe('sinaicamps_refresh_token');
-    expect(POS_TOKEN_KEY).toBe('pos_token');
-    expect(USER_KEY).toBe('sinaicamps_user');
   });
 });
 

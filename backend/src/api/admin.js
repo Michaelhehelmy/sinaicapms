@@ -8,7 +8,10 @@ import { z } from 'zod';
 export const tenantUpdateSchema = z.object({
   name: z.string().optional(),
   subdomain: z.string().optional(),
-  type: z.enum(['camp', 'supermarket', 'transportation', 'other']).optional(),
+  // T7: keep the PUT update vocabulary in sync with tenantPostSchema
+  // (tenants.js) — 'restaurant' and 'custom' were accepted on create but
+  // rejected on update, so editing such a tenant's type 400'd.
+  type: z.enum(['camp', 'supermarket', 'transportation', 'restaurant', 'custom', 'other']).optional(),
   custom_domain: z.string().optional(),
   logo_url: z.string().optional(),
   favicon_url: z.string().optional(),

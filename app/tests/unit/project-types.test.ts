@@ -8,7 +8,6 @@ import {
   transportationProjectType,
   restaurantProjectType,
   encodeMetaValue,
-  decodeMetaValue,
   buildMetaOps,
   isMetaOpsEmpty,
 } from '@/lib/project-types';
@@ -225,30 +224,6 @@ describe('encodeMetaValue', () => {
 
   it('stringifies numbers for number fields', () => {
     expect(encodeMetaValue(restaurantField('seating_capacity'), 42)).toBe('42');
-  });
-});
-
-describe('decodeMetaValue', () => {
-  it('parses JSON arrays back into string[]', () => {
-    expect(decodeMetaValue(campField('activities'), '["A","B"]')).toEqual(['A', 'B']);
-  });
-
-  it('falls back to comma-splitting for legacy multi rows', () => {
-    expect(decodeMetaValue(campField('activities'), 'A, B')).toEqual(['A', 'B']);
-    expect(decodeMetaValue(campField('activities'), 'wifi')).toEqual(['wifi']);
-  });
-
-  it('returns raw strings untouched for scalar fields', () => {
-    expect(decodeMetaValue(campField('accommodation_type'), 'cabin')).toBe('cabin');
-    expect(decodeMetaValue(campField('accommodation_type'), '["not","decoded"]')).toBe(
-      '["not","decoded"]',
-    );
-  });
-
-  it('maps null/undefined to the field-native empty value', () => {
-    expect(decodeMetaValue(campField('activities'), null)).toEqual([]);
-    expect(decodeMetaValue(campField('accommodation_type'), null)).toBe('');
-    expect(decodeMetaValue(campField('activities'), undefined)).toEqual([]);
   });
 });
 

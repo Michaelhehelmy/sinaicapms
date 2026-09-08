@@ -11,7 +11,6 @@ import {
   useRatePlansQuery,
   usePlansQuery,
   useMealsQuery,
-  useCategoriesQuery,
   useMealCategoriesQuery,
   useSettingsQuery,
   useAdminStatsQuery,
@@ -229,19 +228,6 @@ describe('useMealsQuery', () => {
     const { result } = renderHook(() => useMealsQuery(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([{ id: 'm1' }]);
-  });
-});
-
-describe('useCategoriesQuery', () => {
-  beforeEach(() => { mockShowToast.mockClear(); });
-
-  it('fetches categories', async () => {
-    const api = await import('@/lib/api');
-    (api.getCategories as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 'c1' }]);
-    const { wrapper } = createWrapper();
-    const { result } = renderHook(() => useCategoriesQuery(), { wrapper });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([{ id: 'c1' }]);
   });
 });
 

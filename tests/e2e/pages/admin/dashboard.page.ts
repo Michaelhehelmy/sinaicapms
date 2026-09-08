@@ -17,7 +17,24 @@ export class AdminDashboardPage {
     await this.page.goto(`/admin/${tabName}?tenant=${tenantId}`, { waitUntil: 'domcontentloaded' });
   }
 
+  /**
+   * Whether the login overlay is showing, waiting for React hydration to
+   * settle first.
+   *
+   * The admin SPA is server-rendered: right after `domcontentloaded` the login
+   * form text is already in the HTML but the `[data-testid="login-overlay"]`
+   * wrapper only exists after the island hydrates (measured ~1s in sandbox,
+   * slower when the dev backend is cold). Checking immediately races hydration
+   * and can return `false` even though the login screen is about to appear —
+   * callers then skip `login()` and time out every retry loop. Wait for either
+   * the overlay (needs login) or any auth-gated content (already logged in)
+   * to become visible before answering.
+   */
   async isLoginOverlayVisible(): Promise<boolean> {
+    await this.page
+      .locator('[data-testid="login-overlay"], [data-testid="content-area"]')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15_000 });
     return this.page.locator('[data-testid="login-overlay"]').isVisible();
   }
 

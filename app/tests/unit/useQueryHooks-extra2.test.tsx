@@ -86,7 +86,6 @@ import {
   useRatePlansQuery,
   usePlansQuery,
   useMealsQuery,
-  useCategoriesQuery,
   useMealCategoriesQuery,
   useMealSchedulesQuery,
   useSettingsQuery,
@@ -99,25 +98,14 @@ import {
   useDeleteProductMutation,
   useSaveRoomMutation,
   useDeleteRoomMutation,
-  useSaveOrderMutation,
   useDeleteOrderMutation,
   useSaveRatePlanMutation,
   useDeleteRatePlanMutation,
-  useSaveMealMutation,
-  useDeleteMealMutation,
   useUpdateSettingsMutation,
-  useSaveMealCategoryMutation,
-  useDeleteMealCategoryMutation,
-  useCreateMealScheduleMutation,
-  useDeleteMealScheduleMutation,
-  useSavePlanMutation,
-  useDeletePlanMutation,
-  useSaveSettingsMutation,
   useChangePasswordMutation,
   useOccupancyReportQuery,
   useRevenueReportQuery,
   useBookingsReportQuery,
-  useAdminsQuery,
   useAvailabilityQuery,
   usePriceOverridesQuery,
   useSetPriceOverrideMutation,
@@ -126,13 +114,6 @@ import {
   useInboxUnreadQuery,
   useMarkInboxReadMutation,
   useDeleteInboxLeadMutation,
-  useSuperInvoicesQuery,
-  useSuperEmployeesQuery,
-  useSuperPurchaseOrdersQuery,
-  useSuperContactsQuery,
-  useSuperOpportunitiesQuery,
-  useSuperStorefrontProductsQuery,
-  useSuperPredictionsQuery,
   useProjectMetaQuery,
   useTenantBillingQuery,
   queryKeys,
@@ -228,14 +209,12 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
       ['useRatePlansQuery', useRatePlansQuery as never, [], api.getRatePlans],
       ['usePlansQuery', usePlansQuery as never, [], api.getPlans],
       ['useMealsQuery', useMealsQuery as never, [], api.getMeals],
-      ['useCategoriesQuery', useCategoriesQuery as never, [], api.getCategories],
       ['useMealCategoriesQuery', useMealCategoriesQuery as never, [], api.getMealCategories],
       ['useSettingsQuery', useSettingsQuery as never, [], api.getMe],
       ['useLowStock', useLowStock as never, [], api.getLowStock],
       ['useAdminStatsQuery', useAdminStatsQuery as never, [], api.getAdminStats],
       ['useTenantsQuery', useTenantsQuery as never, [], api.getAdminTenants],
       ['useOccupancyReportQuery', useOccupancyReportQuery as never, [], api.getOccupancyReport],
-      ['useAdminsQuery', useAdminsQuery as never, [], api.getAdmins],
     ];
 
     for (const [name, hook, args, apiFn] of baseQueryCases) {
@@ -314,35 +293,6 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
     });
   });
 
-  describe('super admin paginated queries', () => {
-    const superCases: Array<[string, never, unknown[], () => unknown, unknown[]]> = [
-      ['useSuperInvoicesQuery', useSuperInvoicesQuery as never, [2, 50], api.getSuperInvoices, [2, 50]],
-      ['useSuperEmployeesQuery', useSuperEmployeesQuery as never, [2, 50], api.getSuperEmployees, [2, 50]],
-      ['useSuperPurchaseOrdersQuery', useSuperPurchaseOrdersQuery as never, [2, 50], api.getSuperPurchaseOrders, [2, 50]],
-      ['useSuperContactsQuery', useSuperContactsQuery as never, [2, 50], api.getSuperContacts, [2, 50]],
-      ['useSuperOpportunitiesQuery', useSuperOpportunitiesQuery as never, [2, 50], api.getSuperOpportunities, [2, 50]],
-      ['useSuperStorefrontProductsQuery', useSuperStorefrontProductsQuery as never, [2, 50], api.getSuperStorefrontProducts, [2, 50]],
-      ['useSuperPredictionsQuery', useSuperPredictionsQuery as never, [2, 50], api.getSuperPredictions, [2, 50]],
-    ];
-
-    for (const [name, hook, hookArgs, apiFn, expectedArgs] of superCases) {
-      it(`${name} resolves with page/limit args`, async () => {
-        const payload = { data: [], total: 0, page: 2, pageSize: 50, hasMore: false };
-        vi.mocked(apiFn).mockResolvedValue(payload as never);
-        const result = await mountQuery(hook, ...(hookArgs as never[]));
-        expect(apiFn).toHaveBeenCalledWith(...(expectedArgs as never[]));
-        expect(result.current.data).toEqual(payload);
-      });
-    }
-
-    it('useSuperEmployeesQuery defaults to page 1 limit 20', async () => {
-      vi.mocked(api.getSuperEmployees).mockResolvedValue({ data: [], total: 0 } as never);
-      const result = await mountQuery(useSuperEmployeesQuery as never);
-      expect(api.getSuperEmployees).toHaveBeenCalledWith(1, 20);
-      expect(result.current.isSuccess).toBe(true);
-    });
-  });
-
   describe('query error paths (toast + return false)', () => {
     const errorCases: Array<[string, never, (...args: any[]) => unknown, any[]]> = [
       ['useCampsQuery', useCampsQuery as never, api.getCamps, []],
@@ -352,7 +302,6 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
       ['useRatePlansQuery', useRatePlansQuery as never, api.getRatePlans, []],
       ['usePlansQuery', usePlansQuery as never, api.getPlans, []],
       ['useMealsQuery', useMealsQuery as never, api.getMeals, []],
-      ['useCategoriesQuery', useCategoriesQuery as never, api.getCategories, []],
       ['useMealCategoriesQuery', useMealCategoriesQuery as never, api.getMealCategories, []],
       ['useMealSchedulesQuery', useMealSchedulesQuery as never, api.getMealSchedules, []],
       ['useSettingsQuery', useSettingsQuery as never, api.getMe, []],
@@ -362,7 +311,6 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
       ['useOccupancyReportQuery', useOccupancyReportQuery as never, api.getOccupancyReport, []],
       ['useRevenueReportQuery', useRevenueReportQuery as never, api.getRevenueReport, [{ days: 30 }]],
       ['useBookingsReportQuery', useBookingsReportQuery as never, api.getBookingsReport, [{ days: 30 }]],
-      ['useAdminsQuery', useAdminsQuery as never, api.getAdmins, []],
       ['useAvailabilityQuery', useAvailabilityQuery as never, api.getAvailability, [{ from: 'a', to: 'b' }]],
       ['usePriceOverridesQuery', usePriceOverridesQuery as never, api.getPriceOverrides, [{ productId: 'p1' }]],
       ['useInboxQuery', useInboxQuery as never, api.getInbox, []],
@@ -390,11 +338,7 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
   describe('save mutations (create + update)', () => {
     const saveCases: Array<[string, (...h: unknown[]) => { mutateAsync: (v: unknown) => Promise<unknown> }, (v: unknown, editId?: unknown) => unknown, unknown]> = [
       ['useSaveProductMutation', useSaveProductMutation as never, api.saveProduct as unknown as (v: unknown, editId?: unknown) => unknown, { name: 'Tent' }],
-      ['useSaveOrderMutation', useSaveOrderMutation as never, api.saveOrder as unknown as (v: unknown, editId?: unknown) => unknown, { guestName: 'A' }],
       ['useSaveRatePlanMutation', useSaveRatePlanMutation as never, api.saveRatePlan as unknown as (v: unknown, editId?: unknown) => unknown, { name: 'High' }],
-      ['useSaveMealMutation', useSaveMealMutation as never, api.saveMeal as unknown as (v: unknown, editId?: unknown) => unknown, { name: 'Lunch' }],
-      ['useSaveMealCategoryMutation', useSaveMealCategoryMutation as never, api.saveMealCategory as unknown as (v: unknown, editId?: unknown) => unknown, { name: 'Hot' }],
-      ['useSavePlanMutation', useSavePlanMutation as never, api.savePlan as unknown as (v: unknown, editId?: unknown) => unknown, { name: '4N' }],
     ];
 
     for (const [name, hook, apiFn, data] of saveCases) {
@@ -427,9 +371,6 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
       ['useDeleteRoomMutation', useDeleteRoomMutation as never, api.deleteRoom as unknown as (id: unknown) => unknown],
       ['useDeleteOrderMutation', useDeleteOrderMutation as never, api.deleteOrder as unknown as (id: unknown) => unknown],
       ['useDeleteRatePlanMutation', useDeleteRatePlanMutation as never, api.deleteRatePlan as unknown as (id: unknown) => unknown],
-      ['useDeleteMealMutation', useDeleteMealMutation as never, api.deleteMeal as unknown as (id: unknown) => unknown],
-      ['useDeleteMealCategoryMutation', useDeleteMealCategoryMutation as never, api.deleteMealCategory as unknown as (id: unknown) => unknown],
-      ['useDeletePlanMutation', useDeletePlanMutation as never, api.deletePlan as unknown as (id: unknown) => unknown],
     ];
 
     for (const [name, hook, apiFn] of deleteCases) {
@@ -621,15 +562,6 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
       );
     });
 
-    it('useSaveSettingsMutation delegates to updateBranding', async () => {
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSaveSettingsMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'Y' } as never);
-      });
-      expect(api.updateBranding).toHaveBeenCalledWith({ name: 'Y' });
-    });
-
     it('useChangePasswordMutation calls changePassword with both passwords', async () => {
       const { wrapper } = createWrapper();
       const { result } = renderHook(() => useChangePasswordMutation(), { wrapper });
@@ -647,44 +579,6 @@ describe('useQueryHooks — additional coverage 2 (base CRUD / mutations / repor
       } as never);
       await waitFor(() =>
         expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to change password'), 'error'),
-      );
-    });
-
-    it('useCreateMealScheduleMutation calls createMealSchedule and toasts', async () => {
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useCreateMealScheduleMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ mealCategoryId: 'c1', day: 'MON' } as never);
-      });
-      expect(api.createMealSchedule).toHaveBeenCalledWith({ mealCategoryId: 'c1', day: 'MON' });
-      expect(invalidateSpy).toHaveBeenCalled();
-      expect(mockShowToast).toHaveBeenCalledWith('Meal scheduled', 'success');
-    });
-
-    it('useCreateMealScheduleMutation shows an error toast on failure', async () => {
-      await runSaveMutationError(api.createMealSchedule as never, useCreateMealScheduleMutation as never, {} as never);
-      await waitFor(() =>
-        expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to schedule meal'), 'error'),
-      );
-    });
-
-    it('useDeleteMealScheduleMutation calls deleteMealSchedule and toasts', async () => {
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useDeleteMealScheduleMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('ms1');
-      });
-      expect(api.deleteMealSchedule).toHaveBeenCalledWith('ms1');
-      expect(invalidateSpy).toHaveBeenCalled();
-      expect(mockShowToast).toHaveBeenCalledWith('Meal removed', 'success');
-    });
-
-    it('useDeleteMealScheduleMutation shows an error toast on failure', async () => {
-      await runSaveMutationError(api.deleteMealSchedule as never, useDeleteMealScheduleMutation as never, 'ms1' as never);
-      await waitFor(() =>
-        expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to remove meal'), 'error'),
       );
     });
 

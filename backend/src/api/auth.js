@@ -80,9 +80,6 @@ function getJwtSecret(env) {
   return secret;
 }
 
-// Backward-compat re-export for index.js callers
-export const verifyJWT = verifyToken;
-
 async function ensureResetTokensTable(env) {
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (

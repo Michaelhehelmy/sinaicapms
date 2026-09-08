@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escHtml, formatCurrency, formatDate, cn, slugify, debounce, truncate } from '@/lib/utils';
+import { escHtml, formatCurrency, formatDate, cn, debounce, truncate } from '@/lib/utils';
 
 describe('escHtml', () => {
   it('escapes HTML entities', () => {
@@ -21,15 +21,6 @@ describe('formatCurrency', () => {
   it('handles zero', () => {
     const result = formatCurrency(0);
     expect(result).toContain('0');
-  });
-});
-
-describe('slugify', () => {
-  it('converts to URL-safe slug', () => {
-    expect(slugify('Hello World!')).toBe('hello-world');
-  });
-  it('handles special characters', () => {
-    expect(slugify('Camp #1 @ Sinai')).toBe('camp-1-sinai');
   });
 });
 

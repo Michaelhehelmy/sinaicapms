@@ -8,6 +8,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:unit:watch": "vitest watch tests/unit/",
     "test:e2e": "playwright test",
+    "test:e2e:prod": "playwright test --config=tests/e2e/playwright.production.config.ts",
     "test:e2e:auth": "playwright test --project=auth",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",

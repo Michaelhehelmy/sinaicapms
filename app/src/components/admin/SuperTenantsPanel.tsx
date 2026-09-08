@@ -28,12 +28,16 @@ interface EditForm {
   type: string;
 }
 
-const TENANT_TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'] as const;
+// T7: full 6-value vocabulary — must stay in sync with backend tenantPostSchema
+// and tenantUpdateSchema (camp|supermarket|transportation|restaurant|custom|other).
+const TENANT_TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'restaurant', 'custom', 'other'] as const;
 
 const TENANT_TYPE_LABELS: Record<string, string> = {
   camp: 'Camp',
   supermarket: 'Supermarket',
   transportation: 'Transportation',
+  restaurant: 'Restaurant',
+  custom: 'Custom',
   other: 'Other',
 };
 
@@ -173,7 +177,7 @@ export default function SuperTenantsPanel() {
       await createTenant({
         name: createTenantForm.name.trim(),
         subdomain: createTenantForm.subdomain.trim().toLowerCase(),
-        type: createTenantForm.type as 'camp' | 'supermarket' | 'transportation' | 'other',
+        type: createTenantForm.type as 'camp' | 'supermarket' | 'transportation' | 'restaurant' | 'custom' | 'other',
         adminEmail: createTenantForm.adminEmail.trim() || undefined,
         adminPassword: createTenantForm.adminPassword,
         adminFirstName: createTenantForm.adminFirstName.trim() || undefined,

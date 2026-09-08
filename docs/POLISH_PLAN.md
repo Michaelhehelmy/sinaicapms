@@ -112,7 +112,7 @@ npx vitest run                  # root integration
 npx playwright test             # local E2E
 ```
 
-Production spot-run via `playwright.prod.config.ts` before final. Update `AGENT_LOGBOOK.md` on completion.
+Production spot-run via `npx playwright test --config=tests/e2e/playwright.production.config.ts` before final. Update `AGENT_LOGBOOK.md` on completion.
 
 ## Execution order
 

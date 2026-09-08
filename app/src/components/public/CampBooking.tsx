@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { cn, INK, readableTextOn, normalizeAssetUrl } from '@/lib/utils';
 import { hexToRgba } from '@/lib/theme';
-import { getProjectMealPlans } from '@/lib/api';
+import { getProjectMealPlans, calculatePrice } from '@/lib/api';
 import type { ProjectMealPlan } from '@/lib/api';
 
 interface RoomType {
@@ -103,6 +103,9 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
   const [justAdded, setJustAdded] = useState(false);
   const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
   const [selectedMealPlans, setSelectedMealPlans] = useState<Record<string, number>>({});
+  // T7: authoritative server-side price preview (override > rate plan > base).
+  // null = not loaded/failed — fall back to the client nights × basePrice calc.
+  const [serverPrice, setServerPrice] = useState<number | null>(null);
   const addModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -200,7 +203,34 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
     ? Math.ceil((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)
     : 0;
 
-  const lineTotal = modalRoom ? nights * (modalRoom.basePrice || 0) : 0;
+  // T7: live server-side price preview for the selected stay. Uses the
+  // authoritative calculate-price endpoint (override > rate plan > base) and
+  // falls back to the client calc when it is unavailable (offline / error).
+  // Lives after `nights` so it can depend on it (const TDZ-safe).
+  useEffect(() => {
+    if (!modalRoom || nights <= 0) {
+      setServerPrice(null);
+      return;
+    }
+    let cancelled = false;
+    calculatePrice(modalRoom.id, checkIn, checkOut)
+      .then((res) => {
+        if (cancelled) return;
+        const price =
+          typeof (res as { total_price?: unknown } | null | undefined)?.total_price === 'number'
+            ? (res as { total_price: number }).total_price
+            : typeof (res as { totalPrice?: unknown } | null | undefined)?.totalPrice === 'number'
+              ? (res as { totalPrice: number }).totalPrice
+              : null;
+        setServerPrice(price);
+      })
+      .catch(() => { if (!cancelled) setServerPrice(null); });
+    return () => { cancelled = true; };
+  }, [modalRoom, checkIn, checkOut, nights]);
+
+  // T7: prefer the authoritative server price for the stay; fall back to the
+  // client-side nights × basePrice while it loads or when it fails.
+  const lineTotal = modalRoom ? (serverPrice ?? nights * (modalRoom.basePrice || 0)) : 0;
   const mealPlanTotal = mealPlans.reduce((sum, mp) => {
     const qty = selectedMealPlans[mp.id] || 0;
     return sum + qty * mp.sellingPrice * nights;

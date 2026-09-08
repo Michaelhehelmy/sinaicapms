@@ -84,7 +84,10 @@ jobs:
         working-directory: backend
 
       - name: Run integration tests
-        run: npx vitest run
+        # Explicit config: the root suite must run against the integration config
+        # (vitest.integration.config.ts), NOT the default config. The documented
+        # /api/auth 30-min login-limit flake makes targeted runs the reliable gate.
+        run: npx vitest run --config vitest.integration.config.ts
 
   # ─────────────────────────────────────────────
   # Backend Lint / OpenAPI check

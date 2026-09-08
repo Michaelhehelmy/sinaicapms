@@ -182,14 +182,6 @@ export function useUpdateTableStatusMutation() {
   });
 }
 
-export function useDeleteTableMutation() {
-  const invalidate = useInvalidateTablesAndOrders();
-  return useMutation({
-    mutationFn: (vars: { id: string }) => apiClient.deletePosTable(vars.id),
-    onSuccess: invalidate,
-  });
-}
-
 export function useUpdateKitchenStatusMutation() {
   const invalidate = useInvalidateTablesAndOrders();
   return useMutation({

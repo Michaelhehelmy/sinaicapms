@@ -22,7 +22,9 @@ async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
 }
 
 async function waitForToast(page: import('@playwright/test').Page, text: string, timeout = 8000) {
-  const toast = page.locator(`[role="alert"]:has-text("${text}")`);
+  // Success/warning toasts render role="status" (polite); errors render
+  // role="alert" (assertive) — see app/src/components/ui/Toast.tsx.
+  const toast = page.locator(`[role="alert"]:has-text("${text}"), [role="status"]:has-text("${text}")`);
   await expect(toast).toBeVisible({ timeout });
 }
 

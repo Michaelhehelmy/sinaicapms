@@ -95,16 +95,6 @@ export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ');
 }
 
-export function slugify(str: string): string {
-  return str
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
   ms: number,
@@ -170,22 +160,6 @@ export function extractMapCoords(url: string): { lat: string; lng: string } | nu
   if (qMatch) return { lat: qMatch[1], lng: qMatch[2] };
   const atMatch = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
   if (atMatch) return { lat: atMatch[1], lng: atMatch[2] };
-  return null;
-}
-
-/** Convert a Google Maps URL to an embeddable iframe src */
-export function mapsUrlToIframe(url: string): string | null {
-  const coords = extractMapCoords(url);
-  if (coords) {
-    return `https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3000!2d${coords.lng}!3d${coords.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1`;
-  }
-  // For place URLs, use the search embed format
-  if (url.includes('/place/')) {
-    const placeMatch = url.match(/\/place\/([^/]+)/);
-    if (placeMatch) {
-      return `https://www.google.com/maps/embed/v1/place?key=&q=${encodeURIComponent(decodeURIComponent(placeMatch[1]))}`;
-    }
-  }
   return null;
 }
 

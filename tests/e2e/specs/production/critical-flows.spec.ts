@@ -3,7 +3,7 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
 /**
  * PRODUCTION CRITICAL-FLOWS SMOKE SUITE (READ-ONLY)
  *
- * Targets https://sinaicamps.com via `playwright.prod.config.ts` (baseURL).
+ * Targets https://sinaicamps.com via `tests/e2e/playwright.production.config.ts` (baseURL).
  * These tests NEVER:
  *   - log in to admin/POS (form render checks only),
  *   - POST / PUT / DELETE anything,

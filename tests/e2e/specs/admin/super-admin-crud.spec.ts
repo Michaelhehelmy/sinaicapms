@@ -158,8 +158,9 @@ test.describe('Admin User CRUD via SuperTenantsPanel', () => {
       // Submit
       await form.locator('button:has-text("Create Admin")').click();
 
-      // Toast uses role="alert" (see app/src/components/ui/Toast.tsx)
-      const toast = page.locator('[role="alert"]');
+      // Success toast renders role="status" (polite) in Toast.tsx — accept
+      // both roles (errors are role="alert").
+      const toast = page.locator('[role="alert"], [role="status"]');
       await expect(toast.first()).toBeVisible({ timeout: 10_000 });
       const toastText = await toast.first().textContent() ?? '';
       expect(toastText.toLowerCase()).toContain('created');
@@ -354,8 +355,9 @@ test.describe('Admin User CRUD via SuperTenantsPanel', () => {
       await form.locator('input[type="password"]').fill('DeleteTest123!');
       await form.locator('button:has-text("Create Admin")').click();
 
-      // Toast uses role="alert" (see app/src/components/ui/Toast.tsx)
-      const toast = page.locator('[role="alert"]');
+      // Success toast renders role="status" (polite) in Toast.tsx — accept
+      // both roles (errors are role="alert").
+      const toast = page.locator('[role="alert"], [role="status"]');
       await expect(toast.first()).toBeVisible({ timeout: 10_000 });
       await expectPanelReady(page);
 
@@ -383,7 +385,10 @@ test.describe('Admin User CRUD via SuperTenantsPanel', () => {
       await confirmDialog.locator('button:has-text("Delete")').click();
 
       // Wait for success toast
-      const deletedToast = page.locator('[role="alert"]:has-text("deleted"), [role="alert"]:has-text("Deleted")');
+      // Deleted toast is a success toast → role="status" (accept both roles).
+      const deletedToast = page.locator(
+        '[role="alert"]:has-text("deleted"), [role="status"]:has-text("deleted"), [role="alert"]:has-text("Deleted"), [role="status"]:has-text("Deleted")',
+      );
       await expect(deletedToast.first()).toBeVisible({ timeout: 10_000 });
       const toastText = await deletedToast.first().textContent() ?? '';
       expect(toastText.toLowerCase()).toContain('deleted');

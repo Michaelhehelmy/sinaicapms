@@ -26,37 +26,17 @@ import {
   createHrJobPost,
   createHrApplicant,
   getSupplyWarehouses,
-  createSupplyWarehouse,
   getSupplyStock,
-  adjustSupplyStock,
   getSupplyTransfers,
-  createSupplyTransfer,
-  confirmSupplyTransfer,
   getSupplyPurchaseOrders,
-  createSupplyPurchaseOrder,
-  receiveSupplyPurchaseOrder,
   getSupplyBoms,
-  createSupplyBom,
   getSupplyManufacturingOrders,
-  createSupplyManufacturingOrder,
-  progressSupplyManufacturingOrder,
   getCrmContacts,
-  createCrmContact,
-  updateCrmContact,
   getCrmLeads,
-  createCrmLead,
-  updateCrmLeadStatus,
   getCrmOpportunities,
-  createCrmOpportunity,
-  updateCrmOpportunityStage,
   getCrmTasks,
-  createCrmTask,
-  updateCrmTaskStatus,
   getCrmTickets,
-  createCrmTicket,
-  addCrmTicketComment,
   getCrmKnowledgeArticles,
-  createCrmKnowledgeArticle,
   getStorefrontProducts,
   getStorefrontProduct,
   getStorefrontCart,
@@ -66,24 +46,15 @@ import {
   checkoutStorefront,
   getStorefrontOrders,
   getStorefrontPages,
-  createStorefrontPage,
-  updateStorefrontPage,
   deleteStorefrontPage,
   getStorefrontBlogPosts,
-  createStorefrontBlogPost,
-  updateStorefrontBlogPost,
   deleteStorefrontBlogPost,
   getAiPredictions,
   createAiPrediction,
   getAiDynamicPrice,
-  getAiForecast,
   getAiAnomaly,
   getAiPriceRules,
-  createAiPriceRule,
-  updateAiPriceRule,
-  deleteAiPriceRule,
   getAiAutomationRules,
-  createAiAutomationRule,
   toggleAiAutomationRule,
   getAiAutomationLogs,
   analyzeWithWorkersAI,
@@ -460,12 +431,6 @@ describe('supply chain', () => {
     expect(result).toEqual([]);
   });
 
-  it('createSupplyWarehouse', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createSupplyWarehouse({ name: 'Main' });
-    expect(result.success).toBe(true);
-  });
-
   it('getSupplyStock without params', async () => {
     const result = await getSupplyStock();
     expect(result).toEqual([]);
@@ -476,27 +441,9 @@ describe('supply chain', () => {
     expect(result).toEqual([]);
   });
 
-  it('adjustSupplyStock', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await adjustSupplyStock({ productId: 'p1', warehouseId: 'w1', quantity: 10 });
-    expect(result.success).toBe(true);
-  });
-
   it('getSupplyTransfers', async () => {
     const result = await getSupplyTransfers();
     expect(result).toEqual([]);
-  });
-
-  it('createSupplyTransfer', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createSupplyTransfer({ fromWarehouseId: 'w1', toWarehouseId: 'w2', productId: 'p1', quantity: 5 });
-    expect(result.success).toBe(true);
-  });
-
-  it('confirmSupplyTransfer', async () => {
-    mockFetch({ success: true });
-    const result = await confirmSupplyTransfer('t1');
-    expect(result.success).toBe(true);
   });
 
   it('getSupplyPurchaseOrders', async () => {
@@ -504,44 +451,14 @@ describe('supply chain', () => {
     expect(result).toEqual([]);
   });
 
-  it('createSupplyPurchaseOrder', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createSupplyPurchaseOrder({ poNumber: 'PO-001', orderDate: '2024-01-01', lines: [] });
-    expect(result.success).toBe(true);
-  });
-
-  it('receiveSupplyPurchaseOrder', async () => {
-    mockFetch({ success: true });
-    const result = await receiveSupplyPurchaseOrder('po1');
-    expect(result.success).toBe(true);
-  });
-
   it('getSupplyBoms', async () => {
     const result = await getSupplyBoms();
     expect(result).toEqual([]);
   });
 
-  it('createSupplyBom', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createSupplyBom({ productId: 'p1', name: 'BOM-1', lines: [] });
-    expect(result.success).toBe(true);
-  });
-
   it('getSupplyManufacturingOrders', async () => {
     const result = await getSupplyManufacturingOrders();
     expect(result).toEqual([]);
-  });
-
-  it('createSupplyManufacturingOrder', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createSupplyManufacturingOrder({ bomId: 'b1', productId: 'p1', quantity: 10 });
-    expect(result.success).toBe(true);
-  });
-
-  it('progressSupplyManufacturingOrder', async () => {
-    mockFetch({ success: true });
-    const result = await progressSupplyManufacturingOrder('mo1', 5);
-    expect(result.success).toBe(true);
   });
 });
 
@@ -559,50 +476,14 @@ describe('CRM module', () => {
     expect(result).toEqual([]);
   });
 
-  it('createCrmContact', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createCrmContact({ type: 'person', name: 'Test' });
-    expect(result.success).toBe(true);
-  });
-
-  it('updateCrmContact', async () => {
-    mockFetch({ success: true });
-    const result = await updateCrmContact('c1', { name: 'Updated' });
-    expect(result.success).toBe(true);
-  });
-
   it('getCrmLeads', async () => {
     const result = await getCrmLeads();
     expect(result).toEqual([]);
   });
 
-  it('createCrmLead', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createCrmLead({ contactId: 'c1' });
-    expect(result.success).toBe(true);
-  });
-
-  it('updateCrmLeadStatus', async () => {
-    mockFetch({ success: true });
-    const result = await updateCrmLeadStatus('l1', 'qualified');
-    expect(result.success).toBe(true);
-  });
-
   it('getCrmOpportunities', async () => {
     const result = await getCrmOpportunities();
     expect(result).toEqual([]);
-  });
-
-  it('createCrmOpportunity', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createCrmOpportunity({ name: 'Deal' });
-    expect(result.success).toBe(true);
-  });
-
-  it('updateCrmOpportunityStage', async () => {
-    mockFetch({ success: true });
-    const result = await updateCrmOpportunityStage('o1', 'closed-won');
-    expect(result.success).toBe(true);
   });
 
   it('getCrmTasks without params', async () => {
@@ -615,44 +496,14 @@ describe('CRM module', () => {
     expect(result).toEqual([]);
   });
 
-  it('createCrmTask', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createCrmTask({ title: 'Task' });
-    expect(result.success).toBe(true);
-  });
-
-  it('updateCrmTaskStatus', async () => {
-    mockFetch({ success: true });
-    const result = await updateCrmTaskStatus('t1', 'done');
-    expect(result.success).toBe(true);
-  });
-
   it('getCrmTickets', async () => {
     const result = await getCrmTickets();
     expect(result).toEqual([]);
   });
 
-  it('createCrmTicket', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createCrmTicket({ subject: 'Issue' });
-    expect(result.success).toBe(true);
-  });
-
-  it('addCrmTicketComment', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await addCrmTicketComment('tk1', 'comment', true);
-    expect(result.success).toBe(true);
-  });
-
   it('getCrmKnowledgeArticles', async () => {
     const result = await getCrmKnowledgeArticles();
     expect(result).toEqual([]);
-  });
-
-  it('createCrmKnowledgeArticle', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createCrmKnowledgeArticle({ title: 'Article', content: 'Body' });
-    expect(result.success).toBe(true);
   });
 });
 
@@ -714,18 +565,6 @@ describe('storefront module', () => {
     expect(result).toEqual([]);
   });
 
-  it('createStorefrontPage', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createStorefrontPage({ slug: 'about', title: 'About' });
-    expect(result.success).toBe(true);
-  });
-
-  it('updateStorefrontPage', async () => {
-    mockFetch({ success: true });
-    const result = await updateStorefrontPage('p1', { title: 'Updated' });
-    expect(result.success).toBe(true);
-  });
-
   it('deleteStorefrontPage', async () => {
     mockFetch({ success: true });
     const result = await deleteStorefrontPage('p1');
@@ -735,18 +574,6 @@ describe('storefront module', () => {
   it('getStorefrontBlogPosts', async () => {
     const result = await getStorefrontBlogPosts();
     expect(result).toEqual([]);
-  });
-
-  it('createStorefrontBlogPost', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createStorefrontBlogPost({ slug: 'post', title: 'Post', content: 'Body' });
-    expect(result.success).toBe(true);
-  });
-
-  it('updateStorefrontBlogPost', async () => {
-    mockFetch({ success: true });
-    const result = await updateStorefrontBlogPost('b1', { title: 'Updated' });
-    expect(result.success).toBe(true);
   });
 
   it('deleteStorefrontBlogPost', async () => {
@@ -839,12 +666,6 @@ describe('AI module', () => {
     expect(result.suggestedPrice).toBe(99);
   });
 
-  it('getAiForecast', async () => {
-    mockFetch({ forecasts: [] });
-    const result = await getAiForecast({ productId: 'p1', periodDays: 30 });
-    expect(result.forecasts).toEqual([]);
-  });
-
   it('getAiAnomaly', async () => {
     mockFetch({ anomalies: [] });
     const result = await getAiAnomaly({ type: 'sales', data: {} });
@@ -856,33 +677,9 @@ describe('AI module', () => {
     expect(result).toEqual([]);
   });
 
-  it('createAiPriceRule', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createAiPriceRule({ name: 'Rule', ruleType: 'markup' });
-    expect(result.success).toBe(true);
-  });
-
-  it('updateAiPriceRule', async () => {
-    mockFetch({ success: true });
-    await updateAiPriceRule('r1', { adjustmentPercent: 10 });
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('deleteAiPriceRule', async () => {
-    mockFetch({ success: true });
-    await deleteAiPriceRule('r1');
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
   it('getAiAutomationRules', async () => {
     const result = await getAiAutomationRules();
     expect(result).toEqual([]);
-  });
-
-  it('createAiAutomationRule', async () => {
-    mockFetch({ id: '1', success: true });
-    const result = await createAiAutomationRule({ name: 'Rule', triggerEvent: 'order.created' });
-    expect(result.success).toBe(true);
   });
 
   it('toggleAiAutomationRule', async () => {

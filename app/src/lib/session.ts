@@ -39,11 +39,8 @@ const USER_KEYS: Record<Realm, string> = {
   pos: 'pos_user',
 };
 
-/** Legacy key names kept exported so tests and back-compat imports stay stable. */
-export const TOKEN_KEY = ACCESS_KEYS.admin;
+/** Legacy key name kept exported so tests and back-compat imports stay stable. */
 export const REFRESH_TOKEN_KEY = REFRESH_KEYS.admin;
-export const POS_TOKEN_KEY = ACCESS_KEYS.pos;
-export const USER_KEY = USER_KEYS.admin;
 
 const listeners = new Set<AuthChangeListener>();
 

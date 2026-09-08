@@ -6,11 +6,16 @@ import CampBooking from '@/components/public/CampBooking';
 vi.mock('@/lib/api', () => ({
   getProjectMealPlans: vi.fn(),
   getTenantId: vi.fn().mockReturnValue('t1'),
+  // Default: the server price preview is unavailable, so the component falls
+  // back to the client-side nights × basePrice calc (existing tests keep their
+  // original meaning). The dedicated server-price test below overrides this.
+  calculatePrice: vi.fn().mockRejectedValue(new Error('offline')),
 }));
 
-import { getProjectMealPlans } from '@/lib/api';
+import { getProjectMealPlans, calculatePrice } from '@/lib/api';
 
 const mockedGetProjectMealPlans = getProjectMealPlans as unknown as ReturnType<typeof vi.fn>;
+const mockedCalculatePrice = calculatePrice as unknown as ReturnType<typeof vi.fn>;
 
 const roomTypes = [
   { id: 'r1', name: 'Deluxe Tent', capacity: 4, basePrice: 100, description: 'A tent' },
@@ -65,6 +70,34 @@ describe('CampBooking', () => {
     await waitFor(() => {
       expect(screen.getByText(/300/)).toBeInTheDocument();
     });
+  });
+
+  it('prefers the server price preview when calculate-price responds (T7)', async () => {
+    mockedCalculatePrice.mockResolvedValue({ total_price: 700 });
+
+    render(<CampBooking {...defaultProps} roomTypes={[roomTypes[0]]} />);
+    fireEvent.click(screen.getByText('Book'));
+
+    const today = new Date();
+    const checkIn = new Date(today);
+    checkIn.setDate(today.getDate() + 1);
+    const checkOut = new Date(checkIn);
+    checkOut.setDate(checkIn.getDate() + 1); // 1 night → client calc would be 100
+
+    const checkInStr = checkIn.toISOString().split('T')[0];
+    const checkOutStr = checkOut.toISOString().split('T')[0];
+
+    const dateInputs = screen.getAllByDisplayValue('');
+    fireEvent.change(dateInputs[0], { target: { value: checkInStr } });
+    fireEvent.change(dateInputs[1], { target: { value: checkOutStr } });
+
+    // The authoritative server total (700) wins over the client 1×100=100 calc.
+    // Note: the total renders as `{700} <span>EGP</span>` — TL's getNodeText only
+    // joins direct text-node children, so match the number alone (suite pattern).
+    await waitFor(() => {
+      expect(screen.getByText(/700/)).toBeInTheDocument();
+    });
+    expect(mockedCalculatePrice).toHaveBeenCalledWith('r1', checkInStr, checkOutStr);
   });
 
   it('adds item to reservation and shows in bar', async () => {

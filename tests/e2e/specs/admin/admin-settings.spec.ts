@@ -74,7 +74,12 @@ test.describe('Admin Settings Panel', () => {
     await saveBtn.click();
 
     // Should show success toast
-    const toast = page.locator('[role="alert"]:has-text("saved"), [role="alert"]:has-text("Success")');
+    // Success toasts render role="status" (polite); errors render role="alert".
+    // Accept both so the assertion matches the ARIA-aware contract in
+    // app/src/components/ui/Toast.tsx (see toastRoleFor()).
+    const toast = page.locator(
+      '[role="alert"]:has-text("saved"), [role="status"]:has-text("saved"), [role="alert"]:has-text("Success"), [role="status"]:has-text("Success")',
+    );
     await expect(toast.first()).toBeVisible({ timeout: 10_000 });
   });
 
@@ -240,7 +245,10 @@ test.describe('Admin Password Panel', () => {
         await changeBtn.click();
 
         // Should show success toast
-        const successToast = page.locator('[role="alert"]:has-text("success"), [role="alert"]:has-text("Success")');
+        // Success toasts render role="status" (polite) — accept both roles.
+        const successToast = page.locator(
+          '[role="alert"]:has-text("success"), [role="status"]:has-text("success"), [role="alert"]:has-text("Success"), [role="status"]:has-text("Success")',
+        );
         await expect(successToast.first()).toBeVisible({ timeout: 10_000 });
 
         // Step 2: Verify still logged in (settings panel still visible)
@@ -253,7 +261,10 @@ test.describe('Admin Password Panel', () => {
         await inputsAfter.nth(2).fill(currentPass);
         await changeBtn.click();
 
-        const rollbackToast = page.locator('[role="alert"]:has-text("success"), [role="alert"]:has-text("Success")');
+        // Success toasts render role="status" (polite) — accept both roles.
+        const rollbackToast = page.locator(
+          '[role="alert"]:has-text("success"), [role="status"]:has-text("success"), [role="alert"]:has-text("Success"), [role="status"]:has-text("Success")',
+        );
         await expect(rollbackToast.first()).toBeVisible({ timeout: 10_000 });
       }
     }

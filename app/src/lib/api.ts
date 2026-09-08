@@ -1935,61 +1935,25 @@ export function getSupplyWarehouses() {
   return apiFetch<Array<{ id: string; name: string; location: string; isActive: number }>>('/supply/warehouses');
 }
 
-export function createSupplyWarehouse(data: { name: string; location?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/supply/warehouses', { method: 'POST', body: JSON.stringify(data) });
-}
-
 export function getSupplyStock(params?: { warehouseId?: string }) {
   const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
   return apiFetch<Array<{ id: string; productId: string; warehouseId: string; quantity: number; reserved: number; productName?: string; warehouseName?: string }>>(`/supply/stock${qs}`);
-}
-
-export function adjustSupplyStock(data: { productId: string; warehouseId: string; quantity: number }) {
-  return apiFetch<{ id: string; success: boolean }>('/supply/stock', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export function getSupplyTransfers() {
   return apiFetch<Array<{ id: string; fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: number; status: string }>>('/supply/stock-transfers');
 }
 
-export function createSupplyTransfer(data: { fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: number }) {
-  return apiFetch<{ id: string; success: boolean }>('/supply/stock-transfers', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function confirmSupplyTransfer(id: string) {
-  return apiFetch<{ success: boolean }>(`/supply/stock-transfers/${encodeURIComponent(id)}/confirm`, { method: 'PATCH' });
-}
-
 export function getSupplyPurchaseOrders() {
   return apiFetch<Array<{ id: string; poNumber: string; vendorId: string | null; orderDate: string; status: string; totalAmount: number }>>('/supply/purchase-orders');
-}
-
-export function createSupplyPurchaseOrder(data: { poNumber: string; vendorId?: string; orderDate: string; expectedDelivery?: string; notes?: string; lines: Array<{ productId: string; quantity: number; unitPrice: number }> }) {
-  return apiFetch<{ id: string; success: boolean }>('/supply/purchase-orders', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function receiveSupplyPurchaseOrder(id: string) {
-  return apiFetch<{ success: boolean }>(`/supply/purchase-orders/${encodeURIComponent(id)}/receive`, { method: 'PATCH' });
 }
 
 export function getSupplyBoms() {
   return apiFetch<Array<{ id: string; productId: string; name: string; version: number; isActive: number }>>('/supply/boms');
 }
 
-export function createSupplyBom(data: { productId: string; name: string; lines: Array<{ componentId: string; quantity: number; unit?: string }> }) {
-  return apiFetch<{ id: string; success: boolean }>('/supply/boms', { method: 'POST', body: JSON.stringify(data) });
-}
-
 export function getSupplyManufacturingOrders() {
   return apiFetch<Array<{ id: string; bomId: string; productId: string; quantity: number; status: string; producedQuantity: number }>>('/supply/manufacturing-orders');
-}
-
-export function createSupplyManufacturingOrder(data: { bomId: string; productId: string; quantity: number; startDate?: string; endDate?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/supply/manufacturing-orders', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function progressSupplyManufacturingOrder(id: string, producedQuantity: number) {
-  return apiFetch<{ success: boolean }>(`/supply/manufacturing-orders/${encodeURIComponent(id)}/progress`, { method: 'PATCH', body: JSON.stringify({ producedQuantity }) });
 }
 
 // ─── CRM & Projects (Agent C) ──────────────────────────────────────────────
@@ -1998,36 +1962,12 @@ export function getCrmContacts(params?: { type?: string }) {
   return apiFetch<Array<{ id: string; type: string; name: string; email: string | null; phone: string | null; isCustomer: number; isVendor: number; isLead: number }>>(`/crm/contacts${qs}`);
 }
 
-export function createCrmContact(data: { type: string; name: string; email?: string; phone?: string; address?: string; industry?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/crm/contacts', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateCrmContact(id: string, data: Record<string, unknown>) {
-  return apiFetch<{ success: boolean }>(`/crm/contacts/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
-}
-
 export function getCrmLeads() {
   return apiFetch<Array<{ id: string; contactId: string; status: string; source: string | null; value: number | null; assignedTo: string | null }>>('/crm/leads');
 }
 
-export function createCrmLead(data: { contactId: string; source?: string; value?: number; notes?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/crm/leads', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateCrmLeadStatus(id: string, status: string) {
-  return apiFetch<{ success: boolean }>(`/crm/leads/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
-}
-
 export function getCrmOpportunities() {
   return apiFetch<Array<{ id: string; leadId: string | null; name: string; stage: string; amount: number; probability: number; expectedCloseDate: string | null; assignedTo: string | null }>>('/crm/opportunities');
-}
-
-export function createCrmOpportunity(data: { leadId?: string; name: string; amount?: number; probability?: number; expectedCloseDate?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/crm/opportunities', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateCrmOpportunityStage(id: string, stage: string) {
-  return apiFetch<{ success: boolean }>(`/crm/opportunities/${encodeURIComponent(id)}/stage`, { method: 'PATCH', body: JSON.stringify({ stage }) });
 }
 
 export function getCrmTasks(params?: { projectId?: string; assigneeId?: string; status?: string }) {
@@ -2035,32 +1975,12 @@ export function getCrmTasks(params?: { projectId?: string; assigneeId?: string; 
   return apiFetch<Array<{ id: string; projectId: string | null; title: string; status: string; priority: string; assigneeId: string | null; dueDate: string | null }>>(`/crm/tasks${qs}`);
 }
 
-export function createCrmTask(data: { projectId?: string; title: string; description?: string; priority?: string; assigneeId?: string; dueDate?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/crm/tasks', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateCrmTaskStatus(id: string, status: string) {
-  return apiFetch<{ success: boolean }>(`/crm/tasks/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
-}
-
 export function getCrmTickets() {
   return apiFetch<Array<{ id: string; contactId: string | null; subject: string; status: string; priority: string; assignedTo: string | null }>>('/crm/tickets');
 }
 
-export function createCrmTicket(data: { contactId?: string; subject: string; description?: string; priority?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/crm/tickets', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function addCrmTicketComment(ticketId: string, content: string, internal?: boolean) {
-  return apiFetch<{ id: string; success: boolean }>(`/crm/tickets/${encodeURIComponent(ticketId)}/comments`, { method: 'POST', body: JSON.stringify({ content, internal }) });
-}
-
 export function getCrmKnowledgeArticles() {
   return apiFetch<Array<{ id: string; title: string; category: string | null; isPublished: number }>>('/crm/knowledge-articles');
-}
-
-export function createCrmKnowledgeArticle(data: { title: string; content: string; category?: string; tags?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/crm/knowledge-articles', { method: 'POST', body: JSON.stringify(data) });
 }
 
 // ─── Storefront (Agent E) ──────────────────────────────────────────────────
@@ -2102,28 +2022,12 @@ export function getStorefrontPages() {
   return apiFetch<Array<{ id: string; slug: string; title: string; isPublished: number }>>('/storefront/admin/pages');
 }
 
-export function createStorefrontPage(data: { slug: string; title: string; content?: string; metaTitle?: string; metaDescription?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/storefront/admin/pages', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateStorefrontPage(id: string, data: Record<string, unknown>) {
-  return apiFetch<{ success: boolean }>(`/storefront/admin/pages/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
-}
-
 export function deleteStorefrontPage(id: string) {
   return apiFetch<{ success: boolean }>(`/storefront/admin/pages/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export function getStorefrontBlogPosts() {
   return apiFetch<Array<{ id: string; slug: string; title: string; category: string | null; isPublished: number }>>('/storefront/admin/blog');
-}
-
-export function createStorefrontBlogPost(data: { slug: string; title: string; content: string; excerpt?: string; category?: string; tags?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/storefront/admin/blog', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateStorefrontBlogPost(id: string, data: Record<string, unknown>) {
-  return apiFetch<{ success: boolean }>(`/storefront/admin/blog/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
 }
 
 export function deleteStorefrontBlogPost(id: string) {
@@ -2144,10 +2048,6 @@ export function getAiDynamicPrice(data: { productId: string; currentPrice: numbe
   return apiFetch<{ suggestedPrice: number; confidence: number; factors: Record<string, unknown> }>('/ai/dynamic-price', { method: 'POST', body: JSON.stringify(data) });
 }
 
-export function getAiForecast(data: { productId: string; periodDays: number }) {
-  return apiFetch<{ forecasts: Array<{ date: string; predictedDemand: number; confidence: number }> }>('/ai/forecast', { method: 'POST', body: JSON.stringify(data) });
-}
-
 export function getAiAnomaly(data: { type: string; data: Record<string, unknown> }) {
   return apiFetch<{ anomalies: Array<{ field: string; expected: number; actual: number; severity: string }> }>('/ai/anomaly', { method: 'POST', body: JSON.stringify(data) });
 }
@@ -2156,24 +2056,8 @@ export function getAiPriceRules() {
   return apiFetch<Array<{ id: string; name: string; productId: string | null; ruleType: string; minPrice: number | null; maxPrice: number | null; adjustmentPercent: number; isActive: number }>>('/ai/price-rules');
 }
 
-export function createAiPriceRule(data: { name: string; productId?: string; ruleType: string; minPrice?: number; maxPrice?: number; adjustmentPercent?: number }) {
-  return apiFetch<{ id: string; success: boolean }>('/ai/price-rules', { method: 'POST', body: JSON.stringify(data) });
-}
-
-export function updateAiPriceRule(id: string, data: Record<string, unknown>) {
-  return apiFetch<{ success: boolean }>(`/ai/price-rules/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
-}
-
-export function deleteAiPriceRule(id: string) {
-  return apiFetch<{ success: boolean }>(`/ai/price-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
-}
-
 export function getAiAutomationRules() {
   return apiFetch<Array<{ id: string; name: string; triggerEvent: string; isActive: number; lastTriggeredAt: string | null; triggerCount: number }>>('/ai/automation-rules');
-}
-
-export function createAiAutomationRule(data: { name: string; triggerEvent: string; conditionJson?: string; actionJson?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/ai/automation-rules', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export function toggleAiAutomationRule(id: string) {

@@ -143,19 +143,16 @@ jobs:
         working-directory: app
         run: npm run build
 
-      - name: Deploy to Pages
+      - name: Deploy to Workers
+        # Unified frontend is an Astro ssr worker (app/wrangler.toml, main+assets).
+        # Wrangler resolves `assets` from the build output directory automatically.
+        working-directory: app
         run: |
           if [ "${{ github.ref_name }}" = "staging" ]; then
-            PROJECT_NAME="campmaster-marketplace-staging"
-            BRANCH="staging"
+            npx wrangler deploy --env staging
           else
-            PROJECT_NAME="campmaster-marketplace"
-            BRANCH="main"
+            npx wrangler deploy
           fi
-          npx wrangler pages deploy app/dist \
-            --project-name="$PROJECT_NAME" \
-            --branch="$BRANCH" \
-            --commit-dirty=true
 
   # ─────────────────────────────────────────────
   # Post-deploy: Run E2E tests against live site

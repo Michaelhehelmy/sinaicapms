@@ -5,16 +5,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   useCampsQuery, useProductsQuery, useRoomsQuery,
   useOrdersQuery, useRatePlansQuery, usePlansQuery,
-  useMealsQuery, useCategoriesQuery, useMealCategoriesQuery,
+  useMealsQuery, useMealCategoriesQuery,
   useMealSchedulesQuery, useSettingsQuery, useAdminStatsQuery, useTenantsQuery,
   useSaveCampMutation, useDeleteCampMutation,
   useSaveProductMutation, useDeleteProductMutation,
   useSaveRoomMutation, useDeleteRoomMutation,
-  useSaveOrderMutation, useDeleteOrderMutation,
+  useDeleteOrderMutation,
   useSaveRatePlanMutation, useDeleteRatePlanMutation,
-  useSaveMealMutation, useDeleteMealMutation,
   useUpdateSettingsMutation,
-  useSaveSettingsMutation,
 } from '@/hooks/useQueryHooks';
 
 const mockShowToast = vi.fn();
@@ -30,7 +28,6 @@ vi.mock('@/lib/api', () => ({
   getRatePlans: vi.fn().mockResolvedValue([]),
   getPlans: vi.fn().mockResolvedValue([]),
   getMeals: vi.fn().mockResolvedValue([]),
-  getCategories: vi.fn().mockResolvedValue([]),
   getMealCategories: vi.fn().mockResolvedValue([]),
   getMealSchedules: vi.fn().mockResolvedValue([]),
   getMe: vi.fn().mockResolvedValue({}),
@@ -42,12 +39,9 @@ vi.mock('@/lib/api', () => ({
   deleteProduct: vi.fn().mockResolvedValue({}),
   saveRoom: vi.fn().mockResolvedValue({ id: '1' }),
   deleteRoom: vi.fn().mockResolvedValue({}),
-  saveOrder: vi.fn().mockResolvedValue({ id: '1' }),
   deleteOrder: vi.fn().mockResolvedValue({}),
   saveRatePlan: vi.fn().mockResolvedValue({ id: '1' }),
   deleteRatePlan: vi.fn().mockResolvedValue({}),
-  saveMeal: vi.fn().mockResolvedValue({ id: '1' }),
-  deleteMeal: vi.fn().mockResolvedValue({}),
   updateBranding: vi.fn().mockResolvedValue({}),
 }));
 
@@ -240,20 +234,6 @@ describe('useDeleteRoomMutation', () => {
   });
 });
 
-describe('useSaveOrderMutation', () => {
-  beforeEach(() => { mockShowToast.mockClear(); });
-
-  it('creates an order', async () => {
-    const api = await import('@/lib/api');
-    (api.saveOrder as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'o1' });
-    const { wrapper } = createWrapper();
-    const { result } = renderHook(() => useSaveOrderMutation(), { wrapper });
-    result.current.mutate({ numberOfPeople: 3 });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Order created', 'success');
-  });
-});
-
 describe('useDeleteOrderMutation', () => {
   beforeEach(() => { mockShowToast.mockClear(); });
 
@@ -296,34 +276,6 @@ describe('useDeleteRatePlanMutation', () => {
   });
 });
 
-describe('useSaveMealMutation', () => {
-  beforeEach(() => { mockShowToast.mockClear(); });
-
-  it('creates a meal', async () => {
-    const api = await import('@/lib/api');
-    (api.saveMeal as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    const { wrapper } = createWrapper();
-    const { result } = renderHook(() => useSaveMealMutation(), { wrapper });
-    result.current.mutate({ name: 'Breakfast' });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Meal created', 'success');
-  });
-});
-
-describe('useDeleteMealMutation', () => {
-  beforeEach(() => { mockShowToast.mockClear(); });
-
-  it('deletes a meal', async () => {
-    const api = await import('@/lib/api');
-    (api.deleteMeal as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    const { wrapper } = createWrapper();
-    const { result } = renderHook(() => useDeleteMealMutation(), { wrapper });
-    result.current.mutate('m1');
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Meal deleted', 'success');
-  });
-});
-
 describe('useUpdateSettingsMutation', () => {
   beforeEach(() => { mockShowToast.mockClear(); });
 
@@ -345,19 +297,5 @@ describe('useUpdateSettingsMutation', () => {
     result.current.mutate({ name: 'New Camp' });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(mockShowToast).toHaveBeenCalledWith('Failed to save settings: Branding failed', 'error');
-  });
-});
-
-describe('useSaveSettingsMutation', () => {
-  beforeEach(() => { mockShowToast.mockClear(); });
-
-  it('is an alias that saves settings', async () => {
-    const api = await import('@/lib/api');
-    (api.updateBranding as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    const { wrapper } = createWrapper();
-    const { result } = renderHook(() => useSaveSettingsMutation(), { wrapper });
-    result.current.mutate({ name: 'Alias Camp' });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockShowToast).toHaveBeenCalledWith('Settings saved', 'success');
   });
 });

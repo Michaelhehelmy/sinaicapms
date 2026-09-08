@@ -5,19 +5,19 @@ import OrdersPanel from '@/components/admin/OrdersPanel';
 const mockUseOrdersQuery = vi.fn();
 const mockUseCampsQuery = vi.fn();
 const mockUseRoomsQuery = vi.fn();
-const mockUseSaveOrderMutation = vi.fn();
+const mockUseUpdateOrderStatusMutation = vi.fn();
 const mockUseDeleteOrderMutation = vi.fn();
 
 vi.mock('@/hooks/useQueryHooks', () => ({
   useOrdersQuery: (...args: unknown[]) => mockUseOrdersQuery(...args),
   useCampsQuery: (...args: unknown[]) => mockUseCampsQuery(...args),
   useRoomsQuery: (...args: unknown[]) => mockUseRoomsQuery(...args),
-  useSaveOrderMutation: (...args: unknown[]) => mockUseSaveOrderMutation(...args),
+  useUpdateOrderStatusMutation: (...args: unknown[]) => mockUseUpdateOrderStatusMutation(...args),
   useDeleteOrderMutation: (...args: unknown[]) => mockUseDeleteOrderMutation(...args),
 }));
 
 vi.mock('@/lib/api', () => ({
-  saveOrder: vi.fn().mockResolvedValue({}),
+  updateOrderStatus: vi.fn().mockResolvedValue({}),
   deleteOrder: vi.fn().mockResolvedValue({}),
 }));
 
@@ -134,7 +134,7 @@ const defaultHooks = {
   useOrdersQuery: { data: { data: mockOrders, total: 3 }, isLoading: false, error: null, isFetching: false },
   useCampsQuery: { data: [{ id: 'c1', name: 'Test Camp' }], isLoading: false, error: null },
   useRoomsQuery: { data: [{ id: 'r1', name: 'Room 1', campId: 'c1' }, { id: 'r2', name: 'Room 2', campId: 'c1' }, { id: 'r3', name: 'Room 3', campId: 'c1' }], isLoading: false, error: null },
-  useSaveOrderMutation: { mutate: vi.fn((_args: unknown, opts?: { onSuccess?: () => void }) => { opts?.onSuccess?.(); }), isPending: false },
+  useUpdateOrderStatusMutation: { mutate: vi.fn((_args: unknown, opts?: { onSuccess?: () => void }) => { opts?.onSuccess?.(); }), isPending: false },
   useDeleteOrderMutation: { mutate: vi.fn((_args: unknown, opts?: { onSuccess?: () => void }) => { opts?.onSuccess?.(); }), isPending: false },
 };
 
@@ -143,7 +143,7 @@ function setupMocks(overrides: Partial<typeof defaultHooks> = {}) {
   mockUseOrdersQuery.mockReturnValue(merged.useOrdersQuery);
   mockUseCampsQuery.mockReturnValue(merged.useCampsQuery);
   mockUseRoomsQuery.mockReturnValue(merged.useRoomsQuery);
-  mockUseSaveOrderMutation.mockReturnValue(merged.useSaveOrderMutation);
+  mockUseUpdateOrderStatusMutation.mockReturnValue(merged.useUpdateOrderStatusMutation);
   mockUseDeleteOrderMutation.mockReturnValue(merged.useDeleteOrderMutation);
 }
 

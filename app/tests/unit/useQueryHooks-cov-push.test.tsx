@@ -45,7 +45,6 @@ vi.mock('@/lib/api', () => {
     saveCamp: vi.fn().mockResolvedValue({ id: 'c1' }),
     deleteCamp: vi.fn().mockResolvedValue({ ok: true }),
     saveRoom: vi.fn().mockResolvedValue({ id: 'r1' }),
-    saveOrder: vi.fn().mockResolvedValue({ id: 'o1' }),
     saveRatePlan: vi.fn().mockResolvedValue({ id: 'rp1' }),
     saveMeal: vi.fn().mockResolvedValue({ id: 'm1' }),
     // Reports
@@ -101,26 +100,17 @@ vi.mock('@/lib/api', () => {
 import * as api from '@/lib/api';
 import {
   // Mutation hooks under test
-  useSaveMealCategoryMutation,
-  useDeleteMealCategoryMutation,
-  useCreateMealScheduleMutation,
-  useDeleteMealScheduleMutation,
-  useSavePlanMutation,
-  useDeletePlanMutation,
   useChangePasswordMutation,
   useSaveCampMutation,
   useDeleteCampMutation,
   useSaveProjectItemMutation,
   useCreateProjectLinkMutation,
   useSaveRoomMutation,
-  useSaveOrderMutation,
   useSaveRatePlanMutation,
-  useSaveMealMutation,
   // Query hooks under test
   useOccupancyReportQuery,
   useRevenueReportQuery,
   useBookingsReportQuery,
-  useAdminsQuery,
   useAvailabilityQuery,
   usePriceOverridesQuery,
   useSettingsQuery,
@@ -128,14 +118,6 @@ import {
   useAdminStatsQuery,
   useTenantsQuery,
   useProjectMetaQuery,
-  // Super admin paginated
-  useSuperInvoicesQuery,
-  useSuperEmployeesQuery,
-  useSuperPurchaseOrdersQuery,
-  useSuperContactsQuery,
-  useSuperOpportunitiesQuery,
-  useSuperStorefrontProductsQuery,
-  useSuperPredictionsQuery,
   // Backward-compat aliases
   useCampsRQ,
   useRoomsRQ,
@@ -144,7 +126,6 @@ import {
   useRatePlansRQ,
   usePlansRQ,
   useMealsRQ,
-  useCategoriesRQ,
   useMealCategoriesRQ,
   useMealSchedulesRQ,
   useSettingsRQ,
@@ -196,106 +177,6 @@ describe('useQueryHooks — coverage push (mutations / reports / super-admin / a
   // ── Mutation hooks: success path ────────────────────────────────────────
 
   describe('mutation hooks — success paths', () => {
-    it('useSaveMealCategoryMutation creates (no editId) and invalidates', async () => {
-      vi.mocked(api.saveMealCategory).mockResolvedValue({ id: 'mc1' } as never);
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useSaveMealCategoryMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'Veggie' } as never);
-      });
-      expect(api.saveMealCategory).toHaveBeenCalledWith({ name: 'Veggie' }, undefined);
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'mealCategories'] });
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
-    it('useSaveMealCategoryMutation updates (with editId) and shows "Category updated"', async () => {
-      vi.mocked(api.saveMealCategory).mockResolvedValue({ id: 'mc1' } as never);
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSaveMealCategoryMutation('mc1'), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'Vegan' } as never);
-      });
-      expect(api.saveMealCategory).toHaveBeenCalledWith({ name: 'Vegan' }, 'mc1');
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
-    it('useDeleteMealCategoryMutation deletes and invalidates', async () => {
-      vi.mocked(api.deleteMealCategory).mockResolvedValue({ ok: true } as never);
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useDeleteMealCategoryMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('mc1' as never);
-      });
-      expect(api.deleteMealCategory).toHaveBeenCalledWith('mc1');
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'mealCategories'] });
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
-    it('useCreateMealScheduleMutation creates and invalidates', async () => {
-      vi.mocked(api.createMealSchedule).mockResolvedValue({ id: 'ms1' } as never);
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useCreateMealScheduleMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ mealId: 'm1', date: '2025-06-01', timeSlot: 'lunch' } as never);
-      });
-      expect(api.createMealSchedule).toHaveBeenCalled();
-      expect(invalidateSpy).toHaveBeenCalled();
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
-    it('useDeleteMealScheduleMutation deletes and invalidates', async () => {
-      vi.mocked(api.deleteMealSchedule).mockResolvedValue({ ok: true } as never);
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useDeleteMealScheduleMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('ms1' as never);
-      });
-      expect(api.deleteMealSchedule).toHaveBeenCalledWith('ms1');
-      expect(invalidateSpy).toHaveBeenCalled();
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
-    it('useSavePlanMutation creates (no editId) and invalidates', async () => {
-      vi.mocked(api.savePlan).mockResolvedValue({ id: 'plan1' } as never);
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useSavePlanMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'Premium' } as never);
-      });
-      expect(api.savePlan).toHaveBeenCalledWith({ name: 'Premium' }, undefined);
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'plans'] });
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
-    it('useSavePlanMutation updates (with editId) and shows "Plan updated"', async () => {
-      vi.mocked(api.savePlan).mockResolvedValue({ id: 'plan1' } as never);
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSavePlanMutation('plan1'), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'Standard' } as never);
-      });
-      expect(api.savePlan).toHaveBeenCalledWith({ name: 'Standard' }, 'plan1');
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
-    it('useDeletePlanMutation deletes and invalidates', async () => {
-      vi.mocked(api.deletePlan).mockResolvedValue({ ok: true } as never);
-      const { wrapper, queryClient } = createWrapper();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined);
-      const { result } = renderHook(() => useDeletePlanMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('plan1' as never);
-      });
-      expect(api.deletePlan).toHaveBeenCalledWith('plan1');
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'plans'] });
-      expect(mockShowToast).toHaveBeenCalled();
-    });
-
     it('useChangePasswordMutation calls changePassword and shows toast', async () => {
       vi.mocked(api.changePassword).mockResolvedValue({ ok: true } as never);
       const { wrapper } = createWrapper();
@@ -311,67 +192,6 @@ describe('useQueryHooks — coverage push (mutations / reports / super-admin / a
   // ── Mutation hooks: error path ──────────────────────────────────────────
 
   describe('mutation hooks — error paths', () => {
-    it('useSaveMealCategoryMutation shows toast on error', async () => {
-      vi.mocked(api.saveMealCategory).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSaveMealCategoryMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'x' } as never).catch(() => {});
-      });
-      // useErrorToast wraps showToast in setTimeout — wait for it
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
-    it('useDeleteMealCategoryMutation shows toast on error', async () => {
-      vi.mocked(api.deleteMealCategory).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useDeleteMealCategoryMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('x' as never).catch(() => {});
-      });
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
-    it('useCreateMealScheduleMutation shows toast on error', async () => {
-      vi.mocked(api.createMealSchedule).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useCreateMealScheduleMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ mealId: 'm1' } as never).catch(() => {});
-      });
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
-    it('useDeleteMealScheduleMutation shows toast on error', async () => {
-      vi.mocked(api.deleteMealSchedule).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useDeleteMealScheduleMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('x' as never).catch(() => {});
-      });
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
-    it('useSavePlanMutation shows toast on error', async () => {
-      vi.mocked(api.savePlan).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSavePlanMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'x' } as never).catch(() => {});
-      });
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
-    it('useDeletePlanMutation shows toast on error', async () => {
-      vi.mocked(api.deletePlan).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useDeletePlanMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync('x' as never).catch(() => {});
-      });
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
     it('useChangePasswordMutation shows toast on error', async () => {
       vi.mocked(api.changePassword).mockRejectedValue(new Error('fail'));
       const { wrapper } = createWrapper();
@@ -427,20 +247,6 @@ describe('useQueryHooks — coverage push (mutations / reports / super-admin / a
     });
   });
 
-  // ── useAdminsQuery ──────────────────────────────────────────────────────
-
-  describe('useAdminsQuery', () => {
-    it('resolves with admin list', async () => {
-      vi.mocked(api.getAdmins).mockResolvedValue([{ id: 'a1', name: 'Admin 1' }] as never);
-      await mountQuery(useAdminsQuery as never);
-    });
-
-    it('shows toast on error', async () => {
-      await mountQueryError(useAdminsQuery as never, api.getAdmins);
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-  });
-
   // ── Availability & price overrides ──────────────────────────────────────
 
   describe('useAvailabilityQuery', () => {
@@ -480,69 +286,6 @@ describe('useQueryHooks — coverage push (mutations / reports / super-admin / a
     });
   });
 
-  // ── Super admin paginated queries ───────────────────────────────────────
-
-  describe('super admin paginated queries', () => {
-    it('useSuperInvoicesQuery resolves', async () => {
-      vi.mocked(api.getSuperInvoices).mockResolvedValue({ data: [], total: 0 } as never);
-      await mountQuery(useSuperInvoicesQuery as never);
-    });
-
-    it('useSuperInvoicesQuery resolves with custom page/limit', async () => {
-      vi.mocked(api.getSuperInvoices).mockResolvedValue({ data: [], total: 0 } as never);
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSuperInvoicesQuery(2, 10), { wrapper });
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(api.getSuperInvoices).toHaveBeenCalledWith(2, 10);
-    });
-
-    it('useSuperEmployeesQuery resolves', async () => {
-      vi.mocked(api.getSuperEmployees).mockResolvedValue({ data: [], total: 0 } as never);
-      await mountQuery(useSuperEmployeesQuery as never);
-    });
-
-    it('useSuperEmployeesQuery resolves with custom page/limit', async () => {
-      vi.mocked(api.getSuperEmployees).mockResolvedValue({ data: [], total: 0 } as never);
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSuperEmployeesQuery(3, 5), { wrapper });
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(api.getSuperEmployees).toHaveBeenCalledWith(3, 5);
-    });
-
-    it('useSuperPurchaseOrdersQuery resolves', async () => {
-      vi.mocked(api.getSuperPurchaseOrders).mockResolvedValue({ data: [], total: 0 } as never);
-      await mountQuery(useSuperPurchaseOrdersQuery as never);
-    });
-
-    it('useSuperContactsQuery resolves', async () => {
-      vi.mocked(api.getSuperContacts).mockResolvedValue({ data: [], total: 0 } as never);
-      await mountQuery(useSuperContactsQuery as never);
-    });
-
-    it('useSuperOpportunitiesQuery resolves', async () => {
-      vi.mocked(api.getSuperOpportunities).mockResolvedValue({ data: [], total: 0 } as never);
-      await mountQuery(useSuperOpportunitiesQuery as never);
-    });
-
-    it('useSuperStorefrontProductsQuery resolves', async () => {
-      vi.mocked(api.getSuperStorefrontProducts).mockResolvedValue({ data: [], total: 0 } as never);
-      await mountQuery(useSuperStorefrontProductsQuery as never);
-    });
-
-    it('useSuperPredictionsQuery resolves', async () => {
-      vi.mocked(api.getSuperPredictions).mockResolvedValue({ data: [], total: 0 } as never);
-      await mountQuery(useSuperPredictionsQuery as never);
-    });
-
-    it('useSuperPredictionsQuery resolves with custom page/limit', async () => {
-      vi.mocked(api.getSuperPredictions).mockResolvedValue({ data: [], total: 0 } as never);
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSuperPredictionsQuery(5, 25), { wrapper });
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(api.getSuperPredictions).toHaveBeenCalledWith(5, 25);
-    });
-  });
-
   // ── Backward-compat aliases ─────────────────────────────────────────────
 
   describe('backward-compat aliases (use*RQ)', () => {
@@ -554,7 +297,6 @@ describe('useQueryHooks — coverage push (mutations / reports / super-admin / a
       ['useRatePlansRQ', useRatePlansRQ as never, []],
       ['usePlansRQ', usePlansRQ as never, []],
       ['useMealsRQ', useMealsRQ as never, []],
-      ['useCategoriesRQ', useCategoriesRQ as never, []],
       ['useMealCategoriesRQ', useMealCategoriesRQ as never, []],
       ['useMealSchedulesRQ', useMealSchedulesRQ as never, []],
       ['useSettingsRQ', useSettingsRQ as never, []],
@@ -576,10 +318,8 @@ describe('useQueryHooks — coverage push (mutations / reports / super-admin / a
       ['useRatePlansRQ', useRatePlansRQ as never, api.getRatePlans, []],
       ['usePlansRQ', usePlansRQ as never, api.getPlans, []],
       ['useMealsRQ', useMealsRQ as never, api.getMeals, []],
-      ['useCategoriesRQ', useCategoriesRQ as never, api.getCategories, []],
       ['useMealCategoriesRQ', useMealCategoriesRQ as never, api.getMealCategories, []],
       ['useMealSchedulesRQ', useMealSchedulesRQ as never, api.getMealSchedules, []],
-      ['useAdminsQuery', useAdminsQuery as never, api.getAdmins, []],
     ];
 
     for (const [name, hook, apiFn, args] of baseErrorCases) {
@@ -673,32 +413,12 @@ describe('useQueryHooks — coverage push (mutations / reports / super-admin / a
       await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     });
 
-    it('useSaveOrderMutation shows toast on error', async () => {
-      vi.mocked(api.saveOrder).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSaveOrderMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ total: 100 } as never).catch(() => {});
-      });
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
     it('useSaveRatePlanMutation shows toast on error', async () => {
       vi.mocked(api.saveRatePlan).mockRejectedValue(new Error('fail'));
       const { wrapper } = createWrapper();
       const { result } = renderHook(() => useSaveRatePlanMutation(), { wrapper });
       await act(async () => {
         await result.current.mutateAsync({ name: 'RP1' } as never).catch(() => {});
-      });
-      await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
-    });
-
-    it('useSaveMealMutation shows toast on error', async () => {
-      vi.mocked(api.saveMeal).mockRejectedValue(new Error('fail'));
-      const { wrapper } = createWrapper();
-      const { result } = renderHook(() => useSaveMealMutation(), { wrapper });
-      await act(async () => {
-        await result.current.mutateAsync({ name: 'Meal1' } as never).catch(() => {});
       });
       await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     });

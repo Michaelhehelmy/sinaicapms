@@ -70,8 +70,12 @@ test.describe('Admin Settings', () => {
       // omits PATCH (backend/src/index.js), so the browser blocks the request
       // and an *error* toast ("Failed to save settings") appears instead of the
       // success toast. The backend acceptance is verified directly below.
-      const toast = page.locator('[aria-label="Notifications"] [role="alert"]');
-      await expect(toast.first()).toBeVisible({ timeout: 5000 });
+      // Accept BOTH roles: errors render role="alert", success renders
+      // role="status" (see app/src/components/ui/Toast.tsx).
+      const toast = page.locator(
+        '[aria-label="Notifications"] [role="alert"], [aria-label="Notifications"] [role="status"]',
+      );
+      await expect(toast.first()).toBeVisible({ timeout: 10_000 });
 
       // Verify the backend itself accepts the save round-trip. Playwright's
       // request context is not subject to browser CORS, so this proves the

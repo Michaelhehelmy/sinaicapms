@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useOrdersQuery, useRoomsQuery, useCampsQuery, useSaveOrderMutation, useDeleteOrderMutation } from '@/hooks/useQueryHooks';
+import { useOrdersQuery, useRoomsQuery, useCampsQuery, useUpdateOrderStatusMutation, useDeleteOrderMutation } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -65,7 +65,7 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
   const [newState, setNewState] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
 
-  const saveMutation = useSaveOrderMutation();
+  const statusMutation = useUpdateOrderStatusMutation();
   const deleteMutation = useDeleteOrderMutation();
 
   const filteredOrders = useMemo(() => {
@@ -110,10 +110,10 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
 
   const handleStateChange = useCallback(() => {
     if (!showStateChange || !newState) return;
-    saveMutation.mutate(
+    statusMutation.mutate(
       {
         id: showStateChange.id,
-        orderStateId: newState,
+        status: newState,
       },
       {
         onSuccess: () => {
@@ -122,7 +122,7 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
         },
       },
     );
-  }, [showStateChange, newState, saveMutation]);
+  }, [showStateChange, newState, statusMutation]);
 
   const handleDelete = useCallback(() => {
     if (!deleteTarget) return;
@@ -302,8 +302,8 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
           title="Change Order State"
           onClose={() => { setShowStateChange(null); setNewState(''); }}
           onSubmit={handleStateChange}
-          submitLabel={saveMutation.isPending ? 'Saving...' : 'Update State'}
-          submitDisabled={saveMutation.isPending}
+          submitLabel={statusMutation.isPending ? 'Saving...' : 'Update State'}
+          submitDisabled={statusMutation.isPending}
         >
           <Select
             label="New State"

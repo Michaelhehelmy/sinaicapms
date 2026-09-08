@@ -124,7 +124,7 @@ sinaicamps/
 ├── docs/                       Architecture, API contract, component catalog, guides
 ├── deploy.sh                   Single-command deployment
 ├── playwright.config.ts        E2E configuration (local)
-└── playwright.prod.config.ts   E2E configuration (production)
+└── tests/e2e/playwright.production.config.ts  E2E configuration (production, critical-flows)
 ```
 
 ---

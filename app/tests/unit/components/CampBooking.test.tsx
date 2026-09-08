@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import CampBooking from '@/components/public/CampBooking';
 
+// The component calls the server price preview (calculatePrice) when a stay is
+// chosen in the modal — stub it so unit tests never hit the network. Default is
+// offline so the client-side fallback keeps the original test semantics.
+vi.mock('@/lib/api', () => ({
+  getProjectMealPlans: vi.fn(),
+  calculatePrice: vi.fn().mockRejectedValue(new Error('offline')),
+}));
+
 const roomTypes = [
   { id: '1', name: 'Deluxe Tent', capacity: 4, basePrice: 1200, description: 'A tent', imageUrl: '' },
   { id: '2', name: 'Standard Tent', capacity: 2, basePrice: 800 },

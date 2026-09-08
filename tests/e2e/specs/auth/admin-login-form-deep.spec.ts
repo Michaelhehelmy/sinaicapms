@@ -203,9 +203,15 @@ test.describe('Admin Login — Already Authenticated', () => {
     // First, log in successfully to set the token
     await page.goto(adminUrl(), { waitUntil: 'domcontentloaded' });
     const email = page.locator('[data-testid="login-email"]');
-    if (!(await email.isVisible({ timeout: 10_000 }).catch(() => false))) {
+    const contentArea = page.locator('[data-testid="content-area"]');
+    // The login island hydrates client-side after domcontentloaded, so wait
+    // for the REAL first-render outcome instead of a non-waiting isVisible
+    // check (the overlay can be invisible for a moment while React mounts).
+    try {
+      await expect(email).toBeVisible({ timeout: 15_000 });
+    } catch {
       // Already authenticated — the redirect is working
-      await expect(page.locator('[data-testid="content-area"]')).toBeVisible({ timeout: 10_000 });
+      await expect(contentArea).toBeVisible({ timeout: 10_000 });
       return;
     }
 

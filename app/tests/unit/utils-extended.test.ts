@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { escHtml, formatCurrency, formatDate, cn, slugify, debounce, truncate } from '@/lib/utils';
+import { escHtml, formatCurrency, formatDate, cn, debounce, truncate } from '@/lib/utils';
 
 describe('escHtml', () => {
   it('escapes HTML entities', () => {
@@ -96,32 +96,6 @@ describe('cn', () => {
   it('returns empty string for no classes', () => {
     expect(cn()).toBe('');
     expect(cn(null, undefined, false)).toBe('');
-  });
-});
-
-describe('slugify', () => {
-  it('converts to URL-safe slug', () => {
-    expect(slugify('Hello World!')).toBe('hello-world');
-  });
-
-  it('handles special characters', () => {
-    expect(slugify('Camp #1 @ Sinai')).toBe('camp-1-sinai');
-  });
-
-  it('trims and lowercases', () => {
-    expect(slugify('  UPPER CASE  ')).toBe('upper-case');
-  });
-
-  it('collapses multiple hyphens', () => {
-    expect(slugify('a---b')).toBe('a-b');
-  });
-
-  it('strips leading and trailing dashes', () => {
-    expect(slugify('-hello-')).toBe('hello');
-  });
-
-  it('handles empty string', () => {
-    expect(slugify('')).toBe('');
   });
 });
 

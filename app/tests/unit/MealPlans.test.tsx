@@ -11,6 +11,9 @@ vi.mock('@/lib/api', () => ({
   createPublicReservation: vi.fn(),
   getTenantId: vi.fn().mockReturnValue('t1'),
   saveLead: vi.fn().mockResolvedValue({}),
+  // Default: server price preview offline → component falls back to the
+  // client-side calc so the 150-total assertion keeps its original meaning.
+  calculatePrice: vi.fn().mockRejectedValue(new Error('offline')),
 }));
 
 import { getProjectMealPlans } from '@/lib/api';

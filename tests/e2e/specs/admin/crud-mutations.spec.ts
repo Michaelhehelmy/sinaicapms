@@ -41,12 +41,14 @@ async function loginAsTenantAdmin(page: import('@playwright/test').Page) {
 }
 
 async function waitForToast(page: import('@playwright/test').Page, text: string, timeout = 8000) {
-  const toast = page.locator(`[role="alert"]:has-text("${text}")`);
+  // Success/warning toasts render role="status" (polite); errors render
+  // role="alert" (assertive) — see app/src/components/ui/Toast.tsx.
+  const toast = page.locator(`[role="alert"]:has-text("${text}"), [role="status"]:has-text("${text}")`);
   await expect(toast).toBeVisible({ timeout });
 }
 
 async function dismissAllToasts(page: import('@playwright/test').Page) {
-  const toasts = page.locator('[role="alert"]');
+  const toasts = page.locator('[role="alert"], [role="status"]');
   const count = await toasts.count();
   for (let i = 0; i < count; i++) {
     const dismissBtn = toasts.nth(i).locator('button[aria-label="Dismiss notification"]');
@@ -498,9 +500,11 @@ test.describe('Admin CRUD Mutations — Success Toast Notifications', () => {
     await page.locator('[data-testid="modal-content"] input[placeholder="e.g. Room 101"]').fill(uniqueName);
     await page.locator('[data-testid="modal-save"]').click();
 
-    const toast = page.locator('[role="alert"]');
-    await expect(toast.first()).toBeVisible({ timeout: 8000 });
-    const toastText = await toast.first().textContent();
+    // Match the creation/success toast specifically — the panel may have
+    // earlier status toasts (e.g. "available") still announcing.
+    const toast = page.locator('[role="alert"], [role="status"]').filter({ hasText: /created|saved|success/i }).first();
+    await expect(toast).toBeVisible({ timeout: 8000 });
+    const toastText = await toast.textContent();
     expect(toastText?.toLowerCase()).toMatch(/created|saved|success/);
   });
 
@@ -520,9 +524,11 @@ test.describe('Admin CRUD Mutations — Success Toast Notifications', () => {
     }
     await page.locator('[data-testid="modal-save"]').click();
 
-    const toast = page.locator('[role="alert"]');
-    await expect(toast.first()).toBeVisible({ timeout: 8000 });
-    const toastText = await toast.first().textContent();
+    // Match the creation/success toast specifically — the panel may have
+    // earlier status toasts (e.g. "available") still announcing.
+    const toast = page.locator('[role="alert"], [role="status"]').filter({ hasText: /created|saved|success/i }).first();
+    await expect(toast).toBeVisible({ timeout: 8000 });
+    const toastText = await toast.textContent();
     expect(toastText?.toLowerCase()).toMatch(/created|saved|success/);
   });
 
@@ -552,9 +558,11 @@ test.describe('Admin CRUD Mutations — Success Toast Notifications', () => {
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    const toast = page.locator('[role="alert"]');
-    await expect(toast.first()).toBeVisible({ timeout: 8000 });
-    const toastText = await toast.first().textContent();
+    // Match the creation/success toast specifically — the panel may have
+    // earlier status toasts (e.g. "available") still announcing.
+    const toast = page.locator('[role="alert"], [role="status"]').filter({ hasText: /created|saved|success/i }).first();
+    await expect(toast).toBeVisible({ timeout: 8000 });
+    const toastText = await toast.textContent();
     expect(toastText?.toLowerCase()).toMatch(/created|saved|success/);
   });
 });
@@ -570,9 +578,10 @@ test.describe('Admin CRUD Mutations — Error Handling', () => {
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    const toast = page.locator('[role="alert"]');
-    await expect(toast.first()).toBeVisible({ timeout: 5000 });
-    const toastText = await toast.first().textContent();
+    // Match the validation/warning toast specifically.
+    const toast = page.locator('[role="alert"], [role="status"]').filter({ hasText: /required|warning|error/i }).first();
+    await expect(toast).toBeVisible({ timeout: 5000 });
+    const toastText = await toast.textContent();
     expect(toastText?.toLowerCase()).toMatch(/required|warning|error/);
   });
 
@@ -586,9 +595,10 @@ test.describe('Admin CRUD Mutations — Error Handling', () => {
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    const toast = page.locator('[role="alert"]');
-    await expect(toast.first()).toBeVisible({ timeout: 5000 });
-    const toastText = await toast.first().textContent();
+    // Match the validation/warning toast specifically.
+    const toast = page.locator('[role="alert"], [role="status"]').filter({ hasText: /required|warning|error/i }).first();
+    await expect(toast).toBeVisible({ timeout: 5000 });
+    const toastText = await toast.textContent();
     expect(toastText?.toLowerCase()).toMatch(/required|warning|error/);
   });
 
@@ -602,9 +612,10 @@ test.describe('Admin CRUD Mutations — Error Handling', () => {
 
     await page.locator('[data-testid="modal-save"]').click();
 
-    const toast = page.locator('[role="alert"]');
-    await expect(toast.first()).toBeVisible({ timeout: 5000 });
-    const toastText = await toast.first().textContent();
+    // Match the validation/warning toast specifically.
+    const toast = page.locator('[role="alert"], [role="status"]').filter({ hasText: /required|warning|error/i }).first();
+    await expect(toast).toBeVisible({ timeout: 5000 });
+    const toastText = await toast.textContent();
     expect(toastText?.toLowerCase()).toMatch(/required|warning|error/);
   });
 });

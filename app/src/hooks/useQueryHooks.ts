@@ -260,19 +260,6 @@ export function useMealsQuery() {
   });
 }
 
-/** Fetch all categories */
-export function useCategoriesQuery() {
-  const toastError = useErrorToast();
-  return useQuery<Category[]>({
-    queryKey: queryKeys.categories,
-    queryFn: () => api.getCategories() as Promise<Category[]>,
-    throwOnError: (err) => {
-      toastError('Failed to load categories', err);
-      return false;
-    },
-  });
-}
-
 /** Fetch all meal categories */
 export function useMealCategoriesQuery() {
   const toastError = useErrorToast();
@@ -670,22 +657,6 @@ export function useDeleteRoomMutation() {
   );
 }
 
-/** Save (create/update) an order */
-export function useSaveOrderMutation(editId?: string | number) {
-  const queryClient = useQueryClient();
-  const toastError = useErrorToast();
-  const { showToast } = useToast();
-
-  return useMutation({
-    mutationFn: (data: Schemas['OrderCreateRequest'] | Schemas['OrderUpdateRequest']) => api.saveOrder(data, editId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.orders() });
-      showToast(editId ? 'Order updated' : 'Order created', 'success');
-    },
-    onError: (err) => toastError('Failed to save order', err),
-  });
-}
-
 /** Delete an order */
 export function useDeleteOrderMutation() {
   return useCrudMutation(
@@ -694,6 +665,22 @@ export function useDeleteOrderMutation() {
     'Order deleted',
     'Failed to delete order',
   );
+}
+
+/** Update an order's state via the status-only PATCH endpoint */
+export function useUpdateOrderStatusMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string | number; status: string }) => api.updateOrderStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders() });
+      showToast('Order state updated', 'success');
+    },
+    onError: (err) => toastError('Failed to update order state', err),
+  });
 }
 
 /** Save (create/update) a rate plan */
@@ -722,32 +709,6 @@ export function useDeleteRatePlanMutation() {
   );
 }
 
-/** Save (create/update) a meal */
-export function useSaveMealMutation(editId?: string | number) {
-  const queryClient = useQueryClient();
-  const toastError = useErrorToast();
-  const { showToast } = useToast();
-
-  return useMutation({
-    mutationFn: (data: Schemas['MealCreateRequest'] | Schemas['MealUpdateRequest']) => api.saveMeal(data, editId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.meals });
-      showToast(editId ? 'Meal updated' : 'Meal created', 'success');
-    },
-    onError: (err) => toastError('Failed to save meal', err),
-  });
-}
-
-/** Delete a meal */
-export function useDeleteMealMutation() {
-  return useCrudMutation(
-    (id: string | number) => api.deleteMeal(id),
-    queryKeys.meals,
-    'Meal deleted',
-    'Failed to delete meal',
-  );
-}
-
 /** Update tenant settings */
 export function useUpdateSettingsMutation() {
   const queryClient = useQueryClient();
@@ -762,98 +723,6 @@ export function useUpdateSettingsMutation() {
     },
     onError: (err) => toastError('Failed to save settings', err),
   });
-}
-
-// ─── Additional Mutation Hooks ────────────────────────────────────────
-
-/** Save (create/update) a meal category */
-export function useSaveMealCategoryMutation(editId?: string | number) {
-  const queryClient = useQueryClient();
-  const toastError = useErrorToast();
-  const { showToast } = useToast();
-
-  return useMutation({
-    mutationFn: (data: Schemas['MealCategoryCreateRequest'] | Schemas['MealCategoryUpdateRequest']) => api.saveMealCategory(data, editId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealCategories });
-      showToast(editId ? 'Category updated' : 'Category created', 'success');
-    },
-    onError: (err) => toastError('Failed to save category', err),
-  });
-}
-
-/** Delete a meal category */
-export function useDeleteMealCategoryMutation() {
-  return useCrudMutation(
-    (id: string | number) => api.deleteMealCategory(id),
-    queryKeys.mealCategories,
-    'Category deleted',
-    'Failed to delete category',
-  );
-}
-
-/** Create a meal schedule */
-export function useCreateMealScheduleMutation() {
-  const queryClient = useQueryClient();
-  const toastError = useErrorToast();
-  const { showToast } = useToast();
-
-  return useMutation({
-    mutationFn: (data: Schemas['MealScheduleCreateRequest']) =>
-      api.createMealSchedule(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealSchedules() });
-      showToast('Meal scheduled', 'success');
-    },
-    onError: (err) => toastError('Failed to schedule meal', err),
-  });
-}
-
-/** Delete a meal schedule */
-export function useDeleteMealScheduleMutation() {
-  const queryClient = useQueryClient();
-  const toastError = useErrorToast();
-  const { showToast } = useToast();
-
-  return useMutation({
-    mutationFn: (id: string) => api.deleteMealSchedule(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealSchedules() });
-      showToast('Meal removed', 'success');
-    },
-    onError: (err) => toastError('Failed to remove meal', err),
-  });
-}
-
-/** Save (create/update) a plan */
-export function useSavePlanMutation(editId?: string | number) {
-  const queryClient = useQueryClient();
-  const toastError = useErrorToast();
-  const { showToast } = useToast();
-
-  return useMutation({
-    mutationFn: (data: Schemas['PlanCreateRequest'] | Schemas['PlanUpdateRequest']) => api.savePlan(data, editId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.plans });
-      showToast(editId ? 'Plan updated' : 'Plan created', 'success');
-    },
-    onError: (err) => toastError('Failed to save plan', err),
-  });
-}
-
-/** Delete a plan */
-export function useDeletePlanMutation() {
-  return useCrudMutation(
-    (id: string | number) => api.deletePlan(id),
-    queryKeys.plans,
-    'Plan deleted',
-    'Failed to delete plan',
-  );
-}
-
-/** Update tenant settings (alias for settings mutation) */
-export function useSaveSettingsMutation() {
-  return useUpdateSettingsMutation();
 }
 
 /** Change password mutation */
@@ -907,21 +776,6 @@ export function useBookingsReportQuery(opts?: { days?: number; start?: string; e
     queryFn: () => api.getBookingsReport(opts),
     throwOnError: (err) => {
       toastError('Failed to load bookings report', err);
-      return false;
-    },
-  });
-}
-
-// ─── Super Admin Queries ──────────────────────────────────────────────
-
-/** Fetch all admin users — T6: getAdmins returns a paginated envelope */
-export function useAdminsQuery() {
-  const toastError = useErrorToast();
-  return useQuery<Paginated<unknown>>({
-    queryKey: queryKeys.admins,
-    queryFn: () => api.getAdmins() as Promise<Paginated<unknown>>,
-    throwOnError: (err) => {
-      toastError('Failed to load admins', err);
       return false;
     },
   });
@@ -1672,128 +1526,8 @@ export { useProductsQuery as useProductsRQ };
 export { useRatePlansQuery as useRatePlansRQ };
 export { usePlansQuery as usePlansRQ };
 
-// ─── Super Admin: Cross-Tenant Pillar Overview Hooks ─────────────────
-// Query key factories for paginated list queries
-const superKeys = {
-  financials: ['admin', 'financials'] as const,
-  financialsOverview: ['admin', 'financials', 'overview'] as const,
-  financialsInvoices: (page: number) => ['admin', 'financials', 'invoices', page] as const,
-  hr: ['admin', 'hr'] as const,
-  hrOverview: ['admin', 'hr', 'overview'] as const,
-  hrEmployees: (page: number) => ['admin', 'hr', 'employees', page] as const,
-  supply: ['admin', 'supply'] as const,
-  supplyOverview: ['admin', 'supply', 'overview'] as const,
-  supplyPurchaseOrders: (page: number) => ['admin', 'supply', 'purchase-orders', page] as const,
-  crm: ['admin', 'crm'] as const,
-  crmOverview: ['admin', 'crm', 'overview'] as const,
-  crmContacts: (page: number) => ['admin', 'crm', 'contacts', page] as const,
-  crmOpportunities: (page: number) => ['admin', 'crm', 'opportunities', page] as const,
-  storefront: ['admin', 'storefront'] as const,
-  storefrontOverview: ['admin', 'storefront', 'overview'] as const,
-  storefrontProducts: (page: number) => ['admin', 'storefront', 'products', page] as const,
-  ai: ['admin', 'ai'] as const,
-  aiOverview: ['admin', 'ai', 'overview'] as const,
-  aiPredictions: (page: number) => ['admin', 'ai', 'predictions', page] as const,
-};
-
-// ── Financials ───────────────────────────────────────────────────────
-export function useSuperFinancialsOverviewQuery() {
-  return useQuery({
-    queryKey: superKeys.financialsOverview,
-    queryFn: api.getSuperFinancialsOverview,
-  });
-}
-
-export function useSuperInvoicesQuery(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: superKeys.financialsInvoices(page),
-    queryFn: () => api.getSuperInvoices(page, limit),
-  });
-}
-
-// ── HR ───────────────────────────────────────────────────────────────
-export function useSuperHROverviewQuery() {
-  return useQuery({
-    queryKey: superKeys.hrOverview,
-    queryFn: api.getSuperHROverview,
-  });
-}
-
-export function useSuperEmployeesQuery(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: superKeys.hrEmployees(page),
-    queryFn: () => api.getSuperEmployees(page, limit),
-  });
-}
-
-// ── Supply Chain ─────────────────────────────────────────────────────
-export function useSuperSupplyOverviewQuery() {
-  return useQuery({
-    queryKey: superKeys.supplyOverview,
-    queryFn: api.getSuperSupplyOverview,
-  });
-}
-
-export function useSuperPurchaseOrdersQuery(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: superKeys.supplyPurchaseOrders(page),
-    queryFn: () => api.getSuperPurchaseOrders(page, limit),
-  });
-}
-
-// ── CRM ──────────────────────────────────────────────────────────────
-export function useSuperCRMOverviewQuery() {
-  return useQuery({
-    queryKey: superKeys.crmOverview,
-    queryFn: api.getSuperCRMOverview,
-  });
-}
-
-export function useSuperContactsQuery(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: superKeys.crmContacts(page),
-    queryFn: () => api.getSuperContacts(page, limit),
-  });
-}
-
-export function useSuperOpportunitiesQuery(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: superKeys.crmOpportunities(page),
-    queryFn: () => api.getSuperOpportunities(page, limit),
-  });
-}
-
-// ── Storefront ───────────────────────────────────────────────────────
-export function useSuperStorefrontOverviewQuery() {
-  return useQuery({
-    queryKey: superKeys.storefrontOverview,
-    queryFn: api.getSuperStorefrontOverview,
-  });
-}
-
-export function useSuperStorefrontProductsQuery(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: superKeys.storefrontProducts(page),
-    queryFn: () => api.getSuperStorefrontProducts(page, limit),
-  });
-}
-
-// ── AI & Insights ────────────────────────────────────────────────────
-export function useSuperAIOverviewQuery() {
-  return useQuery({
-    queryKey: superKeys.aiOverview,
-    queryFn: api.getSuperAIOverview,
-  });
-}
-
-export function useSuperPredictionsQuery(page = 1, limit = 20) {
-  return useQuery({
-    queryKey: superKeys.aiPredictions(page),
-    queryFn: () => api.getSuperPredictions(page, limit),
-  });
-}
+// ─── Admin Users & Health Queries ─────────────────────────────────────
 export { useMealsQuery as useMealsRQ };
-export { useCategoriesQuery as useCategoriesRQ };
 export { useMealCategoriesQuery as useMealCategoriesRQ };
 export { useMealSchedulesQuery as useMealSchedulesRQ };
 export { useSettingsQuery as useSettingsRQ };

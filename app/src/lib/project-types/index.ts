@@ -164,23 +164,6 @@ export function encodeMetaValue(field: MetaFieldDef, value: unknown): string | n
   return s.trim() === '' ? null : s;
 }
 
-/**
- * Decode a stored wire string back into the widget's native value shape
- * (inverse of encodeMetaValue; tolerant of legacy comma-separated rows).
- */
-export function decodeMetaValue(field: MetaFieldDef, raw: unknown): unknown {
-  if (raw === undefined || raw === null) return MULTI_VALUE_TYPES.has(field.type) ? [] : '';
-  const s = String(raw);
-  if (!MULTI_VALUE_TYPES.has(field.type)) return s;
-  try {
-    const parsed = JSON.parse(s);
-    if (Array.isArray(parsed)) return parsed.map(String);
-  } catch {
-    /* fall through to legacy parsing */
-  }
-  return s.split(',').map((v) => v.trim()).filter(Boolean);
-}
-
 // ─── Meta write-op diffing ───────────────────────────────────────────
 
 export interface MetaRow {
