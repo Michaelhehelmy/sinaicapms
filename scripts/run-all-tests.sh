@@ -2,10 +2,12 @@
 #
 # run-all-tests.sh — run every SinaiCamps test suite and write a findings report.
 #
-#   bash scripts/run-all-tests.sh           # full local gate (includes Playwright E2E)
-#   bash scripts/run-all-tests.sh --quick   # skip Playwright E2E (unit + build only)
+#   bash scripts/run-all-tests.sh              # full local gate (includes Playwright E2E)
+#   bash scripts/run-all-tests.sh --quick      # skip Playwright E2E (unit + build only)
+#   bash scripts/run-all-tests.sh --e2e-local  # E2E per-project with fresh server restarts
+#                                              # (safe local alternative — see inner notes)
 #
-# Report: test-results/all-tests-<timestamp>/REPORT.md  (+ per-suite raw logs)
+# Report: reports/all-tests-<timestamp>/REPORT.md  (+ per-suite raw logs)
 # Exit:   0 when every suite passed, 1 when any suite failed.
 #
 # Notes:
@@ -27,8 +29,10 @@ OUTDIR="$ROOT/reports/all-tests-$STAMP"
 mkdir -p "$OUTDIR"
 
 QUICK=0
+E2E_LOCAL=0
 for a in "$@"; do
   [ "$a" = "--quick" ] && QUICK=1
+  [ "$a" = "--e2e-local" ] && E2E_LOCAL=1
 done
 
 PASS=0
@@ -36,6 +40,14 @@ FAIL=0
 SKIPPED_SUITES=0
 declare -a FAILED_NAMES=()
 declare -a ALL_FAILED_TESTS=()
+
+# Kill leftover playwright webServer processes (workerd, wrangler dev, astro dev)
+# between per-project runs so the next project boots a fresh stack. The [x]
+# bracket trick prevents the grep from matching its own command line.
+kill_test_servers() {
+  ps -eo pid=,args= | grep -E '[w]orkerd|[w]rangler dev|[a]stro dev' | awk '{print $1}' | xargs -r kill 2>/dev/null || true
+  sleep 1
+}
 
 run_suite() {
   local name="$1"; shift
@@ -64,7 +76,17 @@ run_suite "integration" bash -c "npx vitest run --config vitest.integration.conf
 run_suite "astro-build" bash -c "cd app && npm run build"
 
 if [ "$QUICK" -eq 0 ]; then
-  run_suite "playwright-e2e" bash -c "CI=true npx playwright test"
+  if [ "$E2E_LOCAL" -eq 1 ]; then
+    # Safe local pattern: one short playwright run per project, restarting the
+    # dev stack between projects (documented: a long full-gate marathon degrades
+    # wrangler dev under sustained load → cascading timeouts after ~300 tests).
+    for p in marketplace tenant admin auth cross-cutting pos public routing; do
+      kill_test_servers
+      run_suite "playwright-$p" bash -c "CI=true npx playwright test --project=$p"
+    done
+  else
+    run_suite "playwright-e2e" bash -c "CI=true npx playwright test"
+  fi
 else
   SKIPPED_SUITES=1
   echo "  ⏭  playwright-e2e skipped (--quick)" | tee -a "$OUTDIR/run.log"
@@ -108,7 +130,12 @@ sort -u "$OUTDIR/_failures.txt" -o "$OUTDIR/_failures.txt" 2>/dev/null
   echo ""
   echo "| Suite | Result | Duration | Details |"
   echo "| --- | --- | --- | --- |"
-  for name in app-unit backend-unit integration astro-build playwright-e2e; do
+  names="app-unit backend-unit integration astro-build"
+  if [ "$QUICK" -eq 0 ] && [ "$E2E_LOCAL" -eq 0 ]; then
+    names="$names playwright-e2e"
+  fi
+  names="$names $(ls "$OUTDIR"/playwright-*.log 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.log$//' | sort -u)"
+  for name in $names; do
     log="$OUTDIR/$name.log"
     [ -f "$log" ] || continue
     if [ "$name" = "playwright-e2e" ] && [ "$QUICK" -eq 1 ]; then
