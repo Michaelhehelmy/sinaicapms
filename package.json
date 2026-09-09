@@ -4,6 +4,8 @@
   "description": "Integration test suite for CampMaster Pro",
   "scripts": {
     "test": "vitest run",
+    "test:all": "bash scripts/run-all-tests.sh",
+    "test:all:quick": "bash scripts/run-all-tests.sh --quick",
     "test:unit": "vitest run tests/unit/",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:unit:watch": "vitest watch tests/unit/",

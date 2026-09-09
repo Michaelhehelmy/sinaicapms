@@ -1,5 +1,6 @@
 import POSApp from './POSApp';
 import { ToastProvider } from '@/components/ui/Toast';
+import { DebugFeedbackWidget } from '@/components/debug/DebugFeedbackWidget';
 
 /**
  * Client-only POS shell. Wraps POSApp in the shared ToastProvider, exactly
@@ -18,6 +19,7 @@ export default function PosShell() {
   return (
     <ToastProvider>
       <POSApp />
+      <DebugFeedbackWidget />
     </ToastProvider>
   );
 }

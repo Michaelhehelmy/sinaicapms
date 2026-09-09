@@ -97,6 +97,7 @@ const SuperAIPanel = React.lazy(() => import('./SuperAIPanel'));
 const UsersPanel = React.lazy(() => import('./UsersPanel'));
 const SystemSettingsPanel = React.lazy(() => import('./SystemSettingsPanel'));
 const AuditLogPanel = React.lazy(() => import('./AuditLogPanel'));
+const FeedbackPanel = React.lazy(() => import('./FeedbackPanel'));
 const SubscriptionsPanel = React.lazy(() => import('./SubscriptionsPanel'));
 const SuperReportsPanel = React.lazy(() => import('./SuperReportsPanel'));
 const SystemHealthPanel = React.lazy(() => import('./SystemHealthPanel'));
@@ -173,6 +174,7 @@ const SUPER_NAV: NavItem[] = [
   { id: 'super_dashboard', label: 'Super Dashboard', icon: IconDashboard },
   { id: 'super_tenants', label: 'Tenants', icon: IconRooms },
   { id: 'super_reservations', label: 'All Orders', icon: IconOrders },
+  { id: 'super_feedback', label: 'Feedback', icon: IconInbox },
   { id: 'super_users', label: 'Users', icon: IconStaff },
   { id: 'super_settings', label: 'System Settings', icon: IconSettings },
   { id: 'super_audit', label: 'Audit Log', icon: IconReports },
@@ -476,6 +478,9 @@ function AdminAppInner() {
         }
         if (tab === 'super_audit') {
           return <AuditLogPanel />;
+        }
+        if (tab === 'super_feedback') {
+          return <FeedbackPanel />;
         }
         if (tab === 'super_subscriptions') {
           return <SubscriptionsPanel />;

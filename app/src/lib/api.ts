@@ -2588,3 +2588,80 @@ export function getAdminAudit(params?: Record<string, string>) {
   const qs = params ? '?' + new URLSearchParams(params).toString() : '';
   return apiFetch<AdminAuditPage>(`/admin/audit${qs}`);
 }
+
+// ─── Feedback (human-testing debug reports) ────────────────────────────────
+// POST /api/feedback is public (debug widget on any surface — admin/POS SPAs
+// and flag-gated public pages). List/detail/status live under the super-admin
+// /api/admin/feedback router. Response rows come back camelCased (backend
+// jsonResponse toCamel), so the report interface mirrors toCamel keys.
+
+export type FeedbackCategory = 'bug' | 'missing' | 'flow';
+export type FeedbackAuthorType = 'admin' | 'pos' | 'public';
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'archived';
+
+export interface FeedbackReport {
+  id: string;
+  tenantId: string | null;
+  authorType: FeedbackAuthorType;
+  authorId: string | null;
+  authorName: string | null;
+  authorEmail: string | null;
+  role: string | null;
+  category: FeedbackCategory;
+  message: string;
+  personalView: string | null;
+  pageUrl: string;
+  userAgent: string | null;
+  status: FeedbackStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+}
+
+/** Full report — list rows omit the screenshot payload to keep envelopes small. */
+export interface FeedbackDetail extends FeedbackReport {
+  screenshot: string | null;
+}
+
+/** Public POST body. Sent camelCase; the backend toSnake-converts on parse. */
+export interface FeedbackInput {
+  category: FeedbackCategory;
+  message: string;
+  personalView?: string | null;
+  pageUrl: string;
+  authorType: FeedbackAuthorType;
+  authorName?: string | null;
+  authorEmail?: string | null;
+  role?: string | null;
+  userAgent?: string | null;
+  screenshot?: string | null;
+}
+
+export function submitFeedback(input: FeedbackInput) {
+  return apiFetch<{ success: boolean; id: string }>('/feedback', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getFeedbackList(params?: { status?: FeedbackStatus; authorType?: FeedbackAuthorType; page?: number; pageSize?: number }) {
+  const qs = params
+    ? '?' + new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(params).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => [k, String(v)]),
+        ),
+      ).toString()
+    : '';
+  return apiFetch<Paginated<FeedbackReport>>(`/admin/feedback${qs}`);
+}
+
+export function getFeedback(id: string) {
+  return apiFetch<FeedbackDetail>(`/admin/feedback/${encodeURIComponent(id)}`);
+}
+
+export function updateFeedbackStatus(id: string, status: FeedbackStatus) {
+  return apiFetch<{ success: boolean; id: string; status: FeedbackStatus }>(`/admin/feedback/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}

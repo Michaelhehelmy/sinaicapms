@@ -139,6 +139,10 @@ export const session = {
 
   setUser(realm: Realm, user: unknown): void {
     write(USER_KEYS[realm], JSON.stringify(user));
+    // Emit so identity consumers (e.g. the debug feedback widget) can react
+    // when the user blob lands — setTokens alone emits before the user is
+    // stored, which is too early to resolve identity.
+    emit(realm);
   },
 
   onAuthChange(listener: AuthChangeListener): () => void {

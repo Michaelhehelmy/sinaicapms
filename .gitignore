@@ -40,3 +40,4 @@ sinaicamps.db
 # Astro/Storybook build artifacts
 .astro/
 app/storybook-static/
+reports/

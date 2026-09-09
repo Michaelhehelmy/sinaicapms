@@ -37,6 +37,8 @@ import type {
   AdminScheduledReportsPayload,
   AdminSettingsPayload,
   AdminSubscriptionsPage,
+  FeedbackReport,
+  FeedbackStatus,
 } from '@/lib/api';
 // T8-C: spec-derived wire types — the typed api client is the contract source.
 import type { components } from '@/lib/api-types';
@@ -78,6 +80,8 @@ export const queryKeys = {
   lowStock: ['admin', 'inventory', 'low-stock'] as const,
   adminStats: ['admin', 'stats'] as const,
   adminAudit: (params?: Record<string, string>) => ['admin', 'audit', params] as const,
+  feedback: (params?: Record<string, string>) => ['admin', 'feedback', params] as const,
+  feedbackDetail: (id: string) => ['admin', 'feedback', id] as const,
   adminHealth: ['admin', 'health'] as const,
   adminHealthMetrics: ['admin', 'healthMetrics'] as const,
   adminPerformance: ['admin', 'performance'] as const,
@@ -1564,6 +1568,34 @@ export function useAdminAuditQuery(params?: Record<string, string>) {
   return useQuery<AdminAuditPage>({
     queryKey: queryKeys.adminAudit(params),
     queryFn: () => api.getAdminAudit(params),
+  });
+}
+
+// ─── Feedback (human-testing debug reports, Super Admin) ───────────────
+
+/** Fetch the feedback list (paged; screenshot omitted on list rows). */
+export function useFeedbackListQuery(params?: { status?: string; authorType?: string; page?: number; pageSize?: number }) {
+  return useQuery<Paginated<FeedbackReport>>({
+    queryKey: queryKeys.feedback({
+      ...(params?.status ? { status: params.status } : {}),
+      ...(params?.authorType ? { authorType: params.authorType } : {}),
+      ...(params?.page ? { page: String(params.page) } : {}),
+      ...(params?.pageSize ? { pageSize: String(params.pageSize) } : {}),
+    }),
+    queryFn: () => api.getFeedbackList(params),
+  });
+}
+
+/** Update a report's status (in-progress / resolved / archived / open). */
+export function useUpdateFeedbackStatusMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: FeedbackStatus }) =>
+      api.updateFeedbackStatus(id, status),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.feedback() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.feedbackDetail(id) });
+    },
   });
 }
 

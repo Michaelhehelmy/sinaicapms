@@ -1,6 +1,7 @@
 import AdminApp from './AdminApp';
 import { AuthProvider } from '@/lib/auth';
 import { ToastProvider } from '@/components/ui/Toast';
+import { DebugFeedbackWidget } from '@/components/debug/DebugFeedbackWidget';
 
 /**
  * Client-only admin SPA shell. Wraps AdminApp in the AuthProvider +
@@ -21,6 +22,7 @@ export default function AdminShell() {
     <ToastProvider>
       <AuthProvider>
         <AdminApp />
+        <DebugFeedbackWidget />
       </AuthProvider>
     </ToastProvider>
   );

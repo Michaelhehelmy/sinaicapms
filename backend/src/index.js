@@ -46,6 +46,7 @@ import promotionsRoutes from './api/promotions';
 import onboardingRoutes from './api/onboarding';
 import { resolveScope } from './middleware/resolveScope.js';
 import leadsRoutes, { createLead } from './api/leads';
+import feedbackRoutes, { createFeedback } from './api/feedback';
 import inboxRoutes from './api/inbox';
 import { tenantMetaRoutes, projectMetaRoutes } from './api/meta';
 import tagsRoutes, { projectTagsRoutes } from './api/tags';
@@ -266,6 +267,7 @@ for (const [prefix, handler] of [
   ['/admin/audit', adminAuditRoutes],
   ['/admin/settings', adminSettingsRoutes],
   ['/admin/subscriptions', adminSubscriptionsRoutes],
+  ['/admin/feedback', feedbackRoutes],
 ]) {
   app.use(`/api${prefix}`, superAdminAuth);
   app.route(`/api${prefix}`, handler);
@@ -309,6 +311,13 @@ app.route('/api/pos/products/barcode', posBarcodeRoutes);
 // Kept during the transition window with Deprecation + Sunset headers. ────
 const contactPublicScope = resolveScope({ public: true });
 app.post('/api/contact', contactPublicScope, (c) => createLead(c).then(withSunset));
+
+// ── Feedback (human-testing debug reports). POST /api/feedback is PUBLIC
+// (debug widget on any surface; RATE_LIMIT policy 'POST /api/feedback' 6/min);
+// tenant_id comes from the resolved public scope (hostname), never the body.
+// List/detail/status live under /api/admin/feedback (super-admin sub-router).
+const feedbackPublicScope = resolveScope({ public: true });
+app.post('/api/feedback', feedbackPublicScope, (c) => createFeedback(c));
 
 // ── Meal Schedules routes (auth + tenant scoping) ─────────
 const mealSchedulesGate = requireAuth({ realm: 'admin' });

@@ -485,14 +485,14 @@ describe('AdminApp', () => {
     });
   });
 
-  it('super admin sees ONLY the 16 super nav items (no tenant tabs)', async () => {
+  it('super admin sees ONLY the 17 super nav items (no tenant tabs)', async () => {
     authState.hasRole = (() => true) as unknown as typeof authState.hasRole;
     render(<AdminApp />);
     const sidebar = within(screen.getByTestId('admin-sidebar'));
     const tabIds = screen.getAllByTestId(/^nav-tab-/).map((el) => el.getAttribute('data-testid')!.replace('nav-tab-', ''));
     expect(tabIds).toEqual([
-      'super_dashboard', 'super_tenants', 'super_reservations', 'super_users',
-      'super_settings', 'super_audit', 'super_subscriptions',
+      'super_dashboard', 'super_tenants', 'super_reservations', 'super_feedback',
+      'super_users', 'super_settings', 'super_audit', 'super_subscriptions',
       'super_financials', 'super_hr', 'super_supply', 'super_crm', 'super_storefront', 'super_ai',
       'super_reports', 'super_health', 'super_performance',
     ]);

@@ -3,6 +3,7 @@ import { normalizeAssetUrl } from '@/lib/utils';
 import '@/styles/global.css';
 import { buildTenantTheme, type TenantTheme } from '@/lib/theme';
 import { resolveDataDomain } from '@/lib/plausible';
+import { DebugFeedbackWidget } from '@/components/debug/DebugFeedbackWidget';
 
 const {
   title = 'Home',
@@ -52,6 +53,13 @@ const zone = Astro.locals.zone || 'marketplace';
 const menuNavUrl = zone === 'tenant'
   ? `/menu${querySuffix}`
   : `/camp/${(tenant?.id as string) || ''}/menu${querySuffix}`;
+
+// ── Human-testing debug widget gating (SSR). Regular visitors never load the
+// island: it only renders when the `sc_debug` cookie is set (persisted after a
+// first visit to ?debug=1). The widget additionally self-gates on the same
+// cookie/flag, so even a stray render stays invisible.
+const rawCookie = Astro.request.headers.get('cookie') || '';
+const debugEnabled = Astro.url.searchParams.get('debug') === '1' || rawCookie.includes('sc_debug=1');
 
 // Accommodations deep link is zone-aware. The tenant zone lists rooms at
 // /rooms; the marketplace zone lists all camps at /camps. Pointing the nav
@@ -762,6 +770,23 @@ const jsonLd = sanitizeForJsonLd({
       window.addEventListener('resize', function () {
         if (window.innerWidth > 768) closeMenu();
       });
+    })();
+  </script>
+
+  <!-- Human-testing debug feedback widget: server-gated (cookie/query) so
+       regular visitors ship zero extra JS. -->
+  {debugEnabled && <DebugFeedbackWidget client:load />}
+  <script is:inline>
+    (function () {
+      try {
+        var p = new URLSearchParams(window.location.search);
+        if (p.get('debug') === '1') {
+          document.cookie = 'sc_debug=1; path=/; max-age=2592000; SameSite=Lax';
+          p.delete('debug');
+          var q = p.toString();
+          window.history.replaceState({}, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash);
+        }
+      } catch (e) {}
     })();
   </script>
 </body>
