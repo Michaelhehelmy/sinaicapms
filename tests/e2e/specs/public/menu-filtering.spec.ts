@@ -8,8 +8,8 @@ const MENU_URL = `/camp/${TENANT_ID}/menu`;
 
 test.describe('Menu Page — Layout & Hero', () => {
   test.beforeEach(async ({ page }) => {
-    // networkidle ensures JS bundles are loaded and React has hydrated
-    await page.goto(MENU_URL, { waitUntil: 'networkidle' });
+    // domcontentloaded + element wait ensures JS bundles are loaded and React has hydrated
+    await page.goto(MENU_URL, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="tenant-nav"]').waitFor({ state: 'visible' });
   });
 
@@ -89,7 +89,7 @@ test.describe('Menu Page — Category Navigation', () => {
 
 test.describe('Menu Page — Search Filtering', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(MENU_URL, { waitUntil: 'networkidle' });
+    await page.goto(MENU_URL, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="tenant-nav-link"]').first().waitFor({ state: 'visible' });
   });
 
@@ -165,7 +165,7 @@ test.describe('Menu Page — Search Filtering', () => {
 
 test.describe('Menu Page — Meal Cards', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(MENU_URL, { waitUntil: 'networkidle' });
+    await page.goto(MENU_URL, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="tenant-nav-link"]').first().waitFor({ state: 'visible' });
   });
 
@@ -237,7 +237,7 @@ test.describe('Menu Page — Meal Cards', () => {
 
 test.describe('Menu Page — Cart', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(MENU_URL, { waitUntil: 'networkidle' });
+    await page.goto(MENU_URL, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="tenant-nav-link"]').first().waitFor({ state: 'visible' });
   });
 
@@ -282,7 +282,7 @@ test.describe('Menu Page — Empty State & Errors', () => {
   test('page loads without critical JavaScript errors', async ({ page }) => {
     const jsErrors: string[] = [];
     page.on('pageerror', (error) => jsErrors.push(error.message));
-    await page.goto(MENU_URL, { waitUntil: 'networkidle' });
+    await page.goto(MENU_URL, { waitUntil: 'domcontentloaded' });
 
     const criticalErrors = jsErrors.filter(
       (e) =>
