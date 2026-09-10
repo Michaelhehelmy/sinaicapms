@@ -13,13 +13,16 @@ const API = API_BASE_URL;
 let adminToken = null;
 let testTenantId = null;
 let mealCategoryId = null;
+// Unique per-run email — admins.email is globally UNIQUE; a fixed email
+// collides with leftover rows when a crashed run skips its afterAll cleanup.
+const testId = `meal-test-${Date.now()}`;
+const adminEmail = `admin@${testId}.com`;
 
 beforeAll(async () => {
   const superToken = await superAdminLogin();
-  const id = `meal-test-${Date.now()}`;
-  testTenantId = await createTestTenant(id, id, 'Meal Test Tenant');
-  await createTenantAdmin(testTenantId, 'admin@meals.com', 'Password123!', superToken);
-  adminToken = await tenantAdminLogin(testTenantId, 'admin@meals.com', 'Password123!');
+  testTenantId = await createTestTenant(testId, testId, 'Meal Test Tenant');
+  await createTenantAdmin(testTenantId, adminEmail, 'Password123!', superToken);
+  adminToken = await tenantAdminLogin(testTenantId, adminEmail, 'Password123!');
 
   // meals.meal_category_id is NOT NULL (FK to meal_categories) — create a category first.
   const catRes = await fetch(`${API}/api/meal-categories`, {

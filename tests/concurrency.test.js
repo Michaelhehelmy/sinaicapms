@@ -138,7 +138,18 @@ describe('Concurrent Operations', () => {
 
     const statuses = [response1.status, response2.status];
     expect(statuses).toContain(200); // One succeeds
-    expect(statuses).toContain(409); // One is rejected (dual-booking conflict → 409)
+    // The loser is rejected by ONE of the two booking guards, depending on
+    // timing: if its advisory validateOrder runs after the winner's row
+    // commits it returns 400 ("already booked"); if both advisory checks pass
+    // before either INSERT commits, the WHERE NOT EXISTS insert guard fires
+    // and returns 409 ("Room no longer available"). Both outcomes are the
+    // same contract — no double-booking — so accept either code.
+    expect(statuses.some((s) => s === 400 || s === 409)).toBe(true);
+
+    // The durable proof: the room must now be booked, so a third attempt
+    // is rejected too — exactly one of the racing requests won.
+    const third = await sendRequest();
+    expect([400, 409]).toContain(third.status);
   });
 
   it('CON-02: Concurrent updates to same camp', async () => {

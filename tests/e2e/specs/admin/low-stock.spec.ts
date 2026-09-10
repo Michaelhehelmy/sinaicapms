@@ -91,12 +91,6 @@ test.describe.serial('Low-stock journey — deplete → alert → restock → cl
   });
 
   test('admin LowStockPanel reflects the alert for the seeded product', async ({ page }) => {
-    // The backend marks inventory GETs Cache-Control: public, max-age=300 and
-    // the BROWSER honors it (Node fetch does not) — a stale panel snapshot can
-    // keep showing pre-restock rows for 5 minutes. Force a no-cache fetch.
-    await page.route('**/api/inventory/low-stock*', (route) => {
-      void route.continue({ headers: { ...route.request().headers(), 'Cache-Control': 'no-cache' } });
-    });
     const admin = new AdminDashboardPage(page);
     for (let attempt = 0; attempt < 3; attempt++) {
       await admin.gotoTab(TENANT_ID, 'low-stock');
@@ -105,10 +99,13 @@ test.describe.serial('Low-stock journey — deplete → alert → restock → cl
       }
       try {
         await expectPanelContentReady(page, 'low-stock-panel');
-        await expect(page.locator('[data-testid="low-stock-list"]')).toContainText('Standard Tent', { timeout: 10_000 });
+        // Assert on the seeded product's row by ID — other same-name products
+        // (e.g. an orphaned "Standard Tent" from an older run) must not cause a
+        // false positive here or in the "clears after restock" test.
+        await expect(page.locator('[data-testid="low-stock-panel"] [data-row-id="' + TARGET_PRODUCT_ID + '"]')).toHaveCount(1, { timeout: 10_000 });
         return;
       } catch {
-        if (attempt === 2) throw new Error(`Low-stock panel failed to show Standard Tent after ${attempt + 1} attempts`);
+        if (attempt === 2) throw new Error(`Low-stock panel failed to show ${TARGET_PRODUCT_ID} row after ${attempt + 1} attempts`);
       }
     }
   });
@@ -142,12 +139,6 @@ test.describe.serial('Low-stock journey — deplete → alert → restock → cl
   });
 
   test('panel clears the alert after restocking', async ({ page }) => {
-    // The backend marks inventory GETs Cache-Control: public, max-age=300 and
-    // the BROWSER honors it — a stale depleted snapshot (from a previous panel
-    // visit within 5 min) would keep Standard Tent in the DOM. Force no-cache.
-    await page.route('**/api/inventory/low-stock*', (route) => {
-      void route.continue({ headers: { ...route.request().headers(), 'Cache-Control': 'no-cache' } });
-    });
     const admin = new AdminDashboardPage(page);
     for (let attempt = 0; attempt < 3; attempt++) {
       await admin.gotoTab(TENANT_ID, 'low-stock');
@@ -158,12 +149,13 @@ test.describe.serial('Low-stock journey — deplete → alert → restock → cl
         await expectPanelContentReady(page, 'low-stock-panel');
         // The panel may be EMPTY (no low-stock-list element) or populated with
         // OTHER low items (crud-mutations' freshly created products ship with
-        // stock 0 < min 10) — the robust check is that Standard Tent is absent
-        // from the panel, covering both states.
-        await expect(page.locator('[data-testid="low-stock-panel"]')).not.toContainText('Standard Tent', { timeout: 10_000 });
+        // stock 0 < min 10, and an orphaned same-name "Standard Tent" from an
+        // older run may legitimately remain) — the robust check is that the
+        // seeded product's ROW (by ID) is gone, covering all those states.
+        await expect(page.locator('[data-testid="low-stock-panel"] [data-row-id="' + TARGET_PRODUCT_ID + '"]')).toHaveCount(0, { timeout: 10_000 });
         return;
       } catch {
-        if (attempt === 2) throw new Error(`Low-stock panel still shows Standard Tent after ${attempt + 1} attempts`);
+        if (attempt === 2) throw new Error(`Low-stock panel still shows ${TARGET_PRODUCT_ID} after ${attempt + 1} attempts`);
       }
     }
   });

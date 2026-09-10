@@ -281,11 +281,19 @@ export async function handleAdminRoute(request, env) {
         }
         const { email, password, tenant_id, role, first_name, last_name } = parsed.data;
         const passHash = await bcrypt.hash(password, 12);
-        const existing = await env.DB.prepare("SELECT id, role FROM admins WHERE email = ? AND (tenant_id = ? OR tenant_id IS NULL)").bind(email, tenant_id || null).first();
+        // Check the FULL global UNIQUE(email) constraint, not just same-tenant:
+        // admins.email is globally unique (migration 0028), so an email owned by
+        // another tenant would otherwise fall through to INSERT → UNIQUE violation → 500.
+        const existing = await env.DB.prepare("SELECT id, role, tenant_id FROM admins WHERE email = ?").bind(email).first();
         if (existing) {
           // Prevent overwriting super_admin accounts via this route
           if (existing.role === 'super_admin') {
             return errorResponse('Cannot modify super_admin accounts via this endpoint', 403);
+          }
+          // tenant_id `null` (or unset in unit-test mocks) means a shared/global
+          // admin — only a *different, set* owner is a cross-tenant conflict.
+          if (existing.tenant_id != null && existing.tenant_id !== tenant_id) {
+            return errorResponse(`Email is already in use by another tenant`, 409);
           }
           await env.DB.prepare(
             "UPDATE admins SET tenant_id = ?, password_hash = ?, role = ?, first_name = COALESCE(?, first_name), last_name = COALESCE(?, last_name), updated_at = datetime('now') WHERE id = ?"

@@ -426,6 +426,7 @@ export function DataTable<T extends Record<string, unknown>>({
                   <tr
                     key={itemKey}
                     data-testid="data-table-row"
+                    data-row-id={itemKey}
                     className={cn(
                       'transition-colors',
                       variant === 'striped' && idx % 2 === 1 && 'bg-warm-50/50',
@@ -510,6 +511,7 @@ export function DataTable<T extends Record<string, unknown>>({
                     <li
                       key={itemKey}
                       data-testid="data-table-card"
+                      data-row-id={itemKey}
                       className={cn(
                         'rounded-xl border bg-white p-4 shadow-sm transition-colors',
                         variant === 'bordered' ? 'border-warm-300' : 'border-warm-200',

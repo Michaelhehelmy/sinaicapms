@@ -107,13 +107,16 @@ export default defineConfig({
         'cd backend && npx wrangler d1 migrations apply campmaster-db --local && npx wrangler dev --port 8787 --local',
       port: BACKEND_PORT,
       reuseExistingServer: true,
-      timeout: 90_000,
+      // 240s: a cold first boot (D1 migrations apply + workerd compile) can
+      // exceed 90s on slower/laptop hardware — timeouts there killed the first
+      // 4 per-project runs before caches warmed.
+      timeout: 240_000,
     },
     {
       command: 'cd app && npx astro dev --port 4320 --host',
       port: UNIFIED_PORT,
       reuseExistingServer: true,
-      timeout: 120_000,
+      timeout: 240_000,
     },
   ],
 });
