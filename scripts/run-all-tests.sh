@@ -6,6 +6,10 @@
 #   bash scripts/run-all-tests.sh --quick      # skip Playwright E2E (unit + build only)
 #   bash scripts/run-all-tests.sh --e2e-local  # E2E per-project with fresh server restarts
 #                                              # (safe local alternative — see inner notes)
+#   bash scripts/run-all-tests.sh --project=admin                  # units + ONE E2E project
+#   bash scripts/run-all-tests.sh --project=admin --project=public # multiple (repeatable)
+#   bash scripts/run-all-tests.sh --project=pos,public             # comma-separated too
+#   # Valid E2E projects: marketplace tenant admin auth cross-cutting pos public routing
 #
 # Report: reports/all-tests-<timestamp>/REPORT.md  (+ per-suite raw logs)
 # Exit:   0 when every suite passed, 1 when any suite failed.
@@ -30,10 +34,42 @@ mkdir -p "$OUTDIR"
 
 QUICK=0
 E2E_LOCAL=0
-for a in "$@"; do
-  [ "$a" = "--quick" ] && QUICK=1
-  [ "$a" = "--e2e-local" ] && E2E_LOCAL=1
+TARGET_PROJECTS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quick) QUICK=1 ;;
+    --e2e-local) E2E_LOCAL=1 ;;
+    --project=*)
+      IFS=',' read -ra parts <<< "${1#--project=}"
+      for p in "${parts[@]}"; do
+        TARGET_PROJECTS+=("$p")
+      done
+      ;;
+    --project)
+      shift
+      IFS=',' read -ra parts <<< "${1:-}"
+      for p in "${parts[@]}"; do
+        TARGET_PROJECTS+=("$p")
+      done
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      echo "Usage: run-all-tests.sh [--quick] [--e2e-local] [--project=<name>[,<name>...]]" >&2
+      exit 2
+      ;;
+  esac
+  shift
 done
+
+VALID_PROJECTS="marketplace tenant admin auth cross-cutting pos public routing"
+if [ ${#TARGET_PROJECTS[@]} -gt 0 ]; then
+  for p in "${TARGET_PROJECTS[@]}"; do
+    case " $VALID_PROJECTS " in
+      *" $p "*) ;;
+      *) echo "Unknown E2E project: '$p' (valid: $VALID_PROJECTS)" >&2; exit 2 ;;
+    esac
+  done
+fi
 
 PASS=0
 FAIL=0
@@ -76,7 +112,15 @@ run_suite "integration" bash -c "npx vitest run --config vitest.integration.conf
 run_suite "astro-build" bash -c "cd app && npm run build"
 
 if [ "$QUICK" -eq 0 ]; then
-  if [ "$E2E_LOCAL" -eq 1 ]; then
+  if [ ${#TARGET_PROJECTS[@]} -gt 0 ]; then
+    # Targeted mode: units + build run first (above), then only the requested
+    # Playwright projects, each with a fresh server restarted via the same
+    # per-project kill/boot pattern as --e2e-local.
+    for p in "${TARGET_PROJECTS[@]}"; do
+      kill_test_servers
+      run_suite "playwright-$p" bash -c "CI=true npx playwright test --project=$p"
+    done
+  elif [ "$E2E_LOCAL" -eq 1 ]; then
     # Safe local pattern: one short playwright run per project, restarting the
     # dev stack between projects (documented: a long full-gate marathon degrades
     # wrangler dev under sustained load → cascading timeouts after ~300 tests).
@@ -123,7 +167,11 @@ sort -u "$OUTDIR/_failures.txt" -o "$OUTDIR/_failures.txt" 2>/dev/null
   echo "# SinaiCamps — Full Test Report"
   echo ""
   echo "- **Date:** $(date '+%Y-%m-%d %H:%M:%S')"
-  echo "- **Mode:** $([ "$QUICK" -eq 1 ] && echo 'quick (Playwright skipped)' || echo 'full')"
+  if [ ${#TARGET_PROJECTS[@]} -gt 0 ]; then
+    echo "- **Mode:** targeted (units + E2E project(s): ${TARGET_PROJECTS[*]})"
+  else
+    echo "- **Mode:** $([ "$QUICK" -eq 1 ] && echo 'quick (Playwright skipped)' || echo 'full')"
+  fi
   echo "- **Result:** $([ "$FAIL" -eq 0 ] && echo '✅ ALL SUITES PASSED' || echo "❌ $FAIL suite(s) failed — see below")"
   echo ""
   echo "## Suite summary"
@@ -131,7 +179,7 @@ sort -u "$OUTDIR/_failures.txt" -o "$OUTDIR/_failures.txt" 2>/dev/null
   echo "| Suite | Result | Duration | Details |"
   echo "| --- | --- | --- | --- |"
   names="app-unit backend-unit integration astro-build"
-  if [ "$QUICK" -eq 0 ] && [ "$E2E_LOCAL" -eq 0 ]; then
+  if [ "$QUICK" -eq 0 ] && [ "$E2E_LOCAL" -eq 0 ] && [ ${#TARGET_PROJECTS[@]} -eq 0 ]; then
     names="$names playwright-e2e"
   fi
   names="$names $(ls "$OUTDIR"/playwright-*.log 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.log$//' | sort -u)"
@@ -168,7 +216,11 @@ sort -u "$OUTDIR/_failures.txt" -o "$OUTDIR/_failures.txt" 2>/dev/null
   echo "## Known / expected annotations"
   echo ""
   echo "- Root integration can hit the pre-existing \`/api/auth\` 30-min login-limit 429 flake (documented in AGENT_LOGBOOK.md). A failure whose log shows that signature + otherwise green assertions should be re-run targeted/per-file."
-  echo "- E2E: local \`wrangler dev\` under sustained load has a documented crash window (~15–17 min). The full \`CI=true\` gate is the canonical environment; per-project runs are the safe local alternative."
+  if [ ${#TARGET_PROJECTS[@]} -gt 0 ]; then
+    echo "- Targeted mode: only the requested Playwright project(s) ran (fresh server per project). Other E2E projects were not executed."
+  else
+    echo "- E2E: local \`wrangler dev\` under sustained load has a documented crash window (~15–17 min). The full \`CI=true\` gate is the canonical environment; per-project runs are the safe local alternative."
+  fi
   echo "- Raw logs are in this directory."
   echo ""
   echo "_Generated by scripts/run-all-tests.sh_"
