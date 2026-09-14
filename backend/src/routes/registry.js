@@ -369,10 +369,17 @@ const productPostRequestSchema = z
     isActive: z.number().optional(),
     campIds: z.array(z.string()).optional(),
     campId: z.string().optional(), // 0053: room types belong to one camp
+    type: z.enum(['room', 'menu', 'buffet', 'retail']).optional(),
   })
   .openapi('ProductCreateRequest');
 
 const productPutRequestSchema = productPostRequestSchema.partial().openapi('ProductUpdateRequest');
+
+const bulkProductPostRequestSchema = z
+  .object({
+    items: z.array(productPostRequestSchema).min(1).max(200),
+  })
+  .openapi('BulkProductCreateRequest');
 
 // ── Rooms ───────────────────────────────────────────────────────────────────────
 // Wire rows: `SELECT r.* FROM rooms_new r ...`.
@@ -741,6 +748,17 @@ export const marketplaceRoutes = [
     },
   }),
   createRoute({
+    method: 'post',
+    path: '/api/products/bulk',
+    tags: ['products'],
+    summary: 'Bulk-create up to 200 POS products at once (retail/buffet/menu; auth + tenant scoped)',
+    request: { body: { content: { 'application/json': { schema: bulkProductPostRequestSchema } } } },
+    responses: {
+      200: { description: 'Created products', content: { 'application/json': { schema: z.object({ ids: z.array(z.string()), count: z.number(), success: z.boolean() }).openapi('BulkProductCreateResponse') } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
     method: 'put',
     path: '/api/products/{id}',
     tags: ['products'],
@@ -1103,6 +1121,12 @@ const mealPostRequestSchema = z
 
 const mealPutRequestSchema = mealPostRequestSchema.partial().openapi('MealUpdateRequest');
 
+const bulkMealPostRequestSchema = z
+  .object({
+    items: z.array(mealPostRequestSchema).min(1).max(200),
+  })
+  .openapi('BulkMealCreateRequest');
+
 const categorySchema = z
   .object({
     id: z.string(),
@@ -1225,6 +1249,17 @@ export const menuRoutes = [
     request: { body: { content: { 'application/json': { schema: mealPostRequestSchema } } } },
     responses: {
       200: { description: 'Created', content: { 'application/json': { schema: idResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/meals/bulk',
+    tags: ['meals'],
+    summary: 'Bulk-create up to 200 menu items at once (auth + tenant scoped)',
+    request: { body: { content: { 'application/json': { schema: bulkMealPostRequestSchema } } } },
+    responses: {
+      200: { description: 'Created meals', content: { 'application/json': { schema: z.object({ ids: z.array(z.string()), count: z.number(), success: z.boolean() }).openapi('BulkMealCreateResponse') } } },
       ...errorResponses(),
     },
   }),

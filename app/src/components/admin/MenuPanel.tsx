@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { bulkCreateMeals } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 interface MenuPanelProps {
@@ -31,6 +32,13 @@ interface MealForm {
   isActive: number;
 }
 
+interface BulkMealRow {
+  name: string;
+  mealCategoryId: string;
+  price: string;
+  description: string;
+}
+
 const emptyMealForm: MealForm = {
   name: '',
   mealCategoryId: '',
@@ -39,6 +47,13 @@ const emptyMealForm: MealForm = {
   imageUrl: '',
   isActive: 1,
 };
+
+const emptyBulkMealRow = (): BulkMealRow => ({
+  name: '',
+  mealCategoryId: '',
+  price: '',
+  description: '',
+});
 
 const statusOptions = [
   { value: '1', label: 'Active' },
@@ -69,6 +84,10 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
   const [editCatId, setEditCatId] = useState<string | null>(null);
   const [mealForm, setMealForm] = useState<MealForm>(emptyMealForm);
   const [catName, setCatName] = useState('');
+  const [catPosition, setCatPosition] = useState('0');
+  const [showBulkForm, setShowBulkForm] = useState(false);
+  const [bulkRows, setBulkRows] = useState<BulkMealRow[]>(Array.from({ length: 5 }, emptyBulkMealRow));
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'meal' | 'category'; id: string } | null>(null);
   const [filterCategory, setFilterCategory] = useState('all');
@@ -114,6 +133,50 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     setShowMealForm(true);
   }, []);
 
+  const addBulkRow = useCallback(() => {
+    setBulkRows((prev) => [...prev, emptyBulkMealRow()]);
+  }, []);
+
+  const removeBulkRow = useCallback((index: number) => {
+    setBulkRows((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const updateBulkRow = useCallback((index: number, patch: Partial<BulkMealRow>) => {
+    setBulkRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }, []);
+
+  const openBulkAdd = useCallback(() => {
+    setBulkRows(Array.from({ length: 5 }, emptyBulkMealRow));
+    setShowBulkForm(true);
+  }, []);
+
+  const handleSaveBulk = useCallback(async () => {
+    const items = bulkRows
+      .filter((r) => r.name.trim())
+      .map((r) => ({
+        name: r.name.trim(),
+        mealCategoryId: r.mealCategoryId || undefined,
+        price: parseFloat(r.price) || 0,
+        description: r.description.trim() || undefined,
+      }));
+    if (items.length === 0) {
+      showToast('Fill in at least one meal name.', 'warning');
+      return;
+    }
+    setBulkSaving(true);
+    try {
+      const res = await bulkCreateMeals(items);
+      showToast(`${res.count} meal${res.count === 1 ? '' : 's'} created.`, 'success');
+      setShowBulkForm(false);
+      refreshMeals();
+      refreshCats();
+    } catch (err) {
+      showToast('Bulk create failed: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally {
+      setBulkSaving(false);
+    }
+  }, [bulkRows, showToast, refreshMeals, refreshCats]);
+
   const handleSaveMeal = useCallback(async () => {
     if (!mealForm.name.trim()) {
       showToast('Meal name is required.', 'warning');
@@ -153,13 +216,14 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     setSaving(true);
     try {
       await api.saveMealCategory(
-        { name: catName.trim() },
+        { name: catName.trim(), position: parseInt(catPosition) || 0 },
         editCatId ?? undefined,
       );
       showToast(editCatId ? 'Category updated.' : 'Category created.', 'success');
       setShowCatForm(false);
       setEditCatId(null);
       setCatName('');
+      setCatPosition('0');
       refreshCats();
     } catch (err) {
       showToast('Error saving category: ' + (err instanceof Error ? err.message : String(err)), 'error');
@@ -229,13 +293,30 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
             </button>
           </div>
         </div>
-        <Button
-          variant="success"
-          size="md"
-          onClick={activeSection === 'meals' ? openAddMeal : () => { setEditCatId(null); setCatName(''); setShowCatForm(true); }}
-        >
-          {activeSection === 'meals' ? 'Add Meal' : 'Add Category'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {activeSection === 'meals' && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={openBulkAdd}
+              data-testid="bulk-add-meals-btn"
+              leftIcon={
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              }
+            >
+              Bulk Add
+            </Button>
+          )}
+          <Button
+            variant="success"
+            size="md"
+            onClick={activeSection === 'meals' ? openAddMeal : () => { setEditCatId(null); setCatName(''); setCatPosition('0'); setShowCatForm(true); }}
+          >
+            {activeSection === 'meals' ? 'Add Meal' : 'Add Category'}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -335,6 +416,7 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
                     onClick={() => {
                       setEditCatId(c.id as string);
                       setCatName(String(c.name));
+                      setCatPosition(String(c.position ?? 0));
                       setShowCatForm(true);
                     }}
                   >
@@ -413,20 +495,107 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
       </FormModal>
 
       <FormModal
+        open={showBulkForm}
+        title="Bulk Add Menu Items"
+        onClose={() => { setShowBulkForm(false); }}
+        onSubmit={handleSaveBulk}
+        submitLabel={bulkSaving ? 'Creating...' : `Create ${bulkRows.filter((r) => r.name.trim()).length || 0} Meals`}
+        submitDisabled={bulkSaving}
+        size="lg"
+      >
+        <p className="text-sm text-gray-500 mb-4">
+          Add multiple menu items at once. Name is required; leave unused rows blank — they are skipped.
+        </p>
+        <div className="space-y-3" data-testid="bulk-meal-rows">
+          {bulkRows.map((row, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-start rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+              <div className="col-span-4">
+                <Input
+                  aria-label={`Meal ${idx + 1} name`}
+                  type="text"
+                  value={row.name}
+                  onChange={(e) => updateBulkRow(idx, { name: e.target.value })}
+                  placeholder="Name *"
+                  data-testid={`bulk-meal-name-${idx}`}
+                />
+              </div>
+              <div className="col-span-3">
+                <Select
+                  aria-label={`Meal ${idx + 1} category`}
+                  options={mealCategorySelectOptions}
+                  value={row.mealCategoryId}
+                  placeholder="Category"
+                  onChange={(e) => updateBulkRow(idx, { mealCategoryId: e.target.value })}
+                  data-testid={`bulk-meal-cat-${idx}`}
+                />
+              </div>
+              <div className="col-span-2">
+                <Input
+                  aria-label={`Meal ${idx + 1} price`}
+                  type="number"
+                  value={row.price}
+                  onChange={(e) => updateBulkRow(idx, { price: e.target.value })}
+                  min="0"
+                  step="0.01"
+                  placeholder="Price"
+                  data-testid={`bulk-meal-price-${idx}`}
+                />
+              </div>
+              <div className="col-span-2">
+                <Input
+                  aria-label={`Meal ${idx + 1} description`}
+                  type="text"
+                  value={row.description}
+                  onChange={(e) => updateBulkRow(idx, { description: e.target.value })}
+                  placeholder="Description"
+                />
+              </div>
+              <div className="col-span-1">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  aria-label={`Remove meal ${idx + 1}`}
+                  onClick={() => removeBulkRow(idx)}
+                  disabled={bulkRows.length <= 1}
+                >
+                  —
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex justify-start">
+          <Button type="button" variant="secondary" size="md" onClick={addBulkRow} data-testid="add-bulk-meal-row-btn">
+            + Add Row
+          </Button>
+        </div>
+      </FormModal>
+
+      <FormModal
         open={showCatForm}
         title={editCatId ? 'Edit Category' : 'Add New Category'}
-        onClose={() => { setShowCatForm(false); setEditCatId(null); }}
+        onClose={() => { setShowCatForm(false); setEditCatId(null); setCatPosition('0'); }}
         onSubmit={handleSaveCat}
         submitLabel={saving ? 'Saving...' : editCatId ? 'Update Category' : 'Save Category'}
         submitDisabled={saving}
       >
-        <div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <Input
+              label="Category Name *"
+              type="text"
+              value={catName}
+              onChange={(e) => setCatName(e.target.value)}
+              placeholder="e.g. Appetizers, Main Course, Desserts"
+            />
+          </div>
           <Input
-            label="Category Name *"
-            type="text"
-            value={catName}
-            onChange={(e) => setCatName(e.target.value)}
-            placeholder="e.g. Appetizers, Main Course, Desserts"
+            label="Position"
+            type="number"
+            value={catPosition}
+            onChange={(e) => setCatPosition(e.target.value)}
+            min="0"
+            placeholder="0"
           />
         </div>
       </FormModal>

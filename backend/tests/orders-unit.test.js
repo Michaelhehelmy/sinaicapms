@@ -468,7 +468,7 @@ describe('handleOrdersRoute', () => {
       db.prepare.mockImplementation(fn);
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John', number_of_people: 5,
-        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
+        check_in_date: '2030-09-10', check_out_date: '2030-09-15'
       });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(400);
@@ -499,7 +499,7 @@ describe('handleOrdersRoute', () => {
       db.prepare.mockImplementation(fn);
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John',
-        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
+        check_in_date: '2030-09-10', check_out_date: '2030-09-15'
       });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(400);
@@ -521,7 +521,7 @@ describe('handleOrdersRoute', () => {
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John Doe',
         guest_email: 'john@test.com', guest_phone: '12345',
-        check_in_date: '2026-09-10', check_out_date: '2026-09-15',
+        check_in_date: '2030-09-10', check_out_date: '2030-09-15',
         total_amount: 500, amount_paid: 250, payment_method: 'cash',
         payment_status: 'partial', notes: 'Test'
       });
@@ -571,7 +571,7 @@ describe('handleOrdersRoute', () => {
       db.batch.mockResolvedValue([{ meta: { changes: 0 } }]);
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John',
-        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
+        check_in_date: '2030-09-10', check_out_date: '2030-09-15'
       });
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(409);
@@ -589,7 +589,7 @@ describe('handleOrdersRoute', () => {
       db.prepare.mockImplementation(fn);
       const req = makeRequest('POST', 'https://x.com/api/orders', {
         camp_id: 'c1', room_id: 'r1', guest_name: 'John',
-        check_in_date: '2026-09-10', check_out_date: '2026-09-15'
+        check_in_date: '2030-09-10', check_out_date: '2030-09-15'
       });
       await handleOrdersRoute(req, { DB: db }, TENANT);
       const sql = db.prepare.mock.calls.map((c) => c[0]).find((s) => s.includes('INSERT INTO orders'));
@@ -599,7 +599,7 @@ describe('handleOrdersRoute', () => {
       // Guard bindings follow the 15 insert values in validateOrder's order
       const insertStmt = db.batch.mock.calls[0][0][0];
       const binds = insertStmt.bind.mock.calls[0];
-      expect(binds.slice(-4)).toEqual(['t1', 'r1', '2026-09-15', '2026-09-10']);
+      expect(binds.slice(-4)).toEqual(['t1', 'r1', '2030-09-15', '2030-09-10']);
     });
 
     it('reuses existing customer by email on create', async () => {

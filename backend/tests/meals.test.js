@@ -116,6 +116,64 @@ describe('mealsRoutes', () => {
     });
   });
 
+  describe('POST /api/meals/bulk', () => {
+    it('creates multiple meals in a single batch', async () => {
+      const sqls = [];
+      const db = {
+        prepare: vi.fn((sql) => {
+          sqls.push(sql);
+          return { bind: vi.fn(() => ({})) };
+        }),
+        batch: vi.fn().mockResolvedValue([]),
+      };
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/meals/bulk', {
+        items: [
+          { name: 'Breakfast Set', price: 20 },
+          { name: 'Lunch Set', price: 30, mealCategoryId: 'cat_1' },
+        ],
+      });
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.count).toBe(2);
+      expect(data.ids).toHaveLength(2);
+      expect(data.ids[0]).toMatch(/^meal_/);
+      // 2 INSERT meals + 2 INSERT meal_lang statements, all in one batch.
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      expect(sqls.filter((s) => s.includes('INSERT INTO meals'))).toHaveLength(2);
+      expect(sqls.filter((s) => s.includes('INSERT INTO meal_lang'))).toHaveLength(2);
+    });
+
+    it('returns 400 when items is empty', async () => {
+      env = { DB: { prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })), batch: vi.fn() } };
+      const res = await request('POST', 'http://localhost/api/meals/bulk', { items: [] });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 for an invalid item (missing name)', async () => {
+      env = { DB: { prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })), batch: vi.fn() } };
+      const res = await request('POST', 'http://localhost/api/meals/bulk', {
+        items: [{ name: '', price: 10 }],
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('handles DB errors during batch', async () => {
+      const db = {
+        prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })),
+        batch: vi.fn().mockRejectedValue(new Error('DB fail')),
+      };
+      env = { DB: db };
+      const res = await request('POST', 'http://localhost/api/meals/bulk', {
+        items: [{ name: 'Set', price: 20 }],
+      });
+      const data = await res.json();
+      expect(res.status).toBe(500);
+      expect(data.error).toContain('Failed to create meals in bulk');
+    });
+  });
+
   describe('PUT /api/meals/:id', () => {
     it('updates a meal with name', async () => {
       const db = {

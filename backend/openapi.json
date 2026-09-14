@@ -424,10 +424,57 @@
           },
           "campId": {
             "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "room",
+              "menu",
+              "buffet",
+              "retail"
+            ]
           }
         },
         "required": [
           "name"
+        ]
+      },
+      "BulkProductCreateResponse": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "number"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ids",
+          "count",
+          "success"
+        ]
+      },
+      "BulkProductCreateRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductCreateRequest"
+            },
+            "minItems": 1,
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "ProductUpdateRequest": {
@@ -483,6 +530,15 @@
           },
           "campId": {
             "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "room",
+              "menu",
+              "buffet",
+              "retail"
+            ]
           }
         }
       },
@@ -1679,6 +1735,44 @@
         "required": [
           "name",
           "price"
+        ]
+      },
+      "BulkMealCreateResponse": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "number"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ids",
+          "count",
+          "success"
+        ]
+      },
+      "BulkMealCreateRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MealCreateRequest"
+            },
+            "minItems": 1,
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "MealUpdateRequest": {
@@ -5974,6 +6068,75 @@
         }
       }
     },
+    "/api/products/bulk": {
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "summary": "Bulk-create up to 200 POS products at once (retail/buffet/menu; auth + tenant scoped)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkProductCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkProductCreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/products/{id}": {
       "put": {
         "tags": [
@@ -8176,6 +8339,75 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meals/bulk": {
+      "post": {
+        "tags": [
+          "meals"
+        ],
+        "summary": "Bulk-create up to 200 menu items at once (auth + tenant scoped)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkMealCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created meals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkMealCreateResponse"
                 }
               }
             }

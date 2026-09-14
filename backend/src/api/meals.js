@@ -14,6 +14,10 @@ export const mealPostSchema = z.object({
   is_active: z.number().optional(),
 }).strip(); // S-M1 fix: strip instead of passthrough
 
+export const bulkMealPostSchema = z.object({
+  items: z.array(mealPostSchema).min(1, 'At least one meal is required').max(200, 'Maximum 200 meals per bulk request'),
+}).strip();
+
 export const mealPutSchema = z.object({
   name: z.string().min(1).optional(),
   meal_category_id: z.string().optional(),
@@ -93,6 +97,47 @@ mealsRoutes.post('/', async (c) => {
     return jsonResponse({ id: mid, success: true });
   } catch (e) {
     return errorResponse('Failed to create meal');
+  }
+});
+
+// POST /api/meals/bulk — create multiple menu items at once.
+mealsRoutes.post('/bulk', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    const parsed = bulkMealPostSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+    const { items } = parsed.data;
+
+    const stmts = [];
+    const createdIds = [];
+    for (const item of items) {
+      const mid = item.id || 'meal_' + crypto.randomUUID().slice(0, 12);
+      createdIds.push(mid);
+
+      stmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO meals (id, tenant_id, meal_category_id, price, image_url, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+        ).bind(
+          mid, tenantId, item.meal_category_id || null, item.price || 0,
+          item.image_url || null, item.is_active !== undefined ? item.is_active : 1
+        )
+      );
+      stmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO meal_lang (meal_id, lang, name, description)
+           VALUES (?, 'en', ?, ?)`
+        ).bind(mid, item.name, item.description || null)
+      );
+    }
+
+    await c.env.DB.batch(stmts);
+
+    return jsonResponse({ ids: createdIds, count: createdIds.length, success: true });
+  } catch (e) {
+    return errorResponse('Failed to create meals in bulk');
   }
 });
 

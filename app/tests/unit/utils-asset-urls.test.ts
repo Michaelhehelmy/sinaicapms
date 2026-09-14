@@ -59,4 +59,16 @@ describe('normalizeAssetUrl', () => {
     expect(normalizeAssetUrl('/relative/path.png', FALLBACK)).toBe(FALLBACK);
     expect(normalizeAssetUrl(42 as unknown as string, FALLBACK)).toBe(FALLBACK);
   });
+
+  it('passes through worker-served /api/media/ relative paths (R2 uploads)', () => {
+    expect(normalizeAssetUrl('/api/media/abc123.png', FALLBACK)).toBe('/api/media/abc123.png');
+    expect(normalizeAssetUrl('/api/media/camp/hero-2026.jpg', FALLBACK)).toBe('/api/media/camp/hero-2026.jpg');
+    expect(normalizeAssetUrl('/api/media/a.png?w=200', FALLBACK)).toBe('/api/media/a.png?w=200');
+  });
+
+  it('rejects unsafe /api/media/ variants', () => {
+    expect(normalizeAssetUrl('/api/media/../secret.png', FALLBACK)).toBe(FALLBACK);
+    expect(normalizeAssetUrl('//api/media/x.png', FALLBACK)).toBe(FALLBACK);
+    expect(normalizeAssetUrl('/api/notmedia/x.png', FALLBACK)).toBe(FALLBACK);
+  });
 });

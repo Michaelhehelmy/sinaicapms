@@ -274,7 +274,7 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
     expect(sqls[2]).toContain('INTO pos_products');
     expect(sqls[2]).toContain('name');
     expect(sqls[2]).toContain('selling_price');
-    expect(sqls[2]).toContain("'room'");
+    expect(sqls[2]).toContain('type');
     expect(sqls[2]).toContain('camp_id');
     for (const sql of sqls) {
       expect(sql).not.toMatch(/\bINTO\s+products\b/);
@@ -403,5 +403,109 @@ describe('handleProductsRoute POST/PUT/DELETE (write path → pos_products)', ()
       expect(sql).not.toContain('product_camps_new');
       expect(sql).not.toContain('product_lang');
     }
+  });
+});
+
+// ─── Bulk create: POST /api/products/bulk (retail/buffet/menu fast-add) ──────
+describe('handleProductsRoute POST /bulk', () => {
+  it('creates multiple products in a single batch and returns ids', async () => {
+    const sqls = [];
+    const db = {
+      prepare: vi.fn((sql) => {
+        sqls.push(sql);
+        return {
+          bind: vi.fn(() => ({
+            all: vi.fn().mockResolvedValue({ results: [] }),
+          })),
+        };
+      }),
+      batch: vi.fn().mockResolvedValue([]),
+    };
+    const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products/bulk', {
+      items: [
+        { name: 'Souvenir Mug', basePrice: 15, type: 'retail' },
+        { name: 'BBQ Buffet', basePrice: 45, type: 'buffet' },
+      ],
+    });
+    const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.count).toBe(2);
+    expect(body.ids).toHaveLength(2);
+    expect(body.ids[0]).toMatch(/^prod_/);
+    expect(db.batch).toHaveBeenCalledTimes(1);
+    expect(sqls.filter((s) => s.includes('INTO pos_products'))).toHaveLength(2);
+    expect(sqls.some((s) => s.includes('camp_id'))).toBe(true);
+  });
+
+  it('persists row-specific type values (retail vs buffet)', async () => {
+    const sqls = [];
+    const db = {
+      prepare: vi.fn((sql) => {
+        sqls.push(sql);
+        return {
+          bind: vi.fn(() => ({
+            all: vi.fn().mockResolvedValue({ results: [] }),
+          })),
+        };
+      }),
+      batch: vi.fn().mockResolvedValue([]),
+    };
+    const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products/bulk', {
+      items: [
+        { name: 'Water Bottle', basePrice: 5, type: 'retail' },
+        { name: 'Buffet Pass', basePrice: 50, type: 'buffet' },
+        { name: 'Falafel Plate', basePrice: 18, type: 'menu' },
+      ],
+    });
+    const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    expect(res.status).toBe(200);
+    expect((await res.json()).count).toBe(3);
+    // All rows share one parameterized INSERT shape (type bound per row).
+    expect(sqls.filter((s) => s.includes('INTO pos_products'))).toHaveLength(3);
+    for (const sql of sqls.filter((s) => s.includes('INTO pos_products'))) {
+      expect(sql).toContain('type');
+      expect(sql).toContain('?');
+    }
+  });
+
+  it('returns 400 when items is empty', async () => {
+    const db = { prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })), batch: vi.fn() };
+    const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products/bulk', { items: [] });
+    const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for an invalid item (missing name)', async () => {
+    const db = { prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })), batch: vi.fn() };
+    const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products/bulk', {
+      items: [{ name: '', basePrice: 10 }],
+    });
+    const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for an unknown product type', async () => {
+    const db = { prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })), batch: vi.fn() };
+    const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products/bulk', {
+      items: [{ name: 'Mystery Item', basePrice: 10, type: 'tent' }],
+    });
+    const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    expect(res.status).toBe(400);
+  });
+
+  it('handles DB errors during batch', async () => {
+    const db = {
+      prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })),
+      batch: vi.fn().mockRejectedValue(new Error('DB fail')),
+    };
+    const req = makeRequest('POST', 'https://acacia.sinaicamps.com/api/products/bulk', {
+      items: [{ name: 'Item', basePrice: 10 }],
+    });
+    const res = await handleProductsRoute(req, { DB: db }, 'acaciacamp');
+    const body = await res.json();
+    expect(res.status).toBe(500);
+    expect(body.error).toContain('Failed to create products in bulk');
   });
 });

@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import RoomsPanel from '@/components/admin/RoomsPanel';
+
+const renderWithClient = (ui: ReactElement) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
 
 const mockShowToast = vi.fn();
 const mockRefreshRooms = vi.fn();
@@ -84,18 +91,18 @@ describe('RoomsPanel', () => {
   });
 
   it('renders with rooms section by default', () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     expect(screen.getAllByText('Rooms').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Add Room').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows empty state when no rooms', () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     expect(screen.getByText('No rooms yet')).toBeInTheDocument();
   });
 
   it('switches to products section', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => {
       expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1);
@@ -103,7 +110,7 @@ describe('RoomsPanel', () => {
   });
 
   it('shows product type summary when products exist', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => {
       expect(screen.getByText('Type Summary')).toBeInTheDocument();
@@ -112,7 +119,7 @@ describe('RoomsPanel', () => {
   });
 
   it('opens add room form', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     const addBtns = screen.getAllByText('Add Room');
     fireEvent.click(addBtns[0]);
     await waitFor(() => {
@@ -121,7 +128,7 @@ describe('RoomsPanel', () => {
   });
 
   it('validates required fields on room save', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     const addBtns = screen.getAllByText('Add Room');
     fireEvent.click(addBtns[0]);
     await waitFor(() => { expect(screen.getByText('Add New Room')).toBeInTheDocument(); });
@@ -133,7 +140,7 @@ describe('RoomsPanel', () => {
 
   it('validates room name required when other fields present', async () => {
     mockSaveRoom.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     const addBtns = screen.getAllByText('Add Room');
     fireEvent.click(addBtns[0]);
     await waitFor(() => { expect(screen.getByText('Add New Room')).toBeInTheDocument(); });
@@ -145,7 +152,7 @@ describe('RoomsPanel', () => {
   });
 
   it('opens add product form', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Product')[0]);
@@ -155,7 +162,7 @@ describe('RoomsPanel', () => {
   });
 
   it('validates product name required', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Product')[0]);
@@ -167,7 +174,7 @@ describe('RoomsPanel', () => {
   });
 
   it('validates capacity > 0', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Product')[0]);
@@ -184,7 +191,7 @@ describe('RoomsPanel', () => {
     const onNavigateToTab = vi.fn();
     // Empty campIds/camps means there is nothing to hang rooms or product
     // types off — the panel renders a dependency EmptyState instead.
-    render(<RoomsPanel campIds={[]} camps={[]} onNavigateToTab={onNavigateToTab} />);
+    renderWithClient(<RoomsPanel campIds={[]} camps={[]} onNavigateToTab={onNavigateToTab} />);
     expect(screen.getByText('No projects yet')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Create project'));
     expect(onNavigateToTab).toHaveBeenCalledWith('camps');
@@ -195,7 +202,7 @@ describe('RoomsPanel', () => {
 
   it('shows a room-type-dependency empty state when a camp has no product types', async () => {
     mockProducts.splice(0, mockProducts.length);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     expect(screen.getByText('No room types yet')).toBeInTheDocument();
     // CTA flips to the Products section instead of opening a dead room form.
     fireEvent.click(screen.getByText('Create room type'));
@@ -206,7 +213,7 @@ describe('RoomsPanel', () => {
 
   it('Add Room flips to the Products section when no product types exist', async () => {
     mockProducts.splice(0, mockProducts.length);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getAllByText('Add Room')[0]);
     await waitFor(() => {
       expect(screen.getByText('No products yet')).toBeInTheDocument();
@@ -216,7 +223,7 @@ describe('RoomsPanel', () => {
 
   it('auto-assigns the single camp to a new product', async () => {
     mockSaveProduct.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Product')[0]);
@@ -236,7 +243,7 @@ describe('RoomsPanel', () => {
 
   it('saves product with valid data', async () => {
     mockSaveProduct.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Product')[0]);
@@ -251,7 +258,7 @@ describe('RoomsPanel', () => {
 
   it('handles product save error', async () => {
     mockSaveProduct.mockRejectedValue(new Error('Save failed'));
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Product')[0]);
@@ -265,7 +272,7 @@ describe('RoomsPanel', () => {
   });
 
   it('closes room form on cancel', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     const addBtns = screen.getAllByText('Add Room');
     fireEvent.click(addBtns[0]);
     await waitFor(() => { expect(screen.getByText('Add New Room')).toBeInTheDocument(); });
@@ -276,7 +283,7 @@ describe('RoomsPanel', () => {
   });
 
   it('closes product form on cancel', async () => {
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getAllByText('Add Product')[0]);
@@ -289,7 +296,7 @@ describe('RoomsPanel', () => {
 
   it('renders room rows with camp, type, floor, and status info', () => {
     state.rooms = [...mockRoomRows];
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     expect(screen.getByText('Room 101')).toBeInTheDocument();
     expect(screen.getByText('Room 102')).toBeInTheDocument();
     expect(screen.getAllByText('Standard Room')).toHaveLength(2);
@@ -301,7 +308,7 @@ describe('RoomsPanel', () => {
   it('opens edit room form pre-filled and saves changes', async () => {
     state.rooms = [...mockRoomRows];
     mockSaveRoom.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getAllByText('Edit')[0]);
     await waitFor(() => { expect(screen.getByText('Edit Room')).toBeInTheDocument(); });
     expect(screen.getByLabelText('Room Name *')).toHaveValue('Room 101');
@@ -323,7 +330,7 @@ describe('RoomsPanel', () => {
   it('deletes a room after confirmation', async () => {
     state.rooms = [...mockRoomRows];
     mockDeleteRoom.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -337,7 +344,7 @@ describe('RoomsPanel', () => {
 
   it('cancels room delete', async () => {
     state.rooms = [...mockRoomRows];
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getAllByText('Delete')[0]);
     await waitFor(() => { expect(screen.getByRole('dialog')).toBeInTheDocument(); });
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
@@ -349,7 +356,7 @@ describe('RoomsPanel', () => {
 
   it('opens edit product form and saves changes', async () => {
     mockSaveProduct.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getByText('Edit'));
@@ -369,7 +376,7 @@ describe('RoomsPanel', () => {
 
   it('keeps the product assigned to the single camp when editing', async () => {
     mockSaveProduct.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getByText('Edit'));
@@ -387,7 +394,7 @@ describe('RoomsPanel', () => {
 
   it('deletes a product after confirmation', async () => {
     mockDeleteProduct.mockResolvedValue({} as any);
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getByText('Delete'));
@@ -403,7 +410,7 @@ describe('RoomsPanel', () => {
 
   it('shows type summary counts derived from rooms', async () => {
     state.rooms = [...mockRoomRows];
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getByText('Type Summary')).toBeInTheDocument(); });
     expect(screen.getByText('2')).toBeInTheDocument();
@@ -412,7 +419,7 @@ describe('RoomsPanel', () => {
 
   it('switches back to rooms section from products', async () => {
     state.rooms = [...mockRoomRows];
-    render(<RoomsPanel campIds={['c1']} camps={camps} />);
+    renderWithClient(<RoomsPanel campIds={['c1']} camps={camps} />);
     fireEvent.click(screen.getByText('Products'));
     await waitFor(() => { expect(screen.getAllByText('Add Product').length).toBeGreaterThanOrEqual(1); });
     fireEvent.click(screen.getByText('Rooms'));

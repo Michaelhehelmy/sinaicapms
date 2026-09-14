@@ -217,8 +217,8 @@ describe('SettingsPanel', () => {
     fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '+201111111111' } });
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@test.com' } });
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Sharm' } });
-    fireEvent.change(screen.getByLabelText('Logo URL'), { target: { value: 'https://logo.example/x.png' } });
-    fireEvent.change(screen.getByLabelText('Favicon URL'), { target: { value: 'https://logo.example/favicon.png' } });
+    fireEvent.change(screen.getByLabelText('Logo'), { target: { value: 'https://logo.example/x.png' } });
+    fireEvent.change(screen.getByLabelText('Favicon'), { target: { value: 'https://logo.example/favicon.png' } });
     fireEvent.change(screen.getByLabelText('Footer Text'), { target: { value: 'New Footer' } });
 
     fireEvent.click(screen.getByText('Save Settings'));
@@ -235,6 +235,14 @@ describe('SettingsPanel', () => {
         description: 'New description',
         footerText: 'New Footer',
         currency: 'EUR',
+        aboutText: undefined,
+        heroImageUrl: undefined,
+        galleryImages: '[]',
+        faqItems: '[]',
+        reviews: '[]',
+        mapEmbedUrl: undefined,
+        activities: undefined,
+        capacity: undefined,
       });
       expect(mockShowToast).toHaveBeenCalledWith('Settings updated successfully!', 'success');
     });

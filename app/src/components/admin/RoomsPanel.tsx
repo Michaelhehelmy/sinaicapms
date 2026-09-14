@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useRoomsQuery,
   useProductsQuery,
@@ -6,6 +7,7 @@ import {
   useDeleteRoomMutation,
   useSaveProductMutation,
   useDeleteProductMutation,
+  queryKeys,
 } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
@@ -18,6 +20,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { bulkCreateProducts } from '@/lib/api';
 import type { Room, Product, Camp } from '@/hooks/useAdminData';
 
 interface RoomsPanelProps {
@@ -46,6 +49,14 @@ interface ProductForm {
   campIds: string[];
 }
 
+interface BulkProductRow {
+  name: string;
+  basePrice: string;
+  description: string;
+  imageUrl: string;
+  type: 'retail' | 'buffet' | 'menu';
+}
+
 const emptyRoomForm: RoomForm = {
   campId: '',
   productId: '',
@@ -66,6 +77,20 @@ const emptyProductForm: ProductForm = {
   campIds: [],
 };
 
+const emptyBulkRow = (): BulkProductRow => ({
+  name: '',
+  basePrice: '',
+  description: '',
+  imageUrl: '',
+  type: 'retail',
+});
+
+const bulkTypeOptions = [
+  { value: 'retail', label: 'Retail' },
+  { value: 'buffet', label: 'Buffet' },
+  { value: 'menu', label: 'Menu' },
+];
+
 const statusOptions = [
   { value: 'available', label: 'Available' },
   { value: 'occupied', label: 'Occupied' },
@@ -81,6 +106,7 @@ const bedTypeOptions = [
 ];
 
 export default function RoomsPanel({ campIds, camps, onNavigateToTab }: RoomsPanelProps) {
+  const queryClient = useQueryClient();
   const { data: rooms, isLoading: loadingRooms } = useRoomsQuery();
   const { data: products, isLoading: loadingTypes } = useProductsQuery();
   const { showToast } = useToast();
@@ -88,10 +114,13 @@ export default function RoomsPanel({ campIds, camps, onNavigateToTab }: RoomsPan
   const [activeSection, setActiveSection] = useState<'rooms' | 'types'>('rooms');
   const [showRoomForm, setShowRoomForm] = useState(false);
   const [showTypeForm, setShowTypeForm] = useState(false);
+  const [showBulkForm, setShowBulkForm] = useState(false);
   const [editRoomId, setEditRoomId] = useState<string | null>(null);
   const [editTypeId, setEditTypeId] = useState<string | null>(null);
   const [roomForm, setRoomForm] = useState<RoomForm>(emptyRoomForm);
   const [typeForm, setTypeForm] = useState<ProductForm>(emptyProductForm);
+  const [bulkRows, setBulkRows] = useState<BulkProductRow[]>(Array.from({ length: 5 }, emptyBulkRow));
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'room' | 'roomType'; id: string } | null>(null);
 
   // NOTE: mutation hooks must be created after state so they can capture editRoomId/editTypeId
@@ -236,6 +265,50 @@ export default function RoomsPanel({ campIds, camps, onNavigateToTab }: RoomsPan
     setTypeForm(emptyProductForm);
   }, [typeForm, editTypeId, showToast, saveProductMutation, activeCampId]);
 
+  const addBulkRow = useCallback(() => {
+    setBulkRows((prev) => [...prev, emptyBulkRow()]);
+  }, []);
+
+  const removeBulkRow = useCallback((index: number) => {
+    setBulkRows((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const updateBulkRow = useCallback((index: number, patch: Partial<BulkProductRow>) => {
+    setBulkRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }, []);
+
+  const openBulkAdd = useCallback(() => {
+    setBulkRows(Array.from({ length: 5 }, emptyBulkRow));
+    setShowBulkForm(true);
+  }, []);
+
+  const handleSaveBulk = useCallback(async () => {
+    const items = bulkRows
+      .filter((r) => r.name.trim())
+      .map((r) => ({
+        name: r.name.trim(),
+        basePrice: parseFloat(r.basePrice) || 0,
+        description: r.description.trim() || undefined,
+        imageUrl: r.imageUrl.trim() || undefined,
+        type: r.type,
+      }));
+    if (items.length === 0) {
+      showToast('Fill in at least one product name.', 'warning');
+      return;
+    }
+    setBulkSaving(true);
+    try {
+      const res = await bulkCreateProducts(items);
+      showToast(`${res.count} product${res.count === 1 ? '' : 's'} created.`, 'success');
+      setShowBulkForm(false);
+      queryClient.invalidateQueries({ queryKey: queryKeys.products });
+    } catch (err) {
+      showToast('Bulk create failed: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally {
+      setBulkSaving(false);
+    }
+  }, [bulkRows, showToast, queryClient]);
+
   const handleDelete = useCallback(async () => {
     /* v8 ignore next -- defensive guard: only reachable from the confirm dialog, which requires a set target */
     if (!deleteTarget) return;
@@ -371,7 +444,20 @@ export default function RoomsPanel({ campIds, camps, onNavigateToTab }: RoomsPan
         </div>
       ) : (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={openBulkAdd}
+              data-testid="bulk-add-products-btn"
+              leftIcon={
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              }
+            >
+              Bulk Add
+            </Button>
             <Button
               variant="success"
               size="md"
@@ -572,6 +658,82 @@ export default function RoomsPanel({ campIds, camps, onNavigateToTab }: RoomsPan
               rows={2}
             />
           </div>
+        </div>
+      </FormModal>
+
+      <FormModal
+        open={showBulkForm}
+        title="Bulk Add POS Products"
+        onClose={() => { setShowBulkForm(false); }}
+        onSubmit={handleSaveBulk}
+        submitLabel={bulkSaving ? 'Creating...' : `Create ${bulkRows.filter((r) => r.name.trim()).length || 0} Products`}
+        submitDisabled={bulkSaving}
+        size="lg"
+      >
+        <p className="text-sm text-gray-500 mb-4">
+          Add multiple retail / buffet / menu items at once — they appear instantly in the POS grid and on room-type lists.
+        </p>
+        <div className="space-y-3" data-testid="bulk-product-rows">
+          {bulkRows.map((row, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-start rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+              <div className="col-span-3">
+                <Input
+                  aria-label={`Product ${idx + 1} name`}
+                  type="text"
+                  value={row.name}
+                  onChange={(e) => updateBulkRow(idx, { name: e.target.value })}
+                  placeholder="Name *"
+                  data-testid={`bulk-name-${idx}`}
+                />
+              </div>
+              <div className="col-span-2">
+                <Input
+                  aria-label={`Product ${idx + 1} price`}
+                  type="number"
+                  value={row.basePrice}
+                  onChange={(e) => updateBulkRow(idx, { basePrice: e.target.value })}
+                  min="0"
+                  step="0.01"
+                  placeholder="Price"
+                  data-testid={`bulk-price-${idx}`}
+                />
+              </div>
+              <div className="col-span-2">
+                <Select
+                  aria-label={`Product ${idx + 1} type`}
+                  options={bulkTypeOptions}
+                  value={row.type}
+                  onChange={(e) => updateBulkRow(idx, { type: e.target.value as BulkProductRow['type'] })}
+                  data-testid={`bulk-type-${idx}`}
+                />
+              </div>
+              <div className="col-span-4">
+                <Input
+                  aria-label={`Product ${idx + 1} image URL`}
+                  type="text"
+                  value={row.imageUrl}
+                  onChange={(e) => updateBulkRow(idx, { imageUrl: e.target.value })}
+                  placeholder="Image URL (optional)"
+                />
+              </div>
+              <div className="col-span-1">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  aria-label={`Remove product ${idx + 1}`}
+                  onClick={() => removeBulkRow(idx)}
+                  disabled={bulkRows.length <= 1}
+                >
+                  —
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex justify-start">
+          <Button type="button" variant="secondary" size="md" onClick={addBulkRow} data-testid="add-bulk-row-btn">
+            + Add Row
+          </Button>
         </div>
       </FormModal>
 

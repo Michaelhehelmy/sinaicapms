@@ -299,6 +299,20 @@ export function saveProduct(data: Schemas['ProductCreateRequest'] | Schemas['Pro
   });
 }
 
+export interface BulkCreateResponse {
+  ids: string[];
+  count: number;
+  success: boolean;
+}
+
+/** Bulk-create up to 200 POS products (retail/buffet/menu). */
+export function bulkCreateProducts(items: Schemas['ProductCreateRequest'][]) {
+  return apiFetch<BulkCreateResponse>('/products/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  });
+}
+
 export function deleteProduct(id: number | string) {
   return apiFetch<Schemas['SuccessResponse']>(`/products/${id}`, { method: 'DELETE' });
 }
@@ -423,6 +437,14 @@ export function saveMeal(data: Schemas['MealCreateRequest'] | Schemas['MealUpdat
 
 export function deleteMeal(id: number | string) {
   return apiFetch<Schemas['SuccessResponse']>(`/meals/${id}`, { method: 'DELETE' });
+}
+
+/** Bulk-create up to 200 menu items. */
+export function bulkCreateMeals(items: Schemas['MealCreateRequest'][]) {
+  return apiFetch<BulkCreateResponse>('/meals/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  });
 }
 
 // ─── Meal Schedules ────────────────────────────────────────

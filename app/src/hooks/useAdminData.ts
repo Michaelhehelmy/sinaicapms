@@ -103,6 +103,14 @@ export interface TenantSettings {
   description: string;
   footerText: string;
   currency: string;
+  heroImageUrl?: string;
+  galleryImages?: string;
+  aboutText?: string;
+  faqItems?: string;
+  reviews?: string;
+  mapEmbedUrl?: string;
+  activities?: string;
+  capacity?: number;
   [key: string]: unknown;
 }
 

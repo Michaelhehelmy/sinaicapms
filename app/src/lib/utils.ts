@@ -27,6 +27,9 @@ export function escHtml(str: string): string {
  * - plain `http://` URLs → upgraded to `https://` (production is always https),
  *   keeping host/path/port
  * - valid `https://` URLs → returned unchanged
+ * - worker-served relative media paths (`/api/media/{key}` from the R2 upload
+ *   flow) → returned unchanged; `..` traversal and `//` protocol-relative
+ *   paths are still rejected
  */
 export function normalizeAssetUrl(
   url: string | null | undefined,
@@ -36,6 +39,15 @@ export function normalizeAssetUrl(
   if (url == null || typeof url !== 'string') return safeFallback;
   const trimmed = url.trim();
   if (trimmed === '') return safeFallback;
+
+  // R2 uploads return a same-worker relative path (`/api/media/{key}`) instead
+  // of an absolute URL. Whitelist exactly that shape: starts with the media
+  // prefix, contains no path traversal (`..`) and is not protocol-relative
+  // (`//host`), so it can only ever resolve to a same-origin media fetch.
+  if (trimmed.startsWith('/api/media/')) {
+    if (trimmed.includes('..') || trimmed.startsWith('//')) return safeFallback;
+    return trimmed;
+  }
 
   let parsed: URL;
   try {

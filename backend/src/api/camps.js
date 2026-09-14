@@ -93,7 +93,12 @@ export const productPostSchema = z.object({
   camp_ids: z.array(z.string()).optional(),
   // One-camp-per-tenant (0053): room types point at their camp via camp_id.
   camp_id: z.string().optional(),
+  type: z.enum(['room', 'menu', 'buffet', 'retail']).optional(),
 }).strip(); // S-M1 fix
+
+export const bulkProductPostSchema = z.object({
+  items: z.array(productPostSchema).min(1, 'At least one product is required').max(200, 'Maximum 200 products per bulk request'),
+}).strip();
 
 export const roomPostSchema = z.object({
   id: z.string().optional(),
@@ -479,7 +484,7 @@ productsRoutes.post('/', async (c) => {
     if (!parsed.success) {
       return validationError(parsed);
     }
-    const { id, name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids, camp_id } = parsed.data;
+    const { id, name, lang, capacity, base_price, description, short_description, meta_title, meta_description, link_rewrite, image_url, category_id, sku, is_active, camp_ids, camp_id, type } = parsed.data;
     const pid = id || 'prod_' + crypto.randomUUID().slice(0, 12); // L1 fix
 
     // Room types belong to a camp/project. Use the provided camp_id when given
@@ -520,14 +525,14 @@ productsRoutes.post('/', async (c) => {
 
     await c.env.DB.prepare(
       `INSERT INTO pos_products (id, tenant_id, organization_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, camp_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'room', ?, datetime('now'), datetime('now'))`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
     ).bind(
       pid, tenantId, organizationId, category_id || null,
       sku || 'PROD-' + pid.toUpperCase(),
       name, description || null, short_description || null,
       base_price || 0, capacity || 1,
       image_url || null, is_active !== undefined ? is_active : 1,
-      productCampId
+      type || 'room', productCampId
     ).run();
 
     // product_camps junction is legacy (0053: pos_products.camp_id is the
@@ -548,6 +553,61 @@ productsRoutes.post('/', async (c) => {
       return errorResponse('Product already exists', 409);
     }
     return errorResponse('Failed to create product');
+  }
+});
+
+// POST /api/products/bulk — create multiple POS products at once (retail/buffet/menu).
+productsRoutes.post('/bulk', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    const parsed = bulkProductPostSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+    const { items } = parsed.data;
+
+    // Resolve the org for this tenant once (shared across all items).
+    const { results: orgRows } = await c.env.DB.prepare(
+      'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
+    ).bind(tenantId).all();
+    const organizationId = orgRows.length > 0 ? orgRows[0].organization_id : 1;
+
+    // Resolve a default camp_id for this tenant (used when item doesn't specify one).
+    const { results: tenantProjects } = await c.env.DB.prepare(
+      "SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL"
+    ).bind(tenantId).all();
+    const tenantCampId = tenantProjects.length === 1 ? tenantProjects[0].id : null;
+
+    const stmts = [];
+    const createdIds = [];
+    for (const item of items) {
+      const pid = item.id || 'prod_' + crypto.randomUUID().slice(0, 12);
+      const itemCampId = item.camp_id || tenantCampId;
+
+      stmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO pos_products (id, tenant_id, organization_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, camp_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+        ).bind(
+          pid, tenantId, organizationId, item.category_id || null,
+          item.sku || 'PROD-' + pid.toUpperCase(),
+          item.name, item.description || null, item.short_description || null,
+          item.base_price || 0, item.capacity || 1,
+          item.image_url || null, item.is_active !== undefined ? item.is_active : 1,
+          item.type || 'retail', itemCampId
+        )
+      );
+      createdIds.push(pid);
+    }
+
+    await c.env.DB.batch(stmts);
+
+    return jsonResponse({ ids: createdIds, count: createdIds.length, success: true });
+  } catch (e) {
+    if (e && typeof e.message === 'string' && e.message.includes('UNIQUE constraint failed')) {
+      return errorResponse('One or more products already exist (duplicate SKU or ID)', 409);
+    }
+    return errorResponse('Failed to create products in bulk');
   }
 });
 
