@@ -56,6 +56,7 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 - **Design system**: 26 primitives in `app/src/components/ui/` (see `COMPONENT_CATALOG.md`), Tailwind CSS v4 tokens, `cn()` util.
 - **Images**: `astro.config.mjs` uses `sharpImageService()` with `image.remotePatterns: [{ protocol: 'https' }]`. `SafeImage.astro` normalizes URLs, runs `getImage`, and falls back to a plain `<img>` on any error so pages never 500 on remote fetch failure.
 - **i18n**: there is NO i18n system — the frontend is hard-coded English LTR (deliberate decision; see `DEVELOPER_ROADMAP.md`).
+- **AI is split**: deterministic math (`/api/ai/dynamic-price`, `/api/ai/forecast`, `/api/ai/anomaly`, rules/predictions CRUD) stays server-side (D1-backed); model inference (embeddings, sentiment, text generation via Transformers.js) runs client-side in the admin browser only (`app/src/lib/browser-ai.ts`, loaded lazily on the AI panel — never in the main bundle). `/api/ai/workers-ai/*` and `/api/ai/state/*` remain honest 503 stubs; no `AI`/`STATE_DO` binding exists.
 
 ## 4. Backend (backend/)
 

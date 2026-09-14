@@ -12,8 +12,9 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { queryKeys, useAIPredictionsQuery, useAIPriceRulesQuery, useAIAutomationRulesQuery, useAIAutomationLogsQuery } from '@/hooks/useQueryHooks';
+import BrowserAIPanel from './BrowserAIPanel';
 
-type Tab = 'predictions' | 'priceRules' | 'automationRules' | 'automationLogs' | 'forecast';
+type Tab = 'predictions' | 'priceRules' | 'automationRules' | 'automationLogs' | 'forecast' | 'browserAI';
 
 interface Prediction {
   id: string;
@@ -298,6 +299,7 @@ export default function AIPanel() {
           ['automationRules', 'Automation Rules'],
           ['automationLogs', 'Logs'],
           ['forecast', 'Forecast'],
+          ['browserAI', 'Browser AI'],
         ] as [Tab, string][]).map(([t, label]) => (
           <button
             key={t}
@@ -458,6 +460,9 @@ export default function AIPanel() {
           </div>
         )
       )}
+
+      {/* ── Browser AI Tab ─────────────────────────────────────── */}
+      {tab === 'browserAI' && <BrowserAIPanel />}
 
       {/* ── Price Rule Form Modal ───────────────────────────── */}
       <FormModal open={showPriceRuleForm} title={editingPriceRuleId ? 'Edit Price Rule' : 'Add Price Rule'} onClose={() => { setShowPriceRuleForm(false); setEditingPriceRuleId(null); }} onSubmit={handleSavePriceRule} submitLabel={saving ? 'Saving...' : editingPriceRuleId ? 'Update' : 'Save'} submitDisabled={saving}>
