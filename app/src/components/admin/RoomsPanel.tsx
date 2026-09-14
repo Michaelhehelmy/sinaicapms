@@ -598,6 +598,15 @@ export default function RoomsPanel({ campIds, camps, onNavigateToTab }: RoomsPan
             onChange={(e) => setRoomForm((prev) => ({ ...prev, maxGuests: e.target.value }))}
             min="1"
           />
+          <Input
+            label="Base Price"
+            type="number"
+            value={roomForm.basePrice}
+            onChange={(e) => setRoomForm((prev) => ({ ...prev, basePrice: e.target.value }))}
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+          />
           <div className="md:col-span-2">
             <Select
               label="Status"

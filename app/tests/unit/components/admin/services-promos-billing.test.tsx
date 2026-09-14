@@ -1072,7 +1072,7 @@ describe('BillingPanel', () => {
     expect(screen.getByText('Billing & Plans')).toBeInTheDocument();
     // 'Pro' appears in both the current-plan label and the plan comparison header.
     expect(screen.getAllByText('Pro').length).toBeGreaterThan(0);
-    expect(screen.getByText('$99/mo')).toBeInTheDocument();
+    expect(screen.getAllByText('$99.00/mo').length).toBeGreaterThan(0);
     expect(screen.getByText('Compare Plans')).toBeInTheDocument();
     expect(screen.getByText('Monthly subscription')).toBeInTheDocument();
     expect(screen.getByText(/Next billing/)).toBeInTheDocument();

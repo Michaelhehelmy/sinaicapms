@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { DataTable } from '@/components/ui/DataTable';
 import { StatusTag } from '@/components/ui/StatusTag';
@@ -6,6 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/lib/auth';
 import { useAdminUsersQuery } from '@/hooks/useQueryHooks';
+import { queryKeys } from '@/hooks/useQueryHooks';
 import { updateAdminUser, deleteAdminUser } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
@@ -30,6 +32,7 @@ const roleColors: Record<string, string> = {
 export default function UsersPanel() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
@@ -65,6 +68,7 @@ export default function UsersPanel() {
     try {
       await updateAdminUser(editingUser.id, { role: editRole });
       showToast(`Updated ${editingUser.displayName || editingUser.email} role to ${editRole}`, 'success');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admins });
       setEditingUser(null);
     } catch (err) {
       showToast('Failed to update user: ' + (err instanceof Error ? err.message : String(err)), 'error');
@@ -76,6 +80,7 @@ export default function UsersPanel() {
     try {
       await deleteAdminUser(deletingUser.id);
       showToast(`Deactivated ${deletingUser.displayName || deletingUser.email}`, 'success');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admins });
       setDeletingUser(null);
     } catch (err) {
       showToast('Failed to deactivate user: ' + (err instanceof Error ? err.message : String(err)), 'error');

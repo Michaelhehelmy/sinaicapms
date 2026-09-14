@@ -65,5 +65,8 @@ export function isRouteForbidden(zone: Zone, pathname: string): boolean {
   if (pathname === '/menu' || pathname === '/book' || pathname === '/rooms') {
     return zone !== 'tenant';
   }
+  if (pathname === '/storefront' || pathname.startsWith('/storefront/')) {
+    return zone !== 'tenant';
+  }
   return false;
 }

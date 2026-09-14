@@ -8,6 +8,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { jsonResponse, errorResponse } from '../utils/response.js';
 import { validationError } from '../utils/errors.js';
+import { createPaymobIntention } from '../services/paymob.js';
+import { loadPaymentConfig } from '../services/paymentConfig.js';
 import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
 import { getScope } from '../middleware/resolveScope.js';
 
@@ -276,7 +278,7 @@ router.post('/checkout', async (c) => {
   if (!tenantId) return errorResponse('Tenant ID required', 400);
 
   const body = await c.req.json();
-  const { sessionId } = body;
+  const { sessionId, customerEmail, customerPhone, shippingAddress } = body;
   if (!sessionId) return errorResponse('sessionId required', 400);
 
   const cart = await c.env.DB.prepare(
@@ -295,7 +297,6 @@ router.post('/checkout', async (c) => {
 
   if (cartItems.length === 0) return errorResponse('Cart is empty', 400);
 
-  // Payment stub — no real payment processing
   const totalAmount = cartItems.reduce((sum, item) => sum + item.total_price, 0);
 
   const orderId = crypto.randomUUID();
@@ -329,7 +330,89 @@ router.post('/checkout', async (c) => {
 
   await c.env.DB.batch(statements);
 
-  return jsonResponse({ orderId, orderNumber, totalAmount, status: 'pending', paymentStatus: 'pending', success: true }, 201);
+  // ── Real Paymob intention (mirrors reservation flow in api/reservations.js).
+  // When Paymob is disabled or misconfigured the order still saves as 'pending'
+  // and the response carries fallback_whats_app=true so the frontend can show
+  // the WhatsApp fallback button (same contract as createPublicReservation).
+  const pm = await loadPaymentConfig(c.env);
+
+  if (!pm.enabled || !pm.secretKey || !pm.baseUrl) {
+    return jsonResponse({
+      orderId,
+      orderNumber,
+      totalAmount,
+      status: 'pending',
+      paymentStatus: 'pending',
+      success: true,
+      paymobEnabled: false,
+      paymobIntention: null,
+      publicKey: null,
+      fallbackWhatsapp: true,
+    }, 201);
+  }
+
+  let pmIntention;
+  try {
+    const requestUrl = new URL(c.req.url);
+    const origin = requestUrl.origin;
+
+    pmIntention = await createPaymobIntention({
+      secretKey: pm.secretKey,
+      baseUrl: pm.baseUrl,
+      amountCents: Math.round(totalAmount * 100),
+      currency: pm.currency,
+      orderRef: orderNumber,
+      paymentMethods: pm.integrationIds,
+      billingData: {
+        first_name: body.customerEmail ? body.customerEmail.split('@')[0] : 'Guest',
+        last_name: body.customerEmail ? body.customerEmail.split('@')[1] || 'Guest' : 'Guest',
+        phone_number: body.customerPhone || '',
+        email: body.customerEmail || 'guest@sinaicamps.com',
+        apartment: 'N/A',
+        floor: 'N/A',
+        street: body.shippingAddress || 'N/A',
+        building: 'N/A',
+        city: 'N/A',
+        country: 'EG',
+        state: 'N/A',
+      },
+      notificationUrl: `${origin}/api/public/paymob/webhook`,
+      redirectionUrl: `${origin}/storefront/order/${orderNumber}/confirmation`,
+    });
+  } catch (e) {
+    // Paymob failure: order stays pending, surface WhatsApp fallback
+    return jsonResponse({
+      orderId,
+      orderNumber,
+      totalAmount,
+      status: 'pending',
+      paymentStatus: 'payment_failed',
+      success: true,
+      paymobEnabled: false,
+      paymobIntention: null,
+      publicKey: null,
+      fallbackWhatsapp: true,
+    }, 201);
+  }
+
+  // Persist the Paymob intention ID on the storefront order
+  await c.env.DB.prepare(
+    "UPDATE storefront_orders SET payment_intent_id = ?, updated_at = datetime('now') WHERE id = ?"
+  ).bind(String(pmIntention.id), orderId).run();
+
+  return jsonResponse({
+    orderId,
+    orderNumber,
+    totalAmount,
+    status: 'pending',
+    paymentStatus: 'pending',
+    success: true,
+    paymobEnabled: true,
+    paymobIntention: { clientSecret: pmIntention.clientSecret, id: pmIntention.id },
+    publicKey: pm.publicKey || null,
+    paymentMethods: pm.integrationIds.length > 0 ? pm.integrationIds : null,
+    fallbackWhatsapp: true,
+  }, 201);
 });
 
 // ── Customer Orders ────────────────────────────────────────────────────────

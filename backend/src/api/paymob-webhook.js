@@ -178,78 +178,129 @@ export async function handlePaymobWebhook(request, env) {
     return jsonResponse({ received: true });
   }
 
-  // 4. Resolve the order by reference and scope writes by its tenant_id.
-  try {
-    const payloadObj = JSON.parse(rawBody);
-    const orderRef = extractOrderReference(payloadObj);
+    // 4. Resolve the order by reference and scope writes by its tenant_id.
+    //    First check bookings (orders), then storefront orders — two distinct
+    //    tables sharing the same Paymob webhook endpoint.
+    try {
+      const payloadObj = JSON.parse(rawBody);
+      const orderRef = extractOrderReference(payloadObj);
 
-    if (!orderRef) {
-      if (env.ENVIRONMENT !== 'production') {
-        console.log('[PAYMOB WEBHOOK] No orderRef embedded in transaction — ignoring');
+      if (!orderRef) {
+        if (env.ENVIRONMENT !== 'production') {
+          console.log('[PAYMOB WEBHOOK] No orderRef embedded in transaction — ignoring');
+        }
+        return jsonResponse({ received: true });
       }
-      return jsonResponse({ received: true });
-    }
 
-    const order = await env.DB.prepare(
-      `SELECT id, tenant_id, camp_id, room_id, reference, total_amount,
-              check_in_date, check_out_date, payment_status
-       FROM orders WHERE reference = ?`
-    ).bind(orderRef).first();
+      const intentionId = payloadObj.intention_id
+        || (payloadObj.order && payloadObj.order.intention_id) || null;
 
-    if (!order) {
+      // ── Try booking orders first ──────────────────────────────────────────
+      const order = await env.DB.prepare(
+        `SELECT id, tenant_id, camp_id, room_id, reference, total_amount,
+                check_in_date, check_out_date, payment_status
+         FROM orders WHERE reference = ?`
+      ).bind(orderRef).first();
+
+      if (order) {
+        const tenantId = order.tenant_id;
+
+        // 5. Money write — scoped by reference AND tenant_id (cross-tenant safe).
+        await env.DB.prepare(
+          `UPDATE orders SET
+             payment_status = 'paid',
+             paymob_transaction_id = ?,
+             paymob_paid_at = datetime('now'),
+             amount_paid = total_amount,
+             updated_at = datetime('now')
+           WHERE reference = ? AND tenant_id = ?`
+        ).bind(parsed.transaction_id, orderRef, tenantId).run();
+
+        // State transition + payment_status flip (existing paid-state logic).
+        await applyPaidStateTransition(env, order);
+
+        // Fire the live admin dashboard notification.
+        broadcastNewBooking(env, tenantId, order);
+
+        // Marketplace payments ledger row (idempotent — never blocks the ack).
+        try {
+          const gross = order.total_amount || 0;
+          const fee = Math.round(gross * (pm.marketplaceFeePct / 100) * 100) / 100;
+          const net = Math.round((gross - fee) * 100) / 100;
+
+          await env.DB.prepare(
+            `INSERT INTO marketplace_payments
+               (order_id, tenant_id, order_reference, channel, gross_amount,
+                marketplace_fee, net_amount, currency, paymob_transaction_id,
+                paymob_intention_id, payment_status, notes)
+             SELECT ?, ?, ?, 'marketplace', ?, ?, ?, ?, ?, ?, 'captured', 'Paymob webhook capture'
+             WHERE NOT EXISTS (SELECT 1 FROM marketplace_payments WHERE order_reference = ?)`
+          ).bind(
+            order.id, tenantId, orderRef, gross, fee, net,
+            pm.currency || 'EGP', parsed.transaction_id,
+            intentionId, orderRef,
+          ).run();
+        } catch (ledgerErr) {
+          console.error('[PAYMOB WEBHOOK] Failed to insert marketplace_payments ledger row', ledgerErr?.message || ledgerErr);
+        }
+
+        if (env.ENVIRONMENT !== 'production') {
+          console.log(`[PAYMOB WEBHOOK] Booking order ${orderRef} marked paid (txn ${parsed.transaction_id})`);
+        }
+        return jsonResponse({ received: true });
+      }
+
+      // ── Try storefront orders ─────────────────────────────────────────────
+      const sfOrder = await env.DB.prepare(
+        `SELECT id, tenant_id, reference, total_amount, payment_status
+         FROM storefront_orders WHERE reference = ?`
+      ).bind(orderRef).first();
+
+      if (sfOrder) {
+        const tenantId = sfOrder.tenant_id;
+
+        await env.DB.prepare(
+          `UPDATE storefront_orders SET
+             payment_status = 'paid',
+             paymob_transaction_id = ?,
+             paymob_paid_at = datetime('now'),
+             updated_at = datetime('now')
+           WHERE reference = ? AND tenant_id = ?`
+        ).bind(parsed.transaction_id, orderRef, tenantId).run();
+
+        // Marketplace payments ledger row for storefront order (idempotent).
+        try {
+          const gross = sfOrder.total_amount || 0;
+          const fee = Math.round(gross * (pm.marketplaceFeePct / 100) * 100) / 100;
+          const net = Math.round((gross - fee) * 100) / 100;
+
+          await env.DB.prepare(
+            `INSERT INTO marketplace_payments
+               (order_id, tenant_id, order_reference, channel, gross_amount,
+                marketplace_fee, net_amount, currency, paymob_transaction_id,
+                paymob_intention_id, payment_status, notes)
+             SELECT ?, ?, ?, 'marketplace', ?, ?, ?, ?, ?, ?, 'captured', 'Paymob webhook capture (storefront)'
+             WHERE NOT EXISTS (SELECT 1 FROM marketplace_payments WHERE order_reference = ?)`
+          ).bind(
+            sfOrder.id, tenantId, orderRef, gross, fee, net,
+            pm.currency || 'EGP', parsed.transaction_id,
+            intentionId, orderRef,
+          ).run();
+        } catch (ledgerErr) {
+          console.error('[PAYMOB WEBHOOK] Failed to insert storefront marketplace_payments ledger row', ledgerErr?.message || ledgerErr);
+        }
+
+        if (env.ENVIRONMENT !== 'production') {
+          console.log(`[PAYMOB WEBHOOK] Storefront order ${orderRef} marked paid (txn ${parsed.transaction_id})`);
+        }
+        return jsonResponse({ received: true });
+      }
+
+      // ── No matching order in either table — ack silently ──────────────────
       if (env.ENVIRONMENT !== 'production') {
         console.log(`[PAYMOB WEBHOOK] No order found for reference ${orderRef}`);
       }
-      return jsonResponse({ received: true });
-    }
-
-    const tenantId = order.tenant_id;
-
-    // 5. Money write — scoped by reference AND tenant_id (cross-tenant safe).
-    await env.DB.prepare(
-      `UPDATE orders SET
-         payment_status = 'paid',
-         paymob_transaction_id = ?,
-         paymob_paid_at = datetime('now'),
-         amount_paid = total_amount,
-         updated_at = datetime('now')
-       WHERE reference = ? AND tenant_id = ?`
-    ).bind(parsed.transaction_id, orderRef, tenantId).run();
-
-    // State transition + payment_status flip (existing paid-state logic).
-    await applyPaidStateTransition(env, order);
-
-    // Fire the live admin dashboard notification.
-    broadcastNewBooking(env, tenantId, order);
-
-    // Marketplace payments ledger row (idempotent — never blocks the ack).
-    try {
-      const intentionId = payloadObj.intention_id
-        || (payloadObj.order && payloadObj.order.intention_id) || null;
-      const gross = order.total_amount || 0;
-      const fee = Math.round(gross * (pm.marketplaceFeePct / 100) * 100) / 100;
-      const net = Math.round((gross - fee) * 100) / 100;
-
-      await env.DB.prepare(
-        `INSERT INTO marketplace_payments
-           (order_id, tenant_id, order_reference, channel, gross_amount,
-            marketplace_fee, net_amount, currency, paymob_transaction_id,
-            paymob_intention_id, payment_status, notes)
-         SELECT ?, ?, ?, 'marketplace', ?, ?, ?, ?, ?, ?, 'captured', 'Paymob webhook capture'
-         WHERE NOT EXISTS (SELECT 1 FROM marketplace_payments WHERE order_reference = ?)`
-      ).bind(
-        order.id, tenantId, orderRef, gross, fee, net,
-        pm.currency || 'EGP', parsed.transaction_id,
-        intentionId, orderRef,
-      ).run();
-    } catch (ledgerErr) {
-      console.error('[PAYMOB WEBHOOK] Failed to insert marketplace_payments ledger row', ledgerErr?.message || ledgerErr);
-    }
-
-    if (env.ENVIRONMENT !== 'production') {
-      console.log(`[PAYMOB WEBHOOK] Order ${orderRef} marked paid (txn ${parsed.transaction_id})`);
-    }
-  } catch (e) {
+    } catch (e) {
     if (env.ENVIRONMENT !== 'production') {
       console.error('[PAYMOB WEBHOOK] Processing failed', e?.message || e);
     }

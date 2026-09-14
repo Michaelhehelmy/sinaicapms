@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useOrdersQuery, useRoomsQuery, useCampsQuery, useUpdateOrderStatusMutation, useDeleteOrderMutation } from '@/hooks/useQueryHooks';
+import { useOrdersQuery, useOrderDetailQuery, useRoomsQuery, useCampsQuery, useUpdateOrderStatusMutation, useDeleteOrderMutation } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -64,6 +64,12 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
   const [showStateChange, setShowStateChange] = useState<Order | null>(null);
   const [newState, setNewState] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
+
+  // Real order detail (fetched from GET /orders/:id) — list rows only carry
+  // a subset of the customer/payment fields, so the modal must fetch full detail.
+  const detailId = showDetail ? showDetail.id : null;
+  const { data: orderDetail } = useOrderDetailQuery(detailId);
+  const detail = orderDetail ?? showDetail;
 
   const statusMutation = useUpdateOrderStatusMutation();
   const deleteMutation = useDeleteOrderMutation();
@@ -264,32 +270,32 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
         />
       )}
 
-      {showDetail && (
+      {showDetail && detail && (
         <FormModal
           open
-          title={`Reservation — ${showDetail.reference || showDetail.id}`}
+          title={`Reservation — ${detail.reference || detail.id}`}
           onClose={() => setShowDetail(null)}
           onSubmit={() => setShowDetail(null)}
           submitLabel="Close"
         >
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-3">
-              <div><strong>Reference:</strong> {showDetail.reference}</div>
-              <div><strong>State:</strong> {showDetail.stateName || showDetail.orderStateId}</div>
-              <div><strong>Guest:</strong> {[showDetail.customerFirstName, showDetail.customerLastName].filter(Boolean).join(' ') || 'N/A'}</div>
-              <div><strong>Email:</strong> {showDetail.customerEmail || 'N/A'}</div>
-              <div><strong>Phone:</strong> {showDetail.customerPhone || 'N/A'}</div>
-              <div><strong>Room:</strong> {roomMap[String(showDetail.roomId)]?.name ?? 'N/A'}</div>
-              <div><strong>Check-in:</strong> {formatDate(String(showDetail.checkInDate))}</div>
-              <div><strong>Check-out:</strong> {formatDate(String(showDetail.checkOutDate))}</div>
-              <div><strong>People:</strong> {showDetail.numberOfPeople}</div>
-              <div><strong>Total:</strong> {formatCurrency(showDetail.totalAmount || 0)}</div>
-              <div><strong>Paid:</strong> {formatCurrency(showDetail.amountPaid || 0)}</div>
-              <div><strong>Payment:</strong> {showDetail.paymentMethod || 'N/A'}</div>
+              <div><strong>Reference:</strong> {detail.reference}</div>
+              <div><strong>State:</strong> {detail.stateName || detail.orderStateId}</div>
+              <div><strong>Guest:</strong> {[detail.customerFirstName, detail.customerLastName].filter(Boolean).join(' ') || 'N/A'}</div>
+              <div><strong>Email:</strong> {detail.customerEmail || 'N/A'}</div>
+              <div><strong>Phone:</strong> {detail.customerPhone || 'N/A'}</div>
+              <div><strong>Room:</strong> {roomMap[String(detail.roomId)]?.name ?? 'N/A'}</div>
+              <div><strong>Check-in:</strong> {formatDate(String(detail.checkInDate))}</div>
+              <div><strong>Check-out:</strong> {formatDate(String(detail.checkOutDate))}</div>
+              <div><strong>People:</strong> {detail.numberOfPeople}</div>
+              <div><strong>Total:</strong> {formatCurrency(detail.totalAmount || 0)}</div>
+              <div><strong>Paid:</strong> {formatCurrency(detail.amountPaid || 0)}</div>
+              <div><strong>Payment:</strong> {detail.paymentMethod || 'N/A'}</div>
             </div>
-            {showDetail.notes && (
+            {detail.notes && (
               <div className="bg-gray-50 rounded-lg p-3">
-                <strong>Notes:</strong> {showDetail.notes}
+                <strong>Notes:</strong> {detail.notes}
               </div>
             )}
           </div>

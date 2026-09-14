@@ -310,14 +310,26 @@ describe('Payroll', () => {
     expect(body.success).toBe(true);
   });
 
-  it('POST /payroll/runs/:id/post rejects draft payroll', async () => {
+  it('POST /payroll/runs/:id/post posts a draft payroll directly', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT id, status FROM payroll_runs/, [{ id: 'pr1', status: 'draft' }]);
+      .on(/SELECT id, status FROM payroll_runs/, [{ id: 'pr1', status: 'draft' }])
+      .on(/UPDATE payroll_runs SET status/, { meta: { changes: 1 } })
+      .on(/UPDATE payroll_lines SET status/, { meta: { changes: 1 } });
+    const app = mountRouter(hrRouter, { tenantId: 't1' });
+    const res = await app.request(req('/payroll/runs/pr1/post', { method: 'POST' }), {}, env(db));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+  });
+
+  it('POST /payroll/runs/:id/post rejects an already-paid payroll', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id, status FROM payroll_runs/, [{ id: 'pr1', status: 'paid' }]);
     const app = mountRouter(hrRouter, { tenantId: 't1' });
     const res = await app.request(req('/payroll/runs/pr1/post', { method: 'POST' }), {}, env(db));
     const body = await res.json();
     expect(res.status).toBe(400);
-    expect(body.error).toContain('completed before posting');
+    expect(body.error).toContain('already posted');
   });
 });
 

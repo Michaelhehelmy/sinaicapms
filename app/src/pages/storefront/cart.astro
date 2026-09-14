@@ -1,0 +1,56 @@
+---
+// Tenant storefront cart (/storefront/cart). Tenant-only.
+import ZoneGuard from '@/components/public/ZoneGuard.astro';
+import StorefrontCart from '@/components/public/StorefrontCart.tsx';
+
+const forbidden = Astro.locals.routeForbidden;
+if (forbidden) Astro.response.status = 404;
+
+const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
+const tenantId = Astro.locals.tenantId;
+
+let tenant: Record<string, unknown> | null = null;
+
+if (!forbidden) {
+  try {
+    const res = await ssrFetch(`/tenants/${tenantId}`);
+    if (res.ok) tenant = (await res.json()) as Record<string, unknown>;
+  } catch (e) {
+    console.error('Error loading cart:', e);
+  }
+}
+
+const t = (tenant ?? {}) as Record<string, unknown>;
+const color = (t.primaryColor as string) || '#4a7c4f';
+const tenantName = (t.name as string) || 'Shop';
+---
+<style is:global>
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+{
+  forbidden || !tenant ? (
+    <ZoneGuard />
+  ) : (
+    <div class="min-h-screen bg-stone-50 font-sans text-stone-900">
+      <header class="border-b border-stone-200 bg-white">
+        <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+          <a href="/storefront" class="text-lg font-semibold text-stone-800 hover:underline">{tenantName} — Shop</a>
+          <div class="flex items-center gap-4 text-sm">
+            <a href="/storefront" class="text-stone-500 hover:text-stone-900">Catalog</a>
+            <span class="font-medium text-stone-900">Cart</span>
+          </div>
+        </div>
+      </header>
+      <main class="mx-auto max-w-6xl px-4 py-8">
+        <StorefrontCart client:load tenantId={tenantId} primaryColor={color} />
+      </main>
+    </div>
+  )
+}

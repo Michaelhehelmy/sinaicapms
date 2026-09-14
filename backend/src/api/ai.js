@@ -542,11 +542,12 @@ router.post('/predictions', async (c) => {
   }, 201);
 });
 
-// ── Workers AI Integration (Stub) ───────────────────────────────────────────
-// Stub for Cloudflare Workers AI integration.
-// When AI binding is available in wrangler.toml, this can use:
-//   c.env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: [...] })
-// For now, returns mock responses for demonstration.
+// ── Workers AI Integration ─────────────────────────────────────────────────
+// Uses the Cloudflare Workers AI binding (env.AI) when available.
+// Returns 503 with a clear setup message when the binding is missing — no
+// fake data, ever.
+
+const AI_NOT_CONFIGURED = 'Workers AI is not configured. Add [ai] to wrangler.toml and enable Workers AI on your Cloudflare plan.';
 
 router.post('/workers-ai/analyze', async (c) => {
   const scope = getScope(c);
@@ -556,24 +557,19 @@ router.post('/workers-ai/analyze', async (c) => {
   const { prompt, model, maxTokens } = body;
 
   if (!prompt) return errorResponse('Prompt is required', 400);
+  if (!c.env.AI) return errorResponse(AI_NOT_CONFIGURED, 503);
 
-  // Stub: In production, this would call c.env.AI.run()
-  // const aiResponse = await c.env.AI.run(model || '@cf/meta/llama-3.1-8b-instruct', {
-  //   messages: [{ role: 'user', content: prompt }],
-  //   max_tokens: maxTokens || 1024,
-  // });
-
-  const stubResponse = {
-    id: crypto.randomUUID(),
-    model: model || '@cf/meta/llama-3.1-8b-instruct',
-    response: `[Stub] AI analysis for: "${prompt.slice(0, 50)}${prompt.length > 50 ? '...' : ''}". In production, this would use Workers AI to generate a real response.`,
-    tokens_used: Math.ceil(prompt.length / 4),
-    created_at: new Date().toISOString(),
-  };
+  const aiResponse = await c.env.AI.run(model || '@cf/meta/llama-3.1-8b-instruct', {
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: maxTokens || 1024,
+  });
 
   return jsonResponse({
-    ...stubResponse,
-    message: 'Workers AI stub response. Set AI binding in wrangler.toml for real AI capabilities.',
+    id: crypto.randomUUID(),
+    model: model || '@cf/meta/llama-3.1-8b-instruct',
+    response: aiResponse?.response || '',
+    tokens_used: aiResponse?.usage?.total_tokens || 0,
+    created_at: new Date().toISOString(),
     success: true,
   });
 });
@@ -586,93 +582,67 @@ router.post('/workers-ai/embeddings', async (c) => {
   const { text, model } = body;
 
   if (!text) return errorResponse('Text is required', 400);
+  if (!c.env.AI) return errorResponse(AI_NOT_CONFIGURED, 503);
 
-  // Stub: In production, this would call c.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [text] })
-  // const embedding = await c.env.AI.run(model || '@cf/baai/bge-base-en-v1.5', { text: [text] });
-
-  // Generate a deterministic mock embedding (768 dimensions)
-  const mockEmbedding = Array.from({ length: 768 }, (_, i) => {
-    const seed = (text.charCodeAt(i % text.length) * (i + 1)) % 1000;
-    return Math.round((seed / 500 - 1) * 100) / 100;
-  });
+  const embedding = await c.env.AI.run(model || '@cf/baai/bge-base-en-v1.5', { text: [text] });
+  const vectors = embedding?.data?.[0]?.embedding || embedding?.result?.[0]?.embedding || [];
 
   return jsonResponse({
     id: crypto.randomUUID(),
     model: model || '@cf/baai/bge-base-en-v1.5',
-    embeddings: [mockEmbedding],
-    dimensions: 768,
-    message: 'Embeddings stub response. Set AI binding in wrangler.toml for real embeddings.',
+    embeddings: vectors.length > 0 ? [vectors] : [],
+    dimensions: vectors.length,
     success: true,
   });
 });
 
-// ── Durable Objects State (Stub) ────────────────────────────────────────────
-// Stub for Durable Objects integration for real-time state management.
-// When DO bindings are available in wrangler.toml, this can use:
-//   const id = c.env.STATE_DO.idFromName(tenantId);
-//   const stub = c.env.STATE_DO.get(id);
-//   await stub.fetch(request)
+// ── Durable Objects State ──────────────────────────────────────────────────
+// Uses a STATE_DO binding when available. Returns 503 when not configured.
+
+const DO_NOT_CONFIGURED = 'Durable Objects state is not configured. Add STATE_DO binding to wrangler.toml.';
 
 router.get('/state/sessions', async (c) => {
   const scope = getScope(c);
   const tenantId = scope.tenantId;
   if (!tenantId) return errorResponse('Tenant ID required', 400);
+  if (!c.env.STATE_DO) return errorResponse(DO_NOT_CONFIGURED, 503);
 
-  // Stub: In production, this would query a Durable Object for real-time sessions
-  // const id = c.env.STATE_DO.idFromName(`sessions:${tenantId}`);
-  // const stub = c.env.STATE_DO.get(id);
-  // const response = await stub.fetch(new Request('http://do/sessions'));
-  // return response;
-
-  return jsonResponse({
-    sessions: [],
-    total: 0,
-    message: 'Durable Objects stub. Add STATE_DO binding to wrangler.toml for real-time state.',
-    success: true,
-  });
+  const id = c.env.STATE_DO.idFromName(`sessions:${tenantId}`);
+  const stub = c.env.STATE_DO.get(id);
+  const resp = await stub.fetch(new Request('http://do/sessions'));
+  return jsonResponse(await resp.json());
 });
 
 router.post('/state/sync', async (c) => {
   const scope = getScope(c);
   const tenantId = scope.tenantId;
   if (!tenantId) return errorResponse('Tenant ID required', 400);
+
   const body = await c.req.json();
   const { key, value, ttl } = body;
-
   if (!key) return errorResponse('Key is required', 400);
+  if (!c.env.STATE_DO) return errorResponse(DO_NOT_CONFIGURED, 503);
 
-  // Stub: In production, this would write to a Durable Object
-  // const id = c.env.STATE_DO.idFromName(`state:${tenantId}`);
-  // const stub = c.env.STATE_DO.get(id);
-  // await stub.fetch(new Request('http://do/set', { method: 'POST', body: JSON.stringify({ key, value, ttl }) }));
-
-  return jsonResponse({
-    key,
-    stored: true,
-    ttl: ttl || 3600,
-    message: 'State sync stub. Add STATE_DO binding to wrangler.toml for real-time state.',
-    success: true,
-  });
+  const id = c.env.STATE_DO.idFromName(`state:${tenantId}`);
+  const stub = c.env.STATE_DO.get(id);
+  const resp = await stub.fetch(new Request('http://do/set', {
+    method: 'POST',
+    body: JSON.stringify({ key, value, ttl }),
+  }));
+  return jsonResponse(await resp.json());
 });
 
 router.get('/state/sync/:key', async (c) => {
   const scope = getScope(c);
   const tenantId = scope.tenantId;
   if (!tenantId) return errorResponse('Tenant ID required', 400);
+  if (!c.env.STATE_DO) return errorResponse(DO_NOT_CONFIGURED, 503);
+
   const { key } = c.req.param();
-
-  // Stub: In production, this would read from a Durable Object
-  // const id = c.env.STATE_DO.idFromName(`state:${tenantId}`);
-  // const stub = c.env.STATE_DO.get(id);
-  // const response = await stub.fetch(new Request(`http://do/get/${key}`));
-
-  return jsonResponse({
-    key,
-    value: null,
-    found: false,
-    message: 'State read stub. Add STATE_DO binding to wrangler.toml for real-time state.',
-    success: true,
-  });
+  const id = c.env.STATE_DO.idFromName(`state:${tenantId}`);
+  const stub = c.env.STATE_DO.get(id);
+  const resp = await stub.fetch(new Request(`http://do/get/${key}`));
+  return jsonResponse(await resp.json());
 });
 
 export default router;

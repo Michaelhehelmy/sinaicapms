@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useTenantBillingQuery } from '@/hooks/useQueryHooks';
+import { formatCurrency } from '@/lib/utils';
 
 function UsageBar({ label, used, limit, unit = '' }: { label: string; used: number; limit: number; unit?: string }) {
   const isUnlimited = limit === 0 || limit === Infinity;
@@ -81,7 +82,7 @@ export default function BillingPanel() {
             <div className="bg-brand-50 border border-brand-200 rounded-lg px-4 py-2">
               <span className="text-lg font-bold text-brand-700">{subscription.planLabel}</span>
               <span className="text-sm text-brand-600 ml-2">
-                {subscription.price > 0 ? `$${subscription.price}/mo` : 'Free'}
+                {subscription.price > 0 ? `${formatCurrency(subscription.price)}/mo` : 'Free'}
               </span>
             </div>
             <div className="text-sm text-gray-500">
@@ -130,7 +131,7 @@ export default function BillingPanel() {
                   <td className="py-2.5 pr-4 text-gray-600">Price</td>
                   {plans.map((plan) => (
                     <td key={plan.name} className="text-center py-2.5 px-3 font-medium text-gray-800">
-                      {plan.price}{plan.period}
+                      {Number(plan.price) > 0 ? formatCurrency(Number(plan.price)) : 'Free'}{plan.period}
                     </td>
                   ))}
                 </tr>
@@ -195,12 +196,14 @@ export default function BillingPanel() {
 
       {/* Contact CTA */}
       <div className="flex justify-end">
-        <Button variant="success" size="lg">
-          <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          Contact Sales
-        </Button>
+        <a href="mailto:support@sinaicamps.com?subject=SinaiCamps%20Plan%20Inquiry" target="_blank" rel="noopener noreferrer">
+          <Button variant="success" size="lg">
+            <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Contact Sales
+          </Button>
+        </a>
       </div>
     </div>
   );

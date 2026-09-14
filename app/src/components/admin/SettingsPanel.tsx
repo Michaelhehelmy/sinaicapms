@@ -127,8 +127,6 @@ export default function SettingsPanel() {
   const { showToast } = useToast();
 
   const [galleryInput, setGalleryInput] = useState<string>('');
-  const [heroAuto, setHeroAuto] = useState<string | null>(null);
-  const [galleryDirty, setGalleryDirty] = useState(false);
 
   const [form, setForm] = useState<TenantSettings>({
     name: '',
@@ -176,8 +174,6 @@ export default function SettingsPanel() {
         capacity: settings.capacity ?? undefined,
       });
       setGalleryInput(String(settings.galleryImages ?? '[]'));
-      setHeroAuto(settings.heroImageUrl || null);
-      setGalleryDirty(false);
     }
   }, [settings]);
 
@@ -195,14 +191,12 @@ export default function SettingsPanel() {
     current.push(url);
     setForm((prev) => ({ ...prev, galleryImages: JSON.stringify(current) }));
     setGalleryInput('');
-    setGalleryDirty(true);
   }, [galleryInput, form.galleryImages, showToast]);
 
   const removeGalleryItem = useCallback((index: number) => {
     const current = parseJsonArray(form.galleryImages);
     current.splice(index, 1);
     setForm((prev) => ({ ...prev, galleryImages: JSON.stringify(current) }));
-    setGalleryDirty(true);
   }, [form.galleryImages]);
 
   const handleSave = () => {
@@ -378,7 +372,7 @@ export default function SettingsPanel() {
                 label="Hero Image (shown at the top of your public pages)"
                 testId="settings-hero-field"
                 value={form.heroImageUrl || ''}
-                onChange={(v) => { updateField('heroImageUrl', v); setHeroAuto(v); }}
+                onChange={(v) => { updateField('heroImageUrl', v); }}
               />
             </div>
           </div>

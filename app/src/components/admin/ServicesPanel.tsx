@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { ServiceDefinition, ServiceItem, ServiceBooking } from '@/lib/api';
 import { useServiceDefinitionsQuery, useServiceItemsQuery, useServiceBookingsQuery } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
@@ -52,6 +53,12 @@ const BOOKING_STATUS_OPTIONS = [
 
 export default function ServicesPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const invalidateServices = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'serviceDefinitions'] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'serviceItems'] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'serviceBookings'] });
+  }, [queryClient]);
   const [tab, setTab] = useState<Tab>('definitions');
 
   const { data: defs = [], isLoading: defsLoading } = useServiceDefinitionsQuery();
@@ -93,13 +100,14 @@ export default function ServicesPanel() {
         description: defForm.description || undefined,
       }, editingDefId ?? undefined);
       showToast(editingDefId ? 'Definition updated.' : 'Definition created.', 'success');
+      invalidateServices();
       setShowDefForm(false);
       setEditingDefId(null);
       setDefForm(emptyDefForm);
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [defForm, editingDefId, showToast]);
+  }, [defForm, editingDefId, showToast, invalidateServices]);
 
   // ── Item handlers ────────────────────────────────────────────────────
   const openAddItem = useCallback(() => { setEditingItemId(null); setItemForm(emptyItemForm); setShowItemForm(true); }, []);
@@ -130,13 +138,14 @@ export default function ServicesPanel() {
         status: itemForm.status,
       }, editingItemId ?? undefined);
       showToast(editingItemId ? 'Item updated.' : 'Item created.', 'success');
+      invalidateServices();
       setShowItemForm(false);
       setEditingItemId(null);
       setItemForm(emptyItemForm);
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally { setSaving(false); }
-  }, [itemForm, editingItemId, showToast]);
+  }, [itemForm, editingItemId, showToast, invalidateServices]);
 
   // ── Delete handler ───────────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
@@ -148,11 +157,12 @@ export default function ServicesPanel() {
         await api.deleteServiceItem(deleteTarget.item.id);
       }
       showToast('Deleted.', 'success');
+      invalidateServices();
       setDeleteTarget(null);
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast]);
+  }, [deleteTarget, showToast, invalidateServices]);
 
   // ── Booking status update ────────────────────────────────────────────
   const handleBookingStatus = useCallback(async (newStatus: string) => {
@@ -160,11 +170,12 @@ export default function ServicesPanel() {
     try {
       await api.updateBookingStatus(bookingStatusTarget.id, newStatus);
       showToast(`Booking marked as ${newStatus}.`, 'success');
+      invalidateServices();
       setBookingStatusTarget(null);
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [bookingStatusTarget, showToast]);
+  }, [bookingStatusTarget, showToast, invalidateServices]);
 
   const bookingStatusLabel: Record<string, { text: string; variant: 'info' | 'success' | 'warning' | 'danger' | 'neutral' }> = {
     pending: { text: 'Pending', variant: 'warning' },

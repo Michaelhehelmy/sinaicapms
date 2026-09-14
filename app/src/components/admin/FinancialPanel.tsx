@@ -51,9 +51,6 @@ interface TenantPayout {
 interface AccountForm { code: string; name: string; type: string; parentId: string; }
 const emptyAccountForm: AccountForm = { code: '', name: '', type: 'asset', parentId: '' };
 
-// ─── Journal Form ───────────────────────────────────────────
-interface JournalForm { name: string; type: string; }
-const emptyJournalForm: JournalForm = { name: '', type: 'general' };
 
 // ─── Entry Form ─────────────────────────────────────────────
 interface EntryForm { journalId: string; date: string; description: string; reference: string; lines: { uid: string; accountId: string; debit: string; credit: string; }[]; }
@@ -79,13 +76,6 @@ const ACCOUNT_TYPES = [
   { value: 'expense', label: 'Expense' },
 ];
 
-const JOURNAL_TYPES = [
-  { value: 'sales', label: 'Sales' },
-  { value: 'purchase', label: 'Purchase' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'bank', label: 'Bank' },
-  { value: 'general', label: 'General' },
-];
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Cash' },
@@ -101,6 +91,7 @@ const TYPE_BADGE: Record<string, { variant: 'info' | 'success' | 'warning' | 'da
   paid: { variant: 'success' },
   overdue: { variant: 'danger' },
   canceled: { variant: 'danger' },
+  cancelled: { variant: 'danger' },
   posted: { variant: 'success' },
   pending: { variant: 'warning' },
   completed: { variant: 'success' },
@@ -143,10 +134,6 @@ export default function FinancialPanel() {
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
-
-  // Journal modal
-  const [showJournalForm, setShowJournalForm] = useState(false);
-  const [journalForm, setJournalForm] = useState<JournalForm>(emptyJournalForm);
 
   // Entry modal
   const [showEntryForm, setShowEntryForm] = useState(false);
@@ -211,26 +198,6 @@ export default function FinancialPanel() {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
   }, [showToast, invalidateFinancial]);
-
-  // ── Journal handlers ──────────────────────────────────────
-  // NOTE: There is no UI entry point that ever opens the "New Journal" form
-  // (showJournalForm is only ever set to false), so this handler is
-  // provably unreachable dead code.
-  /* v8 ignore start */
-  const handleSaveJournal = useCallback(async () => {
-    if (!journalForm.name.trim()) { showToast('Name is required.', 'warning'); return; }
-    setSaving(true);
-    try {
-      await api.createFinancialJournal({ name: journalForm.name.trim(), type: journalForm.type });
-      showToast('Journal created.', 'success');
-      setShowJournalForm(false);
-      setJournalForm(emptyJournalForm);
-      invalidateFinancial();
-    } catch (err) {
-      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally { setSaving(false); }
-  }, [journalForm, showToast, invalidateFinancial]);
-  /* v8 ignore stop */
 
   // ── Entry handlers ────────────────────────────────────────
   const handleSaveEntry = useCallback(async () => {
@@ -536,17 +503,6 @@ export default function FinancialPanel() {
           <Select label="Type *" options={ACCOUNT_TYPES} value={accountForm.type} onChange={(e) => setAccountForm((p) => ({ ...p, type: e.target.value }))} />
         </div>
       </FormModal>
-
-      {/* ── Journal Form Modal ──────────────────────────────
-           Provably unreachable: showJournalForm is only ever set to false. */}
-      {/* v8 ignore start */}
-      <FormModal open={showJournalForm} title="New Journal" onClose={() => setShowJournalForm(false)} onSubmit={handleSaveJournal} submitLabel={saving ? 'Saving...' : 'Create'} submitDisabled={saving}>
-        <div className="space-y-4">
-          <Input label="Name *" type="text" value={journalForm.name} onChange={(e) => setJournalForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Sales Journal" />
-          <Select label="Type *" options={JOURNAL_TYPES} value={journalForm.type} onChange={(e) => setJournalForm((p) => ({ ...p, type: e.target.value }))} />
-        </div>
-      </FormModal>
-      {/* v8 ignore stop */}
 
       {/* ── Entry Form Modal ──────────────────────────────── */}
       <FormModal open={showEntryForm} title="New Journal Entry" onClose={() => setShowEntryForm(false)} onSubmit={handleSaveEntry} submitLabel={saving ? 'Saving...' : 'Create'} submitDisabled={saving}>

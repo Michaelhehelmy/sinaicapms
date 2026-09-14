@@ -163,6 +163,7 @@ vi.mock('@/lib/utils', () => ({
   formatCurrency: (v: number) => `$${Number(v).toFixed(2)}`,
   formatDate: (d: string) => d,
   cn: (...classes: (string | undefined | false | null)[]) => classes.filter(Boolean).join(' '),
+  escHtml: (s: unknown) => String(s),
 }));
 
 vi.mock('@/components/ui/DataTable', () => ({

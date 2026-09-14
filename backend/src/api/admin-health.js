@@ -93,29 +93,18 @@ export async function handleAdminHealthRoute(request, env) {
   // GET /api/admin/health/metrics — Historical health metrics
   if (method === 'GET' && path.length === 4 && path[3] === 'metrics') {
     try {
-      // Generate synthetic metrics for the last 24 hours (hourly intervals)
-      // In production, these would come from Cloudflare Analytics or D1.
+      // Real metrics require Cloudflare Analytics API integration or a request-
+      // counting middleware.  Returning zeroed hourly buckets is honest; the
+      // frontend charts show "no data" rather than misleading random numbers.
       const now = new Date();
       const metrics = [];
       for (let i = 23; i >= 0; i--) {
         const ts = new Date(now.getTime() - i * 3600_000);
         metrics.push({
           timestamp: ts.toISOString(),
-          workers: {
-            requests: Math.floor(Math.random() * 1000) + 100,
-            errors: Math.floor(Math.random() * 5),
-            latencyMs: Math.floor(Math.random() * 50) + 10,
-          },
-          d1: {
-            queries: Math.floor(Math.random() * 500) + 50,
-            errors: Math.floor(Math.random() * 3),
-            latencyMs: Math.floor(Math.random() * 30) + 5,
-          },
-          kv: {
-            operations: Math.floor(Math.random() * 200) + 20,
-            errors: Math.floor(Math.random() * 2),
-            latencyMs: Math.floor(Math.random() * 20) + 2,
-          },
+          workers: { requests: 0, errors: 0, latencyMs: 0 },
+          d1: { queries: 0, errors: 0, latencyMs: 0 },
+          kv: { operations: 0, errors: 0, latencyMs: 0 },
         });
       }
 

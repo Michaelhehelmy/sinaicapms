@@ -438,73 +438,22 @@ router.post('/payments', async (c) => {
 // extended to create actual payment intents/checkout sessions.
 
 router.post('/process-payment', async (c) => {
-  const scope = getScope(c);
-  const tenantId = scope.tenantId;
-  if (!tenantId) return errorResponse('Tenant ID required', 400);
-  const body = await c.req.json();
-  const { invoiceId, amount, method, currency, customerEmail } = body;
-
-  if (!amount || amount <= 0) return errorResponse('Invalid payment amount', 400);
-  if (!method) return errorResponse('Payment method required', 400);
-
-  // Generate a payment intent ID (in production, this would call Stripe/PayPal API)
-  const paymentIntentId = `pi_${crypto.randomUUID().slice(0, 24)}`;
-  const clientSecret = `${paymentIntentId}_secret_${crypto.randomUUID().slice(0, 16)}`;
-
-  // Store the payment intent for later confirmation
-  const intentId = crypto.randomUUID();
-  await c.env.DB.prepare(
-    `INSERT INTO payments (id, tenant_id, invoice_id, amount, payment_date, method, reference, status)
-     VALUES (?, ?, ?, ?, datetime('now'), ?, ?, 'pending')`
-  ).bind(intentId, tenantId, invoiceId || null, amount, method, paymentIntentId).run();
-
-  return jsonResponse({
-    id: intentId,
-    paymentIntentId,
-    clientSecret,
-    amount,
-    currency: currency || 'USD',
-    method,
-    status: 'pending',
-    message: 'Payment intent created. In production, redirect to Stripe/PayPal checkout.',
-    success: true,
-  }, 201);
+  // Payments are processed exclusively through Paymob (reservations + storefront
+  // checkout → paymob-webhook.js). This legacy Stripe-mock path is intentionally
+  // disabled — returning 501 so callers surface a real "not available" state.
+  return errorResponse(
+    'Direct payment processing is not available. Use the checkout flow (reservations or storefront) which routes through Paymob.',
+    501,
+  );
 });
 
 router.post('/confirm-payment', async (c) => {
-  const scope = getScope(c);
-  const tenantId = scope.tenantId;
-  if (!tenantId) return errorResponse('Tenant ID required', 400);
-  const body = await c.req.json();
-  const { paymentId } = body;
-
-  if (!paymentId) return errorResponse('Payment ID required', 400);
-
-  // In production, this would verify the payment with Stripe/PayPal
-  // For now, mark as completed
-  const existing = await c.env.DB.prepare(
-    'SELECT id, invoice_id, amount FROM payments WHERE id = ? AND tenant_id = ?'
-  ).bind(paymentId, tenantId).first();
-  if (!existing) return errorResponse('Payment not found', 404);
-
-  await c.env.DB.prepare(
-    "UPDATE payments SET status = 'completed', updated_at = datetime('now') WHERE id = ? AND tenant_id = ?"
-  ).bind(paymentId, tenantId).run();
-
-  // Update invoice if linked
-  if (existing.invoice_id) {
-    const invoice = await c.env.DB.prepare(
-      'SELECT id, total_amount, paid_amount FROM invoices WHERE id = ? AND tenant_id = ?'
-    ).bind(existing.invoice_id, tenantId).first();
-    if (invoice) {
-      const newPaid = (invoice.paid_amount || 0) + existing.amount;
-      await c.env.DB.prepare(
-        "UPDATE invoices SET paid_amount = ?, status = CASE WHEN ? >= total_amount THEN 'paid' ELSE status END, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?"
-      ).bind(newPaid, newPaid, existing.invoice_id, tenantId).run();
-    }
-  }
-
-  return jsonResponse({ success: true, status: 'completed' });
+  // Payment confirmation is handled by the Paymob webhook (paymob-webhook.js).
+  // This legacy Stripe-mock path is intentionally disabled.
+  return errorResponse(
+    'Payment confirmation is handled automatically by the Paymob webhook. This endpoint is no longer active.',
+    501,
+  );
 });
 
 // ── Tax Rates ──────────────────────────────────────────────────────────────

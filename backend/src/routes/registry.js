@@ -2519,10 +2519,11 @@ export const paymentRoutes = [
     method: 'post',
     path: '/api/payments/webhook',
     tags: ['payments'],
-    summary: 'Mock Stripe webhook (raw event body; x-webhook-secret header) — no request schema by design',
+    summary: 'RETIRED mock-Stripe webhook — always 501; real callbacks go to POST /api/public/paymob/webhook (HMAC verified)',
     responses: {
-      200: { description: 'Webhook acknowledged', content: { 'application/json': { schema: webhookResponseSchema } } },
-      ...errorResponses({ 401: { description: 'Invalid webhook secret', content: { 'application/json': { schema: errorEnvelopeSchema } } } }),
+      ...errorResponses({
+        501: { description: 'Retired — use the Paymob webhook', content: { 'application/json': { schema: errorEnvelopeSchema } } },
+      }),
     },
   }),
 ];

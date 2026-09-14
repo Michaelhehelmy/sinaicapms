@@ -1,17 +1,25 @@
 /**
- * payments.js — Mock-Stripe payment handlers (DISABLED).
+ * payments.js — Retired mock-Stripe payment handlers.
  *
- * ⚠️  NON-AUTHORITATIVE: These handlers are OFF by default (PM_ENABLED !== 'true').
- *     Orders must be paid ONLY via:
+ * ⚠️  NON-AUTHORITATIVE — intentionally retired.
+ *     Orders are paid ONLY via:
  *       (a) An authenticated admin order_state transition to a paid state
  *           (existing orders.js logic).
  *       (b) The HMAC-verified Paymob webhook (paymob-webhook.js, T4).
  *
- *     The mock confirm path here must stay disabled unless a real payment
- *     provider is wired behind PM_ENABLED. Do NOT enable in production.
+ *     The old mock Stripe webhook was silent-but-dangerous: it would mark an
+ *     order paid based on a shared header secret (no cryptographic signature
+ *     verification) and could be fired by any caller who knew the secret.
+ *     It never ran in production (STRIPE_WEBHOOK_SECRET is not configured),
+ *     but keeping a payment-mutating mock reachable at runtime is a footgun.
+ *
+ *     handleStripeWebhook is kept mounted at POST /api/payments/webhook (it is
+ *     still advertised in routes/registry.js) but now replies 501 so any
+ *     stale integration surfaces a truthful error instead of silently
+ *     succeeding or failing closed with a confusing 503/401.
  */
 
-import { jsonResponse, errorResponse } from '../utils/response';
+import { errorResponse } from '../utils/response';
 import { z } from 'zod';
 
 export const paymentIntentSchema = z.object({
@@ -27,44 +35,15 @@ export const confirmPaymentSchema = z.object({
 
 /**
  * POST /api/payments/webhook
- * Mock Stripe webhook handler. In production, verify the Stripe signature.
- * Requires x-webhook-secret header matching STRIPE_WEBHOOK_SECRET env var.
+ * Retired mock-Stripe webhook endpoint.
+ *
+ * Always 501. Real callbacks arrive at POST /api/public/paymob/webhook and are
+ * verified with the Paymob HMAC signature (see paymob-webhook.js). No order
+ * is ever mutated here.
  */
-export async function handleStripeWebhook(request, env) {
-  try {
-    // Verify webhook secret
-    const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      return errorResponse('Webhook not configured', 503);
-    }
-    const providedSecret = request.headers.get('x-webhook-secret');
-    if (!providedSecret || providedSecret !== webhookSecret) {
-      return errorResponse('Invalid webhook secret', 401);
-    }
-
-    const event = await request.json();
-    if (env.ENVIRONMENT !== 'production') {
-      console.log(`[STRIPE WEBHOOK] Received event type: ${event?.type || 'unknown'}`);
-    }
-
-    if (event?.type === 'payment_intent.succeeded') {
-      const paymentIntent = event.data?.object;
-      if (paymentIntent?.metadata?.orderId) {
-        const orderId = paymentIntent.metadata.orderId;
-        // Scope update to a valid tenant-owned order to prevent cross-tenant modification
-        const { results: orderCheck } = await env.DB.prepare(
-          "SELECT id, tenant_id FROM orders WHERE id = ?"
-        ).bind(orderId).all();
-        if (orderCheck.length > 0) {
-          await env.DB.prepare(
-            "UPDATE orders SET payment_status = 'paid', updated_at = datetime('now') WHERE id = ? AND tenant_id = ?"
-          ).bind(orderId, orderCheck[0].tenant_id).run();
-        }
-      }
-    }
-
-    return jsonResponse({ received: true });
-  } catch (e) {
-    return errorResponse('Webhook processing failed', 500);
-  }
+export async function handleStripeWebhook() {
+  return errorResponse(
+    'Stripe webhooks are retired — payment callbacks go to POST /api/public/paymob/webhook (HMAC verified)',
+    501
+  );
 }

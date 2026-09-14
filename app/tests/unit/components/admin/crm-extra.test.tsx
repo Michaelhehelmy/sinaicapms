@@ -24,6 +24,13 @@ vi.mock('@/lib/api', () => ({
   getCrmTasks: (...args: unknown[]) => mockGetCrmTasks(...args),
   getCrmTickets: (...args: unknown[]) => mockGetCrmTickets(...args),
   getCrmKnowledgeArticles: (...args: unknown[]) => mockGetCrmKnowledgeArticles(...args),
+  saveCrmKnowledgeArticle: (data: unknown, id?: string) =>
+    mockApiFetch(id ? `/crm/knowledge-articles/${id}` : '/crm/knowledge-articles', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteCrmKnowledgeArticle: (id: unknown) =>
+    mockApiFetch(`/crm/knowledge-articles/${id}`, { method: 'DELETE' }),
 }));
 
 vi.mock('@/components/ui/Toast', () => ({

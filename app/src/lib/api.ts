@@ -2005,6 +2005,26 @@ export function getCrmKnowledgeArticles() {
   return apiFetch<Array<{ id: string; title: string; category: string | null; isPublished: number }>>('/crm/knowledge-articles');
 }
 
+export function saveCrmKnowledgeArticle(data: { title: string; content: string; category?: string | null; tags?: string | null; isPublished?: boolean }, id?: string) {
+  return apiFetch<{ id: string; title: string; content: string; category: string | null; tags: string | null; isPublished: number; success: boolean }>(
+    id ? `/crm/knowledge-articles/${encodeURIComponent(id)}` : '/crm/knowledge-articles',
+    {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify({
+        title: data.title,
+        content: data.content,
+        category: data.category ?? null,
+        tags: data.tags ?? null,
+        isPublished: data.isPublished ?? true,
+      }),
+    },
+  );
+}
+
+export function deleteCrmKnowledgeArticle(id: string) {
+  return apiFetch<{ success: boolean }>(`/crm/knowledge-articles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 // ─── Storefront (Agent E) ──────────────────────────────────────────────────
 /** Public product catalog page — unified {data,total,page,pageSize,hasMore} envelope. */
 export function getStorefrontProducts(params?: { category?: string; search?: string; page?: number; pageSize?: number }) {
@@ -2032,8 +2052,9 @@ export function removeStorefrontCartItem(id: string) {
   return apiFetch<{ success: boolean }>(`/storefront/cart/items/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/** Checkout a storefront cart — returns Paymob intention when payment is enabled. */
 export function checkoutStorefront(data: { sessionId: string; customerEmail?: string; customerPhone?: string; shippingAddress?: string }) {
-  return apiFetch<{ orderId: string; orderNumber: string; success: boolean }>('/storefront/checkout', { method: 'POST', body: JSON.stringify(data) });
+  return apiFetch<{ orderId: string; orderNumber: string; totalAmount: number; success: boolean; paymobEnabled?: boolean; paymobIntention?: { clientSecret: string; id: number } | null; publicKey?: string | null; paymentMethods?: number[] | null; fallbackWhatsapp?: boolean }>('/storefront/checkout', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export function getStorefrontOrders(sessionId: string) {
@@ -2079,7 +2100,7 @@ export function getAiPriceRules() {
 }
 
 export function getAiAutomationRules() {
-  return apiFetch<Array<{ id: string; name: string; triggerEvent: string; isActive: number; lastTriggeredAt: string | null; triggerCount: number }>>('/ai/automation-rules');
+  return apiFetch<Array<{ id: string; name: string; triggerEvent: string; conditionJson: string | null; actionJson: string | null; isActive: number; lastTriggeredAt: string | null; triggerCount: number }>>('/ai/automation-rules');
 }
 
 export function toggleAiAutomationRule(id: string) {

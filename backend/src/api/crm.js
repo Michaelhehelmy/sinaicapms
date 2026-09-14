@@ -601,4 +601,44 @@ router.post('/knowledge-articles', async (c) => {
   }, 201);
 });
 
+router.put('/knowledge-articles/:id', async (c) => {
+  const scope = getScope(c);
+  const tenantId = scope.tenantId;
+  if (!tenantId) return errorResponse('Tenant ID required', 400);
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const parsed = knowledgeArticleCreateSchema.safeParse(body);
+  if (!parsed.success) return validationError(parsed);
+  const { title, content, category, tags, isPublished } = parsed.data;
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM knowledge_articles WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!existing) return errorResponse('Article not found', 404);
+
+  await c.env.DB.prepare(
+    'UPDATE knowledge_articles SET title = ?, content = ?, category = ?, tags = ?, is_published = ?, updated_at = datetime(\'now\') WHERE id = ? AND tenant_id = ?'
+  ).bind(title, content, category || null, tags || null, isPublished ? 1 : 0, id, tenantId).run();
+
+  return jsonResponse({
+    id, title, content, category: category || null, tags: tags || null,
+    isPublished: isPublished ? 1 : 0, success: true
+  });
+});
+
+router.delete('/knowledge-articles/:id', async (c) => {
+  const scope = getScope(c);
+  const tenantId = scope.tenantId;
+  if (!tenantId) return errorResponse('Tenant ID required', 400);
+  const id = c.req.param('id');
+
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM knowledge_articles WHERE id = ? AND tenant_id = ?'
+  ).bind(id, tenantId).first();
+  if (!existing) return errorResponse('Article not found', 404);
+
+  await c.env.DB.prepare('DELETE FROM knowledge_articles WHERE id = ? AND tenant_id = ?').bind(id, tenantId).run();
+  return jsonResponse({ success: true });
+});
+
 export default router;

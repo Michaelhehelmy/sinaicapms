@@ -81,7 +81,6 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
       return states.map((row) => ({
         status: row.state,
         count: row.count || 0,
-        totalAmount: 0,
       }));
     }
     return Array.isArray(bookData) ? bookData : [];
@@ -198,7 +197,6 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Status</th>
                     <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Count</th>
-                    <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Total Amount</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -206,7 +204,6 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
                     <tr key={row.status} className="border-b border-gray-50">
                       <td className="py-2 px-2 font-medium text-gray-800 capitalize">{row.status?.replace(/_/g, ' ')}</td>
                       <td className="py-2 px-2 text-gray-600">{row.count}</td>
-                      <td className="py-2 px-2 text-gray-600">{formatCurrency(row.totalAmount)}</td>
                     </tr>
                   ))}
                 </tbody>

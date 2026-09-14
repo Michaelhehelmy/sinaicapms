@@ -1,190 +1,65 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { handleStripeWebhook } from '../src/api/payments.js';
 
-function makeWebhookRequest(body, headers = {}) {
-  return {
-    headers: {
-      get: (name) => headers[name.toLowerCase()] || null,
-    },
-    json: () => Promise.resolve(body),
-  };
-}
-
-function makeFailingJsonRequest(headers = {}) {
-  return {
-    headers: {
-      get: (name) => headers[name.toLowerCase()] || null,
-    },
-    json: () => Promise.reject(new Error('Invalid JSON')),
-  };
-}
-
-function buildMockEnv(overrides = {}) {
-  const bindChain = {
-    all: vi.fn().mockResolvedValue({ results: [] }),
-    run: vi.fn().mockResolvedValue({}),
-  };
-  const bindFn = vi.fn(() => bindChain);
-  const prepareFn = vi.fn(() => ({ bind: bindFn }));
-
-  return {
-    STRIPE_WEBHOOK_SECRET: 'whsec_test_secret_123',
-    ENVIRONMENT: 'test',
-    DB: {
-      prepare: prepareFn,
-    },
-    ...overrides,
-  };
-}
-
-describe('handleStripeWebhook', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('returns 503 when STRIPE_WEBHOOK_SECRET is not configured', async () => {
-    const env = buildMockEnv({ STRIPE_WEBHOOK_SECRET: undefined });
-    const req = makeWebhookRequest(
-      { type: 'payment_intent.succeeded' },
-      { 'x-webhook-secret': 'whsec_test_secret_123' }
-    );
-
-    const res = await handleStripeWebhook(req, env);
-    const body = await res.json();
-
-    expect(res.status).toBe(503);
-    expect(body.error).toContain('Webhook not configured');
-  });
-
-  it('returns 401 when x-webhook-secret header is missing', async () => {
-    const env = buildMockEnv();
-    const req = makeWebhookRequest({ type: 'payment_intent.succeeded' }, {});
-
-    const res = await handleStripeWebhook(req, env);
-    const body = await res.json();
-
-    expect(res.status).toBe(401);
-    expect(body.error).toContain('Invalid webhook secret');
-  });
-
-  it('returns 401 when x-webhook-secret header is wrong', async () => {
-    const env = buildMockEnv();
-    const req = makeWebhookRequest(
-      { type: 'payment_intent.succeeded' },
-      { 'x-webhook-secret': 'wrong_secret' }
-    );
-
-    const res = await handleStripeWebhook(req, env);
-    const body = await res.json();
-
-    expect(res.status).toBe(401);
-    expect(body.error).toContain('Invalid webhook secret');
-  });
-
-  it('returns 200 and updates order on valid payment_intent.succeeded with existing order', async () => {
-    const env = buildMockEnv();
-    const bindChain = {
-      all: vi.fn().mockResolvedValue({ results: [{ id: 'order_1', tenant_id: 't1' }] }),
-      run: vi.fn().mockResolvedValue({}),
+/**
+ * handleStripeWebhook is RETIRED. It must never mutate an order and always
+ * answer 501 pointing at the HMAC-verified Paymob webhook
+ * (POST /api/public/paymob/webhook). These tests pin that contract.
+ */
+describe('handleStripeWebhook (retired)', () => {
+  function makeRequest(body, headers = {}) {
+    return {
+      headers: {
+        get: (name) => headers[name.toLowerCase()] || null,
+      },
+      json: () => Promise.resolve(body),
     };
-    env.DB.prepare = vi.fn(() => ({ bind: vi.fn(() => bindChain) }));
+  }
 
-    const req = makeWebhookRequest(
-      {
-        type: 'payment_intent.succeeded',
-        data: {
-          object: {
-            metadata: { orderId: 'order_1' },
-          },
-        },
+  function buildMockEnv(overrides = {}) {
+    return {
+      STRIPE_WEBHOOK_SECRET: 'whsec_test_secret_123',
+      ENVIRONMENT: 'test',
+      DB: {
+        prepare: vi.fn(() => ({ bind: vi.fn(() => ({ all: async () => ({ results: [] }), run: async () => ({}) })) })),
       },
+      ...overrides,
+    };
+  }
+
+  it('returns 501 with a clear retirement message', async () => {
+    const req = makeRequest(
+      { type: 'payment_intent.succeeded', data: { object: { metadata: { orderId: 'order_1' } } } },
       { 'x-webhook-secret': 'whsec_test_secret_123' }
     );
 
-    const res = await handleStripeWebhook(req, env);
+    const res = await handleStripeWebhook(req, buildMockEnv());
     const body = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ received: true });
-
-    expect(env.DB.prepare).toHaveBeenCalledTimes(2);
-    expect(env.DB.prepare).toHaveBeenCalledWith(
-      "SELECT id, tenant_id FROM orders WHERE id = ?"
-    );
-    expect(env.DB.prepare).toHaveBeenCalledWith(
-      "UPDATE orders SET payment_status = 'paid', updated_at = datetime('now') WHERE id = ? AND tenant_id = ?"
-    );
+    expect(res.status).toBe(501);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('retired');
+    expect(body.error).toContain('/api/public/paymob/webhook');
   });
 
-  it('returns 200 when order does not exist (webhook still succeeds)', async () => {
-    const env = buildMockEnv();
-
-    const req = makeWebhookRequest(
-      {
-        type: 'payment_intent.succeeded',
-        data: {
-          object: {
-            metadata: { orderId: 'nonexistent_order' },
-          },
-        },
-      },
+  it('returns 501 even when the webhook secret is configured', async () => {
+    const req = makeRequest(
+      { type: 'payment_intent.succeeded' },
       { 'x-webhook-secret': 'whsec_test_secret_123' }
     );
 
-    const res = await handleStripeWebhook(req, env);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ received: true });
+    const res = await handleStripeWebhook(req, buildMockEnv());
+    expect(res.status).toBe(501);
   });
 
-  it('returns 200 for unknown event types without DB calls', async () => {
+  it('never touches the orders table', async () => {
     const env = buildMockEnv();
-
-    const req = makeWebhookRequest(
-      { type: 'charge.refunded', data: { object: {} } },
+    const req = makeRequest(
+      { type: 'payment_intent.succeeded', data: { object: { metadata: { orderId: 'order_1' } } } },
       { 'x-webhook-secret': 'whsec_test_secret_123' }
     );
 
-    const res = await handleStripeWebhook(req, env);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ received: true });
+    await handleStripeWebhook(req, env);
     expect(env.DB.prepare).not.toHaveBeenCalled();
-  });
-
-  it('returns 200 when orderId is missing from metadata (no DB calls)', async () => {
-    const env = buildMockEnv();
-
-    const req = makeWebhookRequest(
-      {
-        type: 'payment_intent.succeeded',
-        data: {
-          object: {
-            metadata: {},
-          },
-        },
-      },
-      { 'x-webhook-secret': 'whsec_test_secret_123' }
-    );
-
-    const res = await handleStripeWebhook(req, env);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ received: true });
-    expect(env.DB.prepare).not.toHaveBeenCalled();
-  });
-
-  it('returns 500 when request.json() throws (malformed payload)', async () => {
-    const env = buildMockEnv();
-    const req = makeFailingJsonRequest({ 'x-webhook-secret': 'whsec_test_secret_123' });
-
-    const res = await handleStripeWebhook(req, env);
-    const body = await res.json();
-
-    expect(res.status).toBe(500);
-    expect(body.error).toContain('Webhook processing failed');
   });
 });

@@ -1107,6 +1107,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/products/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk-create up to 200 POS products at once (retail/buffet/menu; auth + tenant scoped) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BulkProductCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Created products */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BulkProductCreateResponse"];
+                    };
+                };
+                /** @description Bad request / validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/products/{id}": {
         parameters: {
             query?: never;
@@ -3296,6 +3372,82 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/meals/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk-create up to 200 menu items at once (auth + tenant scoped) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BulkMealCreateRequest"];
+                };
+            };
+            responses: {
+                /** @description Created meals */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BulkMealCreateResponse"];
+                    };
+                };
+                /** @description Bad request / validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6198,7 +6350,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mock Stripe webhook (raw event body; x-webhook-secret header) — no request schema by design */
+        /** RETIRED mock-Stripe webhook — always 501; real callbacks go to POST /api/public/paymob/webhook (HMAC verified) */
         post: {
             parameters: {
                 query?: never;
@@ -6208,15 +6360,6 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Webhook acknowledged */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["WebhookResponse"];
-                    };
-                };
                 /** @description Bad request / validation error */
                 400: {
                     headers: {
@@ -6226,7 +6369,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorEnvelope"];
                     };
                 };
-                /** @description Invalid webhook secret */
+                /** @description Unauthorized */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -6246,6 +6389,15 @@ export interface paths {
                 };
                 /** @description Internal server error */
                 500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Retired — use the Paymob webhook */
+                501: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -8786,6 +8938,16 @@ export interface components {
             isActive?: number;
             campIds?: string[];
             campId?: string;
+            /** @enum {string} */
+            type?: "room" | "menu" | "buffet" | "retail";
+        };
+        BulkProductCreateResponse: {
+            ids: string[];
+            count: number;
+            success: boolean;
+        };
+        BulkProductCreateRequest: {
+            items: components["schemas"]["ProductCreateRequest"][];
         };
         ProductUpdateRequest: {
             id?: string;
@@ -8804,6 +8966,8 @@ export interface components {
             isActive?: number;
             campIds?: string[];
             campId?: string;
+            /** @enum {string} */
+            type?: "room" | "menu" | "buffet" | "retail";
         };
         Room: {
             id: string;
@@ -9102,6 +9266,14 @@ export interface components {
             description?: string;
             imageUrl?: string;
             isActive?: number;
+        };
+        BulkMealCreateResponse: {
+            ids: string[];
+            count: number;
+            success: boolean;
+        };
+        BulkMealCreateRequest: {
+            items: components["schemas"]["MealCreateRequest"][];
         };
         MealUpdateRequest: {
             id?: string;
@@ -9524,9 +9696,6 @@ export interface components {
         PosUserActionResponse: {
             success: boolean;
             id: number;
-        };
-        WebhookResponse: {
-            received: boolean;
         };
         PosLoginUser: {
             id: string;

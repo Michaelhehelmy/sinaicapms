@@ -4,7 +4,7 @@ import servicesRouter from '../src/api/services.js';
 
 function mount() {
   const scopeMiddleware = async (c, next) => {
-    c.set('tenantId', 'tee1');
+    c.set('scope', { tenantId: 'tee1', user: null });
     await next();
   };
   const app = new Hono();

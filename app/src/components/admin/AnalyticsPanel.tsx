@@ -233,7 +233,7 @@ function ProductsTab({ days }: { days: number }) {
           <HorizontalBarChart
             items={topProducts.map((p) => ({ name: p.name, totalQty: p.totalQty }))}
             labelKey="name"
-            valueKey="total_qty"
+            valueKey="totalQty"
             maxValue={Math.max(...topProducts.map((p) => p.totalQty))}
             color="bg-blue-500"
           />

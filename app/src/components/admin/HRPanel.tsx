@@ -11,7 +11,7 @@ import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, escHtml } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useHrEmployeesQuery,
@@ -286,14 +286,26 @@ export default function HRPanel() {
     } finally { setSaving(false); }
   }, [payrollPeriodStart, payrollPeriodEnd, showToast, invalidateHr]);
 
+  const handlePostPayrollRun = useCallback(async (runId: string) => {
+    if (!confirm('Post this payroll run? This action marks it as paid.')) return;
+    setSaving(true);
+    try {
+      await api.postHrPayrollRun(runId);
+      showToast('Payroll run posted.', 'success');
+      invalidateHr();
+    } catch (err) {
+      showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally { setSaving(false); }
+  }, [showToast, invalidateHr]);
+
   // ── Payslip download ───────────────────────────────────────────────────
   const handleDownloadPayslip = useCallback((pr: any) => {
-    const periodStart = pr.periodStart || pr.period_start || '';
-    const periodEnd = pr.periodEnd || pr.period_end || '';
+    const periodStart = escHtml(pr.periodStart || pr.period_start || '');
+    const periodEnd = escHtml(pr.periodEnd || pr.period_end || '');
     const totalGross = pr.totalGross || pr.total_gross || 0;
     const totalDeductions = pr.totalDeductions || pr.total_deductions || 0;
     const totalNet = pr.totalNet || pr.total_net || 0;
-    const status = pr.status || 'draft';
+    const status = escHtml(pr.status || 'draft');
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Payslip ${periodStart} to ${periodEnd}</title>
@@ -514,7 +526,12 @@ export default function HRPanel() {
             data={payrollRuns}
             emptyMessage="No payroll runs."
             actions={(pr: any) => (
-              <Button variant="ghost" size="sm" onClick={() => handleDownloadPayslip(pr)}>Download Payslip</Button>
+              <div className="flex gap-1.5">
+                {pr.status !== 'paid' && (
+                  <Button variant="primary" size="sm" disabled={saving} onClick={() => handlePostPayrollRun(pr.id)}>Post</Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => handleDownloadPayslip(pr)}>Download Payslip</Button>
+              </div>
             )}
           />
         )

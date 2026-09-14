@@ -27,6 +27,13 @@ vi.mock('@/lib/api', () => ({
   getCrmTickets: (...args: unknown[]) => mockGetCrmTickets(...args),
   getCrmKnowledgeArticles: (...args: unknown[]) => mockGetCrmKnowledgeArticles(...args),
   getAdminTenants: (...args: unknown[]) => mockGetAdminTenants(...args),
+  saveCrmKnowledgeArticle: (data: unknown, id?: string) =>
+    mockApiFetch(id ? `/crm/knowledge-articles/${id}` : '/crm/knowledge-articles', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteCrmKnowledgeArticle: (id: unknown) =>
+    mockApiFetch(`/crm/knowledge-articles/${id}`, { method: 'DELETE' }),
 }));
 
 vi.mock('@/components/ui/Toast', () => ({
@@ -925,9 +932,9 @@ describe('CRMPanel', () => {
     fireEvent.click(screen.getByTestId('modal-submit'));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
-        '/crm/knowledge-articles',
+        '/crm/knowledge-articles/a1',
         expect.objectContaining({
-          method: 'POST',
+          method: 'PUT',
           body: expect.stringContaining('Check-in guide v2'),
         }),
       );

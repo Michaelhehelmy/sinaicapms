@@ -408,70 +408,49 @@ describe('Validation', () => {
 // ── Payment Gateway Stubs ───────────────────────────────────────────────────
 
 describe('Payment Gateway Stubs', () => {
-  it('POST /process-payment creates payment intent', async () => {
+  it('POST /process-payment is intentionally disabled (501)', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(financialsRouter, { tenantId: 't1' });
     const res = await app.request(req('/process-payment', {
       method: 'POST',
       body: JSON.stringify({ amount: 100, method: 'stripe', currency: 'USD' }),
     }), {}, env(db));
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(501);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.paymentIntentId).toMatch(/^pi_/);
-    expect(body.clientSecret).toContain('_secret_');
-    expect(body.status).toBe('pending');
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Paymob');
   });
 
-  it('POST /process-payment rejects invalid amount', async () => {
+  it('POST /process-payment rejects any body with a known unavailable response', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(financialsRouter, { tenantId: 't1' });
     const res = await app.request(req('/process-payment', {
       method: 'POST',
       body: JSON.stringify({ amount: -10, method: 'stripe' }),
     }), {}, env(db));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(501);
   });
 
-  it('POST /process-payment rejects missing method', async () => {
+  it('POST /confirm-payment is intentionally disabled (501)', async () => {
     const db = makeRoutingDb();
-    const app = mountRouter(financialsRouter, { tenantId: 't1' });
-    const res = await app.request(req('/process-payment', {
-      method: 'POST',
-      body: JSON.stringify({ amount: 100 }),
-    }), {}, env(db));
-    expect(res.status).toBe(400);
-  });
-
-  it('POST /confirm-payment confirms payment', async () => {
-    const db = makeRoutingDb();
-    db.on(/SELECT id, invoice_id, amount FROM payments/, () => ({
-      results: [{ id: 'pay1', invoice_id: 'inv1', amount: 50 }],
-    }));
-    db.on(/UPDATE payments SET status/, () => ({ results: [], meta: { changes: 1 } }));
-    db.on(/SELECT id, total_amount, paid_amount FROM invoices/, () => ({
-      results: [{ id: 'inv1', total_amount: 100, paid_amount: 30 }],
-    }));
-    db.on(/UPDATE invoices SET paid_amount/, () => ({ results: [], meta: { changes: 1 } }));
-
     const app = mountRouter(financialsRouter, { tenantId: 't1' });
     const res = await app.request(req('/confirm-payment', {
       method: 'POST',
       body: JSON.stringify({ paymentId: 'pay1' }),
     }), {}, env(db));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(501);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.status).toBe('completed');
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Paymob webhook');
   });
 
-  it('POST /confirm-payment rejects missing paymentId', async () => {
+  it('POST /confirm-payment rejects any body with a known unavailable response', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(financialsRouter, { tenantId: 't1' });
     const res = await app.request(req('/confirm-payment', {
       method: 'POST',
       body: JSON.stringify({}),
     }), {}, env(db));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(501);
   });
 });

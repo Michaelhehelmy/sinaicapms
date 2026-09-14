@@ -482,18 +482,17 @@ describe('Validation', () => {
 // ── Workers AI Stubs ────────────────────────────────────────────────────────
 
 describe('Workers AI Stubs', () => {
-  it('POST /workers-ai/analyze returns stub response', async () => {
+  it('POST /workers-ai/analyze returns 503 when AI binding is not configured', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(aiRouter, { tenantId: 't1' });
     const res = await app.request(req('/workers-ai/analyze', {
       method: 'POST',
       body: JSON.stringify({ prompt: 'Test prompt for AI analysis' }),
     }), {}, env(db));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.response).toContain('Stub');
-    expect(body.model).toBe('@cf/meta/llama-3.1-8b-instruct');
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('AI');
   });
 
   it('POST /workers-ai/analyze rejects empty prompt', async () => {
@@ -506,19 +505,17 @@ describe('Workers AI Stubs', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /workers-ai/embeddings returns mock embeddings', async () => {
+  it('POST /workers-ai/embeddings returns 503 when AI binding is not configured', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(aiRouter, { tenantId: 't1' });
     const res = await app.request(req('/workers-ai/embeddings', {
       method: 'POST',
       body: JSON.stringify({ text: 'Test text for embeddings' }),
     }), {}, env(db));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.embeddings).toHaveLength(1);
-    expect(body.embeddings[0]).toHaveLength(768);
-    expect(body.dimensions).toBe(768);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('AI');
   });
 
   it('POST /workers-ai/embeddings rejects empty text', async () => {
@@ -535,29 +532,27 @@ describe('Workers AI Stubs', () => {
 // ── Durable Objects State Stubs ─────────────────────────────────────────────
 
 describe('Durable Objects State Stubs', () => {
-  it('GET /state/sessions returns empty sessions', async () => {
+  it('GET /state/sessions returns 503 when STATE_DO binding is not configured', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(aiRouter, { tenantId: 't1' });
     const res = await app.request(req('/state/sessions'), {}, env(db));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.sessions).toEqual([]);
-    expect(body.total).toBe(0);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('STATE_DO');
   });
 
-  it('POST /state/sync stores key-value pair', async () => {
+  it('POST /state/sync returns 503 when STATE_DO binding is not configured', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(aiRouter, { tenantId: 't1' });
     const res = await app.request(req('/state/sync', {
       method: 'POST',
       body: JSON.stringify({ key: 'test-key', value: { data: 'test' }, ttl: 3600 }),
     }), {}, env(db));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.key).toBe('test-key');
-    expect(body.stored).toBe(true);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('STATE_DO');
   });
 
   it('POST /state/sync rejects empty key', async () => {
@@ -570,14 +565,53 @@ describe('Durable Objects State Stubs', () => {
     expect(res.status).toBe(400);
   });
 
-  it('GET /state/sync/:key returns value', async () => {
+  it('GET /state/sync/:key returns 503 when STATE_DO binding is not configured', async () => {
     const db = makeRoutingDb();
     const app = mountRouter(aiRouter, { tenantId: 't1' });
     const res = await app.request(req('/state/sync/test-key'), {}, env(db));
+    expect(res.status).toBe(503);
+  });
+
+  it('GET /state/sessions returns sessions when STATE_DO is configured', async () => {
+    const db = makeRoutingDb();
+    const stateDo = {
+      idFromName: vi.fn(() => 'sessions-id-t1'),
+      get: vi.fn(() => ({
+        fetch: vi.fn(async (request) => {
+          expect(new URL(request.url).pathname).toBe('/sessions');
+          return new Response(JSON.stringify({ success: true, sessions: [{ id: 's1' }], total: 1 }));
+        }),
+      })),
+    };
+    const app = mountRouter(aiRouter, { tenantId: 't1' });
+    const res = await app.request(req('/state/sessions'), {}, { DB: db, STATE_DO: stateDo });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.success).toBe(true);
+    expect(body.sessions).toEqual([{ id: 's1' }]);
+    expect(body.total).toBe(1);
+  });
+
+  it('POST /state/sync stores a key-value pair when STATE_DO is configured', async () => {
+    const db = makeRoutingDb();
+    const stateDo = {
+      idFromName: vi.fn(() => 'state-id-t1'),
+      get: vi.fn(() => ({
+        fetch: vi.fn(async (request) => {
+          expect(new URL(request.url).pathname).toBe('/set');
+          const sent = await request.json();
+          expect(sent.key).toBe('test-key');
+          return new Response(JSON.stringify({ success: true, key: 'test-key', stored: true }));
+        }),
+      })),
+    };
+    const app = mountRouter(aiRouter, { tenantId: 't1' });
+    const res = await app.request(req('/state/sync', {
+      method: 'POST',
+      body: JSON.stringify({ key: 'test-key', value: { data: 'test' }, ttl: 3600 }),
+    }), {}, { DB: db, STATE_DO: stateDo });
+    expect(res.status).toBe(200);
+    const body = await res.json();
     expect(body.key).toBe('test-key');
-    expect(body.found).toBe(false);
+    expect(body.stored).toBe(true);
   });
 });

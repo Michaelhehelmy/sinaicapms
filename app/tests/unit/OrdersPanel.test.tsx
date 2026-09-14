@@ -7,6 +7,7 @@ const mockUseCampsQuery = vi.fn();
 const mockUseRoomsQuery = vi.fn();
 const mockUseUpdateOrderStatusMutation = vi.fn();
 const mockUseDeleteOrderMutation = vi.fn();
+const mockUseOrderDetailQuery = vi.fn();
 
 vi.mock('@/hooks/useQueryHooks', () => ({
   useOrdersQuery: (...args: unknown[]) => mockUseOrdersQuery(...args),
@@ -14,6 +15,7 @@ vi.mock('@/hooks/useQueryHooks', () => ({
   useRoomsQuery: (...args: unknown[]) => mockUseRoomsQuery(...args),
   useUpdateOrderStatusMutation: (...args: unknown[]) => mockUseUpdateOrderStatusMutation(...args),
   useDeleteOrderMutation: (...args: unknown[]) => mockUseDeleteOrderMutation(...args),
+  useOrderDetailQuery: (...args: unknown[]) => mockUseOrderDetailQuery(...args),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -136,6 +138,7 @@ const defaultHooks = {
   useRoomsQuery: { data: [{ id: 'r1', name: 'Room 1', campId: 'c1' }, { id: 'r2', name: 'Room 2', campId: 'c1' }, { id: 'r3', name: 'Room 3', campId: 'c1' }], isLoading: false, error: null },
   useUpdateOrderStatusMutation: { mutate: vi.fn((_args: unknown, opts?: { onSuccess?: () => void }) => { opts?.onSuccess?.(); }), isPending: false },
   useDeleteOrderMutation: { mutate: vi.fn((_args: unknown, opts?: { onSuccess?: () => void }) => { opts?.onSuccess?.(); }), isPending: false },
+  useOrderDetailQuery: { data: null, isLoading: false, error: null, isFetching: false },
 };
 
 function setupMocks(overrides: Partial<typeof defaultHooks> = {}) {
@@ -145,6 +148,7 @@ function setupMocks(overrides: Partial<typeof defaultHooks> = {}) {
   mockUseRoomsQuery.mockReturnValue(merged.useRoomsQuery);
   mockUseUpdateOrderStatusMutation.mockReturnValue(merged.useUpdateOrderStatusMutation);
   mockUseDeleteOrderMutation.mockReturnValue(merged.useDeleteOrderMutation);
+  mockUseOrderDetailQuery.mockReturnValue(merged.useOrderDetailQuery);
 }
 
 describe('OrdersPanel', () => {

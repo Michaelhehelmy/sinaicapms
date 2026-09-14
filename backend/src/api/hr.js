@@ -444,7 +444,7 @@ router.post('/payroll/runs/:id/post', async (c) => {
   ).bind(id, tenantId).first();
   if (!run) return errorResponse('Payroll run not found', 404);
   if (run.status === 'posted') return errorResponse('Payroll run already posted', 400);
-  if (run.status === 'draft') return errorResponse('Payroll run must be completed before posting', 400);
+  if (run.status === 'paid') return errorResponse('Payroll run is already posted', 400);
 
   await c.env.DB.prepare(
     "UPDATE payroll_runs SET status = 'posted' WHERE id = ? AND tenant_id = ?"

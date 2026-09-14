@@ -225,6 +225,20 @@ export function useOrdersQuery(params?: Record<string, string>) {
   });
 }
 
+/** Fetch a single order detail (used by the order detail modal) — enabled only when an id is provided */
+export function useOrderDetailQuery(id: number | string | null) {
+  const toastError = useErrorToast();
+  return useQuery<Order>({
+    queryKey: [...queryKeys.orders(), 'detail', String(id)] as const,
+    queryFn: () => api.getOrder(id as number | string) as Promise<Order>,
+    enabled: !!id,
+    throwOnError: (err) => {
+      toastError('Failed to load order detail', err);
+      return false;
+    },
+  });
+}
+
 /** Fetch all rate plans */
 export function useRatePlansQuery() {
   const toastError = useErrorToast();

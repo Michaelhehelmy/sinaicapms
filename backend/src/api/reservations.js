@@ -479,7 +479,7 @@ reservationsRoutes.post('/', async (c) => {
           country: 'EG',
           state: 'N/A',
         },
-        notificationUrl: `${origin}/api/payments/webhook`,
+        notificationUrl: `${origin}/api/public/paymob/webhook`,
         redirectionUrl: `${origin}/booking/${reference}/confirmation`,
       });
     } catch (e) {

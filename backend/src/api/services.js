@@ -62,7 +62,12 @@ const bookingStatusSchema = z.object({
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function getTenantId(c) {
-  return c.get('tenantId') || c.req.header('x-tenant-id');
+  // Scope is the ONLY source of truth for tenant identity — x-tenant-id was
+  // previously read raw here (never set via c.get('tenantId')), trusting an
+  // unvalidated header on every admin handler. resolveScope() has already
+  // validated the hint (requireAuth 'equals') and applied the super_admin
+  // ?tenantId= override when it set c.get('scope').
+  return getScope(c)?.tenantId || null;
 }
 
 function slugify(str) {

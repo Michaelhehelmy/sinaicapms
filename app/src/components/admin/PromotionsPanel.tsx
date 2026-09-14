@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Promotion } from '@/lib/api';
 import { usePromotionsQuery } from '@/hooks/useQueryHooks';
 import { DataTable } from '@/components/ui/DataTable';
@@ -69,6 +70,10 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function PromotionsPanel() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const invalidatePromos = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['admin', 'promotions'] });
+  }, [queryClient]);
   const { data: promos = [], isLoading: loading } = usePromotionsQuery(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -121,6 +126,7 @@ export default function PromotionsPanel() {
       await api.savePromotion(payload, editingId ?? undefined);
       showToast(editingId ? 'Promotion updated.' : 'Promotion created.', 'success');
       trackEvent('Tenant: Promotion Updated', { promoId: editingId ?? 'new' });
+      invalidatePromos();
       setShowForm(false);
       setEditingId(null);
       setForm(emptyForm);
@@ -129,18 +135,19 @@ export default function PromotionsPanel() {
     } finally {
       setSaving(false);
     }
-  }, [form, editingId, showToast]);
+  }, [form, editingId, showToast, invalidatePromos]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
     try {
       await api.deletePromotion(deleteTarget.id);
       showToast('Promotion deleted.', 'success');
+      invalidatePromos();
       setDeleteTarget(null);
     } catch (err) {
       showToast('Error: ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [deleteTarget, showToast]);
+  }, [deleteTarget, showToast, invalidatePromos]);
 
   const formatValue = useCallback((p: Promotion) => {
     if (p.type === 'percentage') return `${p.value}%`;

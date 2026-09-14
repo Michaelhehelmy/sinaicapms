@@ -40,6 +40,8 @@ interface AutomationRule {
   id: string;
   name: string;
   triggerEvent: string;
+  conditionJson: string | null;
+  actionJson: string | null;
   isActive: number;
   lastTriggeredAt: string | null;
   triggerCount: number;
@@ -187,7 +189,12 @@ export default function AIPanel() {
   const openAddAutomation = useCallback(() => { setEditingAutomationId(null); setAutomationForm(emptyAutomationForm); setShowAutomationForm(true); }, []);
   const openEditAutomation = useCallback((r: AutomationRule) => {
     setEditingAutomationId(r.id);
-    setAutomationForm({ name: r.name, triggerEvent: r.triggerEvent, conditionJson: '', actionJson: '' });
+    setAutomationForm({
+      name: r.name,
+      triggerEvent: r.triggerEvent,
+      conditionJson: r.conditionJson || '',
+      actionJson: r.actionJson || '',
+    });
     setShowAutomationForm(true);
   }, []);
 

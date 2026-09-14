@@ -83,7 +83,7 @@ export default function ServiceBookingsPanel() {
       showToast('Booking created.', 'success');
       setShowCreateForm(false);
       setForm(emptyBookingForm);
-      queryClient.invalidateQueries({ queryKey: queryKeys.camps });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'service-bookings'] });
     },
     onError: (err: Error) => showToast('Error: ' + err.message, 'error'),
   });
@@ -92,7 +92,7 @@ export default function ServiceBookingsPanel() {
     mutationFn: ({ id, status }: { id: string; status: string }) => api.updateBookingStatus(id, status),
     onSuccess: () => {
       showToast('Booking status updated.', 'success');
-      queryClient.invalidateQueries({ queryKey: queryKeys.camps });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'service-bookings'] });
     },
     onError: (err: Error) => showToast('Error: ' + err.message, 'error'),
   });
@@ -104,7 +104,7 @@ export default function ServiceBookingsPanel() {
       showToast('Worker assigned.', 'success');
       setAssignTarget(null);
       setSelectedWorker('');
-      queryClient.invalidateQueries({ queryKey: queryKeys.camps });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'service-bookings'] });
     },
     onError: (err: Error) => showToast('Error: ' + err.message, 'error'),
   });

@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import * as api from '@/lib/api';
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -600,10 +601,12 @@ export default function CRMPanel() {
     if (!kbForm.title.trim() || !kbForm.content.trim()) { showToast('Title and content are required.', 'warning'); return; }
     setSaving(true);
     try {
-      await apiFetch('/crm/knowledge-articles', {
-        method: 'POST',
-        body: JSON.stringify({ ...kbForm, title: kbForm.title.trim(), content: kbForm.content.trim() }),
-      });
+      await api.saveCrmKnowledgeArticle({
+        title: kbForm.title.trim(),
+        content: kbForm.content.trim(),
+        category: kbForm.category || null,
+        isPublished: kbForm.isPublished ?? true,
+      }, editingKBId ?? undefined);
       showToast(editingKBId ? 'Article updated.' : 'Article created.', 'success');
       setShowKBForm(false);
       setEditingKBId(null);

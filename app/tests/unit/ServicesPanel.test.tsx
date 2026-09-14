@@ -10,6 +10,14 @@ let mockDefsLoading = false;
 let mockItemsLoading = false;
 let mockBookingsLoading = false;
 
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual: Record<string, unknown> = await importOriginal();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: vi.fn().mockResolvedValue(undefined) }),
+  };
+});
+
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
 }));
