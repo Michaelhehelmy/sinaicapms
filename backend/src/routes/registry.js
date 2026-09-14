@@ -2994,9 +2994,9 @@ const inventoryItemSchema = z
 
 const inventoryLowStockListSchema = z
   .object({
-    // Phase 3: `data` mirrors `items` — consumers converge on the envelope key.
+    // Single pagination envelope (T16): the handler emits `paginationEnvelope`,
+    // so only `data` is present — no `items` alias.
     data: z.array(inventoryItemSchema),
-    items: z.array(inventoryItemSchema),
     total: z.number(),
     page: z.number(),
     pageSize: z.number(),

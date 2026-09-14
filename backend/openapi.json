@@ -4227,12 +4227,6 @@
               "$ref": "#/components/schemas/InventoryItem"
             }
           },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/InventoryItem"
-            }
-          },
           "total": {
             "type": "number"
           },
@@ -4248,7 +4242,6 @@
         },
         "required": [
           "data",
-          "items",
           "total",
           "page",
           "pageSize",

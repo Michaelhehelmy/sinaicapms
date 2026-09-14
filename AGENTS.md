@@ -162,7 +162,7 @@ CI=true npx playwright test
 ./deploy.sh
 ```
 
-Deploys backend Worker + D1 migrations, then builds and deploys the unified frontend to Cloudflare Pages.
+Deploys backend Worker + D1 migrations, then builds and deploys the unified frontend to Cloudflare Workers (one-host-one-origin; the Pages project was retired at production cutover).
 
 ---
 

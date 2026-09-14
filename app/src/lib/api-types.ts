@@ -9911,7 +9911,6 @@ export interface components {
         };
         InventoryLowStockList: {
             data: components["schemas"]["InventoryItem"][];
-            items: components["schemas"]["InventoryItem"][];
             total: number;
             page: number;
             pageSize: number;

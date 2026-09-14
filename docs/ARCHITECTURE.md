@@ -73,7 +73,7 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 ## 6. Deployment
 
-`./deploy.sh` — deploys the backend Worker + D1 migrations, then builds/deploys the frontend to Cloudflare Pages.
+`./deploy.sh` — deploys the backend Worker + D1 migrations, then builds/deploys the frontend to Cloudflare Workers (one-host-one-origin).
 `./deploy.sh --staging` — same flow against the staging environment (validates `[env.staging]` in `backend/wrangler.toml` first). See `QUICK_START.md`.
 
 ## 7. Tests

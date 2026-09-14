@@ -11,7 +11,7 @@ import { getStorefrontCart, checkoutStorefront } from '@/lib/api';
 import { getSessionId } from '@/lib/storefrontSession';
 import { formatCurrency } from '@/lib/utils';
 
-type CartItem = { id: string; productName?: string; quantity: number; totalPrice: number };
+type CartItem = { id: string; productId?: string; productName?: string; quantity: number; totalPrice: number };
 
 interface Props {
   tenantId: string;
