@@ -358,4 +358,49 @@ describe('browser-ai client', () => {
       }
     });
   });
+
+  describe('import topology guard', () => {
+    it('keeps @huggingface/transformers out of the static import graph (lazy-load only)', async () => {
+      // Reads the raw source text (no network, no globals) so the guard stays
+      // deterministic. Node built-ins are dynamically imported inside the test
+      // so nothing touches the module graph at import time.
+      const { readFile } = await import('node:fs/promises');
+      const path = await import('node:path');
+
+      // Resolve the lib source from this test file's own location. `__dirname`
+      // is provided by vitest's CJS/ESM transpile; fall back to deriving it
+      // from `import.meta.url` when it is unavailable (pure ESM runners).
+      const testDir =
+        typeof __dirname === 'string' && __dirname.length > 0
+          ? __dirname
+          : path.dirname(new URL(import.meta.url).pathname);
+      const sourcePath = path.resolve(testDir, '../../src/lib/browser-ai.ts');
+      const source = await readFile(sourcePath, 'utf8');
+
+      // Static runtime imports of the transformers package, both quote styles:
+      //   import ... from '@huggingface/transformers'
+      //   import ... from "@huggingface/transformers"
+      // The regex does NOT flag:
+      //   - `import type { ... }`           (excluded via (?!type\b))
+      //   - the dynamic `await import(...)` (those lines never start with `import`)
+      //   - any `@/...` alias import        (specifier must be the exact package)
+      const staticImportRE =
+        /^import\s+(?!type\b)[^\n]*?\s+from\s+["']@huggingface\/transformers["']/m;
+
+      const offenders = source
+        .split('\n')
+        .map((line, index) => ({ line, lineNumber: index + 1 }))
+        .filter(({ line }) => staticImportRE.test(line));
+
+      expect(offenders).toEqual([]);
+
+      // Guard against a vacuous pass — the architecturally-required lazy
+      // dynamic import must still be present.
+      const dynamicImportRE = /await\s+import\(\s*["']@huggingface\/transformers["']\s*\)/;
+      expect(
+        dynamicImportRE.test(source),
+        'expected the source to contain `await import(\'@huggingface/transformers\')` — the guard must not pass vacuously',
+      ).toBe(true);
+    });
+  });
 });
