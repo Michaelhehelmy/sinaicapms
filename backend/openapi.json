@@ -4934,6 +4934,486 @@
         "items": {
           "$ref": "#/components/schemas/MarketplacePayout"
         }
+      },
+      "TenantImportCounts": {
+        "type": "object",
+        "properties": {
+          "products": {
+            "type": "number"
+          },
+          "rooms": {
+            "type": "number"
+          },
+          "ratePlans": {
+            "type": "number"
+          },
+          "mealCategories": {
+            "type": "number"
+          },
+          "meals": {
+            "type": "number"
+          },
+          "posUsers": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "products",
+          "rooms",
+          "ratePlans",
+          "mealCategories",
+          "meals",
+          "posUsers"
+        ]
+      },
+      "TenantImportResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/TenantImportCounts"
+          },
+          "created": {
+            "type": "object",
+            "properties": {
+              "tenantId": {
+                "type": "string"
+              },
+              "adminId": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "required": [
+              "tenantId",
+              "adminId",
+              "organizationId"
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "tenantId",
+          "counts"
+        ]
+      },
+      "TenantImportRequest": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "subdomain": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "camp",
+                  "supermarket",
+                  "transportation",
+                  "other"
+                ],
+                "default": "camp"
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "password": {
+                "type": "string",
+                "minLength": 8
+              },
+              "firstName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lastName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "businessType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "subdomain",
+              "email",
+              "password",
+              "firstName",
+              "lastName"
+            ]
+          },
+          "tenant": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "logoUrl": {
+                "type": "string"
+              },
+              "faviconUrl": {
+                "type": "string"
+              },
+              "primaryColor": {
+                "type": "string"
+              },
+              "footerText": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "whatsappNumber": {
+                "type": "string"
+              },
+              "phone": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "heroImageUrl": {
+                "type": "string"
+              },
+              "galleryImages": {
+                "type": "string"
+              },
+              "aboutText": {
+                "type": "string"
+              },
+              "faqItems": {
+                "type": "string"
+              },
+              "reviews": {
+                "type": "string"
+              },
+              "mapEmbedUrl": {
+                "type": "string"
+              },
+              "activities": {
+                "type": "string"
+              },
+              "capacity": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "menuConfig": {
+                "type": "string"
+              }
+            }
+          },
+          "project": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "location": {
+                "type": "string"
+              },
+              "capacity": {
+                "type": "number",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive",
+                  "planning",
+                  "completed"
+                ]
+              }
+            }
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sku": {
+                  "type": "string"
+                },
+                "basePrice": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "capacity": {
+                  "type": "number",
+                  "minimum": 1
+                },
+                "description": {
+                  "type": "string"
+                },
+                "shortDescription": {
+                  "type": "string"
+                },
+                "imageUrl": {
+                  "type": "string"
+                },
+                "categoryId": {
+                  "type": "string"
+                },
+                "isActive": {
+                  "type": "number"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "room",
+                    "menu",
+                    "buffet",
+                    "retail"
+                  ]
+                },
+                "campId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            },
+            "maxItems": 200
+          },
+          "rooms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "productId": {
+                  "type": "string"
+                },
+                "productName": {
+                  "type": "string"
+                },
+                "floor": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "bedType": {
+                  "type": "string"
+                },
+                "maxGuests": {
+                  "type": "number"
+                },
+                "basePrice": {
+                  "type": "number"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "isActive": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            },
+            "maxItems": 200
+          },
+          "ratePlans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "productId": {
+                  "type": "string"
+                },
+                "productName": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "pricePerNight": {
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMinimum": true
+                },
+                "startDate": {
+                  "type": "string"
+                },
+                "endDate": {
+                  "type": "string"
+                },
+                "season": {
+                  "type": "string"
+                },
+                "minStay": {
+                  "type": "number"
+                },
+                "isActive": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "name",
+                "pricePerNight"
+              ]
+            },
+            "maxItems": 200
+          },
+          "menu": {
+            "type": "object",
+            "properties": {
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "position": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                },
+                "maxItems": 50
+              },
+              "meals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "mealCategoryId": {
+                      "type": "string"
+                    },
+                    "categoryName": {
+                      "type": "string"
+                    },
+                    "price": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "imageUrl": {
+                      "type": "string"
+                    },
+                    "isActive": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                },
+                "maxItems": 200
+              }
+            }
+          },
+          "posUsers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "password": {
+                  "type": "string",
+                  "minLength": 8
+                },
+                "firstName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "lastName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "phone": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "cashier",
+                    "manager",
+                    "admin"
+                  ]
+                },
+                "department": {
+                  "type": "string"
+                },
+                "employeeId": {
+                  "type": "string"
+                },
+                "storeId": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "email",
+                "password",
+                "firstName",
+                "lastName"
+              ]
+            },
+            "maxItems": 100
+          }
+        }
       }
     },
     "parameters": {}
@@ -13995,6 +14475,105 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tenants/import": {
+      "post": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Import a full tenant data manifest (branding, products, rooms, rate plans, meals, POS users). With identity block: provisions a brand-new tenant (super_admin only). Without: imports into authenticated tenant.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Imported into existing tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantImportResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New tenant provisioned and data imported",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantImportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error / subdomain taken / email exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only super_admin can provision new tenants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict / duplicate",
             "content": {
               "application/json": {
                 "schema": {

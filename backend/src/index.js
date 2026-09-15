@@ -58,6 +58,7 @@ import marketplaceRoutes from './api/marketplace';
 import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
 import posBarcodeRoutes from './api/pos-barcode.js';
+import tenantImportRoutes from './api/tenant-import.js';
 import { withSunset } from './utils/deprecation.js';
 import { Broadcaster } from './durable/broadcaster.js';
 import financialsRoutes from './api/financials.js';
@@ -226,6 +227,21 @@ const metaScope = async (c, next) =>
   c.req.method === 'GET' ? metaPublicScope(c, next) : metaAdminScope(c, next);
 app.use('/api/tenants/:tenantId/meta/*', metaScope);
 app.route('/api/tenants/:tenantId/meta', tenantMetaRoutes);
+
+// ── Tenant data import (POST /api/tenants/import — admin auth, tenant-scoped) ──
+// Registered BEFORE the /api/tenants catch-all so it matches first.
+const tenantImportAuth = requireAuth({ realm: 'admin', roles: ['super_admin', 'admin'], requireTenant: false });
+app.use('/api/tenants/import', async (c, next) => {
+  const auth = await tenantImportAuth(c.req.raw, c.env);
+  if (auth instanceof Response) return auth;
+  await next();
+});
+app.use('/api/tenants/import/*', async (c, next) => {
+  const auth = await tenantImportAuth(c.req.raw, c.env);
+  if (auth instanceof Response) return auth;
+  await next();
+});
+app.route('/api/tenants/import', tenantImportRoutes);
 
 // ── Tenant routes (S-C1 fix: only explicit GET + POST, no app.all shadow) ──
 const handleTenantsRoute = async (c) => handleTenants(c.req.raw, c.env);

@@ -79,6 +79,7 @@ const PromotionsPanel = React.lazy(() => import('./PromotionsPanel'));
 const ServicesPanel = React.lazy(() => import('./ServicesPanel'));
 const ServiceBookingsPanel = React.lazy(() => import('./ServiceBookingsPanel'));
 const BillingPanel = React.lazy(() => import('./BillingPanel'));
+const TenantImportPanel = React.lazy(() => import('./TenantImportPanel'));
 const SuperTenantsPanel = React.lazy(() => import('./SuperTenantsPanel'));
 const SuperDashboardPanel = React.lazy(() => import('./SuperDashboardPanel'));
 const SuperOrdersPanel = React.lazy(() => import('./SuperOrdersPanel'));
@@ -146,6 +147,7 @@ const TENANT_NAV: NavItem[] = [
   { id: 'storefront', label: 'Storefront', icon: IconCamps },
   { id: 'ai', label: 'AI & Intelligence', icon: IconAnalytics },
   { id: 'billing', label: 'Billing', icon: IconSettings },
+  { id: 'import', label: 'Import', icon: IconSupply },
   { id: 'settings', label: 'Settings', icon: IconSettings },
 ];
 
@@ -440,6 +442,8 @@ function AdminAppInner() {
         return <AIPanel />;
       case 'billing':
         return <BillingPanel />;
+      case 'import':
+        return <TenantImportPanel />;
       case 'settings':
         return <><SettingsPanel /><PasswordPanel /></>;
       default:

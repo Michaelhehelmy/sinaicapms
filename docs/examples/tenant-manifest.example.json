@@ -1,0 +1,141 @@
+{
+  "tenant": {
+    "name": "Sinai Palms",
+    "logoUrl": "https://cdn.example.com/logo.png",
+    "faviconUrl": "https://cdn.example.com/favicon.png",
+    "heroImageUrl": "https://cdn.example.com/hero.jpg",
+    "primaryColor": "#0f766e",
+    "currency": "EGP",
+    "footerText": "Sinai Palms Beach Camp — Sharm El-Sheikh",
+    "location": "Sharm El-Sheikh, South Sinai",
+    "whatsappNumber": "+201000000000",
+    "phone": "+201000000000",
+    "email": "stay@sinaipalms.com",
+    "description": "Beachfront glamping camp in South Sinai with tents, grills and fresh juice.",
+    "aboutText": "Sinai Palms is a family-run beachfront camp on the Red Sea. Glamping tents, a casual grill menu, and dive-and-desert excursions.",
+    "galleryImages": "[\"https://cdn.example.com/gallery/sunset.jpg\",\"https://cdn.example.com/gallery/tent.jpg\"]",
+    "mapEmbedUrl": "https://maps.google.com/?q=Sharm+El-Sheikh",
+    "activities": "[\"Snorkeling\",\"Desert safari\",\"Sunrise yoga\"]",
+    "faqItems": "[]",
+    "reviews": "[]",
+    "capacity": 60,
+    "menuConfig": "{\"showWhatsapp\":true}"
+  },
+  "project": {
+    "name": "Sinai Palms Camp",
+    "location": "Sharm El-Sheikh, South Sinai",
+    "capacity": 60,
+    "status": "active"
+  },
+  "images": [
+    {
+      "kind": "base64-data-uri",
+      "value": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "note": "Tiny 1x1 transparent PNG. Any image field (tenant.logoUrl, tenant.faviconUrl, tenant.heroImageUrl, product.imageUrl, meal.imageUrl) accepts this form; the backend auto-uploads it to R2 and stores the resulting /api/media/ URL."
+    },
+    {
+      "kind": "https-url",
+      "value": "https://cdn.example.com/gallery/sunset.jpg",
+      "note": "http(s) URLs pass through unchanged — no upload."
+    },
+    {
+      "kind": "api-media-url",
+      "value": "/api/media/media/tenant_example/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d.jpg",
+      "note": "Already-uploaded asset paths pass through unchanged — no upload."
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_tent",
+      "name": "Beach Tent",
+      "sku": "TENT-01",
+      "basePrice": 1500,
+      "capacity": 4,
+      "imageUrl": "https://cdn.example.com/products/beach-tent.jpg",
+      "type": "room",
+      "isActive": 1,
+      "description": "Premium 4-person beach-facing tent with a private terrace.",
+      "shortDescription": "4-person beachfront tent"
+    },
+    {
+      "name": "Family Tent",
+      "basePrice": 2500,
+      "capacity": 6,
+      "type": "menu"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room_1",
+      "name": "Room 101",
+      "productName": "Beach Tent",
+      "floor": 1,
+      "maxGuests": 2,
+      "basePrice": 1500,
+      "status": "available",
+      "bedType": "twin",
+      "notes": "Sea view, ground floor"
+    },
+    {
+      "id": "room_2",
+      "name": "Room 102",
+      "productId": "prod_tent",
+      "bedType": "double",
+      "status": "available",
+      "isActive": 1
+    }
+  ],
+  "ratePlans": [
+    {
+      "productName": "Beach Tent",
+      "name": "Summer",
+      "pricePerNight": 1500,
+      "startDate": "2026-06-01",
+      "endDate": "2026-09-30",
+      "season": "summer",
+      "minStay": 2,
+      "isActive": 1
+    }
+  ],
+  "menu": {
+    "categories": [
+      { "name": "Grills", "position": 1 },
+      { "name": "Drinks", "position": 2 }
+    ],
+    "meals": [
+      {
+        "name": "Mixed Grill",
+        "categoryName": "Grills",
+        "price": 350,
+        "description": "Chicken, kofta and lamb skewers with grilled vegetables."
+      },
+      {
+        "name": "Fresh Juice",
+        "categoryName": "Drinks",
+        "price": 90,
+        "imageUrl": "https://cdn.example.com/menu/fresh-juice.jpg"
+      }
+    ]
+  },
+  "posUsers": [
+    {
+      "email": "cashier@sinaipalms.com",
+      "username": "aya",
+      "password": "password123",
+      "firstName": "Aya",
+      "lastName": "Salem",
+      "role": "cashier",
+      "phone": "+201000000000",
+      "employeeId": "CAS-001",
+      "department": "Front desk"
+    },
+    {
+      "email": "admin@sinaipalms.com",
+      "username": "omar",
+      "password": "password123",
+      "firstName": "Omar",
+      "lastName": "Fathy",
+      "role": "admin"
+    }
+  ]
+}

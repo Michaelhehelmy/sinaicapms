@@ -1633,6 +1633,197 @@ export const tenantRoutes = [
   }),
 ];
 
+// ─── Tenant import (T1): POST /api/tenants/import ─────────────────────────
+// Wire contract is camelCase end-to-end. Server toSnake()s the request body
+// then validates against the snake_case manifest schema in tenant-import.js.
+const tenantImportCountsSchema = z
+  .object({
+    products: z.number(),
+    rooms: z.number(),
+    ratePlans: z.number(),
+    mealCategories: z.number(),
+    meals: z.number(),
+    posUsers: z.number(),
+  })
+  .openapi('TenantImportCounts');
+
+const tenantImportResponseSchema = z
+  .object({
+    success: z.boolean(),
+    tenantId: z.string(),
+    counts: tenantImportCountsSchema,
+    created: z
+      .object({
+        tenantId: z.string(),
+        adminId: z.string(),
+        organizationId: z.number().nullable(),
+      })
+      .optional(),
+  })
+  .openapi('TenantImportResponse');
+
+const tenantImportRequestSchema = z
+  .object({
+    identity: z
+      .object({
+        name: z.string().min(1, 'Tenant name is required'),
+        subdomain: z.string().min(1, 'Subdomain is required'),
+        type: z.enum(['camp', 'supermarket', 'transportation', 'other']).optional().default('camp'),
+        email: z.string().email('Valid admin email is required'),
+        password: z.string().min(8, 'Password must be at least 8 characters'),
+        firstName: z.string().min(1, 'First name is required'),
+        lastName: z.string().min(1, 'Last name is required'),
+        businessType: z.string().optional(),
+      })
+      .optional(),
+    tenant: z
+      .object({
+        name: z.string().optional(),
+        logoUrl: z.string().optional(),
+        faviconUrl: z.string().optional(),
+        primaryColor: z.string().optional(),
+        footerText: z.string().optional(),
+        location: z.string().optional(),
+        whatsappNumber: z.string().optional(),
+        phone: z.string().optional(),
+        email: z.string().optional(),
+        description: z.string().optional(),
+        heroImageUrl: z.string().optional(),
+        galleryImages: z.string().optional(),
+        aboutText: z.string().optional(),
+        faqItems: z.string().optional(),
+        reviews: z.string().optional(),
+        mapEmbedUrl: z.string().optional(),
+        activities: z.string().optional(),
+        capacity: z.number().optional(),
+        currency: z.string().optional(),
+        menuConfig: z.string().optional(),
+      })
+      .optional(),
+    project: z
+      .object({
+        name: z.string().min(1).optional(),
+        location: z.string().optional(),
+        capacity: z.number().min(0).optional(),
+        status: z.enum(['active', 'inactive', 'planning', 'completed']).optional(),
+      })
+      .optional(),
+    products: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          name: z.string().min(1, 'Product name is required'),
+          sku: z.string().optional(),
+          basePrice: z.number().min(0).optional(),
+          capacity: z.number().min(1).optional(),
+          description: z.string().optional(),
+          shortDescription: z.string().optional(),
+          imageUrl: z.string().optional(),
+          categoryId: z.string().optional(),
+          isActive: z.number().optional(),
+          type: z.enum(['room', 'menu', 'buffet', 'retail']).optional(),
+          campId: z.string().optional(),
+        })
+      )
+      .max(200)
+      .optional(),
+    rooms: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          name: z.string().min(1, 'Room name is required'),
+          productId: z.string().optional(),
+          productName: z.string().optional(),
+          floor: z.string().optional(),
+          status: z.string().optional(),
+          bedType: z.string().optional(),
+          maxGuests: z.number().optional(),
+          basePrice: z.number().optional(),
+          notes: z.string().optional(),
+          isActive: z.number().optional(),
+        })
+      )
+      .max(200)
+      .optional(),
+    ratePlans: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          productId: z.string().optional(),
+          productName: z.string().optional(),
+          name: z.string().min(1, 'Rate plan name is required'),
+          pricePerNight: z.number().positive('Price must be positive'),
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          season: z.string().optional(),
+          minStay: z.number().optional(),
+          isActive: z.number().optional(),
+        })
+      )
+      .max(200)
+      .optional(),
+    menu: z
+      .object({
+        categories: z
+          .array(z.object({ name: z.string().min(1), position: z.number().optional() }))
+          .max(50)
+          .optional(),
+        meals: z
+          .array(
+            z.object({
+              id: z.string().optional(),
+              name: z.string().min(1, 'Meal name is required'),
+              mealCategoryId: z.string().optional(),
+              categoryName: z.string().optional(),
+              price: z.number().min(0).optional(),
+              description: z.string().optional(),
+              imageUrl: z.string().optional(),
+              isActive: z.number().optional(),
+            })
+          )
+          .max(200)
+          .optional(),
+      })
+      .optional(),
+    posUsers: z
+      .array(
+        z.object({
+          email: z.string().email('Valid email is required'),
+          username: z.string().optional(),
+          password: z.string().min(8, 'Password must be at least 8 characters'),
+          firstName: z.string().min(1, 'First name is required'),
+          lastName: z.string().min(1, 'Last name is required'),
+          phone: z.string().optional(),
+          role: z.enum(['cashier', 'manager', 'admin']).optional(),
+          department: z.string().optional(),
+          employeeId: z.string().optional(),
+          storeId: z.number().int().optional(),
+        })
+      )
+      .max(100)
+      .optional(),
+  })
+  .openapi('TenantImportRequest');
+
+export const tenantImportRoutesOpenApi = [
+  createRoute({
+    method: 'post',
+    path: '/api/tenants/import',
+    tags: ['tenants'],
+    summary: 'Import a full tenant data manifest (branding, products, rooms, rate plans, meals, POS users). With identity block: provisions a brand-new tenant (super_admin only). Without: imports into authenticated tenant.',
+    request: { body: { content: { 'application/json': { schema: tenantImportRequestSchema } } } },
+    responses: {
+      200: { description: 'Imported into existing tenant', content: { 'application/json': { schema: tenantImportResponseSchema } } },
+      201: { description: 'New tenant provisioned and data imported', content: { 'application/json': { schema: tenantImportResponseSchema } } },
+      ...errorResponses({
+        400: { description: 'Validation error / subdomain taken / email exists', content: { 'application/json': { schema: errorEnvelopeSchema } } },
+        403: { description: 'Only super_admin can provision new tenants', content: { 'application/json': { schema: errorEnvelopeSchema } } },
+        409: { description: 'Conflict / duplicate', content: { 'application/json': { schema: errorEnvelopeSchema } } },
+      }),
+    },
+  }),
+];
+
 // ─── Plans (T8-B3): plans_new via camps tenant scoping ─────────────────────────
 const planSchema = z
   .object({
@@ -3136,6 +3327,7 @@ export const openApiRoutes = [
   ...adminFinancialsRoutes,
   ...adminPayoutsRoutes,
   ...financialsRoutes,
+  ...tenantImportRoutesOpenApi,
 ];
 
 // ─── Document assembly ────────────────────────────────────────────────────────

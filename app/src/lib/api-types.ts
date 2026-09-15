@@ -8825,6 +8825,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tenants/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import a full tenant data manifest (branding, products, rooms, rate plans, meals, POS users). With identity block: provisions a brand-new tenant (super_admin only). Without: imports into authenticated tenant. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["TenantImportRequest"];
+                };
+            };
+            responses: {
+                /** @description Imported into existing tenant */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TenantImportResponse"];
+                    };
+                };
+                /** @description New tenant provisioned and data imported */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TenantImportResponse"];
+                    };
+                };
+                /** @description Validation error / subdomain taken / email exists */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Only super_admin can provision new tenants */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Conflict / duplicate */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -10085,6 +10188,140 @@ export interface components {
             notes?: string;
         };
         MarketplacePayoutList: components["schemas"]["MarketplacePayout"][];
+        TenantImportCounts: {
+            products: number;
+            rooms: number;
+            ratePlans: number;
+            mealCategories: number;
+            meals: number;
+            posUsers: number;
+        };
+        TenantImportResponse: {
+            success: boolean;
+            tenantId: string;
+            counts: components["schemas"]["TenantImportCounts"];
+            created?: {
+                tenantId: string;
+                adminId: string;
+                organizationId: number | null;
+            };
+        };
+        TenantImportRequest: {
+            identity?: {
+                name: string;
+                subdomain: string;
+                /**
+                 * @default camp
+                 * @enum {string}
+                 */
+                type: "camp" | "supermarket" | "transportation" | "other";
+                /** Format: email */
+                email: string;
+                password: string;
+                firstName: string;
+                lastName: string;
+                businessType?: string;
+            };
+            tenant?: {
+                name?: string;
+                logoUrl?: string;
+                faviconUrl?: string;
+                primaryColor?: string;
+                footerText?: string;
+                location?: string;
+                whatsappNumber?: string;
+                phone?: string;
+                email?: string;
+                description?: string;
+                heroImageUrl?: string;
+                galleryImages?: string;
+                aboutText?: string;
+                faqItems?: string;
+                reviews?: string;
+                mapEmbedUrl?: string;
+                activities?: string;
+                capacity?: number;
+                currency?: string;
+                menuConfig?: string;
+            };
+            project?: {
+                name?: string;
+                location?: string;
+                capacity?: number;
+                /** @enum {string} */
+                status?: "active" | "inactive" | "planning" | "completed";
+            };
+            products?: {
+                id?: string;
+                name: string;
+                sku?: string;
+                basePrice?: number;
+                capacity?: number;
+                description?: string;
+                shortDescription?: string;
+                imageUrl?: string;
+                categoryId?: string;
+                isActive?: number;
+                /** @enum {string} */
+                type?: "room" | "menu" | "buffet" | "retail";
+                campId?: string;
+            }[];
+            rooms?: {
+                id?: string;
+                name: string;
+                productId?: string;
+                productName?: string;
+                floor?: string;
+                status?: string;
+                bedType?: string;
+                maxGuests?: number;
+                basePrice?: number;
+                notes?: string;
+                isActive?: number;
+            }[];
+            ratePlans?: {
+                id?: string;
+                productId?: string;
+                productName?: string;
+                name: string;
+                pricePerNight: number;
+                startDate?: string;
+                endDate?: string;
+                season?: string;
+                minStay?: number;
+                isActive?: number;
+            }[];
+            menu?: {
+                categories?: {
+                    name: string;
+                    position?: number;
+                }[];
+                meals?: {
+                    id?: string;
+                    name: string;
+                    mealCategoryId?: string;
+                    categoryName?: string;
+                    price?: number;
+                    description?: string;
+                    imageUrl?: string;
+                    isActive?: number;
+                }[];
+            };
+            posUsers?: {
+                /** Format: email */
+                email: string;
+                username?: string;
+                password: string;
+                firstName: string;
+                lastName: string;
+                phone?: string;
+                /** @enum {string} */
+                role?: "cashier" | "manager" | "admin";
+                department?: string;
+                employeeId?: string;
+                storeId?: number;
+            }[];
+        };
     };
     responses: never;
     parameters: never;

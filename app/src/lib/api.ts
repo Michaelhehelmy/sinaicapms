@@ -590,6 +590,14 @@ export function createTenant(data: Schemas['TenantCreateRequest']) {
   });
 }
 
+/** Import a full tenant data manifest (branding, products, rooms, rate plans, meals, POS users). */ 
+export function importTenantManifest(manifest: Schemas['TenantImportRequest']) {
+  return apiFetch<Schemas['TenantImportResponse']>('/tenants/import', {
+    method: 'POST',
+    body: JSON.stringify(manifest),
+  });
+}
+
 export function getAdminStats() {
   return apiFetch<Schemas['AdminStats']>('/admin/stats');
 }
