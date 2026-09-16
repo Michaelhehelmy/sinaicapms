@@ -191,13 +191,13 @@ vi.mock('@/components/ui/Select', () => ({
 
 // ── Representative mock data ──────────────────────────────────────────
 const mockItems = [
-  { id: 'si1', name: 'Emergency Plumbing', service_definition_id: 'sd1', base_price: 50, status: 'active' },
-  { id: 'si2', name: 'Rewire', service_definition_id: 'sd2', base_price: 0, status: 'inactive' },
+  { id: 'si1', name: 'Emergency Plumbing', serviceDefinitionId: 'sd1', basePrice: 50, status: 'active' },
+  { id: 'si2', name: 'Rewire', serviceDefinitionId: 'sd2', basePrice: 0, status: 'inactive' },
 ];
 
 const mockBookings = [
-  { id: 'sb1', item_name: 'Emergency Plumbing', customer_name: 'John', scheduled_date: '2025-07-01T00:00:00Z', status: 'pending', service_item_id: 'si1', assigned_worker_id: 'w1' },
-  { id: 'sb2', item_name: null, customer_name: '', scheduled_date: null, status: 'mystery_status', service_item_id: 'si2', assigned_worker_id: 'missing-worker' },
+  { id: 'sb1', itemName: 'Emergency Plumbing', customerName: 'John', scheduledDate: '2025-07-01T00:00:00Z', status: 'pending', serviceItemId: 'si1', assignedWorkerId: 'w1' },
+  { id: 'sb2', itemName: null, customerName: '', scheduledDate: null, status: 'mystery_status', serviceItemId: 'si2', assignedWorkerId: 'missing-worker' },
 ];
 
 const mockStaff = { data: [{ id: 'w1', firstName: 'Ali', lastName: 'Khan', isActive: 1 }] };
@@ -249,10 +249,10 @@ describe('ServiceBookingsPanel extra coverage', () => {
     await waitFor(() => {
       expect(mockCreateServiceBooking).toHaveBeenCalledWith(
         expect.objectContaining({
-          service_item_id: 'si1',
-          customer_name: 'Jane',
-          customer_phone: '+20 100 000 0000',
-          scheduled_date: '2025-08-15',
+          serviceItemId: 'si1',
+          customerName: 'Jane',
+          customerPhone: '+20 100 000 0000',
+          scheduledDate: '2025-08-15',
           notes: 'Ask for receipt',
         }),
       );
@@ -286,7 +286,7 @@ describe('ServiceBookingsPanel extra coverage', () => {
 
   it('renders the assigned worker name in the worker column', async () => {
     mockGetServiceBookings.mockResolvedValue([
-      { id: 'sb1', item_name: 'Emergency Plumbing', customer_name: 'John', scheduled_date: '2025-07-01T00:00:00Z', status: 'pending', service_item_id: 'si1', assigned_worker_id: 'w1' },
+      { id: 'sb1', itemName: 'Emergency Plumbing', customerName: 'John', scheduledDate: '2025-07-01T00:00:00Z', status: 'pending', serviceItemId: 'si1', assignedWorkerId: 'w1' },
     ] as never);
     mockGetPosUsers.mockResolvedValue(mockStaff as never);
     renderWithQuery(<ServiceBookingsPanel />);
@@ -298,7 +298,7 @@ describe('ServiceBookingsPanel extra coverage', () => {
 
   it('renders raw worker id when the worker is not in the staff list', async () => {
     mockGetServiceBookings.mockResolvedValue([
-      { id: 'sb1', item_name: 'Emergency Plumbing', customer_name: 'John', scheduled_date: '2025-07-01T00:00:00Z', status: 'pending', service_item_id: 'si1', assigned_worker_id: 'no-such-worker' },
+      { id: 'sb1', itemName: 'Emergency Plumbing', customerName: 'John', scheduledDate: '2025-07-01T00:00:00Z', status: 'pending', serviceItemId: 'si1', assignedWorkerId: 'no-such-worker' },
     ] as never);
     mockGetPosUsers.mockResolvedValue({ data: [] } as never);
     renderWithQuery(<ServiceBookingsPanel />);
@@ -333,7 +333,7 @@ describe('ServiceBookingsPanel extra coverage', () => {
 
   it('renders unknown booking status with a neutral badge', async () => {
     mockGetServiceBookings.mockResolvedValue([
-      { id: 'sb2', item_name: 'Rewire', customer_name: '', scheduled_date: null, status: 'mystery_status', service_item_id: 'si2' },
+      { id: 'sb2', itemName: 'Rewire', customerName: '', scheduledDate: null, status: 'mystery_status', serviceItemId: 'si2' },
     ] as never);
     renderWithQuery(<ServiceBookingsPanel />);
     await waitFor(() => expect(screen.getByTestId('data-table')).toBeInTheDocument());
@@ -343,17 +343,17 @@ describe('ServiceBookingsPanel extra coverage', () => {
 
   it('renders a dash for missing scheduled date and empty item fallback', async () => {
     mockGetServiceBookings.mockResolvedValue([
-      { id: 'sb2', item_name: null, customer_name: '', scheduled_date: null, status: 'pending', service_item_id: 'si2' },
+      { id: 'sb2', itemName: null, customerName: '', scheduledDate: null, status: 'pending', serviceItemId: 'si2' },
     ] as never);
     renderWithQuery(<ServiceBookingsPanel />);
     await waitFor(() => expect(screen.getByTestId('data-table')).toBeInTheDocument());
-    // scheduled_date slice guarded by null -> renders "-", and customer_name falls back to "-".
+    // scheduledDate slice guarded by null -> renders "-", and customerName falls back to "-".
     expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(2);
   });
 
   it('renders "No customer" in the assign modal for a booking without a customer', async () => {
     mockGetServiceBookings.mockResolvedValue([
-      { id: 'sb2', item_name: null, customer_name: '', scheduled_date: null, status: 'pending', service_item_id: 'si2' },
+      { id: 'sb2', itemName: null, customerName: '', scheduledDate: null, status: 'pending', serviceItemId: 'si2' },
     ] as never);
     renderWithQuery(<ServiceBookingsPanel />);
     await waitFor(() => expect(screen.getByTestId('data-table')).toBeInTheDocument());

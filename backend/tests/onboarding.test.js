@@ -63,13 +63,32 @@ describe('onboardingRoutes', () => {
 
   // ─── POST /api/public/signup ────────────────────────────────
   describe('POST /api/public/signup', () => {
-    it('creates a tenant, admin, and POS org successfully', async () => {
+    it('creates tenant + admin + POS org/store + mapping in ONE atomic batch', async () => {
+      const batchStmts = [];
+      const runCalls = [];
       const db = {
-        prepare: vi.fn(() => ({
-          bind: vi.fn().mockReturnThis(),
-          all: vi.fn().mockResolvedValue({ results: [] }),
-          run: vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } }),
-        })),
+        batch: vi.fn(async (stmts) => {
+          batchStmts.push(...stmts);
+          return stmts.map(() => ({ meta: { changes: 1 } }));
+        }),
+        prepare: vi.fn((sql) => {
+          const chain = {
+            sql,
+            bindArgs: undefined,
+            bind: vi.fn((...args) => {
+              chain.bindArgs = args;
+              return chain;
+            }),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            run: vi.fn(() => {
+              runCalls.push(sql);
+              return Promise.resolve({ success: true, meta: { changes: 1 } });
+            }),
+          };
+          db.calls.push(chain);
+          return chain;
+        }),
+        calls: [],
       };
       env.DB = db;
       const res = await request('POST', '/api/public/signup', VALID_SIGNUP);
@@ -79,6 +98,35 @@ describe('onboardingRoutes', () => {
       expect(data.tenantId).toContain('tenant_');
       expect(data.onboardingToken).toBeTruthy();
       expect(bcrypt.hash).toHaveBeenCalled();
+
+      // All provisioning is ONE atomic batch — no sequential INSERTs.
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      expect(batchStmts).toHaveLength(5);
+      expect(runCalls).toHaveLength(0);
+
+      const orgStmt = batchStmts.find((s) => s.sql.includes('INSERT INTO pos_organizations'));
+      const storeStmt = batchStmts.find((s) => s.sql.includes('INSERT INTO pos_stores'));
+      const mappingStmt = batchStmts.find((s) => s.sql.includes('INSERT INTO tenant_org_mapping'));
+
+      // Org INSERT uses the CORRECT provisioning shape: no tenant_id column,
+      // no manual id (auto-increments), UNIQUE slug must be present.
+      expect(orgStmt).toBeTruthy();
+      expect(orgStmt.sql).toContain('pos_organizations (name, slug, created_at, updated_at)');
+      expect(orgStmt.sql).not.toContain('tenant_id');
+      expect(orgStmt.sql).not.toMatch(/INSERT INTO pos_organizations \(id/);
+      const expectedSlug = ('org_' + data.tenantId).replace(/[^a-zA-Z0-9_]/g, '_');
+      expect(orgStmt.bindArgs[1]).toBe(expectedSlug);
+
+      // Store + mapping resolve the org id via slug subquery INSIDE the batch.
+      expect(storeStmt.sql).toContain('SELECT id FROM pos_organizations WHERE slug = ?');
+      expect(storeStmt.bindArgs[0]).toBe(expectedSlug);
+      expect(storeStmt.bindArgs[2]).toBe('ST_' + data.tenantId);
+      expect(mappingStmt.sql).toContain('VALUES (?, (SELECT id FROM pos_organizations WHERE slug = ?))');
+      expect(mappingStmt.bindArgs).toEqual([data.tenantId, expectedSlug]);
+
+      // Admin row must start INACTIVE (is_active is an inline literal, not a bind).
+      const adminStmt = batchStmts.find((s) => s.sql.includes('INSERT INTO admins'));
+      expect(adminStmt.sql).toMatch(/is_active,[\s\S]*VALUES \([\s\S]*0,/);
     });
 
     it('returns 400 for missing name', async () => {
@@ -140,10 +188,74 @@ describe('onboardingRoutes', () => {
       expect(res.status).toBe(400);
     });
 
-    it('returns 500 on DB error', async () => {
+    it('retry with the same subdomain returns the existing 400 and performs no writes', async () => {
+      let runCount = 0;
+      const db = {
+        batch: vi.fn().mockResolvedValue([]),
+        prepare: vi.fn((sql) => ({
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockResolvedValue({ results: [{ id: 'existing' }] }),
+          run: vi.fn(() => {
+            runCount++;
+            return Promise.resolve({ success: true, meta: { changes: 1 } });
+          }),
+        })),
+      };
+      env.DB = db;
+      const res = await request('POST', '/api/public/signup', VALID_SIGNUP);
+      expect(res.status).toBe(400);
+      // No provisioning ran — no new tenant/admin/org rows can be orphaned.
+      expect(db.batch).not.toHaveBeenCalled();
+      expect(runCount).toBe(0);
+    });
+
+    it('a forced POS org failure 500s with a detail and leaves NO orphan rows (batch atomicity)', async () => {
+      const batchStmts = [];
+      const db = {
+        batch: vi.fn(async (stmts) => {
+          batchStmts.push(...stmts);
+          // Mirror the real schema-drift class of bug: the org INSERT fails.
+          throw new Error('no such column: tenant_id');
+        }),
+        prepare: vi.fn((sql) => {
+          const chain = {
+            sql,
+            bindArgs: undefined,
+            bind: vi.fn((...args) => {
+              chain.bindArgs = args;
+              return chain;
+            }),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            run: vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } }),
+          };
+          db.calls.push(chain);
+          return chain;
+        }),
+        calls: [],
+      };
+      env.DB = db;
+      const res = await request('POST', '/api/public/signup', VALID_SIGNUP);
+      const data = await res.json();
+      expect(res.status).toBe(500);
+      expect(data.success).toBe(false);
+      // Catch no longer swallows the real error — detail carries it.
+      expect(data.detail).toContain('no such column');
+
+      // Every write (tenant + admin + org + store + mapping) lives inside the
+      // single batch. Nothing was run outside it, so a batch rejection rolls
+      // them all back together — no orphan tenant/admin rows can persist.
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      expect(batchStmts).toHaveLength(5);
+      const runSqls = db.calls.filter((c) => c.run.mock.calls.length > 0).map((c) => c.sql);
+      expect(runSqls).toHaveLength(0);
+    });
+
+    it('returns 500 with a detail on DB error', async () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('POST', '/api/public/signup', VALID_SIGNUP);
+      const data = await res.json();
       expect(res.status).toBe(500);
+      expect(data.detail).toBe('DB fail');
     });
   });
 

@@ -46,6 +46,11 @@ Status as of **2026-08-04** (orchestrator kickoff). Each row = one atomic task. 
 | T17 | Docs: 7-file `docs/` set (ARCHITECTURE, API_CONTRACT, OPENAPI.yaml, COMPONENT_CATALOG, DEVELOPER_ROADMAP, MIGRATION_GUIDE, QUICK_START) + `examples/minimal/` scaffold | pending |
 | T18 | README/AGENTS.md correction pass + logbook + deploy.sh + prod smoke | pending |
 
+## Phase 7 — Security hardening backlog (added 2026-09-16 audit-fix round)
+| # | Task | Status |
+|---|---|---|
+| SEC-1 | Per-account (username) login lockout — cap failed logins per account in addition to per-IP rate limiting (requires D1-backed attempt tracking); supersedes the IP-only brute-force budget | pending |
+
 ## Execution rules (from orchestrator prompt)
 - One task = one tmp agent; verifiable done-condition; delete tmp file after done + logbook updated.
 - If a subtask fails, STOP and report — do not silently continue.

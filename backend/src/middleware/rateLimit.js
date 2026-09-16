@@ -47,6 +47,8 @@ export const RATE_LIMIT_POLICIES = {
   // T15 (M8): public review submission is floodable spam — bound it; no
   // broader `/api/marketplace*` prefix exists (default covers the rest).
   'POST /api/marketplace/reviews': { max: 10, window: '1m' },
+  // M4: public order-status lookup is read-only but still abuseable — modest cap.
+  'GET /api/orders/status/*': { max: 5, window: '1m' },
   default: { max: 100, envKey: 'RATE_LIMIT_API' },
 };
 
@@ -155,6 +157,11 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
       if (!record || now > record.resetTime) {
         record = { count: 0, resetTime: now + options.windowMs };
       }
+
+      if (record.count >= max) {
+        return c.json({ success: false, error: 'Too many requests' }, 429);
+      }
+
       record.count++;
       map.set(ipPathKey, record);
 
@@ -163,10 +170,6 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
         for (const [key, val] of map) {
           if (now > val.resetTime) map.delete(key);
         }
-      }
-
-      if (record.count > max) {
-        return c.json({ success: false, error: 'Too many requests' }, 429);
       }
 
       await next();

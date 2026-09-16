@@ -2692,10 +2692,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Public order status lookup by reference code */
+        /** Public order status lookup by reference code (email required) */
         get: {
             parameters: {
-                query?: never;
+                query: {
+                    email: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;

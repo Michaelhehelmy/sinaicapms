@@ -88,28 +88,44 @@ onboardingRoutes.post('/public/signup', async (c) => {
     const onboardingToken = crypto.randomUUID();
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create tenant in pending_setup status
-    await env.DB.prepare(
-      `INSERT INTO tenants (
-        id, subdomain, name, type, email, status,
-        onboarding_token, onboarding_status, primary_color, capacity, currency, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'pending_setup', ?, 'pending_setup', '#4a7c4f', 50, 'EGP', datetime('now'), datetime('now'))`
-    ).bind(tid, subdomain, name, business_type || 'camp', email, onboardingToken).run();
+    // Provision tenant + admin + POS org/store + mapping in ONE atomic batch.
+    // The org id is resolved inside the same batch via subquery so the store
+    // and tenant_org_mapping rows reference the auto-incremented organization
+    // (D1 runs batch statements in order, in a single transaction). Any failure
+    // rolls back ALL rows — no orphan tenant/admin can be left behind.
+    const slug = ('org_' + tid).replace(/[^a-zA-Z0-9_]/g, '_');
 
-    // Create admin account — T6 (P0.2): starts INACTIVE. Login queries already
-    // gate `is_active = 1` (auth.js), so the account cannot be used until the
-    // onboarding wizard completes (setup flow flips it active). Mirrors the
-    // pending-approval pattern used by the /register route.
-    await env.DB.prepare(
-      `INSERT INTO admins (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'admin', ?, ?, 0, datetime('now'), datetime('now'))`
-    ).bind(adminId, tid, email, hashedPassword, first_name, last_name).run();
-
-    // Create default POS organization for the tenant
-    const orgId = 'org_' + crypto.randomUUID().slice(0, 12);
-    await env.DB.prepare(
-      `INSERT INTO pos_organizations (id, tenant_id, name, created_at) VALUES (?, ?, ?, datetime('now'))`
-    ).bind(orgId, tid, name).run();
+    await env.DB.batch([
+      // 1. Tenant row in pending_setup status
+      env.DB.prepare(
+        `INSERT INTO tenants (
+          id, subdomain, name, type, email, status,
+          onboarding_token, onboarding_status, primary_color, capacity, currency, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'pending_setup', ?, 'pending_setup', '#4a7c4f', 50, 'EGP', datetime('now'), datetime('now'))`
+      ).bind(tid, subdomain, name, business_type || 'camp', email, onboardingToken),
+      // 2. Admin account — T6 (P0.2): starts INACTIVE. Login queries already
+      //    gate `is_active = 1` (auth.js), so the account cannot be used until
+      //    the onboarding wizard completes (setup flow flips it active).
+      env.DB.prepare(
+        `INSERT INTO admins (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'admin', ?, ?, 0, datetime('now'), datetime('now'))`
+      ).bind(adminId, tid, email, hashedPassword, first_name, last_name),
+      // 3. Default POS organization (id auto-increments; slug is UNIQUE)
+      env.DB.prepare(
+        `INSERT INTO pos_organizations (name, slug, created_at, updated_at)
+         VALUES (?, ?, datetime('now'), datetime('now'))`
+      ).bind(name, slug),
+      // 4. Default POS store for the new organization
+      env.DB.prepare(
+        `INSERT INTO pos_stores (organization_id, name, code, address, city, created_at, updated_at)
+         VALUES ((SELECT id FROM pos_organizations WHERE slug = ?), ?, ?, 'N/A', 'N/A', datetime('now'), datetime('now'))`
+      ).bind(slug, tid + ' Store', 'ST_' + tid),
+      // 5. Tenant ↔ POS organization mapping
+      env.DB.prepare(
+        `INSERT INTO tenant_org_mapping (tenant_id, organization_id)
+         VALUES (?, (SELECT id FROM pos_organizations WHERE slug = ?))`
+      ).bind(tid, slug),
+    ]);
 
     return jsonResponse({
       success: true,
@@ -119,7 +135,11 @@ onboardingRoutes.post('/public/signup', async (c) => {
     }, 201);
   } catch (e) {
     console.error('[ONBOARDING SIGNUP]', e?.message || e);
-    return errorResponse('Signup failed. Please try again.', 500);
+    return jsonResponse({
+      success: false,
+      error: 'Signup failed. Please try again.',
+      detail: e?.message || String(e),
+    }, 500);
   }
 });
 

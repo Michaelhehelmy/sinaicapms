@@ -34,6 +34,7 @@ export const API_BASE = isLocal
 // Phase 6 / Task 2: token storage is owned by the session kernel (./session).
 // Legacy key names are re-exported for back-compat imports.
 import { session, type Realm } from './session';
+import { toSnake } from './utils';
 export { REFRESH_TOKEN_KEY } from './session';
 
 // T6: pagination envelope shape shared by list endpoints
@@ -358,8 +359,8 @@ export function getOrder(id: number | string) {
   return apiFetch<Schemas['OrderDetail']>(`/orders/${id}`);
 }
 
-export function getOrderStatus(ref: string) {
-  return apiFetch<Schemas['OrderStatus']>(`/orders/status/${ref}`);
+export function getOrderStatus(ref: string, email: string) {
+  return apiFetch<Schemas['OrderStatus']>(`/orders/status/${encodeURIComponent(ref)}?email=${encodeURIComponent(email)}`);
 }
 
 export function saveOrder(data: Schemas['OrderCreateRequest'] | Schemas['OrderUpdateRequest'], editId?: number | string) {
@@ -1331,47 +1332,52 @@ export function applyPromotions(data: PromotionApplyRequest) {
 }
 
 // ─── Dynamic Service Module ─────────────────────────────────────────────
+// Wire contract: GET responses are camelCase (jsonResponse deep-toCamel);
+// POST/PUT bodies are snake_case (services.js zod schemas parse raw bodies),
+// so every create/update below converts camelCase forms via toSnake on send.
+
 export interface ServiceDefinition {
   id: string;
-  tenant_id: string;
+  tenantId: string;
   slug: string;
   name: string;
   description: string | null;
-  fields_schema: unknown;
-  is_active: number;
-  created_at: string;
-  updated_at: string;
+  fieldsSchema: unknown;
+  isActive: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ServiceItem {
   id: string;
-  tenant_id: string;
-  service_definition_id: string;
-  project_id: string | null;
+  tenantId: string;
+  serviceDefinitionId: string;
+  projectId: string | null;
   name: string;
   description: string | null;
-  base_price: number;
-  meta_data: Record<string, unknown>;
+  basePrice: number;
+  metaData: Record<string, unknown>;
   status: string;
-  definition_name?: string;
-  definition_slug?: string;
-  created_at: string;
-  updated_at: string;
+  definitionName?: string;
+  definitionSlug?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ServiceBooking {
   id: string;
-  tenant_id: string;
-  service_item_id: string;
-  customer_name: string | null;
-  customer_phone: string | null;
-  scheduled_date: string | null;
+  tenantId: string;
+  serviceItemId: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  scheduledDate: string | null;
   status: string;
   notes: string | null;
-  item_name?: string;
-  definition_name?: string;
-  created_at: string;
-  updated_at: string;
+  assignedWorkerId?: string | null;
+  itemName?: string;
+  definitionName?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Definitions
@@ -1382,7 +1388,7 @@ export function getServiceDefinitions() {
 export function saveServiceDefinition(data: Partial<ServiceDefinition>, editId?: string) {
   return apiFetch<{ id: string; success: boolean }>(editId ? `/services/definitions/${editId}` : '/services/definitions', {
     method: editId ? 'PUT' : 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(toSnake(data)),
   });
 }
 
@@ -1398,7 +1404,7 @@ export function getServiceItems() {
 export function saveServiceItem(data: Partial<ServiceItem>, editId?: string) {
   return apiFetch<{ id: string; success: boolean }>(editId ? `/services/items/${editId}` : '/services/items', {
     method: editId ? 'PUT' : 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(toSnake(data)),
   });
 }
 
@@ -1412,10 +1418,10 @@ export function getServiceBookings(status?: string) {
   return apiFetch<ServiceBooking[]>(`/services/bookings${qs}`);
 }
 
-export function createServiceBooking(data: { service_item_id: string; customer_name?: string; customer_phone?: string; scheduled_date?: string; notes?: string }) {
+export function createServiceBooking(data: { serviceItemId: string; customerName?: string; customerPhone?: string; scheduledDate?: string; notes?: string }) {
   return apiFetch<{ id: string; success: boolean; status: string }>('/services/bookings', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(toSnake(data)),
   });
 }
 
@@ -1725,57 +1731,57 @@ export function assignServiceWorker(bookingId: string, workerId: string) {
 export function getServiceAvailability(itemId: string) {
   return apiFetch<Array<{
     id: string;
-    service_item_id: string;
-    worker_id: string | null;
-    available_date: string;
-    available_from: string;
-    available_to: string;
-    is_available: number;
+    serviceItemId: string;
+    workerId: string | null;
+    availableDate: string;
+    availableFrom: string;
+    availableTo: string;
+    isAvailable: number;
   }>>(`/services/items/${encodeURIComponent(itemId)}/availability`);
 }
 
 export function createServiceAvailabilitySlot(itemId: string, data: {
-  available_date: string;
-  available_from: string;
-  available_to: string;
-  worker_id?: string;
-  is_available?: number;
+  availableDate: string;
+  availableFrom: string;
+  availableTo: string;
+  workerId?: string;
+  isAvailable?: number;
 }) {
   return apiFetch<{ id: string; success: boolean }>(
     `/services/items/${encodeURIComponent(itemId)}/availability`,
-    { method: 'POST', body: JSON.stringify(data) }
+    { method: 'POST', body: JSON.stringify(toSnake(data)) }
   );
 }
 
 export function getServiceReviews() {
   return apiFetch<Array<{
     id: string;
-    service_item_id: string;
-    customer_name: string | null;
+    serviceItemId: string;
+    customerName: string | null;
     rating: number;
     comment: string | null;
-    created_at: string;
-    item_name?: string;
+    createdAt: string;
+    itemName?: string;
   }>>('/services/reviews');
 }
 
 export function submitServiceReview(data: {
-  service_item_id: string;
-  booking_id?: string;
-  customer_name?: string;
+  serviceItemId: string;
+  bookingId?: string;
+  customerName?: string;
   rating: number;
   comment?: string;
 }) {
   return apiFetch<{ id: string; success: boolean }>('/services/reviews', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(toSnake(data)),
   });
 }
 
-export function updateServicePricing(itemId: string, data: { price_tier: string; price_premium?: number }) {
+export function updateServicePricing(itemId: string, data: { priceTier: string; pricePremium?: number }) {
   return apiFetch<{ id: string; success: boolean }>(
     `/services/items/${encodeURIComponent(itemId)}/pricing`,
-    { method: 'PUT', body: JSON.stringify(data) }
+    { method: 'PUT', body: JSON.stringify(toSnake(data)) }
   );
 }
 

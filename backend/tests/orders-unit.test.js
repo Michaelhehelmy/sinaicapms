@@ -317,20 +317,48 @@ describe('handleOrdersRoute', () => {
   });
 
   describe('GET /orders/status/:ref (public status)', () => {
-    it('returns order status for valid ref', async () => {
-      const order = { reference: 'ORD-ABC123', guest_name: 'John', state_name: 'Confirmed', room_name: 'Room A' };
+    it('returns 400 when email is missing', async () => {
+      const { db } = makeDbMock();
+      const req = makeRequest('GET', 'https://x.com/api/orders/status/ORD-ABC123');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('Email is required');
+    });
+
+    it('returns order status when email matches', async () => {
+      const order = { reference: 'ORD-ABC123', guest_name: 'John', guest_email: 'john@example.com', state_name: 'Confirmed', room_name: 'Room A' };
       const { db, chain } = makeDbMock();
       chain.first.mockResolvedValue(order);
-      const req = makeRequest('GET', 'https://x.com/api/orders/status/ORD-ABC123');
+      const req = makeRequest('GET', 'https://x.com/api/orders/status/ORD-ABC123?email=john@example.com');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       const body = await res.json();
       expect(body.reference).toBe('ORD-ABC123');
       expect(body.status).toBe('Confirmed');
     });
 
+    it('returns 404 when email does not match (no existence leak)', async () => {
+      const order = { reference: 'ORD-ABC123', guest_name: 'John', guest_email: 'john@example.com', state_name: 'Confirmed', room_name: 'Room A' };
+      const { db, chain } = makeDbMock();
+      chain.first.mockResolvedValue(order);
+      const req = makeRequest('GET', 'https://x.com/api/orders/status/ORD-ABC123?email=wrong@example.com');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(404);
+    });
+
+    it('matches email case-insensitively', async () => {
+      const order = { reference: 'ORD-ABC123', guest_name: 'John', guest_email: 'John@Example.COM', state_name: 'Confirmed', room_name: 'Room A' };
+      const { db, chain } = makeDbMock();
+      chain.first.mockResolvedValue(order);
+      const req = makeRequest('GET', 'https://x.com/api/orders/status/ORD-ABC123?email=john@example.com');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      const body = await res.json();
+      expect(body.reference).toBe('ORD-ABC123');
+    });
+
     it('returns 404 for unknown reference', async () => {
       const { db } = makeDbMock();
-      const req = makeRequest('GET', 'https://x.com/api/orders/status/UNKNOWN');
+      const req = makeRequest('GET', 'https://x.com/api/orders/status/UNKNOWN?email=test@example.com');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(404);
     });
@@ -338,7 +366,7 @@ describe('handleOrdersRoute', () => {
     it('returns error on DB exception', async () => {
       const { db } = makeDbMock();
       db.prepare.mockImplementation(() => { throw new Error('DB fail'); });
-      const req = makeRequest('GET', 'https://x.com/api/orders/status/REF');
+      const req = makeRequest('GET', 'https://x.com/api/orders/status/REF?email=test@example.com');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       const body = await res.json();
       expect(body.success).toBe(false);

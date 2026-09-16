@@ -144,16 +144,17 @@ describe('handleAuthRoute', () => {
       expect(body.error).toBe('Failed to process login');
     });
 
-    it('strips tenant_id silently (camelCase-only contract — tenant lookup is NOT performed)', async () => {
+    it('normalizes tenant_id alias to tenantId (auditfix-c3 — tenant-scoped login, not super-admin path)', async () => {
       const admin = {
         id: 'a1', email: 'a@b.com', password_hash: '$2b$12$hash',
         role: 'admin', tenant_id: 't1', first_name: 'A', last_name: null, is_active: 1
       };
       const { db } = makeDbMock();
-      // NO `all` fn on the first chain: if the tenant-check branch ran, .all() would be
-      // undefined → throw → 400. success:true proves the tenant lookup was skipped and
-      // the login proceeded via the super-admin (tenant_id IS NULL) path.
+      // The tenant-check branch MUST run: without the alias normalization the
+      // first chain's `.all()` would be undefined → throw → 400. success:true +
+      // resolved tenantId prove the tenant lookup ran and the login scoped to t1.
       const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 't1' }] }); },
         (ch) => { ch.first.mockResolvedValue(admin); },
         (ch) => { ch.run.mockResolvedValue({}); },
       ]);
@@ -167,6 +168,10 @@ describe('handleAuthRoute', () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.user.tenantId).toBe('t1');
+      // The admin lookup must be tenant-scoped (tenant_id = ? OR tenant_id IS NULL),
+      // never the bare super-admin (tenant_id IS NULL) path.
+      const adminQuery = db.prepare.mock.calls[1][0];
+      expect(adminQuery).toContain('(tenant_id = ? OR tenant_id IS NULL)');
     });
 
     it('resolves tenant ID from subdomain', async () => {

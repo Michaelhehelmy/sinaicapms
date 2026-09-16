@@ -31,18 +31,18 @@ const bookingStatusLabel: Record<string, { text: string; variant: 'info' | 'succ
 };
 
 interface BookingForm {
-  service_item_id: string;
-  customer_name: string;
-  customer_phone: string;
-  scheduled_date: string;
+  serviceItemId: string;
+  customerName: string;
+  customerPhone: string;
+  scheduledDate: string;
   notes: string;
 }
 
 const emptyBookingForm: BookingForm = {
-  service_item_id: '',
-  customer_name: '',
-  customer_phone: '',
-  scheduled_date: '',
+  serviceItemId: '',
+  customerName: '',
+  customerPhone: '',
+  scheduledDate: '',
   notes: '',
 };
 
@@ -73,10 +73,10 @@ export default function ServiceBookingsPanel() {
   const createMutation = useMutation({
     mutationFn: (data: BookingForm) =>
       api.createServiceBooking({
-        service_item_id: data.service_item_id,
-        customer_name: data.customer_name || undefined,
-        customer_phone: data.customer_phone || undefined,
-        scheduled_date: data.scheduled_date || undefined,
+        serviceItemId: data.serviceItemId,
+        customerName: data.customerName || undefined,
+        customerPhone: data.customerPhone || undefined,
+        scheduledDate: data.scheduledDate || undefined,
         notes: data.notes || undefined,
       }),
     onSuccess: () => {
@@ -110,7 +110,7 @@ export default function ServiceBookingsPanel() {
   });
 
   const handleCreate = useCallback(() => {
-    if (!form.service_item_id) { showToast('Service item is required.', 'warning'); return; }
+    if (!form.serviceItemId) { showToast('Service item is required.', 'warning'); return; }
     createMutation.mutate(form);
   }, [form, showToast, createMutation]);
 
@@ -154,12 +154,12 @@ export default function ServiceBookingsPanel() {
       ) : (
         <DataTable<ServiceBooking & Record<string, unknown>>
           columns={[
-            { key: 'customer_name', header: 'Customer', sortable: true, render: (b) => <span className="text-sm text-gray-700">{String(b.customer_name || '-')}</span> },
-            { key: 'item_name', header: 'Service', sortable: true, render: (b) => <strong className="text-gray-900">{String(b.item_name || '')}</strong> },
-            { key: 'scheduled_date', header: 'Scheduled', render: (b) => <span className="text-sm text-gray-600">{b.scheduled_date ? String(b.scheduled_date).slice(0, 10) : '-'}</span> },
+            { key: 'customerName', header: 'Customer', sortable: true, render: (b) => <span className="text-sm text-gray-700">{String(b.customerName || '-')}</span> },
+            { key: 'itemName', header: 'Service', sortable: true, render: (b) => <strong className="text-gray-900">{String(b.itemName || '')}</strong> },
+            { key: 'scheduledDate', header: 'Scheduled', render: (b) => <span className="text-sm text-gray-600">{b.scheduledDate ? String(b.scheduledDate).slice(0, 10) : '-'}</span> },
             { key: 'status', header: 'Status', render: (b) => { const s = bookingStatusLabel[String(b.status)] || { text: String(b.status), variant: 'neutral' as const }; return <Badge variant={s.variant} dot size="sm">{s.text}</Badge>; } },
-            { key: 'assigned_worker_id', header: 'Worker', render: (b) => {
-              const wid = String((b as Record<string, unknown>).assigned_worker_id || '');
+            { key: 'assignedWorkerId', header: 'Worker', render: (b) => {
+              const wid = String((b as Record<string, unknown>).assignedWorkerId || '');
               if (!wid) return <span className="text-xs text-gray-400">Unassigned</span>;
               const worker = staffList.find((s) => s.id === wid);
               return <span className="text-sm text-gray-700">{worker ? `${worker.firstName} ${worker.lastName}` : wid}</span>;
@@ -198,28 +198,28 @@ export default function ServiceBookingsPanel() {
           <Select
             label="Service Item *"
             options={itemOptions}
-            value={form.service_item_id}
-            onChange={(e) => setForm((p) => ({ ...p, service_item_id: e.target.value }))}
+            value={form.serviceItemId}
+            onChange={(e) => setForm((p) => ({ ...p, serviceItemId: e.target.value }))}
           />
           <Input
             label="Customer Name"
             type="text"
-            value={form.customer_name}
-            onChange={(e) => setForm((p) => ({ ...p, customer_name: e.target.value }))}
+            value={form.customerName}
+            onChange={(e) => setForm((p) => ({ ...p, customerName: e.target.value }))}
             placeholder="Customer name"
           />
           <Input
             label="Customer Phone"
             type="text"
-            value={form.customer_phone}
-            onChange={(e) => setForm((p) => ({ ...p, customer_phone: e.target.value }))}
+            value={form.customerPhone}
+            onChange={(e) => setForm((p) => ({ ...p, customerPhone: e.target.value }))}
             placeholder="Phone number"
           />
           <Input
             label="Scheduled Date"
             type="date"
-            value={form.scheduled_date}
-            onChange={(e) => setForm((p) => ({ ...p, scheduled_date: e.target.value }))}
+            value={form.scheduledDate}
+            onChange={(e) => setForm((p) => ({ ...p, scheduledDate: e.target.value }))}
           />
           <Input
             label="Notes"
@@ -243,7 +243,7 @@ export default function ServiceBookingsPanel() {
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Booking: <strong>{assignTarget.item_name || ''}</strong> — {assignTarget.customer_name || 'No customer'}
+              Booking: <strong>{assignTarget.itemName || ''}</strong> — {assignTarget.customerName || 'No customer'}
             </p>
             <Select
               label="Select Worker"

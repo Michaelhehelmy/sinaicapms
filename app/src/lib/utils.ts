@@ -107,6 +107,30 @@ export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(' ');
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+/**
+ * Deep-convert object keys to snake_case (keys only — values are never touched).
+ * Idempotent: already-snake_case keys pass through unchanged.
+ * Recurses into arrays and plain objects; leaves primitives untouched.
+ * Mirrors the backend `toSnake` in `backend/src/utils/response.js` so the admin
+ * wire contract stays consistent: responses are camelCase (jsonResponse toCamel),
+ * request bodies are snake_case (zod schemas), and this helper bridges the gap.
+ */
+export function toSnake(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toSnake);
+  if (!isPlainObject(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    const snakeKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+    out[snakeKey] = toSnake(value[key]);
+  }
+  return out;
+}
+
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
   ms: number,

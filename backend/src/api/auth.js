@@ -17,9 +17,11 @@ import {
 } from '../middleware/sharedAuth.js';
 import { z } from 'zod';
 
-// T8-D1: camelCase-only contract — the `tenant_id` alias was removed. Unknown keys
-// are stripped (not rejected) by `.strip()`; a client sending `tenant_id` falls
-// through to the super-admin (no-tenant) login path. Send `tenantId` instead.
+// CamelCase contract (T8-D1): unknown keys are stripped (not rejected) by
+// `.strip()`. The `tenant_id` alias is restored (auditfix-c3) — the login
+// handler normalizes `tenant_id` → `tenantId` BEFORE schema parse, so legacy
+// clients scoping with the snake_case key no longer fall through to the
+// super-admin (no-tenant) login path. Send `tenantId` for new clients.
 export const loginSchema = z.object({
   email: z.string().min(1, 'Email is required'),
   password: z.string().min(1, 'Password is required'),
@@ -102,7 +104,14 @@ export async function handleAuthRoute(request, env) {
   // ───── POST /api/auth/login ─────
   if (subRoute === 'login' && method === 'POST') {
     try {
-      const parsed = loginSchema.safeParse(await request.json());
+      const body = await request.json();
+      // C3: tenant_id alias — a legacy client sending the snake_case key must
+      // scope this login exactly as if it had sent `tenantId` (instead of
+      // silently falling through to the super-admin no-tenant path).
+      if (body && typeof body === 'object' && body.tenant_id && !body.tenantId) {
+        body.tenantId = body.tenant_id;
+      }
+      const parsed = loginSchema.safeParse(body);
       if (!parsed.success) {
         return validationError(parsed);
       }

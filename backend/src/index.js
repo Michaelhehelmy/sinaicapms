@@ -230,17 +230,19 @@ app.route('/api/tenants/:tenantId/meta', tenantMetaRoutes);
 
 // ── Tenant data import (POST /api/tenants/import — admin auth, tenant-scoped) ──
 // Registered BEFORE the /api/tenants catch-all so it matches first.
-const tenantImportAuth = requireAuth({ realm: 'admin', roles: ['super_admin', 'admin'], requireTenant: false });
-app.use('/api/tenants/import', async (c, next) => {
-  const auth = await tenantImportAuth(c.req.raw, c.env);
-  if (auth instanceof Response) return auth;
-  await next();
+// Mounted through resolveScope so the handler's getScope(c) is populated — the
+// old bare requireAuth mount never set scope, which made identity mode always
+// 403 ('Only super-admin can provision new tenants' against user:null) and
+// existing-tenant mode always 401 (scope.tenantId was always null in prod).
+// requireTenantHint:false lets the super-admin identity branch run orphaned
+// (no host/header tenant hint); requireTenant:false skips requireAuth's claim
+// 'equals' check so tenant admins import into their x-tenant-id-scoped partition.
+const tenantImportScope = resolveScope({
+  auth: { roles: ['super_admin', 'admin'], requireTenant: false },
+  requireTenantHint: false,
 });
-app.use('/api/tenants/import/*', async (c, next) => {
-  const auth = await tenantImportAuth(c.req.raw, c.env);
-  if (auth instanceof Response) return auth;
-  await next();
-});
+app.use('/api/tenants/import', tenantImportScope);
+app.use('/api/tenants/import/*', tenantImportScope);
 app.route('/api/tenants/import', tenantImportRoutes);
 
 // ── Tenant routes (S-C1 fix: only explicit GET + POST, no app.all shadow) ──

@@ -3,6 +3,7 @@ import PublicLayout from '@/layouts/PublicLayout.astro';
 import ZoneGuard from '@/components/public/ZoneGuard.astro';
 import SafeImage from '@/components/ui/SafeImage.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
+import type { TenantData, RoomTypeData } from '@/middleware/tenant';
 import { escHtml, normalizeAssetUrl, formatCurrency, readableTextOn } from '@/lib/utils';
 
 // `/rooms` is a tenant-zone route - forbidden on the marketplace zone.
@@ -14,7 +15,23 @@ function escapeUrl(url: string | undefined | null): string {
   return url.replace(/['")\)]/g, '');
 }
 
-const { tenant, roomTypes, primaryColor, tenantName, tenantId } = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+// Match the guarded pattern (menu.astro / book.astro): skip the tenant SSR
+// lookup entirely on the forbidden marketplace zone, and keep the render
+// null-safe so a failed lookup can never paint the layout with no tenant.
+let tenant: TenantData | null = null;
+let roomTypes: RoomTypeData[] = [];
+let tenantId = '';
+let primaryColor = '#4a7c4f';
+let tenantName = 'Camp Portal';
+
+if (!forbidden) {
+  const data = await getTenantSSRData(Astro.url, Astro.locals.API_FETCH);
+  tenant = data.tenant;
+  roomTypes = data.roomTypes;
+  tenantId = data.tenantId;
+  primaryColor = data.primaryColor;
+  tenantName = data.tenantName;
+}
 
 const heroImage = normalizeAssetUrl(
   tenant?.heroImageUrl as string,
@@ -27,7 +44,7 @@ const campSlug = tenant?.subdomain || tenantId;
 const bookingUrl = Astro.locals.zone === 'tenant' ? `/book${querySuffix}` : `/camp/${campSlug}${querySuffix}`;
 ---
 {
-  forbidden ? (
+  forbidden || !tenant ? (
     <ZoneGuard />
   ) : (
     <PublicLayout

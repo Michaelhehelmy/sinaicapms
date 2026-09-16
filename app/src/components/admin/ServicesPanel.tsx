@@ -27,15 +27,15 @@ interface DefForm {
 const emptyDefForm: DefForm = { slug: '', name: '', description: '' };
 
 interface ItemForm {
-  service_definition_id: string;
-  project_id: string;
+  serviceDefinitionId: string;
+  projectId: string;
   name: string;
   description: string;
-  base_price: string;
+  basePrice: string;
   status: string;
 }
 
-const emptyItemForm: ItemForm = { service_definition_id: '', project_id: '', name: '', description: '', base_price: '', status: 'active' };
+const emptyItemForm: ItemForm = { serviceDefinitionId: '', projectId: '', name: '', description: '', basePrice: '', status: 'active' };
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -114,11 +114,11 @@ export default function ServicesPanel() {
   const openEditItem = useCallback((i: ServiceItem) => {
     setEditingItemId(i.id);
     setItemForm({
-      service_definition_id: i.service_definition_id,
-      project_id: i.project_id || '',
+      serviceDefinitionId: i.serviceDefinitionId,
+      projectId: i.projectId || '',
       name: i.name,
       description: i.description || '',
-      base_price: String(i.base_price ?? ''),
+      basePrice: String(i.basePrice ?? ''),
       status: i.status,
     });
     setShowItemForm(true);
@@ -126,15 +126,15 @@ export default function ServicesPanel() {
 
   const handleSaveItem = useCallback(async () => {
     if (!itemForm.name.trim()) { showToast('Name is required.', 'warning'); return; }
-    if (!itemForm.service_definition_id) { showToast('Service type is required.', 'warning'); return; }
+    if (!itemForm.serviceDefinitionId) { showToast('Service type is required.', 'warning'); return; }
     setSaving(true);
     try {
       await api.saveServiceItem({
-        service_definition_id: itemForm.service_definition_id,
-        project_id: itemForm.project_id || null,
+        serviceDefinitionId: itemForm.serviceDefinitionId,
+        projectId: itemForm.projectId || null,
         name: itemForm.name.trim(),
         description: itemForm.description || undefined,
-        base_price: parseFloat(itemForm.base_price) || 0,
+        basePrice: parseFloat(itemForm.basePrice) || 0,
         status: itemForm.status,
       }, editingItemId ?? undefined);
       showToast(editingItemId ? 'Item updated.' : 'Item created.', 'success');
@@ -229,7 +229,7 @@ export default function ServicesPanel() {
             columns={[
               { key: 'name', header: 'Name', sortable: true, render: (d) => <div><strong className="text-gray-900">{String(d.name)}</strong><div className="text-xs text-gray-500 mt-0.5">/{String(d.slug)}</div></div> },
               { key: 'description', header: 'Description', render: (d) => <span className="text-sm text-gray-600 truncate max-w-[200px] block">{String(d.description || '-')}</span> },
-              { key: 'is_active', header: 'Status', render: (d) => <Badge variant={Number(d.is_active) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(d.is_active) === 1 ? 'Active' : 'Inactive'}</Badge> },
+              { key: 'isActive', header: 'Status', render: (d) => <Badge variant={Number(d.isActive) === 1 ? 'success' : 'neutral'} dot size="sm">{Number(d.isActive) === 1 ? 'Active' : 'Inactive'}</Badge> },
             ]}
             data={defs as (ServiceDefinition & Record<string, unknown>)[]}
             emptyMessage="No service types configured."
@@ -250,8 +250,8 @@ export default function ServicesPanel() {
         ) : (
           <DataTable<ServiceItem & Record<string, unknown>>
             columns={[
-              { key: 'name', header: 'Name', sortable: true, render: (i) => <div><strong className="text-gray-900">{String(i.name)}</strong><div className="text-xs text-gray-500 mt-0.5">{String(i.definition_name || '')}</div></div> },
-              { key: 'base_price', header: 'Price', render: (i) => <span className="font-medium">{formatCurrency(Number(i.base_price))}</span> },
+              { key: 'name', header: 'Name', sortable: true, render: (i) => <div><strong className="text-gray-900">{String(i.name)}</strong><div className="text-xs text-gray-500 mt-0.5">{String(i.definitionName || '')}</div></div> },
+              { key: 'basePrice', header: 'Price', render: (i) => <span className="font-medium">{formatCurrency(Number(i.basePrice))}</span> },
               { key: 'status', header: 'Status', render: (i) => <Badge variant={String(i.status) === 'active' ? 'success' : 'neutral'} dot size="sm">{String(i.status)}</Badge> },
             ]}
             data={items as (ServiceItem & Record<string, unknown>)[]}
@@ -273,9 +273,9 @@ export default function ServicesPanel() {
         ) : (
           <DataTable<ServiceBooking & Record<string, unknown>>
             columns={[
-              { key: 'item_name', header: 'Service', sortable: true, render: (b) => <strong className="text-gray-900">{String(b.item_name || '')}</strong> },
-              { key: 'customer_name', header: 'Customer', render: (b) => <span className="text-sm text-gray-600">{String(b.customer_name || '-')}</span> },
-              { key: 'scheduled_date', header: 'Scheduled', render: (b) => <span className="text-sm text-gray-600">{b.scheduled_date ? String(b.scheduled_date).slice(0, 10) : '-'}</span> },
+              { key: 'itemName', header: 'Service', sortable: true, render: (b) => <strong className="text-gray-900">{String(b.itemName || '')}</strong> },
+              { key: 'customerName', header: 'Customer', render: (b) => <span className="text-sm text-gray-600">{String(b.customerName || '-')}</span> },
+              { key: 'scheduledDate', header: 'Scheduled', render: (b) => <span className="text-sm text-gray-600">{b.scheduledDate ? String(b.scheduledDate).slice(0, 10) : '-'}</span> },
               { key: 'status', header: 'Status', render: (b) => { const s = bookingStatusLabel[String(b.status)] || { text: String(b.status), variant: 'neutral' as const }; return <Badge variant={s.variant} dot size="sm">{s.text}</Badge>; } },
             ]}
             data={bookings as (ServiceBooking & Record<string, unknown>)[]}
@@ -302,10 +302,10 @@ export default function ServicesPanel() {
       <FormModal open={showItemForm} title={editingItemId ? 'Edit Service' : 'Add Service'} onClose={() => { setShowItemForm(false); setEditingItemId(null); }} onSubmit={handleSaveItem} submitLabel={saving ? 'Saving...' : editingItemId ? 'Update' : 'Save'} submitDisabled={saving}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
-            <Select label="Service Type *" options={defs.filter((d) => Number(d.is_active) === 1).map((d) => ({ value: d.id, label: d.name }))} value={itemForm.service_definition_id} onChange={(e) => setItemForm((p) => ({ ...p, service_definition_id: e.target.value }))} />
+            <Select label="Service Type *" options={defs.filter((d) => Number(d.isActive) === 1).map((d) => ({ value: d.id, label: d.name }))} value={itemForm.serviceDefinitionId} onChange={(e) => setItemForm((p) => ({ ...p, serviceDefinitionId: e.target.value }))} />
           </div>
           <Input label="Name *" type="text" value={itemForm.name} onChange={(e) => setItemForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Emergency Plumbing" />
-          <Input label="Base Price ($)" type="number" value={itemForm.base_price} onChange={(e) => setItemForm((p) => ({ ...p, base_price: e.target.value }))} min="0" step="0.01" />
+          <Input label="Base Price ($)" type="number" value={itemForm.basePrice} onChange={(e) => setItemForm((p) => ({ ...p, basePrice: e.target.value }))} min="0" step="0.01" />
           <Input label="Description" type="text" value={itemForm.description} onChange={(e) => setItemForm((p) => ({ ...p, description: e.target.value }))} />
           <Select label="Status" options={STATUS_OPTIONS} value={itemForm.status} onChange={(e) => setItemForm((p) => ({ ...p, status: e.target.value }))} />
         </div>
@@ -320,7 +320,7 @@ export default function ServicesPanel() {
         } submitLabel="" submitDisabled>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">Current status: <strong>{bookingStatusLabel[bookingStatusTarget.status]?.text || bookingStatusTarget.status}</strong></p>
-            <p className="text-sm text-gray-600">Service: {bookingStatusTarget.item_name || ''}</p>
+            <p className="text-sm text-gray-600">Service: {bookingStatusTarget.itemName || ''}</p>
             <div className="flex flex-wrap gap-2 pt-2">
               {BOOKING_STATUS_OPTIONS.filter((o) => o.value !== bookingStatusTarget.status).map((o) => (
                 <Button key={o.value} variant="secondary" size="sm" onClick={() => handleBookingStatus(o.value)}>{o.label}</Button>

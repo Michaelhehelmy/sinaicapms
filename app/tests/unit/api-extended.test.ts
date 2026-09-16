@@ -591,8 +591,8 @@ describe('order endpoints', () => {
   });
 
   it('getOrderStatus GET /orders/status/REF-001', async () => {
-    await getOrderStatus('REF-001');
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/orders/status/REF-001'), expect.any(Object));
+    await getOrderStatus('REF-001', 'guest@example.com');
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/orders/status/REF-001?email='), expect.any(Object));
   });
 
   it('saveOrder with editId PUT /orders/6', async () => {

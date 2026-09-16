@@ -316,18 +316,18 @@ vi.mock('@/components/ui/Select', () => ({
 
 // ── Representative mock data ──────────────────────────────────────────
 const mockDefs = [
-  { id: 'sd1', slug: 'plumber', name: 'Plumbing', description: 'Pipe work', is_active: 1 },
-  { id: 'sd2', slug: 'electrician', name: 'Electrical', description: '', is_active: 0 },
+  { id: 'sd1', slug: 'plumber', name: 'Plumbing', description: 'Pipe work', isActive: 1 },
+  { id: 'sd2', slug: 'electrician', name: 'Electrical', description: '', isActive: 0 },
 ];
 
 const mockItems = [
-  { id: 'si1', service_definition_id: 'sd1', project_id: 'p1', name: 'Emergency Plumbing', description: '24h response', base_price: 50, status: 'active', definition_name: 'Plumbing' },
-  { id: 'si2', service_definition_id: 'sd2', project_id: null, name: 'Rewire', description: '', base_price: 0, status: 'inactive', definition_name: 'Electrical' },
+  { id: 'si1', serviceDefinitionId: 'sd1', projectId: 'p1', name: 'Emergency Plumbing', description: '24h response', basePrice: 50, status: 'active', definitionName: 'Plumbing' },
+  { id: 'si2', serviceDefinitionId: 'sd2', projectId: null, name: 'Rewire', description: '', basePrice: 0, status: 'inactive', definitionName: 'Electrical' },
 ];
 
 const mockBookings = [
-  { id: 'sb1', item_name: 'Emergency Plumbing', customer_name: 'John', scheduled_date: '2025-07-01T00:00:00Z', status: 'pending', service_item_id: 'si1', service_definition_id: 'sd1', project_id: 'p1' },
-  { id: 'sb2', item_name: 'Rewire', customer_name: '', scheduled_date: null, status: 'completed', service_item_id: 'si2', service_definition_id: 'sd2', project_id: 'p1' },
+  { id: 'sb1', itemName: 'Emergency Plumbing', customerName: 'John', scheduledDate: '2025-07-01T00:00:00Z', status: 'pending', serviceItemId: 'si1', serviceDefinitionId: 'sd1', projectId: 'p1' },
+  { id: 'sb2', itemName: 'Rewire', customerName: '', scheduledDate: null, status: 'completed', serviceItemId: 'si2', serviceDefinitionId: 'sd2', projectId: 'p1' },
 ];
 
 const mockPromos = [
@@ -559,7 +559,7 @@ describe('ServicesPanel', () => {
     fireEvent.click(screen.getByTestId('modal-submit'));
     await waitFor(() => {
       expect(mockSaveServiceItem).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Pipe Repair', service_definition_id: 'sd1', base_price: 75 }),
+        expect.objectContaining({ name: 'Pipe Repair', serviceDefinitionId: 'sd1', basePrice: 75 }),
         undefined,
       );
       expect(mockShowToast).toHaveBeenCalledWith('Item created.', 'success');
@@ -696,7 +696,7 @@ describe('ServiceBookingsPanel', () => {
     fireEvent.change(screen.getByTestId('input-Customer Name'), { target: { value: 'Jane' } });
     fireEvent.click(screen.getByTestId('modal-submit'));
     await waitFor(() => {
-      expect(mockCreateServiceBooking).toHaveBeenCalledWith(expect.objectContaining({ service_item_id: 'si1', customer_name: 'Jane' }));
+      expect(mockCreateServiceBooking).toHaveBeenCalledWith(expect.objectContaining({ serviceItemId: 'si1', customerName: 'Jane' }));
       expect(mockShowToast).toHaveBeenCalledWith('Booking created.', 'success');
     });
   });

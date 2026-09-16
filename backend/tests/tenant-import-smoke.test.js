@@ -23,9 +23,26 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import tenantImportRoutes from '../src/api/tenant-import.js';
-import { mountRouter } from './helpers/routerHarness.js';
+import { mountRouterAuthenticated, signAdminToken } from './helpers/routerHarness.js';
 
 const tenantId = 'tenant_1';
+
+// Real-auth harness: tokens are signed with this secret and the same secret is
+// handed to the request env, so the production requireAuth + resolveScope chain
+// (activity probe + tenant resolution) runs end-to-end on every request.
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-import-smoke';
+const ADMIN_TOKEN_PAYLOAD = {
+  sub: 'adm_1',
+  userId: 'adm_1',
+  email: 'adm@sinaipalms.com',
+  role: 'admin',
+  tenantId,
+};
+// Mirrors backend/src/index.js `/api/tenants/import` mount options exactly.
+const IMPORT_SCOPE_OPTIONS = {
+  auth: { roles: ['super_admin', 'admin'], requireTenant: false },
+  requireTenantHint: false,
+};
 const DOCS_FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -211,6 +228,9 @@ function makeStatefulDb() {
     // Handler-specific reads (mirror the exact SELECT shapes in tenant-import.js)
     if (sql.includes('organization_id FROM tenant_org_mapping')) return [{ organization_id: 7 }];
     if (sql.includes('FROM projects')) return [{ id: 'camp_1' }];
+    // Real-auth gate probes: is_active admin probe + getTenant tenants lookup
+    if (sql.includes('SELECT is_active FROM admins WHERE id')) return [{ is_active: 1 }];
+    if (sql.includes('FROM tenants')) return [{ id: tenantId, status: 'active' }];
     if (sql.includes('id, name FROM pos_products')) return ensure('pos_products').map((p) => ({ id: p.id, name: p.name }));
     if (sql.includes('capacity FROM pos_products')) {
       const p = ensure('pos_products').find((r) => r.id === (bound?.[1] ?? null));
@@ -288,11 +308,30 @@ describe('T4 smoke: POST /api/tenants/import (docs sample via in-memory D1)', ()
   let env;
   let app;
   let sample;
+  let adminToken;
+  let post;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     sample = resolveSample();
-    app = mountRouter(tenantImportRoutes, { tenantId, basePath: '/api/tenants/import' });
-    env = { DB: makeStatefulDb(), MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) } };
+    // REAL-auth mount: requests run through the production resolveScope +
+    // requireAuth chain (activity probe, tenant hint resolution) — getScope(c)
+    // must be populated by the middleware, not injected.
+    app = mountRouterAuthenticated(tenantImportRoutes, {
+      basePath: '/api/tenants/import',
+      scopeOptions: IMPORT_SCOPE_OPTIONS,
+    });
+    adminToken = await signAdminToken(ADMIN_TOKEN_PAYLOAD, JWT_SECRET);
+    env = { DB: makeStatefulDb(), MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) }, JWT_SECRET };
+    post = (manifest) =>
+      app.request(
+        'http://localhost/api/tenants/import',
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${adminToken}`, 'x-tenant-id': tenantId },
+          body: JSON.stringify(manifest),
+        },
+        env,
+      );
   });
 
   it('logs which fixture source is under test', () => {
@@ -302,11 +341,7 @@ describe('T4 smoke: POST /api/tenants/import (docs sample via in-memory D1)', ()
   });
 
   it('imports the canonical docs sample: 200, every count > 0', async () => {
-    const res = await app.request(
-      'http://localhost/api/tenants/import',
-      { method: 'POST', body: JSON.stringify(sample.manifest) },
-      env,
-    );
+    const res = await post(sample.manifest);
     const data = await res.json();
 
     expect(res.status).toBe(200);
@@ -319,21 +354,13 @@ describe('T4 smoke: POST /api/tenants/import (docs sample via in-memory D1)', ()
   });
 
   it('leaves https logo URLs untouched (no R2 upload on the sample)', async () => {
-    const res = await app.request(
-      'http://localhost/api/tenants/import',
-      { method: 'POST', body: JSON.stringify(sample.manifest) },
-      env,
-    );
+    const res = await post(sample.manifest);
     expect(res.status).toBe(200);
     expect(env.MEDIA_BUCKET.put).not.toHaveBeenCalled();
   });
 
   it('rows are queryable for products/rooms/rate_plans/meals/pos_users after import', async () => {
-    const res = await app.request(
-      'http://localhost/api/tenants/import',
-      { method: 'POST', body: JSON.stringify(sample.manifest) },
-      env,
-    );
+    const res = await post(sample.manifest);
     expect(res.status).toBe(200);
 
     const db = env.DB;

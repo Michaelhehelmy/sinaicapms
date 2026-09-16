@@ -82,6 +82,12 @@ async function posAuth(c, next) {
   if (!decoded || decoded.posType !== 'pos') {
     return errorResponse('Invalid POS session', 401);
   }
+  // Refresh tokens are only for /api/pos/auth/refresh — a refresh token
+  // presented anywhere else in the POS realm is a type error, not a
+  // session hierarchy statement.
+  if (decoded.type === 'refresh') {
+    return errorResponse('Invalid POS session', 401);
+  }
   // Database check: verify cashier is still active and not deleted
   const { results: userCheck } = await c.env.DB.prepare(
     "SELECT is_active FROM pos_users WHERE id = ? AND deleted_at IS NULL"
@@ -194,6 +200,11 @@ pos.post('/auth/login', async (c) => withSunset(await handlePosLoginRequest(c.re
 const posRefreshGate = requireAuth({
   realm: 'pos',
   requireTenant: false,
+  tokenTypes: ['refresh'],
+  // Access tokens presented to the refresh endpoint keep the pre-M2
+  // byte-compat response (the handler's own `type !== 'refresh'` guard used
+  // to produce it after the gate let the token through).
+  typeMismatch: { status: 401, message: 'Invalid token type' },
   // An admin/platform refresh token presented to the POS realm is a type
   // error, not an authorization hierarchy statement.
   realmMismatch: { status: 401, message: 'Invalid token type' },

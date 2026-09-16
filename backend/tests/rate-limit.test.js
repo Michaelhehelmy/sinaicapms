@@ -132,6 +132,59 @@ describe('rateLimitMiddleware', () => {
       expect(c3.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
     });
 
+    it('denies the (max+1)th request in the in-memory branch (parity with KV)', async () => {
+      const next = vi.fn();
+      const middleware = rateLimitMiddleware({ windowMs: 60000, max: 5 });
+
+      // Exactly max requests pass
+      for (let i = 1; i <= 5; i++) {
+        const c = makeHonoCtx(`/api/parity`, '1.2.3.4', { ENVIRONMENT: 'production' });
+        await middleware(c, next);
+      }
+      expect(next).toHaveBeenCalledTimes(5);
+
+      // The (max+1)th request is rejected — and stays rejected for further requests
+      const c6 = makeHonoCtx('/api/parity', '1.2.3.4', { ENVIRONMENT: 'production' });
+      c6.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(c6, next);
+      expect(c6.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(5);
+
+      const c7 = makeHonoCtx('/api/parity', '1.2.3.4', { ENVIRONMENT: 'production' });
+      c7.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(c7, next);
+      expect(c7.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(5);
+    });
+
+    it('KV path rejects the (max+1)th request at the same threshold', async () => {
+      const kvStore = {};
+      const kv = {
+        get: vi.fn(async (key) => kvStore[key] || null),
+        put: vi.fn(async (key, value) => { kvStore[key] = value; }),
+      };
+      const next = vi.fn();
+      const middleware = rateLimitMiddleware({ windowMs: 60000, max: 5 });
+
+      for (let i = 1; i <= 5; i++) {
+        const c = makeHonoCtx('/api/kv-parity', '1.2.3.4', {
+          ENVIRONMENT: 'production',
+          RATE_LIMIT_KV: kv,
+        });
+        await middleware(c, next);
+      }
+      expect(next).toHaveBeenCalledTimes(5);
+
+      const c6 = makeHonoCtx('/api/kv-parity', '1.2.3.4', {
+        ENVIRONMENT: 'production',
+        RATE_LIMIT_KV: kv,
+      });
+      c6.json = vi.fn().mockImplementation((body, status) => ({ status, body }));
+      await middleware(c6, next);
+      expect(c6.json).toHaveBeenCalledWith({ success: false, error: 'Too many requests' }, 429);
+      expect(next).toHaveBeenCalledTimes(5);
+    });
+
     it('resets after window expires', async () => {
       const next = vi.fn();
       const middleware = rateLimitMiddleware({ windowMs: 100, max: 1 });

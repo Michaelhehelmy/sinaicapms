@@ -221,6 +221,30 @@ campsRoutes.get('/', async (c) => {
   return cachedJsonResponse(results.map(parseGalleryImages));
 });
 
+const PUBLIC_CAMP_KEYS = [
+  'id',
+  'tenant_id',
+  'name',
+  'slug',
+  'location',
+  'description',
+  'project_type',
+  'start_date',
+  'end_date',
+  'capacity',
+  'status',
+  'notes',
+  'tenant_name',
+  'tenant_subdomain',
+  'gallery_images',
+];
+
+function publicCampProjection(row) {
+  const out = {};
+  for (const rowKey of PUBLIC_CAMP_KEYS) out[rowKey] = row[rowKey];
+  return out;
+}
+
 campsRoutes.get('/:id', async (c) => {
   const env = c.env;
   const scope = getScope(c);
@@ -229,11 +253,14 @@ campsRoutes.get('/:id', async (c) => {
   const campId = c.req.param('id');
   const marketplace = isMarketplaceTenant(tenantId);
   const query = marketplace
-    ? `${CROSS_TENANT_SELECT} WHERE c.id = ? AND c.deleted_at IS NULL`
+    ? `${CROSS_TENANT_SELECT} WHERE c.id = ? AND c.status = 'active' AND c.deleted_at IS NULL`
     : "SELECT * FROM projects WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL";
   const bindings = marketplace ? [campId] : [tenantId, campId];
   const { results } = await env.DB.prepare(query).bind(...bindings).all();
   if (results.length === 0) return errorResponse('Camp not found', 404);
+  if (marketplace) {
+    return cachedJsonResponse(publicCampProjection(parseGalleryImages(results[0])));
+  }
   // Unified architecture: custom fields ride along as a folded `meta` object
   // (best-effort — a meta lookup failure must not fail the project fetch).
   let meta = {};

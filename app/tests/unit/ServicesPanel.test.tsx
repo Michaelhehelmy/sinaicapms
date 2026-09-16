@@ -130,7 +130,7 @@ describe('ServicesPanel', () => {
   });
 
   it('creates item successfully', async () => {
-    mockDefs = [{ id: 'd1', name: 'Plumbing', is_active: 1 }];
+    mockDefs = [{ id: 'd1', name: 'Plumbing', isActive: 1 }];
     (api.saveServiceItem as ReturnType<typeof vi.fn>).mockResolvedValueOnce({});
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-items'));
@@ -147,14 +147,14 @@ describe('ServicesPanel', () => {
   });
 
   it('edits a definition', async () => {
-    mockDefs = [{ id: 'd1', name: 'Plumbing', slug: 'plumbing', description: 'desc', is_active: 1 }];
+    mockDefs = [{ id: 'd1', name: 'Plumbing', slug: 'plumbing', description: 'desc', isActive: 1 }];
     render(<ServicesPanel />);
     fireEvent.click(screen.getByText('Edit'));
     await waitFor(() => { expect(screen.getByPlaceholderText('e.g. Plumbing Services')).toBeTruthy(); });
   });
 
   it('edits an item', async () => {
-    mockItems = [{ id: 'i1', name: 'Fix', service_definition_id: 'd1', base_price: 100, status: 'active' }];
+    mockItems = [{ id: 'i1', name: 'Fix', serviceDefinitionId: 'd1', basePrice: 100, status: 'active' }];
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-items'));
     fireEvent.click(screen.getByText('Edit'));
@@ -179,7 +179,7 @@ describe('ServicesPanel', () => {
   });
 
   it('opens booking status update', async () => {
-    mockBookings = [{ id: 'b1', item_name: 'Fix', customer_name: 'Bob', scheduled_date: '2025-06-01', status: 'pending' }];
+    mockBookings = [{ id: 'b1', itemName: 'Fix', customerName: 'Bob', scheduledDate: '2025-06-01', status: 'pending' }];
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-bookings'));
     fireEvent.click(screen.getByText('Update Status'));
@@ -187,7 +187,7 @@ describe('ServicesPanel', () => {
   });
 
   it('updates booking status', async () => {
-    mockBookings = [{ id: 'b1', item_name: 'Fix', customer_name: 'Bob', scheduled_date: '2025-06-01', status: 'pending' }];
+    mockBookings = [{ id: 'b1', itemName: 'Fix', customerName: 'Bob', scheduledDate: '2025-06-01', status: 'pending' }];
     (api.updateBookingStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({});
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-bookings'));
@@ -200,27 +200,27 @@ describe('ServicesPanel', () => {
   });
 
   it('renders definitions with data', () => {
-    mockDefs = [{ id: 'd1', name: 'Plumbing', slug: 'plumbing', description: 'All plumbing', is_active: 1 }];
+    mockDefs = [{ id: 'd1', name: 'Plumbing', slug: 'plumbing', description: 'All plumbing', isActive: 1 }];
     render(<ServicesPanel />);
     expect(screen.getByText('Plumbing')).toBeTruthy();
   });
 
   it('renders items with data', () => {
-    mockItems = [{ id: 'i1', name: 'Fix', base_price: 50, status: 'active', definition_name: 'Plumbing' }];
+    mockItems = [{ id: 'i1', name: 'Fix', basePrice: 50, status: 'active', definitionName: 'Plumbing' }];
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-items'));
     expect(screen.getByText('Fix')).toBeTruthy();
   });
 
   it('renders bookings with data', () => {
-    mockBookings = [{ id: 'b1', item_name: 'Fix', customer_name: 'Bob', scheduled_date: '2025-06-01T00:00:00Z', status: 'completed' }];
+    mockBookings = [{ id: 'b1', itemName: 'Fix', customerName: 'Bob', scheduledDate: '2025-06-01T00:00:00Z', status: 'completed' }];
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-bookings'));
     expect(screen.getByText('Fix')).toBeTruthy();
   });
 
   it('closes the booking status modal via the close button', async () => {
-    mockBookings = [{ id: 'b1', item_name: 'Fix', customer_name: 'Bob', scheduled_date: '2025-06-01', status: 'pending' }];
+    mockBookings = [{ id: 'b1', itemName: 'Fix', customerName: 'Bob', scheduledDate: '2025-06-01', status: 'pending' }];
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-bookings'));
     fireEvent.click(screen.getByText('Update Status'));
@@ -242,7 +242,7 @@ describe('ServicesPanel', () => {
   });
 
   it('shows error when saving item fails', async () => {
-    mockDefs = [{ id: 'd1', name: 'Plumbing', is_active: 1 }];
+    mockDefs = [{ id: 'd1', name: 'Plumbing', isActive: 1 }];
     (api.saveServiceItem as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('item err'));
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-items'));
@@ -288,7 +288,7 @@ describe('ServicesPanel', () => {
   });
 
   it('shows error when updating booking status fails', async () => {
-    mockBookings = [{ id: 'b1', item_name: 'Fix', customer_name: 'Bob', scheduled_date: '2025-06-01', status: 'pending' }];
+    mockBookings = [{ id: 'b1', itemName: 'Fix', customerName: 'Bob', scheduledDate: '2025-06-01', status: 'pending' }];
     (api.updateBookingStatus as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('status err'));
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-bookings'));
@@ -340,7 +340,7 @@ describe('ServicesPanel', () => {
   });
 
   it('closes the item form modal via close button', async () => {
-    mockDefs = [{ id: 'd1', name: 'Plumbing', is_active: 1 }];
+    mockDefs = [{ id: 'd1', name: 'Plumbing', isActive: 1 }];
     render(<ServicesPanel />);
     fireEvent.click(screen.getByTestId('tab-items'));
     fireEvent.click(screen.getByTestId('add-item-btn'));

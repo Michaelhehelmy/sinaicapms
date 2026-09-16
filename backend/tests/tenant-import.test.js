@@ -1,8 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import tenantImportRoutes from '../src/api/tenant-import.js';
-import { mountRouter } from './helpers/routerHarness.js';
+import { mountRouterAuthenticated, signAdminToken } from './helpers/routerHarness.js';
 
 const tenantId = 'tenant_1';
+
+// Real-auth harness: requests run through the production resolveScope +
+// requireAuth chain (JWT signature, admin role allow-list, is_active probe,
+// tenant hint resolution). Tokens are signed with this secret and the same
+// secret is placed on every request env, exactly like index.js in production.
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-import-suite';
+
+// Mirrors backend/src/index.js `/api/tenants/import` mount options exactly.
+const IMPORT_SCOPE_OPTIONS = {
+  auth: { roles: ['super_admin', 'admin'], requireTenant: false },
+  requireTenantHint: false,
+};
+
+let superAdminToken;
+let tenantAdminToken;
+let noTenantAdminToken;
+
+function makeEnv(db) {
+  return { DB: db, MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) }, JWT_SECRET };
+}
 
 /**
  * Flexible D1 mock.
@@ -49,6 +69,10 @@ function makeDb({ query = () => ({ results: [] }), batch = (items) => items.map(
 
 /** Query pre-built for the happy flow: org exists, one project, no dupes. */
 const happyPathQuery = (sql) => {
+  if (sql.includes('SELECT is_active FROM admins WHERE id')) {
+    // real-auth gate probes is_active on every request
+    return { results: [{ is_active: 1 }] };
+  }
   if (sql.includes('SELECT organization_id FROM tenant_org_mapping WHERE tenant_id')) {
     return { results: [{ organization_id: 7 }] };
   }
@@ -115,12 +139,30 @@ describe('POST /api/tenants/import', () => {
   let env;
   let app;
 
-  const post = (manifest, url = 'http://localhost/api/tenants/import') =>
-    app.request(url, { method: 'POST', body: JSON.stringify(manifest) }, env);
+  const post = (manifest, { token = tenantAdminToken, tenantHint = true } = {}, url = 'http://localhost/api/tenants/import') => {
+    const headers = { Authorization: `Bearer ${token}` };
+    if (tenantHint) headers['x-tenant-id'] = tenantId;
+    return app.request(url, { method: 'POST', headers, body: JSON.stringify(manifest) }, env);
+  };
 
-  beforeEach(() => {
-    app = mountRouter(tenantImportRoutes, { tenantId, basePath: '/api/tenants/import' });
-    env = { DB: makeDb({ query: happyPathQuery }), MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) } };
+  beforeEach(async () => {
+    app = mountRouterAuthenticated(tenantImportRoutes, {
+      basePath: '/api/tenants/import',
+      scopeOptions: IMPORT_SCOPE_OPTIONS,
+    });
+    tenantAdminToken = await signAdminToken(
+      { sub: 'adm_1', userId: 'adm_1', email: 'adm@sinai.test', role: 'admin', tenantId },
+      JWT_SECRET,
+    );
+    superAdminToken = await signAdminToken(
+      { sub: 'adm_super1', userId: 'adm_super1', email: 'super@sinai.test', role: 'super_admin', tenantId: null },
+      JWT_SECRET,
+    );
+    noTenantAdminToken = await signAdminToken(
+      { sub: 'adm_none', userId: 'adm_none', email: 'none@sinai.test', role: 'admin', tenantId: null },
+      JWT_SECRET,
+    );
+    env = makeEnv(makeDb({ query: happyPathQuery }));
   });
 
   describe('happy path', () => {
@@ -340,16 +382,28 @@ describe('POST /api/tenants/import', () => {
 
   describe('auth harness', () => {
     it('returns 401 when no tenant scope is resolved', async () => {
-      app = mountRouter(tenantImportRoutes, { tenantId: null, basePath: '/api/tenants/import' });
-      const res = await post({});
+      // Valid admin token WITHOUT a tenantId claim and no tenant hint: the
+      // middleware passes (roles allow-list + is_active probe) but the
+      // handler's existing-tenant branch resolves no scope → 401.
+      app = mountRouterAuthenticated(tenantImportRoutes, {
+        basePath: '/api/tenants/import',
+        scopeOptions: IMPORT_SCOPE_OPTIONS,
+      });
+      const res = await post({}, { token: noTenantAdminToken, tenantHint: false });
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 401 for a bare request with no Bearer token', async () => {
+      const res = await app.request(
+        'http://localhost/api/tenants/import',
+        { method: 'POST', headers: { 'x-tenant-id': tenantId }, body: '{}' },
+        env,
+      );
       expect(res.status).toBe(401);
     });
   });
 
   describe('identity creation mode', () => {
-    const superAdminUser = { role: 'super_admin', sub: 'adm_super1' };
-    const tenantAdminUser = { role: 'admin', sub: 'adm_1', tenantId: 'tenant_1' };
-
     const identityManifest = {
       identity: {
         name: 'New Camp',
@@ -370,6 +424,7 @@ describe('POST /api/tenants/import', () => {
      */
     function makeCreationQuery() {
       return (sql) => {
+        if (sql.includes('SELECT is_active FROM admins WHERE id')) return { results: [{ is_active: 1 }] };
         if (sql.includes('SELECT id FROM tenants WHERE subdomain')) return { results: [] };
         if (sql.includes('SELECT id FROM admins WHERE email')) return { results: [] };
         if (sql.includes('SELECT organization_id FROM tenant_org_mapping')) return { results: [] };
@@ -384,12 +439,17 @@ describe('POST /api/tenants/import', () => {
     }
 
     beforeEach(() => {
-      app = mountRouter(tenantImportRoutes, { tenantId: null, user: superAdminUser, basePath: '/api/tenants/import' });
-      env = { DB: makeDb({ query: makeCreationQuery() }), MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) } };
+      // Real-auth: identity mode is driven by a SUPER_ADMIN token with NO
+      // tenant hint — resolveScope (requireTenantHint:false) must let the
+      // orphaned super_admin reach the handler's identity branch.
+      env = makeEnv(makeDb({ query: makeCreationQuery() }));
     });
 
+    const postIdentity = (manifest, opts = {}) =>
+      post(manifest, { token: superAdminToken, tenantHint: false, ...opts });
+
     it('creates tenant + admin + org + project and returns 201 with created IDs', async () => {
-      const res = await post(identityManifest);
+      const res = await postIdentity(identityManifest);
       expect(res.status).toBe(201);
       const data = await res.json();
       expect(data.success).toBe(true);
@@ -400,7 +460,7 @@ describe('POST /api/tenants/import', () => {
     });
 
     it('INSERTs tenant with active status and completed onboarding', async () => {
-      await post(identityManifest);
+      await postIdentity(identityManifest);
       const stmts = env.DB.__statements.filter((s) => s.type === 'run' && s.sql.includes('INSERT INTO tenants'));
       expect(stmts.length).toBe(1);
       const b = stmts[0].bound;
@@ -411,7 +471,7 @@ describe('POST /api/tenants/import', () => {
     });
 
     it('INSERTs admin with role=admin and is_active=1', async () => {
-      await post(identityManifest);
+      await postIdentity(identityManifest);
       const stmts = env.DB.__statements.filter((s) => s.type === 'run' && s.sql.includes('INSERT INTO admins'));
       expect(stmts.length).toBe(1);
       const b = stmts[0].bound;
@@ -426,7 +486,7 @@ describe('POST /api/tenants/import', () => {
     });
 
     it('creates default project with slug derived from subdomain', async () => {
-      await post(identityManifest);
+      await postIdentity(identityManifest);
       const stmts = env.DB.__statements.filter((s) => s.type === 'run' && s.sql.includes('INSERT INTO projects'));
       expect(stmts.length).toBe(1);
       const b = stmts[0].bound;
@@ -436,7 +496,7 @@ describe('POST /api/tenants/import', () => {
     });
 
     it('calls ensureTenantOrg (creates org + store + mapping)', async () => {
-      await post(identityManifest);
+      await postIdentity(identityManifest);
       const orgInsert = env.DB.__statements.find(
         (s) => s.type === 'run' && s.sql.includes('INSERT OR IGNORE INTO pos_organizations')
       );
@@ -448,7 +508,7 @@ describe('POST /api/tenants/import', () => {
     });
 
     it('runs data import after creation (products inserted)', async () => {
-      await post(identityManifest);
+      await postIdentity(identityManifest);
       const products = findBatchWith(env.DB, 'INSERT INTO pos_products');
       expect(products).toBeTruthy();
       expect(products.length).toBe(1);
@@ -457,21 +517,24 @@ describe('POST /api/tenants/import', () => {
     it('strips identity block from import payload (no identity in manifest schema)', async () => {
       // The manifest schema should not receive the identity block
       // If it did, zod .strip() would silently ignore it, but we verify the import ran
-      const res = await post(identityManifest);
+      const res = await postIdentity(identityManifest);
       const data = await res.json();
       expect(data.success).toBe(true);
     });
 
     it('returns 403 for tenant admin (non-super_admin)', async () => {
-      app = mountRouter(tenantImportRoutes, { tenantId: 'tenant_1', user: tenantAdminUser, basePath: '/api/tenants/import' });
-      const res = await post(identityManifest);
+      app = mountRouterAuthenticated(tenantImportRoutes, {
+        basePath: '/api/tenants/import',
+        scopeOptions: IMPORT_SCOPE_OPTIONS,
+      });
+      const res = await postIdentity(identityManifest, { token: tenantAdminToken });
       expect(res.status).toBe(403);
       const data = await res.json();
       expect(data.error).toContain('super-admin');
     });
 
     it('returns 400 for invalid subdomain format', async () => {
-      const res = await post({
+      const res = await postIdentity({
         ...identityManifest,
         identity: { ...identityManifest.identity, subdomain: 'INVALID SUBDOMAIN!' },
       });
@@ -483,12 +546,13 @@ describe('POST /api/tenants/import', () => {
     it('returns 400 when subdomain is already taken', async () => {
       const db = makeDb({
         query: (sql) => {
+          if (sql.includes('SELECT is_active FROM admins WHERE id')) return { results: [{ is_active: 1 }] };
           if (sql.includes('SELECT id FROM tenants WHERE subdomain')) return { results: [{ id: 'existing' }] };
           return creationQuery(sql);
         },
       });
       env.DB = db;
-      const res = await post(identityManifest);
+      const res = await postIdentity(identityManifest);
       expect(res.status).toBe(400);
       const data = await res.json();
       expect(data.error).toContain('subdomain');
@@ -497,25 +561,26 @@ describe('POST /api/tenants/import', () => {
     it('returns 400 when admin email already exists', async () => {
       const db = makeDb({
         query: (sql) => {
+          if (sql.includes('SELECT is_active FROM admins WHERE id')) return { results: [{ is_active: 1 }] };
           if (sql.includes('SELECT id FROM tenants WHERE subdomain')) return { results: [] };
           if (sql.includes('SELECT id FROM admins WHERE email')) return { results: [{ id: 'existing_admin' }] };
           return creationQuery(sql);
         },
       });
       env.DB = db;
-      const res = await post(identityManifest);
+      const res = await postIdentity(identityManifest);
       expect(res.status).toBe(400);
       const data = await res.json();
       expect(data.error).toContain('email');
     });
 
     it('returns 400 when identity block has missing required fields', async () => {
-      const res = await post({ identity: { name: 'Camp' } });
+      const res = await postIdentity({ identity: { name: 'Camp' } });
       expect(res.status).toBe(400);
     });
 
     it('uses identity.name for tenant when tenant block omitted', async () => {
-      await post(identityManifest);
+      await postIdentity(identityManifest);
       const tenantInsert = env.DB.__statements.find(
         (s) => s.type === 'run' && s.sql.includes('INSERT INTO tenants')
       );
@@ -524,8 +589,8 @@ describe('POST /api/tenants/import', () => {
 
     it('merges tenant block fields over identity when both present', async () => {
       // Fresh DB for this test since it makes its own request
-      env = { DB: makeDb({ query: makeCreationQuery() }), MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) } };
-      const res = await post({
+      env = makeEnv(makeDb({ query: makeCreationQuery() }));
+      const res = await postIdentity({
         identity: identityManifest.identity,
         tenant: { name: 'Override Name', currency: 'USD' },
       });

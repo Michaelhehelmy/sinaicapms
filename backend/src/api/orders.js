@@ -341,12 +341,15 @@ ordersRoutes.get('/calculate-price', async (c) => {
   return jsonResponse({ total_price: totalPrice });
 });
 
-// Public order status lookup by reference code (no auth required)
+// Public order status lookup by reference code (no auth required; email required)
 ordersRoutes.get('/status/:ref', async (c) => {
   const ref = c.req.param('ref');
+  const email = (c.req.query('email') || '').trim().toLowerCase();
+  if (!email) return errorResponse('Email is required', 400);
+
   try {
     const order = await c.env.DB.prepare(
-      `SELECT o.id, o.reference, o.guest_name, o.check_in_date, o.check_out_date,
+      `SELECT o.id, o.reference, o.guest_name, o.guest_email, o.check_in_date, o.check_out_date,
               o.total_amount, o.amount_paid, o.payment_status, o.payment_method,
               os.name as state_name, r.name as room_name
        FROM orders o
@@ -356,6 +359,9 @@ ordersRoutes.get('/status/:ref', async (c) => {
     ).bind(getScope(c).tenantId, ref).first();
 
     if (!order) return errorResponse('Order not found', 404);
+    if (!order.guest_email || order.guest_email.trim().toLowerCase() !== email) {
+      return errorResponse('Order not found', 404);
+    }
 
     return jsonResponse({
       reference: order.reference,

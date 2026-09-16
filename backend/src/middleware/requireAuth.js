@@ -13,6 +13,17 @@
  *   membership allow-list. Evaluated AFTER the realm match, so an org (POS)
  *   user can never satisfy an admin-role requirement and vice versa
  *   (domain pairing is enforced structurally by step 2).
+ * - tokenTypes: string[] (default ['access']) — allow-list of `type` claims.
+ *   A token whose `type` claim is PRESENT but not in the list is rejected
+ *   with the byte-identical invalid-signature 401. Tokens with NO `type`
+ *   claim (legacy + existing unit-test mocks) always pass. The refresh
+ *   endpoints stamp `type:'refresh'`, so a refresh token can never slide
+ *   past an access gate and vice versa.
+ * - typeMismatch: { status, message } (optional) — override the 401 shape
+ *   used when step 1.5 rejects a non-allow-listed `type` claim. Only gates
+ *   with a pre-existing distinct response for "wrong kind of token" set it
+ *   (POS refresh → 'Invalid token type'); default keeps the invalidToken
+ *   signature-failure shape.
  * - requireTenant: boolean (default true) — when true the caller passes
  *   ctx.tenantId and any non-super_admin token whose tenantId claim differs
  *   from it is rejected ('equals' scoping). Pass false for routes that
@@ -25,6 +36,8 @@
  *
  * Order of checks:
  * 1. Signature verification
+ * 1.5. Token-type allow-list (tokenTypes — refresh tokens blocked from access
+ *       gates unless explicitly opted in; see tokenTypes/typeMismatch above)
  * 2. Realm match (POS token on admin route → 403)
  * 3. Role membership (domain-paired by step 2)
  * 4. is_active ∧ deleted_at IS NULL (every request — deactivation-gap fix)
@@ -124,6 +137,7 @@ export function requireAuth(options = {}) {
     requireTenant = true,
     allowQueryToken = false,
     checkActive = true,
+    tokenTypes = ['access'],
   } = options;
 
   async function evaluate(request, env, ctx = {}) {
@@ -132,6 +146,19 @@ export function requireAuth(options = {}) {
     if (!token) return deny(options, 'missingToken');
     const decoded = await verifyToken(token, env.JWT_SECRET);
     if (!decoded) return deny(options, 'invalidToken');
+
+    // ── 1.5 Token-type allow-list (auditfix-m2) ────────────────
+    // Auth realm access gates only ever accept `access` tokens. A `type`
+    // claim that is NOT allow-listed (e.g. a `refresh` refresh token) is
+    // rejected with the byte-identical invalid-signature 401 so the two
+    // refresh endpoints can never be confused for regular sessions. Legacy
+    // tokens with NO `type` claim still pass (byte-compat + unit mocks).
+    // Gates with a pre-existing distinct "wrong kind of token" response
+    // (POS refresh → 'Invalid token type') set `typeMismatch` to keep it.
+    if (decoded.type && !tokenTypes.includes(decoded.type)) {
+      if (options.typeMismatch) return errorResponse(options.typeMismatch.message, options.typeMismatch.status);
+      return deny(options, 'invalidToken');
+    }
 
     // ── 2. Realm match (before anything else — fixes the 401-vs-403 quirk:
     //       a POS token on an admin route must never surface the misleading

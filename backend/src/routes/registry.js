@@ -1025,7 +1025,8 @@ export const marketplaceRoutes = [
     method: 'get',
     path: '/api/orders/status/{ref}',
     tags: ['orders'],
-    summary: 'Public order status lookup by reference code',
+    summary: 'Public order status lookup by reference code (email required)',
+    request: { query: z.object({ email: z.string() }) },
     responses: {
       200: { description: 'Order status', content: { 'application/json': { schema: orderStatusResponseSchema } } },
       ...errorResponses(),

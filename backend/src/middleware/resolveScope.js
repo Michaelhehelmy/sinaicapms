@@ -172,8 +172,11 @@ export function resolveScope(options = {}) {
           const queryTenant = c.req.query('tenantId');
           if (queryTenant) tenantId = queryTenant;
         }
-        // Scope check: admin must match tenant
-        if (decoded.tenantId && decoded.tenantId !== tenantId) {
+        // Scope check (strict dual-realm): an admin/manager token must carry a
+        // tenantId and it must equal the resolved tenant. A missing claim was
+        // leniently allowed before — it is the same "access anywhere" gap the
+        // refresh-type gate closes; only super_admin may override via query.
+        if (decoded.role !== 'super_admin' && decoded.tenantId !== tenantId) {
           return errorResponse('Forbidden: Access denied to this tenant partition', 403);
         }
       }

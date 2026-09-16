@@ -385,7 +385,7 @@ describe('handleCampsRoute', () => {
     it('looks up a camp by id across tenants with tenant info', async () => {
       const { db, chain } = makeDbMock();
       chain.all.mockResolvedValue({ results: [
-        { id: 'c1', tenant_id: 'acaciacamp', name: 'Acacia', tenant_name: 'Acacia Camp', tenant_subdomain: 'acaciacamp' },
+        { id: 'c1', tenant_id: 'acaciacamp', name: 'Acacia', status: 'active', tenant_name: 'Acacia Camp', tenant_subdomain: 'acaciacamp' },
       ]});
       const req = makeRequest('GET', 'https://sinaicamps.com/api/camps/c1');
       const res = await handleCampsRoute(req, { DB: db }, 'marketplace');
@@ -394,8 +394,136 @@ describe('handleCampsRoute', () => {
       expect(body.tenantName).toBe('Acacia Camp');
       const sql = db.prepare.mock.calls[0][0];
       expect(sql).toContain('LEFT JOIN tenants');
+      expect(sql).toContain("c.status = 'active'");
       expect(sql).not.toContain('WHERE tenant_id');
       expect(chain.bind).toHaveBeenCalledWith('c1');
+    });
+
+    // Real-DB-style marketplace select: mimics SQLite applying the
+    // `c.status = 'active'` predicate so the handler's 404 gating is
+    // exercised end-to-end (status inactive/completed → empty rows → 404).
+    function makeStatusFilteringDb(rows) {
+      const db = {
+        prepare: vi.fn((sql) => {
+          const isActiveFiltered = sql.includes("c.status = 'active'");
+          const chain = {
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({
+              results: isActiveFiltered ? rows.filter((r) => r.status === 'active') : rows,
+            }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          };
+          return chain;
+        }),
+      };
+      return db;
+    }
+
+    it('404s a completed camp on the marketplace host', async () => {
+      const db = makeStatusFilteringDb([
+        { id: 'c1', status: 'completed', tenant_id: 'acaciacamp', name: 'Done Camp' },
+      ]);
+      const req = makeRequest('GET', 'https://sinaicamps.com/api/camps/c1');
+      const res = await handleCampsRoute(req, { DB: db }, 'marketplace');
+      expect(res.status).toBe(404);
+    });
+
+    it('404s an inactive/suspended camp on the marketplace host', async () => {
+      const db = makeStatusFilteringDb([
+        { id: 'c1', status: 'inactive', tenant_id: 'acaciacamp', name: 'Suspended Camp' },
+      ]);
+      const req = makeRequest('GET', 'https://sinaicamps.com/api/camps/c1');
+      const res = await handleCampsRoute(req, { DB: db }, 'marketplace');
+      expect(res.status).toBe(404);
+    });
+
+    it('returns ONLY the public projection for an active camp (no c.* spread)', async () => {
+      const db = makeStatusFilteringDb([{
+        id: 'camp_1',
+        tenant_id: 'acaciacamp',
+        name: 'Acacia Camp',
+        slug: 'acacia',
+        location: 'Sinai',
+        description: 'Premium desert camp',
+        project_type: 'camp',
+        start_date: '2026-07-01',
+        end_date: '2026-08-31',
+        capacity: 50,
+        status: 'active',
+        notes: 'legacy note',
+        gallery_images: '["/api/media/a.jpg","/api/media/b.jpg"]',
+        tenant_name: 'Acacia Camp',
+        tenant_subdomain: 'acaciacamp',
+        internal_revenue: 999999,
+        tax_policy: 'confidential',
+        deleted_at: null,
+        created_at: '2026-01-01',
+        updated_at: '2026-01-02',
+      }]);
+      const req = makeRequest('GET', 'https://sinaicamps.com/api/camps/camp_1');
+      const res = await handleCampsRoute(req, { DB: db }, 'marketplace');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({
+        id: 'camp_1',
+        tenantId: 'acaciacamp',
+        name: 'Acacia Camp',
+        slug: 'acacia',
+        location: 'Sinai',
+        description: 'Premium desert camp',
+        projectType: 'camp',
+        startDate: '2026-07-01',
+        endDate: '2026-08-31',
+        capacity: 50,
+        status: 'active',
+        notes: 'legacy note',
+        tenantName: 'Acacia Camp',
+        tenantSubdomain: 'acaciacamp',
+        galleryImages: ['/api/media/a.jpg', '/api/media/b.jpg'],
+      });
+      expect(body).not.toHaveProperty('internalRevenue');
+      expect(body).not.toHaveProperty('taxPolicy');
+      expect(body).not.toHaveProperty('deletedAt');
+      expect(body).not.toHaveProperty('createdAt');
+      expect(body).not.toHaveProperty('updatedAt');
+      expect(body).not.toHaveProperty('meta');
+    });
+
+    it('owner branch keeps the full row + meta for an inactive camp', async () => {
+      const inactiveRow = {
+        id: 'c1',
+        tenant_id: 't1',
+        name: 'Inactive Camp',
+        status: 'inactive',
+        internal_revenue: 42,
+        created_at: '2026-01-01',
+        updated_at: '2026-01-02',
+      };
+      // First prepare = owner lookup (full row); second = loadProjectMeta.
+      let callIdx = 0;
+      const db = {
+        prepare: vi.fn().mockImplementation(function () {
+          const chain = {
+            bind: vi.fn().mockReturnThis(),
+            all: vi.fn().mockResolvedValue({
+              results: callIdx === 0 ? [inactiveRow] : [],
+            }),
+            first: vi.fn().mockResolvedValue(null),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          };
+          callIdx++;
+          return chain;
+        }),
+      };
+      const req = makeRequest('GET', 'https://acacia.sinaicamps.com/api/camps/c1');
+      const res = await handleCampsRoute(req, { DB: db }, 't1');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.id).toBe('c1');
+      expect(body.status).toBe('inactive');
+      expect(body.internalRevenue).toBe(42);
+      expect(body.meta).toEqual({});
     });
 
     it('keeps the tenant-scoped :id lookup for a real tenant id', async () => {
