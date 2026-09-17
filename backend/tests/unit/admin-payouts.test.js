@@ -49,8 +49,8 @@ describe('Admin Payouts — GET /eligible', () => {
   it('returns captured unbatched marketplace payments with tenantName and totalNet', async () => {
     const db = makeRoutingDb()
       .on(/SELECT mp\.\*.*FROM marketplace_payments mp/s, [
-        { id: 'mp1', tenant_id: 1, net_amount: 900, currency: 'EGP', payment_status: 'captured', channel: 'marketplace', tenant_name: 'Camp A' },
-        { id: 'mp2', tenant_id: 1, net_amount: 600, currency: 'EGP', payment_status: 'captured', channel: 'marketplace', tenant_name: 'Camp A' },
+        { id: 'mp1', tenant_id: '1', net_amount: 900, currency: 'EGP', payment_status: 'captured', channel: 'marketplace', tenant_name: 'Camp A' },
+        { id: 'mp2', tenant_id: '1', net_amount: 600, currency: 'EGP', payment_status: 'captured', channel: 'marketplace', tenant_name: 'Camp A' },
       ])
       .on(/COUNT\(\*\) as total.*FROM marketplace_payments mp/s, [{ total: 2, total_net: 1500 }]);
 
@@ -95,8 +95,8 @@ describe('Admin Payouts — POST /', () => {
   it('creates payout from 2 payments — amount = sum net_amount, items stay captured', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id.*FROM marketplace_payments.*WHERE id IN/s, [
-        { id: 'mp1', tenant_id: 1, net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
-        { id: 'mp2', tenant_id: 1, net_amount: 300, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
+        { id: 'mp1', tenant_id: '1', net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
+        { id: 'mp2', tenant_id: '1', net_amount: 300, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
       ])
       .on(/INSERT INTO marketplace_payouts/, { meta: { changes: 1 } })
       .on(/UPDATE.*marketplace_payments.*SET.*payout_id/, { meta: { changes: 1 } });
@@ -104,13 +104,13 @@ describe('Admin Payouts — POST /', () => {
     const app = mountRouter(adminPayoutsRouter);
     const res = await app.request(req('/', {
       method: 'POST',
-      body: JSON.stringify({ tenantId: 1, paymentIds: ['mp1', 'mp2'], method: 'bank_transfer' }),
+      body: JSON.stringify({ tenantId: '1', paymentIds: ['mp1', 'mp2'], method: 'bank_transfer' }),
     }), {}, env(db));
     const body = await res.json();
 
     expect(res.status).toBe(201);
     expect(body.payout).toBeDefined();
-    expect(body.payout.tenantId).toBe(1);
+    expect(body.payout.tenantId).toBe('1');
     expect(body.payout.amount).toBe(800);
     expect(body.payout.method).toBe('bank_transfer');
     expect(body.payout.status).toBe('pending');
@@ -120,14 +120,14 @@ describe('Admin Payouts — POST /', () => {
   it('rejects mixed-tenant payment IDs', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id.*FROM marketplace_payments.*WHERE id IN/, [
-        { id: 'mp1', tenant_id: 1, net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
-        { id: 'mp2', tenant_id: 2, net_amount: 300, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
+        { id: 'mp1', tenant_id: '1', net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
+        { id: 'mp2', tenant_id: '2', net_amount: 300, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
       ]);
 
     const app = mountRouter(adminPayoutsRouter);
     const res = await app.request(req('/', {
       method: 'POST',
-      body: JSON.stringify({ tenantId: 1, paymentIds: ['mp1', 'mp2'], method: 'bank_transfer' }),
+      body: JSON.stringify({ tenantId: '1', paymentIds: ['mp1', 'mp2'], method: 'bank_transfer' }),
     }), {}, env(db));
     const body = await res.json();
 
@@ -138,13 +138,13 @@ describe('Admin Payouts — POST /', () => {
   it('rejects non-existent payment ID', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id.*FROM marketplace_payments.*WHERE id IN/, [
-        { id: 'mp1', tenant_id: 1, net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
+        { id: 'mp1', tenant_id: '1', net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
       ]);
 
     const app = mountRouter(adminPayoutsRouter);
     const res = await app.request(req('/', {
       method: 'POST',
-      body: JSON.stringify({ tenantId: 1, paymentIds: ['mp1', 'mp_NONEXISTENT'], method: 'bank_transfer' }),
+      body: JSON.stringify({ tenantId: '1', paymentIds: ['mp1', 'mp_NONEXISTENT'], method: 'bank_transfer' }),
     }), {}, env(db));
     const body = await res.json();
 
@@ -155,13 +155,13 @@ describe('Admin Payouts — POST /', () => {
   it('rejects already-settled payment', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id.*FROM marketplace_payments.*WHERE id IN/, [
-        { id: 'mp1', tenant_id: 1, net_amount: 500, currency: 'EGP', payment_status: 'settled', payout_id: null, channel: 'marketplace' },
+        { id: 'mp1', tenant_id: '1', net_amount: 500, currency: 'EGP', payment_status: 'settled', payout_id: null, channel: 'marketplace' },
       ]);
 
     const app = mountRouter(adminPayoutsRouter);
     const res = await app.request(req('/', {
       method: 'POST',
-      body: JSON.stringify({ tenantId: 1, paymentIds: ['mp1'], method: 'cash' }),
+      body: JSON.stringify({ tenantId: '1', paymentIds: ['mp1'], method: 'cash' }),
     }), {}, env(db));
     const body = await res.json();
 
@@ -172,13 +172,13 @@ describe('Admin Payouts — POST /', () => {
   it('rejects POS-channel payment', async () => {
     const db = makeRoutingDb()
       .on(/SELECT id.*FROM marketplace_payments.*WHERE id IN/, [
-        { id: 'mp1', tenant_id: 1, net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'pos' },
+        { id: 'mp1', tenant_id: '1', net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'pos' },
       ]);
 
     const app = mountRouter(adminPayoutsRouter);
     const res = await app.request(req('/', {
       method: 'POST',
-      body: JSON.stringify({ tenantId: 1, paymentIds: ['mp1'], method: 'paymob' }),
+      body: JSON.stringify({ tenantId: '1', paymentIds: ['mp1'], method: 'paymob' }),
     }), {}, env(db));
     const body = await res.json();
 
@@ -190,8 +190,25 @@ describe('Admin Payouts — POST /', () => {
     const app = mountRouter(adminPayoutsRouter);
     const res = await app.request(req('/', {
       method: 'POST',
-      body: JSON.stringify({ tenantId: 1, paymentIds: [], method: 'other' }),
+      body: JSON.stringify({ tenantId: '1', paymentIds: [], method: 'other' }),
     }), {}, env(makeRoutingDb()));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+  });
+
+  it('rejects a numeric tenantId (tenant_id is TEXT everywhere — string contract)', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id.*FROM marketplace_payments.*WHERE id IN/, [
+        { id: 'mp1', tenant_id: '1', net_amount: 500, currency: 'EGP', payment_status: 'captured', payout_id: null, channel: 'marketplace' },
+      ]);
+
+    const app = mountRouter(adminPayoutsRouter);
+    const res = await app.request(req('/', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId: 1, paymentIds: ['mp1'], method: 'bank_transfer' }),
+    }), {}, env(db));
     const body = await res.json();
 
     expect(res.status).toBe(400);
@@ -204,7 +221,7 @@ describe('Admin Payouts — POST /', () => {
 describe('Admin Payouts — POST /:id/pay', () => {
   it('marks pending payout as paid — payments flip to settled with settled_at', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: 1, amount: 800 }])
+      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: '1', amount: 800 }])
       .on(/UPDATE.*marketplace_payouts.*SET.*status.*paid/, { meta: { changes: 1 } })
       .on(/SELECT \* FROM marketplace_payments WHERE payout_id/, [
         { id: 'mp1', payment_status: 'captured' },
@@ -227,7 +244,7 @@ describe('Admin Payouts — POST /:id/pay', () => {
 
   it('rejects pay again on already-paid payout', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'paid', tenant_id: 1, amount: 800 }]);
+      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'paid', tenant_id: '1', amount: 800 }]);
 
     const app = mountRouter(adminPayoutsRouter);
     const res = await app.request(req('/po1/pay', { method: 'POST' }), {}, env(db));
@@ -255,7 +272,7 @@ describe('Admin Payouts — POST /:id/pay', () => {
 describe('Admin Payouts — POST /:id/cancel', () => {
   it('cancels pending payout — payout_id cleared, payments stay captured', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: 1, amount: 800 }])
+      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: '1', amount: 800 }])
       .on(/UPDATE.*marketplace_payouts.*SET.*status.*cancelled/, { meta: { changes: 1 } })
       .on(/SELECT id FROM marketplace_payments WHERE payout_id/, [
         { id: 'mp1' }, { id: 'mp2' },
@@ -303,7 +320,7 @@ describe('Admin Payouts — GET /', () => {
     const db = makeRoutingDb()
       .on(/COUNT\(\*\) as cnt FROM marketplace_payouts/, [{ cnt: 1 }])
       .on(/SELECT p\.\*.*FROM marketplace_payouts/s, [
-        { id: 'po1', tenant_id: 1, amount: 800, status: 'pending', tenant_name: 'Camp A', item_count: 2 },
+        { id: 'po1', tenant_id: '1', amount: 800, status: 'pending', tenant_name: 'Camp A', item_count: 2 },
       ]);
 
     const app = mountRouter(adminPayoutsRouter);
@@ -337,11 +354,11 @@ describe('Admin Payouts — GET /:id', () => {
   it('returns payout with items', async () => {
     const db = makeRoutingDb()
       .on(/SELECT \* FROM marketplace_payouts WHERE id = \?/, [
-        { id: 'po1', tenant_id: 1, amount: 800, status: 'paid' },
+        { id: 'po1', tenant_id: '1', amount: 800, status: 'paid' },
       ])
       .on(/SELECT mp\.\*.*FROM marketplace_payments mp.*WHERE mp\.payout_id/s, [
-        { id: 'mp1', tenant_id: 1, net_amount: 500, tenantName: 'Camp A' },
-        { id: 'mp2', tenant_id: 1, net_amount: 300, tenantName: 'Camp A' },
+        { id: 'mp1', tenant_id: '1', net_amount: 500, tenantName: 'Camp A' },
+        { id: 'mp2', tenant_id: '1', net_amount: 300, tenantName: 'Camp A' },
       ]);
 
     const app = mountRouter(adminPayoutsRouter);

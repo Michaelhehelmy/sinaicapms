@@ -18,7 +18,7 @@ import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
 const router = new Hono();
 
 const createPayoutBody = z.object({
-  tenantId: z.number(),
+  tenantId: z.string(),
   paymentIds: z.array(z.string()).min(1),
   method: z.enum(['bank_transfer', 'cash', 'paymob', 'other']),
   reference: z.string().max(200).optional(),

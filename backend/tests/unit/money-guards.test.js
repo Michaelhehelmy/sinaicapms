@@ -79,8 +79,8 @@ describe('Money guards — POST /:id/pay double-approve', () => {
     // mutates the payout row), then the guarded UPDATE is the arbiter —
     // first batch flips it (changes 1), second finds 0 rows (changes 0).
     let guardedPayHits = 0;
-    const db = makeRoutingDb()
-      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: 1, amount: 800 }])
+const db = makeRoutingDb()
+      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: '1', amount: 800 }])
       .on(/SELECT \* FROM marketplace_payments WHERE payout_id/, [
         { id: 'mp1', payment_status: 'captured' },
         { id: 'mp2', payment_status: 'captured' },
@@ -111,7 +111,7 @@ describe('Money guards — POST /:id/cancel double-cancel', () => {
   it('rejects the second of two concurrent cancels with a 409 envelope', async () => {
     let guardedCancelHits = 0;
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: 1, amount: 800 }])
+      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: '1', amount: 800 }])
       .on(/SELECT id FROM marketplace_payments WHERE payout_id/, [
         { id: 'mp1' }, { id: 'mp2' },
       ])
@@ -175,7 +175,7 @@ describe('Money guards — POST /shifts/close double-close', () => {
 describe('Money guards — successful pay batching', () => {
   it('runs the payout UPDATE and all payment settles through ONE db.batch call', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: 1, amount: 800 }])
+      .on(/SELECT \* FROM marketplace_payouts WHERE id/, [{ id: 'po1', status: 'pending', tenant_id: '1', amount: 800 }])
       .on(/SELECT \* FROM marketplace_payments WHERE payout_id/, [
         { id: 'mp1', payment_status: 'captured' },
         { id: 'mp2', payment_status: 'captured' },

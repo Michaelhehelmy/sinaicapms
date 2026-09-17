@@ -2207,7 +2207,7 @@ export function getAdminPublicPayments(params: {
 
 export interface MarketplacePayout {
   id: string;
-  tenantId: number;
+  tenantId: string;
   tenantName: string;
   amount: number;
   currency: string;
@@ -2226,7 +2226,7 @@ export interface MarketplacePayoutDetail extends MarketplacePayout {
 }
 
 export interface CreatePayoutRequest {
-  tenantId: number;
+  tenantId: string;
   paymentIds: string[];
   method: string;
   reference?: string;
@@ -2234,7 +2234,7 @@ export interface CreatePayoutRequest {
 }
 
 /** Eligible captured payments that can be grouped into a payout. */
-export function getAdminPayoutEligible(params: { tenantId?: number; limit?: number } = {}) {
+export function getAdminPayoutEligible(params: { tenantId?: string; limit?: number } = {}) {
   const qs = new URLSearchParams();
   if (params.tenantId) qs.set('tenantId', String(params.tenantId));
   if (params.limit) qs.set('limit', String(params.limit));
@@ -2244,7 +2244,7 @@ export function getAdminPayoutEligible(params: { tenantId?: number; limit?: numb
   );
 }
 
-export function getAdminPayouts(params: { page?: number; pageSize?: number; tenantId?: number; status?: string } = {}) {
+export function getAdminPayouts(params: { page?: number; pageSize?: number; tenantId?: string; status?: string } = {}) {
   const qs = new URLSearchParams();
   if (params.page) qs.set('page', String(params.page));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));

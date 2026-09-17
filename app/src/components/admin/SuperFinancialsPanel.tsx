@@ -332,7 +332,8 @@ export default function SuperFinancialsPanel() {
   const selectedNet = selectedPayments.reduce((sum, p) => sum + (p.netAmount ?? 0), 0);
   const selectedCurrency = selectedPayments[0]?.currency || 'USD';
   const selectedTenants = new Set(selectedPayments.map((p) => p.tenantId));
-  const singleTenant = selectedTenants.size === 1 ? Number(selectedPayments[0]?.tenantId) : null;
+  // tenantId is TEXT everywhere (0099-normalized) — keep the raw string contract.
+  const singleTenant = selectedTenants.size === 1 ? (selectedPayments[0]?.tenantId ?? null) : null;
 
   const toggleSelected = useCallback((id: string) => {
     setSelected((prev) => {

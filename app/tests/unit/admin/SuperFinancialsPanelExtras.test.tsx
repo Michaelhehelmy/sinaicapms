@@ -335,7 +335,7 @@ describe('SuperFinancialsPanel extras coverage', () => {
     await waitFor(() => {
       expect(mockCreateAdminPayout).toHaveBeenCalledWith(
         expect.objectContaining({
-          tenantId: 1,
+          tenantId: '1',
           paymentIds: ['mp1'],
           method: 'cash',
           reference: 'batch#9',

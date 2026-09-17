@@ -281,4 +281,121 @@ describe('handlePaymobWebhook', () => {
     expect(data).toEqual({ received: true });
     expect(stmtsMatching(db, /payment_status = 'paid'/).length).toBe(0);
   });
+
+  it('acks 200 without marking paid when the signed amount_cents does not match the order total (F-A4-3)', async () => {
+    // The signature is VALID — we re-sign after mutating amount_cents. Paymob
+    // charged a different amount than the order says; the webhook must ack
+    // (200, no retries) but never flip the order or write the ledger.
+    const db = makeRoutingDb()
+      .on(/FROM orders WHERE reference = \?/, { results: [orderRow({ total_amount: 200 })] })
+      .on(/UPDATE orders SET[\s\S]*payment_status = 'paid'/, { meta: { changes: 1 } })
+      .on(/UPDATE orders SET order_state_id = 'confirmed'/, { meta: { changes: 1 } })
+      .on(/INSERT INTO marketplace_payments/, { meta: { changes: 1 } });
+
+    const bodyObj = JSON.parse(buildSignedBody());
+    bodyObj.amount_cents = '99999'; // signed field mismatch (order total 200 => 20000)
+    const rawBody = JSON.stringify({ ...bodyObj, hmac: signBody(bodyObj) });
+
+    const env = buildEnv(db);
+    const res = await handlePaymobWebhook(buildWebhookRequest(rawBody), env);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toEqual({ received: true });
+    // No money writes at all: no paid UPDATE, no state transition, no ledger row.
+    expect(stmtsMatching(db, /payment_status = 'paid'/)).toHaveLength(0);
+    expect(stmtsMatching(db, /order_state_id = 'confirmed'/)).toHaveLength(0);
+    expect(stmtsMatching(db, /INSERT INTO marketplace_payments/)).toHaveLength(0);
+  });
+
+  it('acks 200 without marking paid when the signed currency does not match the payment config (F-A4-3)', async () => {
+    const db = makeRoutingDb()
+      .on(/FROM orders WHERE reference = \?/, { results: [orderRow()] })
+      .on(/UPDATE orders SET[\s\S]*payment_status = 'paid'/, { meta: { changes: 1 } })
+      .on(/INSERT INTO marketplace_payments/, { meta: { changes: 1 } });
+
+    const bodyObj = JSON.parse(buildSignedBody());
+    bodyObj.currency = 'USD'; // valid signature, wrong currency (config default EGP)
+    const rawBody = JSON.stringify({ ...bodyObj, hmac: signBody(bodyObj) });
+
+    const env = buildEnv(db);
+    const res = await handlePaymobWebhook(buildWebhookRequest(rawBody), env);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toEqual({ received: true });
+    expect(stmtsMatching(db, /payment_status = 'paid'/)).toHaveLength(0);
+    expect(stmtsMatching(db, /INSERT INTO marketplace_payments/)).toHaveLength(0);
+  });
+
+  it('resolves booking orders with a tenant_id-scoped SELECT (F-A4-8)', async () => {
+    const db = makeRoutingDb()
+      .on(/FROM orders WHERE reference = \?/, { results: [orderRow()] })
+      .on(/UPDATE orders SET[\s\S]*payment_status = 'paid'/, { meta: { changes: 1 } })
+      .on(/UPDATE orders SET order_state_id = 'confirmed'/, { meta: { changes: 1 } })
+      .on(/UPDATE rooms_new SET room_status = 'reserved'/, { meta: { changes: 1 } })
+      .on(/INSERT INTO marketplace_payments/, { meta: { changes: 1 } });
+
+    const env = buildEnv(db);
+    const res = await handlePaymobWebhook(buildWebhookRequest(buildSignedBody()), env);
+    expect(res.status).toBe(200);
+
+    const orderSelects = stmtsMatching(db, /FROM orders WHERE reference = \?/);
+    expect(orderSelects).toHaveLength(1);
+    expect(orderSelects[0].sqlStmt).toContain('tenant_id');
+    // The resolved tenant_id is what scopes the paid UPDATE.
+    const paid = stmtsMatching(db, /payment_status = 'paid'/);
+    expect(paid[0].boundBinds[2]).toBe('tenant-a');
+  });
+
+  it('marks storefront orders paid with tenant-scoped SELECT + UPDATE and a captured ledger row (F-A4-8 / D19e)', async () => {
+    const db = makeRoutingDb()
+      .on(/FROM orders WHERE reference = \?/, { results: [] })
+      .on(/FROM storefront_orders WHERE reference = \?/, {
+        results: [{ id: 'sfo_1', tenant_id: 'tenant-b', reference: ORDER_REF, total_amount: 200, payment_status: 'pending' }],
+      })
+      .on(/UPDATE storefront_orders SET/, { meta: { changes: 1 } })
+      .on(/INSERT INTO marketplace_payments/, { meta: { changes: 1 } });
+
+    const env = buildEnv(db);
+    const res = await handlePaymobWebhook(buildWebhookRequest(buildSignedBody()), env);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toEqual({ received: true });
+
+    const sfSelects = stmtsMatching(db, /FROM storefront_orders WHERE reference = \?/);
+    expect(sfSelects).toHaveLength(1);
+    expect(sfSelects[0].sqlStmt).toContain('tenant_id');
+
+    const paid = stmtsMatching(db, /UPDATE storefront_orders SET/);
+    expect(paid).toHaveLength(1);
+    expect(paid[0].sqlStmt).toMatch(/AND tenant_id = \?/);
+    expect(paid[0].boundBinds).toEqual([String(TXN_ID), ORDER_REF, 'tenant-b']);
+
+    // D19e: storefront capture inserts a 'captured' ledger row (matches the
+    // booking branch) — never a different state.
+    const ledger = stmtsMatching(db, /INSERT INTO marketplace_payments/);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].sqlStmt).toMatch(/'captured'/);
+    expect(ledger[0].sqlStmt).toContain('Paymob webhook capture (storefront)');
+  });
+
+  it('never inserts a ledger row on an amount-mismatched callback — states stay consistent (D19e)', async () => {
+    const db = makeRoutingDb()
+      .on(/FROM orders WHERE reference = \?/, { results: [orderRow()] })
+      .on(/UPDATE orders SET[\s\S]*payment_status = 'paid'/, { meta: { changes: 1 } })
+      .on(/INSERT INTO marketplace_payments/, { meta: { changes: 1 } });
+
+    const bodyObj = JSON.parse(buildSignedBody());
+    bodyObj.amount_cents = '1';
+    const rawBody = JSON.stringify({ ...bodyObj, hmac: signBody(bodyObj) });
+
+    const env = buildEnv(db);
+    const res = await handlePaymobWebhook(buildWebhookRequest(rawBody), env);
+    expect(res.status).toBe(200);
+
+    // The ledger must contain nothing: no 'captured' row for an un-paid order.
+    expect(stmtsMatching(db, /INSERT INTO marketplace_payments/)).toHaveLength(0);
+  });
 });

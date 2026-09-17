@@ -2016,7 +2016,7 @@ describe('SuperFinancialsPanel', () => {
     fireEvent.click(screen.getByTestId('modal-submit'));
     await waitFor(() => {
       expect(mockCreateAdminPayout).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: 5, paymentIds: ['mp1'], method: 'bank_transfer' }),
+        expect.objectContaining({ tenantId: '5', paymentIds: ['mp1'], method: 'bank_transfer' }),
       );
       expect(mockShowToast).toHaveBeenCalledWith('Payout created.', 'success');
     });

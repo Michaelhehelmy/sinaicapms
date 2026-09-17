@@ -106,6 +106,35 @@ function extractOrderReference(payloadObj) {
 }
 
 /**
+ * F-A4-3: verify the signed callback amount + currency match the order being
+ * marked paid. Paymob callbacks carry the authoritative charged amount — a
+ * blind mark-paid here would record an order/ledger pair that disagrees with
+ * what was actually captured (D19e ledger-state consistency). On mismatch we
+ * still ack the webhook (200 `{ received: true }` — Paymob aborts retries on
+ * 2xx) but NEVER touch the order or insert a ledger row, so the payment is
+ * left clearly un-paid for manual reconciliation.
+ *
+ * @param {{currency: string}} pm - resolved payment config (loadPaymentConfig)
+ * @param {object} payloadObj - parsed webhook body (obj-wrapped or flat)
+ * @param {number} orderTotal  - order row `total_amount`
+ * @returns {{ok: true} | {ok: false, reason: 'amount'|'currency', signed: (number|string|null), expected: number|string}}
+ */
+function amountMatchesOrder(pm, payloadObj, orderTotal) {
+  const txn = payloadObj.obj || payloadObj;
+  const signedCents = txn.amount_cents != null ? Number(txn.amount_cents) : null;
+  const expectedCents = Math.round((orderTotal || 0) * 100);
+  if (signedCents === null || signedCents !== expectedCents) {
+    return { ok: false, reason: 'amount', signed: signedCents, expected: expectedCents };
+  }
+  const signedCurrency = String(txn.currency || 'EGP').toUpperCase();
+  const expectedCurrency = String(pm.currency || 'EGP').toUpperCase();
+  if (signedCurrency !== expectedCurrency) {
+    return { ok: false, reason: 'currency', signed: signedCurrency, expected: expectedCurrency };
+  }
+  return { ok: true };
+}
+
+/**
  * POST /api/public/paymob/webhook
  *
  * Public HMAC-verified Paymob server-to-server callback. Signature auth is the
@@ -205,6 +234,20 @@ export async function handlePaymobWebhook(request, env) {
       if (order) {
         const tenantId = order.tenant_id;
 
+        // F-A4-3: only mark paid when the signed charged amount + currency match
+        // the order total (see amountMatchesOrder). A mismatch acks the webhook
+        // without touching the order — the payment stays un-paid for review
+        // rather than recording an inconsistent order/ledger pair (D19e).
+        const amountMatch = amountMatchesOrder(pm, payloadObj, order.total_amount);
+        if (!amountMatch.ok) {
+          if (env.ENVIRONMENT !== 'production') {
+            console.warn(
+              `[PAYMOB WEBHOOK] Booking order ${orderRef} NOT marked paid — signed ${amountMatch.signed} != expected ${amountMatch.expected} (${amountMatch.reason})`
+            );
+          }
+          return jsonResponse({ received: true });
+        }
+
         // 5. Money write — scoped by reference AND tenant_id (cross-tenant safe).
         await env.DB.prepare(
           `UPDATE orders SET
@@ -258,6 +301,18 @@ export async function handlePaymobWebhook(request, env) {
 
       if (sfOrder) {
         const tenantId = sfOrder.tenant_id;
+
+        // F-A4-3: same signed amount/currency gate as the booking branch — a
+        // mismatch acks the webhook without touching the storefront order.
+        const amountMatch = amountMatchesOrder(pm, payloadObj, sfOrder.total_amount);
+        if (!amountMatch.ok) {
+          if (env.ENVIRONMENT !== 'production') {
+            console.warn(
+              `[PAYMOB WEBHOOK] Storefront order ${orderRef} NOT marked paid — signed ${amountMatch.signed} != expected ${amountMatch.expected} (${amountMatch.reason})`
+            );
+          }
+          return jsonResponse({ received: true });
+        }
 
         await env.DB.prepare(
           `UPDATE storefront_orders SET
