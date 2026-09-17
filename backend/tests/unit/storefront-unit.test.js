@@ -14,6 +14,7 @@ function makeRoutingDb() {
   const db = {
     prepare: vi.fn((sql) => {
       const stmt = {
+        sql,
         bind: vi.fn((...binds) => { stmt.boundBinds = binds; return stmt; }),
         boundBinds: [],
         all: vi.fn(async () => (await runHandler(sql, stmt.boundBinds)) ?? { results: [], meta: { changes: 0 } }),
@@ -126,7 +127,7 @@ describe('Storefront Cart', () => {
 
   it('POST /cart/items adds item to new cart', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT id, price FROM pos_products/, [{ id: 'p1', price: 25.0 }])
+      .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
       .on(/SELECT id FROM carts WHERE session_id/, null)
       .on(/INSERT INTO carts/, { meta: { changes: 1 } })
       .on(/SELECT id, quantity FROM cart_items/, null)
@@ -143,9 +144,34 @@ describe('Storefront Cart', () => {
     expect(body.totalPrice).toBe(50.0);
   });
 
+  // F-A4-1 regression: the product SELECT reads `selling_price` (the tenant's
+  // live price), NEVER the `price` list-price column. price:999 is a trap —
+  // if the handler ever reads the wrong column this test fails loudly.
+  it('POST /cart/items prices from selling_price, not price (F-A4-1)', async () => {
+    const db = makeRoutingDb()
+      .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', price: 999.0, selling_price: 30.0 }])
+      .on(/SELECT id FROM carts WHERE session_id/, null)
+      .on(/INSERT INTO carts/, { meta: { changes: 1 } })
+      .on(/SELECT id, quantity FROM cart_items/, null)
+      .on(/INSERT INTO cart_items/, { meta: { changes: 1 } });
+    const app = mountRouter(storefrontRouter, { tenantId: 't1' });
+    const res = await app.request(req('/cart/items', {
+      method: 'POST',
+      body: JSON.stringify({ productId: 'p1', quantity: 2, sessionId: 's1' }),
+    }), {}, env(db));
+    const body = await res.json();
+    expect(res.status).toBe(201);
+    expect(body.unitPrice).toBe(30.0);
+    expect(body.totalPrice).toBe(60.0);
+    // The prepared statement must reference the selling_price column.
+    const productQuery = db.statements.find((s) => /FROM pos_products/.test(s.sql || ''));
+    expect(productQuery.sql).toContain('selling_price');
+    expect(productQuery.sql).not.toContain(', price');
+  });
+
   it('POST /cart/items increases quantity for existing item', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT id, price FROM pos_products/, [{ id: 'p1', price: 25.0 }])
+      .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
       .on(/SELECT id FROM carts WHERE session_id/, [{ id: 'cart1' }])
       .on(/SELECT id, quantity FROM cart_items/, [{ id: 'ci1', quantity: 1 }])
       .on(/UPDATE cart_items SET/, { meta: { changes: 1 } });
@@ -191,6 +217,37 @@ describe('Storefront Cart', () => {
     const app = mountRouter(storefrontRouter, { tenantId: 't1' });
     const res = await app.request(req('/cart/items/missing', { method: 'DELETE' }), {}, env(db));
     expect(res.status).toBe(404);
+  });
+
+  // Wave 1.5 monitoring: a structured [storefront] log line fires on cart add.
+  it('POST /cart/items emits a structured [storefront] cart.add log', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const db = makeRoutingDb()
+        .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
+        .on(/SELECT id FROM carts WHERE session_id/, null)
+        .on(/INSERT INTO carts/, { meta: { changes: 1 } })
+        .on(/SELECT id, quantity FROM cart_items/, null)
+        .on(/INSERT INTO cart_items/, { meta: { changes: 1 } });
+      const app = mountRouter(storefrontRouter, { tenantId: 't1' });
+      const res = await app.request(req('/cart/items', {
+        method: 'POST',
+        body: JSON.stringify({ productId: 'p1', quantity: 2, sessionId: 's1' }),
+      }), {}, env(db));
+      expect(res.status).toBe(201);
+      const logCalls = logSpy.mock.calls.filter(([prefix]) => prefix === '[storefront]');
+      expect(logCalls.length).toBe(1);
+      const [prefix, payload] = logCalls[0];
+      expect(prefix).toBe('[storefront]');
+      const parsed = JSON.parse(payload);
+      expect(parsed.event).toBe('cart.add');
+      expect(parsed.productId).toBe('p1');
+      expect(parsed.quantity).toBe(2);
+      expect(parsed.unitPrice).toBe(25.0);
+      expect(parsed.success).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });
 
@@ -246,6 +303,38 @@ describe('Storefront Checkout', () => {
       body: JSON.stringify({ sessionId: 's1' }),
     }), {}, env(db));
     expect(res.status).toBe(404);
+  });
+
+  // Wave 1.5 monitoring: a structured [storefront] log line fires on order create.
+  it('POST /checkout emits a structured [storefront] checkout.order_created log', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const db = makeRoutingDb()
+        .on(/SELECT id FROM carts WHERE session_id/, [{ id: 'cart1' }])
+        .on(/FROM cart_items ci/, [
+          { product_id: 'p1', quantity: 2, unit_price: 50.0, total_price: 100.0, product_name: 'Tent' },
+        ])
+        .on(/INSERT INTO storefront_orders/, { meta: { changes: 1 } })
+        .on(/INSERT INTO storefront_order_items/, { meta: { changes: 1 } });
+      const app = mountRouter(storefrontRouter, { tenantId: 't1' });
+      const res = await app.request(req('/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: 's1' }),
+      }), {}, env(db));
+      expect(res.status).toBe(201);
+      const logCalls = logSpy.mock.calls.filter(([prefix]) => prefix === '[storefront]');
+      expect(logCalls.length).toBe(1);
+      const [prefix, payload] = logCalls[0];
+      expect(prefix).toBe('[storefront]');
+      const parsed = JSON.parse(payload);
+      expect(parsed.event).toBe('checkout.order_created');
+      expect(parsed.orderId).toBeTruthy();
+      expect(parsed.orderNumber).toMatch(/^ORD-[0-9A-Z]{6}$/);
+      expect(parsed.totalAmount).toBe(100.0);
+      expect(parsed.success).toBe(true);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });
 

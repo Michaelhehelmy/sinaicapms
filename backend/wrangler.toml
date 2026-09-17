@@ -61,6 +61,10 @@ RATE_LIMIT_KV_ENABLED = "false"
 # hardcoded policy max.
 RATE_LIMIT_LOGIN = "20"
 RATE_LIMIT_API = "100"
+# Wave 1 (F-A13-2): when "true" the storefront PUBLIC scope also covers the anonymous
+# cart/checkout write surface (guest add-to-cart + guest checkout). "false" restores the
+# pre-Wave-1 admin-gated behavior — a no-code-deploy rollback lever (see index.js scope).
+STOREFRONT_CART_ENABLED = "true"
 
 # Paymob (marketplace online reservations) — https://accept.paymob.com
 # PM_ENABLED must be "true" to activate; real PM_SECRET_KEY / PM_HMAC_SECRET /
@@ -87,6 +91,8 @@ RATE_LIMIT_KV_ENABLED = "false"
 # Rate-limit dials — see production [vars] for the wiring explanation.
 RATE_LIMIT_LOGIN = "20"
 RATE_LIMIT_API = "100"
+# Wave 1 (F-A13-2) — see production [vars]; staging mirrors prod.
+STOREFRONT_CART_ENABLED = "true"
 
 [[env.staging.routes]]
 pattern = "staging.sinaicamps.com/api/*"

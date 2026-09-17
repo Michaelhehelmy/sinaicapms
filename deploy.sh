@@ -9,6 +9,9 @@
 #   ./deploy.sh --migrate    — migrations only (no deploy)
 #   ./deploy.sh --staging    — full deploy to staging environment
 #   ./deploy.sh --no-health  — skip health checks (emergency deploy)
+#   ./deploy.sh --rollback <version-id> [--staging]  — pin Worker to a previous Version
+#     (Wave 1.3 rollback lever: re-points 100% traffic at an earlier immutable
+#     Worker Version — code+vars only; D1 schema is forward-only and untouched)
 
 set -eo pipefail
 # Sandbox has broken IPv6 — force IPv4 DNS order so Node/wrangler fetches succeed.
@@ -36,6 +39,15 @@ if [ "$MODE" = "--staging" ]; then
 elif [ "$MODE" = "--no-health" ]; then
   SKIP_HEALTH=true
   MODE="full"
+elif [ "$MODE" = "--rollback" ]; then
+  # ./deploy.sh --rollback <version-id> [--staging]  — version-id required
+  if [ "${2:-}" = "--staging" ]; then
+    DEPLOY_ENV="staging"
+    ROLLBACK_VERSION="${3:-}"
+  else
+    ROLLBACK_VERSION="${2:-}"
+    [ "${3:-}" = "--staging" ] && DEPLOY_ENV="staging"
+  fi
 fi
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
@@ -339,8 +351,48 @@ deploy_backend() {
   log "Deploying Worker API..."
   if retry "npx wrangler deploy --minify $ENV_FLAG 2>&1" "Worker deploy"; then
     log "✅ Backend deployed"
+    log "ℹ️  Wave 1.3 rollback pin — record this deploy's version for --rollback use:"
+    log "   npx wrangler versions list --config wrangler.toml $ENV_FLAG"
   else
     log "❌ Backend deploy failed — check network and try again"
+    exit 1
+  fi
+  cd "$SCRIPT_DIR"
+}
+
+# ─────────────────────────────────────────────
+# Rollback (Wave 1.3 — Worker version pin)
+# ─────────────────────────────────────────────
+# Pins the Worker back to a previous immutable Version. Full rollback is a
+# two-step manual drill (deliberately NOT one-shot automatic — see below):
+#
+#   1. npx wrangler versions list --config backend/wrangler.toml $ENV_FLAG
+#      → find the pre-Wave-1 version-id from the table
+#   2. ./deploy.sh --rollback <version-id> [--staging]
+#      → re-points 100% of traffic at that version (code + vars; D1 migrations
+#        are forward-only and are NOT rolled back — documented for 6.5.4 drill)
+rollback_worker() {
+  section "Rollback"
+  local VERSION_ID="${ROLLBACK_VERSION:-}"
+
+  if [ -z "$VERSION_ID" ]; then
+    log "❌ No version-id given."
+    log ""
+    log "Usage: ./deploy.sh --rollback <version-id> [--staging]"
+    log ""
+    log "List recent versions to find the one to restore:"
+    log "   npx wrangler versions list --config backend/wrangler.toml $ENV_FLAG"
+    log "Then re-run with that id."
+    exit 1
+  fi
+
+  cd "$SCRIPT_DIR/backend"
+  log "Pinning $DEPLOY_ENV Worker to version $VERSION_ID (100% traffic)..."
+  if retry "npx wrangler versions deploy '$VERSION_ID' --config wrangler.toml $ENV_FLAG 2>&1" "Rollback pin"; then
+    log "✅ Rollback complete — pinned to $VERSION_ID"
+    log "ℹ️  Verify: npx wrangler versions list --config wrangler.toml $ENV_FLAG"
+  else
+    log "❌ Rollback failed — verify version-id and network, then retry"
     exit 1
   fi
   cd "$SCRIPT_DIR"
@@ -411,6 +463,9 @@ case "$MODE" in
     echo y | npx wrangler d1 migrations apply campmaster-db --remote $ENV_FLAG 2>&1
     log "✅ Migrations applied"
     cd "$SCRIPT_DIR"
+    ;;
+  --rollback)
+    rollback_worker
     ;;
   full|*)
     deploy_backend

@@ -192,7 +192,7 @@ router.post('/cart/items', async (c) => {
   const { productId, quantity, sessionId } = parsed.data;
 
   const product = await c.env.DB.prepare(
-    'SELECT id, price FROM pos_products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL'
+    'SELECT id, selling_price FROM pos_products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL'
   ).bind(productId, tenantId).first();
   if (!product) return errorResponse('Product not found', 404);
 
@@ -208,7 +208,7 @@ router.post('/cart/items', async (c) => {
     cart = { id: cartId };
   }
 
-  const unitPrice = product.price;
+  const unitPrice = product.selling_price;
   const totalPrice = unitPrice * quantity;
 
   const existingItem = await c.env.DB.prepare(
@@ -227,6 +227,9 @@ router.post('/cart/items', async (c) => {
   await c.env.DB.prepare(
     'INSERT INTO cart_items (id, cart_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?)'
   ).bind(itemId, cart.id, productId, quantity, unitPrice, totalPrice).run();
+
+  // Wave 1.5 monitoring: structured [storefront] log (Workers Logs, logpush-consumable JSON).
+  console.log('[storefront]', JSON.stringify({ event: 'cart.add', productId, quantity, sessionId, tenantId, unitPrice, success: true }));
 
   return jsonResponse({ id: itemId, cartId: cart.id, productId, quantity, unitPrice, totalPrice, success: true }, 201);
 });
@@ -329,6 +332,10 @@ router.post('/checkout', async (c) => {
   );
 
   await c.env.DB.batch(statements);
+
+  // Wave 1.5 monitoring: structured [storefront] log — order persisted is the canonical
+  // checkout-success moment (Paymob intention resolution happens after).
+  console.log('[storefront]', JSON.stringify({ event: 'checkout.order_created', orderId, orderNumber, totalAmount, sessionId, tenantId, success: true }));
 
   // ── Real Paymob intention (mirrors reservation flow in api/reservations.js).
   // When Paymob is disabled or misconfigured the order still saves as 'pending'

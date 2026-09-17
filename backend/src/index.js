@@ -742,12 +742,27 @@ app.use('/api/crm', crmScope);
 app.use('/api/crm/*', crmScope);
 app.route('/api/crm', crmRoutes);
 
-// Storefront — mixed visibility: public read (products, cart, pages, blog), admin mutations
+// Storefront — mixed visibility: public read (products, cart, pages, blog), admin mutations.
+// Wave 1 (F-A13-2 + flag): when STOREFRONT_CART_ENABLED === 'true' the PUBLIC scope also
+// covers the anonymous cart/checkout write surface (guest add-to-cart + guest checkout).
+// Reads/pages stay public regardless; admin mutations below /api/storefront/admin and
+// non-cart writes stay admin-gated. With the flag off/absent we keep the pre-Wave-1
+// behavior (cart/checkout writes require a session — 401) so the toggle is a clean
+// rollback lever with no code deploy (see wrangler.toml STOREFRONT_CART_ENABLED).
 const storefrontPublicScope = resolveScope({ public: true });
 const storefrontAdminScope = resolveScope();
 const storefrontScope = async (c, next) => {
-  const isPublicRead = c.req.method === 'GET' && !c.req.path.startsWith('/api/storefront/admin');
-  return isPublicRead ? storefrontPublicScope(c, next) : storefrontAdminScope(c, next);
+  const path = c.req.path;
+  const cartEnabled = c.env?.STOREFRONT_CART_ENABLED === 'true';
+  const isAdminPath = path.startsWith('/api/storefront/admin');
+  const isPublicRead = c.req.method === 'GET' && !isAdminPath;
+  const isGuestCartWrite =
+    cartEnabled &&
+    c.req.method !== 'GET' &&
+    (path.startsWith('/api/storefront/cart') || path.startsWith('/api/storefront/checkout'));
+  return isPublicRead || isGuestCartWrite
+    ? storefrontPublicScope(c, next)
+    : storefrontAdminScope(c, next);
 };
 app.use('/api/storefront', storefrontScope);
 app.use('/api/storefront/*', storefrontScope);

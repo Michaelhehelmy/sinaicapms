@@ -9,17 +9,15 @@ import {
 } from '../helpers';
 
 // Payments contract notes (frozen backend — tests align to it):
-//   - POST /api/payments/webhook  (no auth gate; own secret check)
-//       503 { success:false, error:'Webhook not configured' } when STRIPE_WEBHOOK_SECRET
-//       is not bound (local wrangler has no such secret) or header mismatch → 401.
-//   - The mock Stripe create-intent / confirm routes were removed; orders are paid
-//     only via order_state transitions or the Paymob flow.
-//
-// In this test environment no STRIPE_WEBHOOK_SECRET is bound, so every reachable
-// path is the deterministic not-configured response. The suite documents that
-// behavior and the exact gate message.
+//   - POST /api/payments/webhook is RETIRED (T4): handleStripeWebhook always
+//     replies 501 { success:false, error:'Stripe webhooks are retired — payment
+//     callbacks go to POST /api/public/paymob/webhook (HMAC verified)' }.
+//     No order is ever mutated here.
+//   - Orders are paid only via (a) an authenticated admin order_state transition
+//     to a paid state, or (b) the HMAC-verified Paymob webhook.
+//     The mock Stripe create-intent / confirm routes were removed.
 
-describe('Payments API — webhook contract (STRIPE_WEBHOOK_SECRET not bound)', () => {
+describe('Payments API — retired Stripe webhook contract', () => {
   let superAdminToken, tenantId, tenantToken, orderId;
   const ts = Date.now();
   const subdomain = `core-pay-${ts}`;
@@ -85,16 +83,16 @@ describe('Payments API — webhook contract (STRIPE_WEBHOOK_SECRET not bound)', 
 
 
   describe('POST /api/payments/webhook', () => {
-    it('returns 503 Webhook not configured (no STRIPE_WEBHOOK_SECRET bound locally)', async () => {
+    it('returns 501 Stripe webhooks are retired (always; no secret check)', async () => {
       const res = await fetch(`${API_BASE_URL}/api/payments/webhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'payment_intent.succeeded', data: { object: {} } }),
       });
-      expect(res.status).toBe(503);
+      expect(res.status).toBe(501);
       const data = await res.json();
       expect(data.success).toBe(false);
-      expect(data.error).toContain('Webhook not configured');
+      expect(data.error).toContain('Stripe webhooks are retired');
     });
   });
 });

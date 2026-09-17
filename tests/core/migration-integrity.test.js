@@ -107,7 +107,9 @@ describe('Migration Integrity', () => {
 
   it('total migration count is reasonable', () => {
     expect(migrationFiles.length).toBeGreaterThanOrEqual(10);
-    expect(migrationFiles.length).toBeLessThanOrEqual(100);
+    // Cap raised 100 -> 200 (pre-decided by owner 2026-09-16 §4.3, executed Wave 0.5.4):
+    // SQLite/D1 handle thousands of migrations; 100 was an arbitrary assertion.
+    expect(migrationFiles.length).toBeLessThanOrEqual(200);
   });
 
   it('latest migration is numbered sequentially after previous', () => {
