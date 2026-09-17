@@ -1420,6 +1420,94 @@ describe('handleOrdersRoute', () => {
     });
   });
 
+  describe('PATCH /orders/:id/checkin (A22-01 cross-tenant room guard)', () => {
+    it('rejects a room_id from another tenant with 404 and never flips room status', async () => {
+      const sqls = [];
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        // order lookup (own tenant) succeeds
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', room_id: 'room-own', camp_id: 'c1' }); },
+        // ownership check: JOIN projects fails → room is NOT in this tenant
+        (ch) => { ch.first.mockResolvedValue(null); },
+      ]);
+      db.prepare.mockImplementation((sql) => { sqls.push(sql); return fn(); });
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/checkin', { room_id: 'room-foreign' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toBe('Room not found');
+      // The room-status UPDATE must NOT have been prepared for a foreign room.
+      expect(sqls.some((s) => s.includes("UPDATE rooms_new SET status = 'occupied'"))).toBe(false);
+      const ownershipSql = sqls.find((s) => s.includes('JOIN projects'));
+      expect(ownershipSql).toBeDefined();
+      expect(ownershipSql).toContain('p.tenant_id = ?');
+    });
+
+    it('rejects an order whose existing room_id is foreign (pre-poisoned row)', async () => {
+      const sqls = [];
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', room_id: 'room-foreign', camp_id: 'c1' }); },
+        (ch) => { ch.first.mockResolvedValue(null); },
+      ]);
+      db.prepare.mockImplementation((sql) => { sqls.push(sql); return fn(); });
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/checkin', {});
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(404);
+      expect(sqls.some((s) => s.includes("UPDATE rooms_new SET status = 'occupied'"))).toBe(false);
+    });
+
+    it('accepts a body room_id that belongs to the tenant and flips that room to occupied', async () => {
+      const sqls = [];
+      const { db } = makeDbMock();
+      db.batch.mockResolvedValue([{ meta: { changes: 1 } }, { meta: { changes: 1 } }]);
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', room_id: 'room-own', camp_id: 'c1' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'room-own' }); },
+      ]);
+      db.prepare.mockImplementation((sql) => { sqls.push(sql); return fn(); });
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/checkin', { room_id: 'room-own', early_checkin: true, adult_count: 2 });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(sqls.some((s) => s.includes("UPDATE rooms_new SET status = 'occupied'"))).toBe(true);
+    });
+
+    // Original A22 cross-tenant probe, ported verbatim: tenant B OWNS the room
+    // (it exists and is available in B's project), but the request runs under
+    // tenant A. The tenant-scoped ownership JOIN makes B's room invisible to A,
+    // so check-in must 404 BEFORE any occupied UPDATE or db.batch is prepared.
+    it('reproduces the cross-tenant probe: foreign-but-existing available room under another tenant → 404, batch never fires', async () => {
+      const sqls = [];
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        // order lookup (tenant A) succeeds — order is A's own
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', room_id: null, camp_id: 'c1' }); },
+        // ownership JOIN scoped to tenant A: tenant B's room is invisible → null.
+        // (This is the row that EXISTS in tenant B and is AVAILABLE in prod.)
+        (ch) => { ch.first.mockResolvedValue(null); },
+        // would-be availability probe — MUST never be reached: if the old code
+        // skipped the ownership check, this row would look available and pass.
+        (ch) => { ch.first.mockResolvedValue({ id: 'room-B-own', status: 'available' }); },
+      ]);
+      db.prepare.mockImplementation((sql) => { sqls.push(sql); return fn(); });
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/checkin', { room_id: 'room-B-own' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toBe('Room not found');
+      // No occupied UPDATE prepared, and the atomic check-in batch never fires.
+      expect(sqls.some((s) => s.includes("UPDATE rooms_new SET status = 'occupied'"))).toBe(false);
+      expect(db.batch).not.toHaveBeenCalled();
+      // The ownership check is tenant-scoped AND binds the requested room_id.
+      const ownershipSql = sqls.find((s) => s.includes('JOIN projects'));
+      expect(ownershipSql).toBeDefined();
+      expect(ownershipSql).toContain('p.tenant_id = ?');
+      expect(ownershipSql).toContain('rn.id = ?');
+    });
+  });
+
   describe('Method not allowed', () => {
     it('returns 405 for unsupported method', async () => {
       const { db } = makeDbMock();

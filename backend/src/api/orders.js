@@ -976,6 +976,18 @@ ordersRoutes.patch('/:id/checkin', async (c) => {
       if (available) assignedRoomId = available.id;
     }
 
+    // A22-01 fix: the resolved room (body room_id or order's existing room)
+    // must belong to THIS tenant's projects — otherwise a tenant admin could
+    // mark any other tenant's room occupied (cross-tenant room takeover).
+    if (assignedRoomId) {
+      const ownedRoom = await c.env.DB.prepare(
+        `SELECT rn.id FROM rooms_new rn
+         JOIN projects p ON rn.camp_id = p.id
+         WHERE rn.id = ? AND p.tenant_id = ?`
+      ).bind(assignedRoomId, tenantId).first();
+      if (!ownedRoom) return errorResponse('Room not found', 404);
+    }
+
     const updateParts = ['early_checkin = ?', 'adult_count = ?', 'child_count = ?', 'updated_at = datetime(\'now\')'];
     const updateParams = [early_checkin ? 1 : 0, adult_count || 1, child_count || 0];
     if (assignedRoomId) {
