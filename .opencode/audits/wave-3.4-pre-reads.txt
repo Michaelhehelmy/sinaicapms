@@ -1,0 +1,157 @@
+=== generated: 2026-09-18T21:20:27Z ===
+
+=== app/src/lib/sse.ts (1-120) ===
+/**
+ * Server-Sent Events (SSE) client for the live bookings + inbox streams.
+ *
+ * Backend contract (GET /api/stream/orders):
+ *   - first frame: { "type": "connected" }
+ *   - then frames: { "type": "new-booking", "orderId", "campId", "checkIn", "checkOut" }
+ *     or { "type": "new-lead", "leadId", "name", "subject" }
+ * Frames arrive as `data: <json>\n\n`.
+ *
+ * The stream endpoint is per-tenant and generic: one URL delivers BOTH
+ * `new-booking` and `new-lead` events. `openOrdersStream` is the bookings
+ * consumer; `openInboxStream` is the unified-inbox consumer (same URL).
+ *
+ * EventSource cannot set custom headers, so the short-lived admin JWT is
+ * passed as a `token` query parameter. This is acceptable because the stream
+ * is served over HTTPS in production and the JWT expires quickly.
+ */
+
+import { API_BASE } from './api';
+
+/**
+ * Parse one SSE `data:` frame into a JSON value.
+ *
+ * Strips the `data:` prefix and surrounding whitespace, then JSON.parses the
+ * payload. Returns `null` when the frame is not a `data:` line, has an empty
+ * payload, or contains malformed JSON. Never throws.
+ */
+export function parseSSEEvent(raw: string): unknown | null {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('data:')) return null;
+  const payload = trimmed.slice('data:'.length).trim();
+  if (!payload) return null;
+  try {
+    return JSON.parse(payload) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+export interface OpenOrdersStreamOptions {
+  /**
+   * API base INCLUDING the `/api/v1` prefix — reuse `API_BASE` from `./api`
+   * (e.g. `http://localhost:8787/api/v1` or `/api/v1`). Defaults to `API_BASE`.
+   */
+  apiBase?: string;
+  /** Tenant whose bookings should be streamed. */
+  tenantId: string;
+  /** Short-lived admin JWT; travels as a query param (EventSource cannot set headers). */
+  token: string;
+  /** Called with every parsed, non-duplicate event. */
+  onEvent: (event: unknown) => void;
+  /** Called when the underlying EventSource opens (connected). */
+  onOpen?: () => void;
+  /** Called when the underlying EventSource errors (drives reconnect). */
+  onError?: () => void;
+  /** When provided, `close()` is invoked automatically once the signal aborts. */
+  signal?: AbortSignal;
+}
+
+export interface OrdersStreamHandle {
+  /** Idempotent: closes the underlying EventSource and clears handlers. */
+  close: () => void;
+}
+
+/**
+ * Build the per-tenant stream URL. `apiBase` already includes the `/api`
+ * prefix (same as apiFetch), so the stream path is `/stream/orders` — the
+ * backend serves `/api/stream/orders`. The token travels as a query parameter
+ * because EventSource cannot set custom headers.
+ */
+function buildStreamUrl(apiBase: string, tenantId: string, token: string): string {
+  return (
+    `${apiBase.replace(/\/+$/, '')}/stream/orders` +
+    `?tenantId=${encodeURIComponent(tenantId)}&token=${encodeURIComponent(token)}`
+  );
+}
+
+/**
+ * Open the SSE orders stream.
+ *
+ * The token travels as a query parameter because EventSource cannot set
+ * custom headers; acceptable over HTTPS since the JWT is short-lived.
+ */
+export function openOrdersStream({
+  apiBase = API_BASE,
+  tenantId,
+  token,
+  onEvent,
+  onOpen,
+  onError,
+  signal,
+}: OpenOrdersStreamOptions): OrdersStreamHandle {
+  const url = buildStreamUrl(apiBase, tenantId, token);
+
+  const source = new EventSource(url);
+  let closed = false;
+
+  // Deduplicate `new-booking` events by orderId: the broadcaster may re-send
+  // a booking across reconnects, and the calendar must apply it only once.
+  // `connected` heartbeats (no orderId) always pass through.
+  const seenKeys = new Set<string>();
+
+  source.onmessage = (msg) => {
+    const parsed = parseSSEEvent(msg.data);
+    if (parsed === null) return;
+    const orderId = (parsed as { orderId?: unknown }).orderId;
+    if (typeof orderId === 'string' || typeof orderId === 'number') {
+      const key = String(orderId);
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+    }
+    onEvent(parsed);
+  };
+
+  source.onopen = () => onOpen?.();
+  source.onerror = () => onError?.();
+
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+
+=== grep token/EventSource/Last-Event-ID in backend/src/index.js ===
+136:  allowHeaders: ['Content-Type', 'x-tenant-id', 'Authorization'],
+382:// GET /api/stream/orders?tenantId=<id>[&token=<jwt>] streams `new-booking`
+388:// Auth: the JWT is accepted from the `Authorization: Bearer <jwt>` header
+389:// (regular admin API clients) OR from the `token` query parameter when the
+390:// header is absent — EventSource cannot set custom headers, so the frontend
+391:// sends `?token=<jwt>`. Header wins when both are present; 401 when neither.
+395:  missingToken: { message: 'Missing or invalid Authorization header or token query parameter' },
+496:// (pos-realm tokens — rejected outright by the admin realm gate) and
+628:// accepts both admin and POS tokens (POS terminals advance kitchen workflow);
+704:// POS tokens are accepted (POS terminals need to read table status for seat
+
+=== grep broadcaster/Broadcaster/BROADCASTER ===
+backend/src/index.js:63:import { Broadcaster } from './durable/broadcaster.js';
+backend/src/index.js:74:// BROADCASTER binding (`class_name = "Broadcaster"`) from the entrypoint.
+backend/src/index.js:75:export { Broadcaster };
+backend/src/index.js:385:// by the global hono/cors middleware above — this route (and the Broadcaster
+backend/src/index.js:412:  if (!env.BROADCASTER) {
+backend/src/index.js:413:    return errorResponse('SSE broadcaster is not configured', 503);
+backend/src/index.js:416:  const id = env.BROADCASTER.idFromName(tenantId);
+backend/src/index.js:417:  const stub = env.BROADCASTER.get(id);
+backend/src/index.js:418:  return stub.fetch(new Request('http://broadcaster/connect?tenantId=' + encodeURIComponent(tenantId), {
+backend/src/durable/broadcaster.js:2: * Broadcaster — per-tenant SSE fan-out hub (Durable Object).
+backend/src/durable/broadcaster.js:5: * `env.BROADCASTER.idFromName(tenantId)` then `env.BROADCASTER.get(id)`, so all
+backend/src/durable/broadcaster.js:59:export class Broadcaster {
+
+=== find broadcaster/sse/stream files ===
+backend/src/durable/broadcaster.js
+
+=== classification ===
+F-A16-02 (SSE token in URL): LIVE
+F-A16-03 (Last-Event-ID replay): LIVE
+F-A16-04 (attempt counter reset): LIVE
