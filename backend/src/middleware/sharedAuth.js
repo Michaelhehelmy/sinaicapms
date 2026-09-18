@@ -80,14 +80,20 @@ export function getAccessTtlSeconds(env, payload) {
  *
  * @param {Object} payload - Must include at least { sub, userId, email, role, tenantId }
  * @param {string} secret - JWT secret
- * @param {'access'|'refresh'} type - Token type
+ * @param {'access'|'refresh'|'stream'} type - Token type
  * @param {Object} [env] - Worker env; enables POS_ACCESS_TTL_SECONDS for org access tokens
+ * @param {number|null} [ttlOverrideSeconds] - Explicit TTL override (used by the
+ *   SSE stream-token mint: 60s single-use). When set, it wins over the
+ *   type-derived TTL so a `stream` token never accidentally inherits the 24h
+ *   access lifetime.
  * @returns {Promise<string>} Signed JWT
  */
-export async function generateToken(payload, secret, type = 'access', env = null) {
-  const ttl = type === 'refresh'
-    ? JWT_CONFIG.refreshTtl
-    : getAccessTtlSeconds(env, payload);
+export async function generateToken(payload, secret, type = 'access', env = null, ttlOverrideSeconds = null) {
+  const ttl = ttlOverrideSeconds
+    ? ttlOverrideSeconds
+    : type === 'refresh'
+      ? JWT_CONFIG.refreshTtl
+      : getAccessTtlSeconds(env, payload);
   // v2 realm tag: every token carries `userType` — 'org' for POS sessions
   // (detected via the legacy posType claim when the caller omits it),
   // 'platform' for admin sessions. Legacy `posType` keeps flowing through

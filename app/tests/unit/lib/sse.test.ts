@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseSSEEvent, openOrdersStream, openInboxStream } from '@/lib/sse';
+import {
+  parseSSEEvent,
+  openOrdersStream,
+  openInboxStream,
+  mintStreamToken,
+  StreamTokenMintError,
+} from '@/lib/sse';
 
 /**
  * Minimal EventSource double with the exact shape the app touches.
@@ -26,17 +32,126 @@ class FakeEventSource {
   }
 }
 
+let fetchMock: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
   FakeEventSource.instances = [];
   globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
+  fetchMock = vi.fn();
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
 
 afterEach(() => {
   delete (globalThis as any).EventSource;
+  delete (globalThis as any).fetch;
   vi.useRealTimers();
 });
 
 const API = 'http://localhost:8787/api/v1';
+
+// ── mintStreamToken (Wave 3.4a, F-A16-02) ──────────────────────────────
+
+describe('mintStreamToken', () => {
+  it('POSTs the admin JWT in an Authorization header and returns the stream token', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ token: 'stream-tok', expiresIn: 60, type: 'stream' }),
+    } as unknown as Response);
+
+    const result = await mintStreamToken(API, 'admin-jwt');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8787/api/v1/stream/token',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { Authorization: 'Bearer admin-jwt' },
+      }),
+    );
+    expect(result).toEqual({ token: 'stream-tok', expiresIn: 60, type: 'stream' });
+  });
+
+  it('strips a trailing slash from apiBase before minting', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ token: 't', expiresIn: 60, type: 'stream' }),
+    } as unknown as Response);
+
+    await mintStreamToken('http://localhost:8787/api/', 'jwt');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8787/api/stream/token',
+      expect.anything(),
+    );
+  });
+
+  it('throws StreamTokenMintError with the server status on a 401', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'Session expired or invalid signature' }),
+    } as unknown as Response);
+
+    const err = await mintStreamToken(API, 'jwt').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StreamTokenMintError);
+    expect((err as StreamTokenMintError).status).toBe(401);
+    expect((err as StreamTokenMintError).message).toBe('Session expired or invalid signature');
+  });
+
+  it('throws StreamTokenMintError with the server status on a 403', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'Forbidden: admin role required' }),
+    } as unknown as Response);
+
+    const err = await mintStreamToken(API, 'jwt').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StreamTokenMintError);
+    expect((err as StreamTokenMintError).status).toBe(403);
+  });
+
+  it('falls back to a generic message when the error body is not JSON', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => {
+        throw new Error('not json');
+      },
+    } as unknown as Response);
+
+    const err = await mintStreamToken(API, 'jwt').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StreamTokenMintError);
+    expect((err as StreamTokenMintError).status).toBe(429);
+    expect((err as StreamTokenMintError).message).toBe('Stream token mint failed (429)');
+  });
+
+  it('classifies network failures as status 0 (ambiguous)', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Network request failed'));
+
+    const err = await mintStreamToken(API, 'jwt').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StreamTokenMintError);
+    expect((err as StreamTokenMintError).status).toBe(0);
+  });
+
+  it('throws status 500 when a 201 body has no token', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ expiresIn: 60 }),
+    } as unknown as Response);
+
+    const err = await mintStreamToken(API, 'jwt').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StreamTokenMintError);
+    expect((err as StreamTokenMintError).status).toBe(500);
+    expect((err as StreamTokenMintError).message).toBe('Stream token mint returned no token');
+  });
+});
 
 // ── parseSSEEvent ──────────────────────────────────────────────────────
 
@@ -153,6 +268,30 @@ describe('openOrdersStream', () => {
     openOrdersStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent: () => {}, onError });
     FakeEventSource.instances[0].onerror?.();
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the source BEFORE surfacing onError (no native re-connect onto a burned token)', () => {
+    const onError = vi.fn();
+    openOrdersStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent: () => {}, onError });
+    const es = FakeEventSource.instances[0];
+
+    es.onerror?.();
+
+    expect(es.readyState).toBe(FakeEventSource.CLOSED);
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('appends lastEventId to the stream URL for replay', () => {
+    openOrdersStream({
+      apiBase: API,
+      tenantId: 't1',
+      token: 'tok',
+      lastEventId: 'evt/last+1',
+      onEvent: () => {},
+    });
+    expect(FakeEventSource.instances[0].url).toBe(
+      'http://localhost:8787/api/v1/stream/orders?tenantId=t1&token=tok&lastEventId=evt%2Flast%2B1',
+    );
   });
 
   it('close is idempotent and clears all handlers', () => {
@@ -308,6 +447,30 @@ describe('openInboxStream', () => {
     openInboxStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent: () => {}, onError });
     FakeEventSource.instances[0].onerror?.();
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the source BEFORE surfacing onError (no native re-connect onto a burned token)', () => {
+    const onError = vi.fn();
+    openInboxStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent: () => {}, onError });
+    const es = FakeEventSource.instances[0];
+
+    es.onerror?.();
+
+    expect(es.readyState).toBe(FakeEventSource.CLOSED);
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('appends lastEventId to the stream URL for replay', () => {
+    openInboxStream({
+      apiBase: API,
+      tenantId: 't1',
+      token: 'tok',
+      lastEventId: 'evt_9',
+      onEvent: () => {},
+    });
+    expect(FakeEventSource.instances[0].url).toBe(
+      'http://localhost:8787/api/v1/stream/orders?tenantId=t1&token=tok&lastEventId=evt_9',
+    );
   });
 
   it('close is idempotent and clears all handlers', () => {

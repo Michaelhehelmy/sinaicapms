@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 
 import { getTenant } from './middleware/tenant';
 import { policyLimiter } from './middleware/rateLimit';
-import { requireAuth } from './middleware/requireAuth.js';
+import { requireAuth, extractRequestToken } from './middleware/requireAuth.js';
 import { handleAuthRoute } from './api/auth';
 import { handleTenants } from './api/tenants';
 import meRoutes from './api/tenants';
@@ -59,6 +59,7 @@ import { buildOpenApiDocument } from './routes/registry';
 import posRoutes, { handlePosLoginRequest } from './routes/pos/index.js';
 import posBarcodeRoutes from './api/pos-barcode.js';
 import tenantImportRoutes from './api/tenant-import.js';
+import streamTokenRoutes from './api/stream-token.js';
 import { withSunset } from './utils/deprecation.js';
 import { Broadcaster } from './durable/broadcaster.js';
 import financialsRoutes from './api/financials.js';
@@ -378,20 +379,42 @@ app.all('/api/pos-users/*', async (c) => {
   return handlePosUsersRoute(c.req.raw, c.env, tenantId);
 });
 
+// ── Stream-token mint (Wave 3.4a, F-A16-02) ──────────────────────────
+// POST /api/stream/token exchanges an admin access token for a 60-second,
+// SINGLE-USE, tenant-bound `stream` token. EventSource cannot set headers;
+// the legacy design rode the 24h admin JWT in the SSE URL query string. The
+// mint shrinks that footprint to 60s + one use per active stream. The SSE
+// gate above rejects every non-`stream` token, so this endpoint is the ONLY
+// path to a stream credential. requireTenantHint:false lets super_admin mint
+// on the platform host; the handler still 400s when no tenant resolves.
+// Rate-limited by RATE_LIMIT_POLICIES ('POST /api/stream/token' 10/min).
+const streamTokenScope = resolveScope({
+  auth: { roles: ['admin', 'super_admin'], requireTenant: false },
+  requireTenantHint: false,
+});
+app.use('/api/stream/token', streamTokenScope);
+app.use('/api/stream/token/*', streamTokenScope);
+app.route('/api/stream/token', streamTokenRoutes);
+
 // ── SSE live stream (per-tenant Durable Object broadcast hub) ────────
-// GET /api/stream/orders?tenantId=<id>[&token=<jwt>] streams `new-booking`
-// events to a tenant-admin dashboard. Registered BEFORE the auth catch-all
-// so the long-lived SSE Response passes through untouched. CORS is applied
-// by the global hono/cors middleware above — this route (and the Broadcaster
-// DO) never set Access-Control-* headers themselves.
+// GET /api/stream/orders?tenantId=<id>[&token=<stream-token>][&lastEventId=…]
+// streams `new-booking` events to a tenant-admin dashboard. Registered BEFORE
+// the auth catch-all so the long-lived SSE Response passes through untouched.
+// CORS is applied by the global hono/cors middleware above — this route (and
+// the Broadcaster DO) never set Access-Control-* headers themselves.
 //
-// Auth: the JWT is accepted from the `Authorization: Bearer <jwt>` header
-// (regular admin API clients) OR from the `token` query parameter when the
-// header is absent — EventSource cannot set custom headers, so the frontend
-// sends `?token=<jwt>`. Header wins when both are present; 401 when neither.
+// Auth (Wave 3.4a, F-A16-02): the 24h admin JWT is NO LONGER accepted here.
+// EventSource cannot set custom headers, so the frontend exchanges its admin
+// JWT for a 60-second SINGLE-USE `stream` token via POST /api/stream/token and
+// sends `?token=<stream-token>`. The gate below allows ONLY `type: 'stream'`
+// tokens (tokenTypes allow-list); anything else 401s. The token is forwarded
+// to the DO, which enforces tenant binding (403) and burns the jti on first
+// use (replay → 401). `lastEventId` rides the query string (stored on the
+// connection; replay consumption is the follow-up Wave 3.4b).
 const sseOrdersGate = requireAuth({
   realm: 'admin',
   allowQueryToken: true,
+  tokenTypes: ['stream'],
   missingToken: { message: 'Missing or invalid Authorization header or token query parameter' },
   roles: ['admin', 'super_admin'],
   insufficientRole: { message: 'Forbidden: admin role required' },
@@ -413,9 +436,19 @@ app.get('/api/stream/orders', async (c) => {
     return errorResponse('SSE broadcaster is not configured', 503);
   }
 
+  // F-A16-02: forward the EXACT stream token the gate just validated (the DO
+  // enforces single-use + tenant binding downstream) plus any Last-Event-ID
+  // marker. The 24h admin JWT never reaches the DO query string.
+  const streamToken = extractRequestToken(c.req.raw, { allowQueryToken: true });
+  const lastEventId = c.req.query('lastEventId');
+  const connectUrl =
+    'http://broadcaster/connect?tenantId=' + encodeURIComponent(tenantId) +
+    '&token=' + encodeURIComponent(streamToken || '') +
+    (lastEventId ? '&lastEventId=' + encodeURIComponent(lastEventId) : '');
+
   const id = env.BROADCASTER.idFromName(tenantId);
   const stub = env.BROADCASTER.get(id);
-  return stub.fetch(new Request('http://broadcaster/connect?tenantId=' + encodeURIComponent(tenantId), {
+  return stub.fetch(new Request(connectUrl, {
     method: 'GET',
     headers: c.req.raw.headers,
   }));

@@ -7,11 +7,18 @@
  * tenant land on the same in-memory channel registry + heartbeat.
  *
  * Routes handled inside the DO:
- *   GET  /connect?tenantId=<id>  → SSE stream (`text/event-stream`). Sends an
- *                                  initial `data: {"type":"connected"}` event,
- *                                  then a `: ping` comment line every 25s.
+ *   GET  /connect?tenantId=<id>&token=<stream-token>[&lastEventId=…] → SSE
+ *        stream (`text/event-stream`). Sends an initial
+ *        `data: {"type":"connected"}` event, then a `: ping` comment line
+ *        every 25s.
  *   POST /broadcast              → body `{ tenantId, event }` fans `event` out
  *                                  to every live controller of that tenant.
+ *
+ * Stream-token auth (Wave 3.4a, F-A16-02): the worker forwards a minted
+ * 60-second `stream` token; the DO re-verifies it here (defense-in-depth),
+ * binds it to this tenant instance (403 on mismatch), and BURNS the jti on
+ * first use (native storage TTL, replay → 401). The 24h admin JWT is never
+ * accepted on /connect.
  *
  * CORS: this object NEVER emits `Access-Control-*` headers — hono/cors in
  * src/index.js is the single source of truth for CORS.
@@ -25,14 +32,25 @@
  * self-cleaning here.
  */
 
+import { verifyToken } from '../middleware/sharedAuth.js';
+
 const HEARTBEAT_MS = 25000;
 const SSE_HEARTBEAT = ': ping\n\n';
 const MAX_CONNECTIONS_PER_TENANT = 100;
+const STREAM_TOKEN_TTL_SECONDS = 60;
 const SSE_RESPONSE_HEADERS = {
   'Content-Type': 'text/event-stream',
   'Cache-Control': 'no-cache',
   'Connection': 'keep-alive',
 };
+
+/** JSON error response consistent with the worker's errorResponse shape. */
+function streamError(status, message) {
+  return new Response(JSON.stringify({ success: false, error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 /**
  * Serialize an event into a single SSE `data:` frame. JSON.stringify escapes
@@ -97,7 +115,54 @@ export class Broadcaster {
     return set;
   }
 
-  openStream(tenantId, request) {
+  async openStream(tenantId, request) {
+    const url = new URL(request.url);
+    const token = url.searchParams.get('token');
+    const lastEventId = url.searchParams.get('lastEventId');
+
+    // ── Stream-token validation (Wave 3.4a, F-A16-02) ──────────────
+    // The ONLY credential allowed on /connect is a short-lived single-use
+    // `stream` token minted via POST /api/stream/token. Defense-in-depth at
+    // the DO: even if the worker gate is bypassed, a missing/invalid token
+    // → 401, tenant mismatch → 403, and replay of a burned jti → 401.
+    if (!token) {
+      return streamError(401, 'Missing or invalid stream token');
+    }
+    const decoded = await verifyToken(token, this.env.JWT_SECRET);
+    if (!decoded) {
+      return streamError(401, 'Invalid or expired stream token');
+    }
+    // Token-type allow-list: only `stream` tokens may open a stream.
+    if (decoded.type !== 'stream') {
+      return streamError(401, 'Invalid stream token type');
+    }
+    // Realm binding: POS (org) sessions can never open an admin stream.
+    if (decoded.posType === 'pos' || decoded.userType === 'org') {
+      return streamError(403, 'Forbidden: POS sessions are not allowed to access admin streams');
+    }
+    // Role allow-list must mirror the worker gate.
+    if (!['admin', 'super_admin'].includes(decoded.role)) {
+      return streamError(403, 'Forbidden: admin role required');
+    }
+    // Tenant binding: this DO instance IS tenantId — a token minted for a
+    // different tenant cannot subscribe.
+    if (decoded.tenantId !== tenantId) {
+      return streamError(403, 'Forbidden: Access denied to this tenant partition');
+    }
+    // Single-use: burn the jti with a native TTL matching the token lifetime.
+    // Fail-closed when storage cannot enforce it rather than silently weaken.
+    if (typeof this.state?.storage?.put !== 'function' || typeof this.state?.storage?.get !== 'function') {
+      return streamError(500, 'Stream token single-use enforcement unavailable');
+    }
+    const jti = decoded.jti;
+    if (!jti) {
+      return streamError(401, 'Stream token missing jti');
+    }
+    if (await this.state.storage.get(jti)) {
+      return streamError(401, 'Stream token has already been used');
+    }
+    await this.state.storage.put(jti, Date.now(), { expirationTtl: STREAM_TOKEN_TTL_SECONDS });
+
     const encoder = new TextEncoder();
     let conn = null;
 
@@ -119,6 +184,9 @@ export class Broadcaster {
           interval: null,
           cancelled: false,
           tenantId,
+          // Wave 3.4a: connect marker forwarded from the request (replay
+          // consumption of the marker is the follow-up Wave 3.4b).
+          lastEventId: lastEventId || null,
         };
         set.add(conn);
 

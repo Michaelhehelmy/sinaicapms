@@ -1,4 +1,22 @@
 /**
+ * ANTI-RESTORE (F-A16-02) — READ BEFORE REVERTING THIS FILE:
+ * This client must NEVER go back to passing the 24h admin JWT directly in the
+ * stream URL. EventSource cannot set headers, so the legacy design put a full
+ * admin session credential in the query string for 24 hours (visible in
+ * browser history, proxy logs, RUM traces). The replacement is
+ * `mintStreamToken()`: the admin JWT stays in an Authorization header while
+ * the stream URL carries a 60-SECOND, SINGLE-USE, tenant-bound `stream` token
+ * issued by POST /api/stream/token. The hooks re-mint before every (re)connect.
+ *
+ * HONEST LIMITATION: the stream token is STILL in the query string — the
+ * defense is the short TTL, the DO-enforced single-use (replay → 401), and
+ * the tenant binding, not "no token in URL". Do not claim otherwise, and do
+ * not restore the 24h admin JWT to the URL.
+ *
+ * See .opencode/audits/wave-3.4-pre-reads.txt (F-A16-02) + AGENT_LOGBOOK.md.
+ */
+
+/**
  * Server-Sent Events (SSE) client for the live bookings + inbox streams.
  *
  * Backend contract (GET /api/stream/orders):
@@ -11,12 +29,78 @@
  * `new-booking` and `new-lead` events. `openOrdersStream` is the bookings
  * consumer; `openInboxStream` is the unified-inbox consumer (same URL).
  *
- * EventSource cannot set custom headers, so the short-lived admin JWT is
- * passed as a `token` query parameter. This is acceptable because the stream
- * is served over HTTPS in production and the JWT expires quickly.
+ * EventSource cannot set custom headers, so the stream credential rides the
+ * `token` query parameter — but it is a short-lived single-use `stream` token
+ * from POST /api/stream/token (see the ANTI-RESTORE comment above), never the
+ * 24h admin JWT.
  */
 
 import { API_BASE } from './api';
+
+/**
+ * Error thrown by `mintStreamToken`. `status` classifies the failure so the
+ * hooks can decide whether to retry (ambiguous: network/5xx/timeout) or stop
+ * (hard: 401/403).
+ */
+export class StreamTokenMintError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'StreamTokenMintError';
+    this.status = status;
+  }
+}
+
+export interface StreamTokenMintResult {
+  token: string;
+  expiresIn: number;
+  type: 'stream';
+}
+
+/**
+ * Exchange an admin JWT for a 60-second, single-use stream token.
+ *
+ * `Authorization: Bearer <adminJwt>` → POST {apiBase}/stream/token →
+ * `{ token, expiresIn, type: 'stream' }`. The stream token is what may travel
+ * on the SSE query string (still short-lived + burned on first use).
+ *
+ * Failure classification (via `StreamTokenMintError.status`):
+ *   401/403 → hard authorization failure — the caller should stop reconnecting
+ *   0 (network), 408, 429, >=500 → ambiguous — retry is allowed
+ */
+export async function mintStreamToken(apiBase: string, adminToken: string): Promise<StreamTokenMintResult> {
+  const base = apiBase.replace(/\/+$/, '');
+  let res: Response;
+  try {
+    res = await fetch(`${base}/stream/token`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+  } catch {
+    throw new StreamTokenMintError(0, 'Network error while minting stream token');
+  }
+  if (!res.ok) {
+    let message = `Stream token mint failed (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (typeof body.error === 'string' && body.error) message = body.error;
+    } catch {
+      // Non-JSON error body — keep the generic message.
+    }
+    throw new StreamTokenMintError(res.status, message);
+  }
+  let data: Partial<StreamTokenMintResult>;
+  try {
+    data = (await res.json()) as Partial<StreamTokenMintResult>;
+  } catch {
+    throw new StreamTokenMintError(500, 'Stream token mint returned an invalid body');
+  }
+  if (typeof data.token !== 'string' || !data.token) {
+    throw new StreamTokenMintError(500, 'Stream token mint returned no token');
+  }
+  return { token: data.token, expiresIn: data.expiresIn ?? 60, type: 'stream' };
+}
 
 /**
  * Parse one SSE `data:` frame into a JSON value.
@@ -45,8 +129,10 @@ export interface OpenOrdersStreamOptions {
   apiBase?: string;
   /** Tenant whose bookings should be streamed. */
   tenantId: string;
-  /** Short-lived admin JWT; travels as a query param (EventSource cannot set headers). */
+  /** Freshly minted single-use stream token (POST /api/stream/token); travels as a query param. */
   token: string;
+  /** When provided, forwarded to the backend as `lastEventId` (replay marker). */
+  lastEventId?: string;
   /** Called with every parsed, non-duplicate event. */
   onEvent: (event: unknown) => void;
   /** Called when the underlying EventSource opens (connected). */
@@ -65,32 +151,44 @@ export interface OrdersStreamHandle {
 /**
  * Build the per-tenant stream URL. `apiBase` already includes the `/api`
  * prefix (same as apiFetch), so the stream path is `/stream/orders` — the
- * backend serves `/api/stream/orders`. The token travels as a query parameter
- * because EventSource cannot set custom headers.
+ * backend serves `/api/stream/orders`. The stream token travels as a query
+ * parameter because EventSource cannot set custom headers; `lastEventId` is
+ * forwarded when the caller has a replay marker.
  */
-function buildStreamUrl(apiBase: string, tenantId: string, token: string): string {
-  return (
+function buildStreamUrl(
+  apiBase: string,
+  tenantId: string,
+  token: string,
+  lastEventId?: string,
+): string {
+  let url =
     `${apiBase.replace(/\/+$/, '')}/stream/orders` +
-    `?tenantId=${encodeURIComponent(tenantId)}&token=${encodeURIComponent(token)}`
-  );
+    `?tenantId=${encodeURIComponent(tenantId)}&token=${encodeURIComponent(token)}`;
+  if (lastEventId) url += `&lastEventId=${encodeURIComponent(lastEventId)}`;
+  return url;
 }
 
 /**
  * Open the SSE orders stream.
  *
- * The token travels as a query parameter because EventSource cannot set
- * custom headers; acceptable over HTTPS since the JWT is short-lived.
+ * `token` must be a freshly minted single-use stream token from
+ * `mintStreamToken()` — NEVER the 24h admin JWT (EventSource cannot set
+ * headers, and the short TTL + single-use is what keeps the query-string
+ * credential acceptable). On error the EventSource is closed FIRST so the
+ * browser's native auto-reconnect cannot replay a burned token; the caller's
+ * `onError` drives the re-mint + reopen cycle.
  */
 export function openOrdersStream({
   apiBase = API_BASE,
   tenantId,
   token,
+  lastEventId,
   onEvent,
   onOpen,
   onError,
   signal,
 }: OpenOrdersStreamOptions): OrdersStreamHandle {
-  const url = buildStreamUrl(apiBase, tenantId, token);
+  const url = buildStreamUrl(apiBase, tenantId, token, lastEventId);
 
   const source = new EventSource(url);
   let closed = false;
@@ -113,7 +211,13 @@ export function openOrdersStream({
   };
 
   source.onopen = () => onOpen?.();
-  source.onerror = () => onError?.();
+  source.onerror = () => {
+    // Disable the browser's native auto-reconnect: the stream token is
+    // single-use, so a native retry would replay a burned token against the
+    // DO and 401 forever. Close, then let the hook re-mint + reopen.
+    source.close();
+    onError?.();
+  };
 
   const close = (): void => {
     if (closed) return;
@@ -144,7 +248,10 @@ export type InboxStreamHandle = OrdersStreamHandle;
  * Thin consumer of the same per-tenant endpoint as `openOrdersStream`
  * (`/stream/orders`), so a single stream URL delivers BOTH `new-booking`
  * (orderId) and `new-lead` (leadId) events. Auth, backoff, and close
- * semantics are identical to `openOrdersStream`.
+ * semantics are identical to `openOrdersStream` — the token must be a freshly
+ * minted single-use stream token, and on error the EventSource is closed
+ * before `onError` fires so native auto-reconnect cannot replay a burned
+ * token.
  *
  * Dedup policy: events are keyed by `type:id` (orderId for `new-booking`,
  * leadId for `new-lead`) so replayed frames across reconnects fire `onEvent`
@@ -156,12 +263,13 @@ export function openInboxStream({
   apiBase = API_BASE,
   tenantId,
   token,
+  lastEventId,
   onEvent,
   onOpen,
   onError,
   signal,
 }: OpenInboxStreamOptions): InboxStreamHandle {
-  const url = buildStreamUrl(apiBase, tenantId, token);
+  const url = buildStreamUrl(apiBase, tenantId, token, lastEventId);
 
   const source = new EventSource(url);
   let closed = false;
@@ -190,7 +298,12 @@ export function openInboxStream({
   };
 
   source.onopen = () => onOpen?.();
-  source.onerror = () => onError?.();
+  source.onerror = () => {
+    // Same single-use rationale as openOrdersStream: close BEFORE the hook's
+    // onError so the browser never auto-reconnects onto a burned token.
+    source.close();
+    onError?.();
+  };
 
   const close = (): void => {
     if (closed) return;

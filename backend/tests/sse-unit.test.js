@@ -3,6 +3,7 @@ import { Broadcaster, makeEventMessage, parseTenantId } from '../src/durable/bro
 import ordersRoutes, { broadcastNewBooking } from '../src/api/orders.js';
 import { mountRouter } from './helpers/routerHarness.js';
 import { generateToken } from '../src/middleware/sharedAuth.js';
+import jwt, { decode as decodeJwt } from '@tsndr/cloudflare-worker-jwt';
 
 import app from '../src/index.js';
 
@@ -83,6 +84,39 @@ async function makeToken(overrides = {}) {
   );
 }
 
+// A fresh 60s single-use stream token (own jti per call). Two calls must never
+// reuse a jti — the DO burns tokens via state.storage.
+function makeJti(prefix) {
+  return crypto?.randomUUID ? crypto.randomUUID() : `${prefix || 'jti'}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function makeStreamToken(overrides = {}) {
+  const jti = makeJti('stream');
+  return await generateToken(
+    { sub: 'u1', userId: 'u1', email: 'a@b.com', role: 'admin', tenantId: 't1', jti, ...overrides },
+    SECRET,
+    'stream',
+    null,
+    60
+  );
+}
+
+// Directly sign an expired stream token — the mint endpoint never issues
+// expired tokens, so the expiry test has to forge one (owner test #6).
+async function makeExpiredStreamToken(overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return await jwt.sign(
+    {
+      sub: 'u1', userId: 'u1', email: 'a@b.com', role: 'admin', tenantId: 't1',
+      jti: makeJti('expired'), type: 'stream',
+      iat: now - 120, exp: now - 60,
+      ...overrides,
+    },
+    SECRET,
+    { algorithm: 'HS256' }
+  );
+}
+
 describe('Broadcaster pure helpers', () => {
   describe('makeEventMessage', () => {
     it('formats a JSON event into an SSE data frame', () => {
@@ -127,11 +161,25 @@ describe('Broadcaster pure helpers', () => {
 });
 
 describe('Broadcaster DO routing', () => {
+  // Manual storage mock behaves like blocks/storage: put stores, get returns
+  // what was stored (or null). This makes the single-use token burn observable
+  // and lets keyed writes be asserted directly.
   function makeBroadcaster() {
     const ctx = { waitUntil: vi.fn() };
-    const storage = { setAlarm: vi.fn() };
-    const b = new Broadcaster({ ctx, storage }, {});
-    return { b, ctx, storage };
+    const store = new Map();
+    const storage = {
+      setAlarm: vi.fn(),
+      get: vi.fn(async (key) => (store.has(key) ? store.get(key) : null)),
+      put: vi.fn(async (key, value) => { store.set(key, value); }),
+    };
+    const b = new Broadcaster({ ctx, storage }, { JWT_SECRET: SECRET });
+    return { b, ctx, storage, store };
+  }
+
+  async function openStream(b, tenantId = 't1', overrides = {}) {
+    const token = await makeStreamToken(overrides);
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=${tenantId}&token=${token}`, { method: 'GET' }));
+    return { res, reader: res.body.getReader() };
   }
 
   it('rejects POST /broadcast with invalid JSON', async () => {
@@ -173,12 +221,11 @@ describe('Broadcaster DO routing', () => {
 
   it('opens an SSE stream with the connected event and correct headers', async () => {
     const { b } = makeBroadcaster();
-    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+    const { res, reader } = await openStream(b);
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('text/event-stream');
     expect(res.headers.get('Cache-Control')).toBe('no-cache');
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
-    const reader = res.body.getReader();
     const { value, done } = await reader.read();
     expect(done).toBe(false);
     expect(new TextDecoder().decode(value)).toContain('"type":"connected"');
@@ -186,9 +233,11 @@ describe('Broadcaster DO routing', () => {
   });
 
   it('fans a broadcast out to live subscribers of the same tenant', async () => {
-    const { b } = makeBroadcaster();
-    const reader1 = (await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }))).body.getReader();
-    const reader2 = (await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }))).body.getReader();
+    const { b, storage } = makeBroadcaster();
+    const { res: res1, reader: reader1 } = await openStream(b);
+    const { res: res2, reader: reader2 } = await openStream(b);
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
     await reader1.read();
     await reader2.read();
 
@@ -210,7 +259,7 @@ describe('Broadcaster DO routing', () => {
 
   it('does not leak events across tenants', async () => {
     const { b } = makeBroadcaster();
-    const reader = (await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }))).body.getReader();
+    const { reader } = await openStream(b, 't1');
     await reader.read();
 
     const res = await b.fetch(new Request('http://broadcaster/broadcast', {
@@ -236,8 +285,7 @@ describe('Broadcaster DO routing', () => {
 
   it('cancel handler removes the connection and clears the interval', async () => {
     const { b } = makeBroadcaster();
-    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
-    const reader = res.body.getReader();
+    const { res, reader } = await openStream(b);
     await reader.read();
 
     expect(b.channels.get('t1').size).toBe(1);
@@ -248,8 +296,7 @@ describe('Broadcaster DO routing', () => {
 
   it('removeConnection is idempotent when called twice on the same conn', async () => {
     const { b } = makeBroadcaster();
-    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
-    const reader = res.body.getReader();
+    const { res, reader } = await openStream(b);
     await reader.read();
 
     const conn = b.channels.get('t1').values().next().value;
@@ -266,8 +313,7 @@ describe('Broadcaster DO routing', () => {
 
   it('deletes the tenant from channels when the last cancelled conn is removed during broadcast', async () => {
     const { b } = makeBroadcaster();
-    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
-    const reader = res.body.getReader();
+    const { res, reader } = await openStream(b);
     await reader.read();
 
     const conn = b.channels.get('t1').values().next().value;
@@ -309,8 +355,7 @@ describe('Broadcaster DO routing', () => {
     vi.useFakeTimers();
     try {
       const { b } = makeBroadcaster();
-      const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
-      const reader = res.body.getReader();
+      const { res, reader } = await openStream(b);
       await reader.read();
 
       const conn = b.channels.get('t1').values().next().value;
@@ -336,8 +381,7 @@ describe('Broadcaster DO routing', () => {
     }
     expect(b.channels.get('t1').size).toBe(100);
 
-    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
-    const reader = res.body.getReader();
+    const { res, reader } = await openStream(b);
     await reader.read();
 
     expect(b.channels.get('t1').size).toBe(100);
@@ -349,8 +393,7 @@ describe('Broadcaster DO routing', () => {
     vi.useFakeTimers();
     try {
       const { b } = makeBroadcaster();
-      const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
-      const reader = res.body.getReader();
+      const { res, reader } = await openStream(b);
       await reader.read();
 
       const conn = b.channels.get('t1').values().next().value;
@@ -370,6 +413,136 @@ describe('Broadcaster DO routing', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('Broadcaster stream-token validation (DO defense-in-depth)', () => {
+  function makeBroadcaster() {
+    const ctx = { waitUntil: vi.fn() };
+    const store = new Map();
+    const storage = {
+      setAlarm: vi.fn(),
+      get: vi.fn(async (key) => (store.has(key) ? store.get(key) : null)),
+      put: vi.fn(async (key, value) => { store.set(key, value); }),
+    };
+    const b = new Broadcaster({ ctx, storage }, { JWT_SECRET: SECRET });
+    return { b, ctx, storage, store };
+  }
+
+  it('returns 401 when the stream token is missing', async () => {
+    const { b } = makeBroadcaster();
+    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1', { method: 'GET' }));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Missing or invalid stream token');
+  });
+
+  it('returns 401 for an invalid stream token', async () => {
+    const { b } = makeBroadcaster();
+    const res = await b.fetch(new Request('http://broadcaster/connect?tenantId=t1&token=not-a-jwt', { method: 'GET' }));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toContain('Invalid or expired stream token');
+  });
+
+  it('returns 401 for an expired stream token', async () => {
+    const { b } = makeBroadcaster();
+    const token = await makeExpiredStreamToken();
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toContain('Invalid or expired stream token');
+  });
+
+  it('returns 401 when the token type is not stream (24h admin JWT is not accepted on /connect)', async () => {
+    const { b } = makeBroadcaster();
+    const adminToken = await makeToken({ role: 'admin', tenantId: 't1' });
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${adminToken}`, { method: 'GET' }));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toContain('Invalid stream token type');
+  });
+
+  it('returns 401 for a stream token missing jti', async () => {
+    const { b } = makeBroadcaster();
+    const token = await makeStreamToken({ jti: undefined });
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toContain('missing jti');
+  });
+
+  it('returns 403 for a POS realm stream token', async () => {
+    const { b } = makeBroadcaster();
+    const token = await makeStreamToken({ posType: 'pos', userType: 'org' });
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('POS sessions');
+  });
+
+  it('returns 403 for a non-admin stream token', async () => {
+    const { b } = makeBroadcaster();
+    const token = await makeStreamToken({ role: 'viewer' });
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('admin role required');
+  });
+
+  it('returns 403 when a stream token is used against a different tenant partition', async () => {
+    const { b } = makeBroadcaster();
+    const token = await makeStreamToken({ tenantId: 'other-tenant' });
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('this tenant partition');
+  });
+
+  it('burns the token on first use and rejects a replay (single-use, owner test #5)', async () => {
+    const { b, storage } = makeBroadcaster();
+    const token = await makeStreamToken();
+    const { payload } = decodeJwt(token);
+
+    const res1 = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res1.status).toBe(200);
+    const reader = res1.body.getReader();
+    await reader.read();
+    await reader.cancel();
+    expect(storage.put).toHaveBeenCalledWith(payload.jti, expect.any(Number), { expirationTtl: 60 });
+
+    const res2 = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res2.status).toBe(401);
+    const body = await res2.json();
+    expect(body.error).toContain('already been used');
+  });
+
+  it('returns 500 when storage cannot enforce single-use (no put/get capability)', async () => {
+    const ctx = { waitUntil: vi.fn() };
+    const storage = { setAlarm: vi.fn() };
+    const b = new Broadcaster({ ctx, storage }, { JWT_SECRET: SECRET });
+    const token = await makeStreamToken();
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }));
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toContain('single-use enforcement unavailable');
+  });
+
+  it('fails closed when the storage burn write rejects (no stream is opened)', async () => {
+    const ctx = { waitUntil: vi.fn() };
+    const storage = {
+      setAlarm: vi.fn(),
+      get: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockRejectedValue(new Error('no blocks/storage')),
+    };
+    const b = new Broadcaster({ ctx, storage }, { JWT_SECRET: SECRET });
+    const token = await makeStreamToken();
+    await expect(
+      b.fetch(new Request(`http://broadcaster/connect?tenantId=t1&token=${token}`, { method: 'GET' }))
+    ).rejects.toThrow('no blocks/storage');
+    // The connection must never be registered when the token cannot be burned.
+    expect(b.channels.has('t1')).toBe(false);
   });
 });
 
@@ -497,7 +670,7 @@ describe('GET /api/stream/orders (worker route)', () => {
     expect(res.status).toBe(401);
   });
 
-  it('accepts the token from the token query param when the Authorization header is absent', async () => {
+  it('accepts the stream token from the token query param when the Authorization header is absent', async () => {
     const fakeSse = new Response('data: {"type":"connected"}\n\n', {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream' },
@@ -507,18 +680,20 @@ describe('GET /api/stream/orders (worker route)', () => {
       idFromName: vi.fn().mockReturnValue('id-t1'),
       get: vi.fn().mockReturnValue({ fetch: stubFetch }),
     };
-    const token = await makeToken({ role: 'admin', tenantId: 't1' });
+    const token = await makeStreamToken({ role: 'admin', tenantId: 't1' });
     const res = await app.fetch(new Request(`${SSE_URL}&token=${token}`, { method: 'GET' }), makeEnv({ BROADCASTER: broadcaster }));
 
     expect(broadcaster.idFromName).toHaveBeenCalledWith('t1');
     expect(broadcaster.get).toHaveBeenCalledWith('id-t1');
     expect(stubFetch).toHaveBeenCalledTimes(1);
+    // The exact validated stream token is what reaches the DO — never a JWT.
+    expect(stubFetch.mock.calls[0][0].url).toContain('token=' + encodeURIComponent(token));
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('text/event-stream');
     expect(await res.text()).toBe('data: {"type":"connected"}\n\n');
   });
 
-  it('prefers the Authorization header token over a token query param', async () => {
+  it('prefers the Authorization header stream token over a token query param', async () => {
     const fakeSse = new Response('data: {"type":"connected"}\n\n', {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream' },
@@ -528,13 +703,20 @@ describe('GET /api/stream/orders (worker route)', () => {
       idFromName: vi.fn().mockReturnValue('id-t1'),
       get: vi.fn().mockReturnValue({ fetch: stubFetch }),
     };
-    const token = await makeToken({ role: 'admin', tenantId: 't1' });
+    const token = await makeStreamToken({ role: 'admin', tenantId: 't1' });
     const res = await app.fetch(new Request(`${SSE_URL}&token=invalid-query-token`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     }), makeEnv({ BROADCASTER: broadcaster }));
     expect(res.status).toBe(200);
     expect(stubFetch).toHaveBeenCalledTimes(1);
+    expect(stubFetch.mock.calls[0][0].url).toContain('token=' + encodeURIComponent(token));
+  });
+
+  it('rejects a 24h admin JWT in the token query param (owner test #3)', async () => {
+    const adminJwt = await makeToken({ role: 'admin', tenantId: 't1' });
+    const res = await app.fetch(new Request(`${SSE_URL}&token=${adminJwt}`, { method: 'GET' }), makeEnv());
+    expect(res.status).toBe(401);
   });
 
   it('returns 401 when a token query param is invalid', async () => {
@@ -542,7 +724,7 @@ describe('GET /api/stream/orders (worker route)', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 401 for an invalid token', async () => {
+  it('returns 401 for an invalid stream token in the Authorization header', async () => {
     const res = await app.fetch(new Request(SSE_URL, {
       method: 'GET',
       headers: { Authorization: 'Bearer not-a-real-token' },
@@ -550,8 +732,8 @@ describe('GET /api/stream/orders (worker route)', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 for a POS session', async () => {
-    const token = await makeToken({ posType: 'pos', role: 'admin', tenantId: 't1' });
+  it('returns 403 for a POS realm stream token', async () => {
+    const token = await makeStreamToken({ posType: 'pos', userType: 'org', role: 'admin', tenantId: 't1' });
     const res = await app.fetch(new Request(SSE_URL, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
@@ -559,17 +741,19 @@ describe('GET /api/stream/orders (worker route)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('returns 403 for a non-admin role', async () => {
-    const token = await makeToken({ role: 'viewer', tenantId: 't1' });
+  it('returns 403 for a non-admin stream token', async () => {
+    const token = await makeStreamToken({ role: 'viewer', tenantId: 't1' });
     const res = await app.fetch(new Request(SSE_URL, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     }), makeEnv());
     expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('admin role required');
   });
 
-  it('returns 403 when an admin subscribes to a different tenant', async () => {
-    const token = await makeToken({ role: 'admin', tenantId: 'other-tenant' });
+  it('returns 403 when an admin stream token subscribes to a different tenant', async () => {
+    const token = await makeStreamToken({ role: 'admin', tenantId: 'other-tenant' });
     const res = await app.fetch(new Request(SSE_URL, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
@@ -578,7 +762,7 @@ describe('GET /api/stream/orders (worker route)', () => {
   });
 
   it('returns 503 when the BROADCASTER binding is missing', async () => {
-    const token = await makeToken({ role: 'admin', tenantId: 't1' });
+    const token = await makeStreamToken({ role: 'admin', tenantId: 't1' });
     const res = await app.fetch(new Request(SSE_URL, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
@@ -598,7 +782,7 @@ describe('GET /api/stream/orders (worker route)', () => {
       idFromName: vi.fn().mockReturnValue('id-t1'),
       get: vi.fn().mockReturnValue({ fetch: stubFetch }),
     };
-    const token = await makeToken({ role: 'admin', tenantId: 't1' });
+    const token = await makeStreamToken({ role: 'admin', tenantId: 't1' });
     const res = await app.fetch(new Request(SSE_URL, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
@@ -609,6 +793,7 @@ describe('GET /api/stream/orders (worker route)', () => {
     expect(stubFetch).toHaveBeenCalledTimes(1);
     const doReq = stubFetch.mock.calls[0][0];
     expect(doReq.url).toContain('/connect?tenantId=t1');
+    expect(doReq.url).toContain('token=' + encodeURIComponent(token));
     expect(doReq.method).toBe('GET');
 
     expect(res.status).toBe(200);
@@ -616,7 +801,24 @@ describe('GET /api/stream/orders (worker route)', () => {
     expect(await res.text()).toBe('data: {"type":"connected"}\n\n');
   });
 
-  it('accepts a super_admin subscribing to any tenant', async () => {
+  it('forwards a lastEventId marker on the DO connect URL', async () => {
+    const fakeSse = new Response('data: {"type":"connected"}\n\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+    const stubFetch = vi.fn().mockResolvedValue(fakeSse);
+    const broadcaster = {
+      idFromName: vi.fn().mockReturnValue('id-t1'),
+      get: vi.fn().mockReturnValue({ fetch: stubFetch }),
+    };
+    const token = await makeStreamToken({ role: 'admin', tenantId: 't1' });
+    const res = await app.fetch(new Request(`${SSE_URL}&token=${token}&lastEventId=evt_42`, { method: 'GET' }), makeEnv({ BROADCASTER: broadcaster }));
+    expect(res.status).toBe(200);
+    expect(stubFetch).toHaveBeenCalledTimes(1);
+    expect(stubFetch.mock.calls[0][0].url).toContain('lastEventId=evt_42');
+  });
+
+  it('accepts a super_admin stream token subscribing to any tenant', async () => {
     const fakeSse = new Response('data: {"type":"connected"}\n\n', {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream' },
@@ -626,12 +828,109 @@ describe('GET /api/stream/orders (worker route)', () => {
       idFromName: vi.fn().mockReturnValue('id-t9'),
       get: vi.fn().mockReturnValue({ fetch: stubFetch }),
     };
-    const token = await makeToken({ role: 'super_admin', tenantId: null });
+    const token = await makeStreamToken({ role: 'super_admin', tenantId: 't9' });
     const res = await app.fetch(new Request('https://sinaicamps.com/api/stream/orders?tenantId=t9', {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     }), makeEnv({ BROADCASTER: broadcaster }));
     expect(res.status).toBe(200);
     expect(stubFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('POST /api/stream/token (mint endpoint)', () => {
+  const MINT_URL = 'https://sinaicamps.com/api/stream/token';
+
+  it('returns 401 without an admin JWT (owner test #1)', async () => {
+    const res = await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }), makeEnv());
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 401 for an invalid admin JWT', async () => {
+    const res = await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer not-a-real-token' },
+      body: '{}',
+    }), makeEnv());
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 for a viewer role', async () => {
+    const token = await makeToken({ role: 'viewer', tenantId: 't1' });
+    const res = await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    }), makeEnv());
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when no tenant resolves (super_admin without a tenant claim)', async () => {
+    const token = await makeToken({ role: 'super_admin', tenantId: null });
+    const res = await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    }), makeEnv());
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('Tenant not resolved');
+  });
+
+  it('mints a 60s single-use stream token (owner test #2)', async () => {
+    const token = await makeToken({ role: 'admin', tenantId: 't1' });
+    const res = await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    }), makeEnv());
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.type).toBe('stream');
+    expect(body.expiresIn).toBe(60);
+    expect(typeof body.token).toBe('string');
+
+    const { payload } = decodeJwt(body.token);
+    expect(payload.type).toBe('stream');
+    expect(payload.role).toBe('admin');
+    expect(payload.tenantId).toBe('t1');
+    expect(payload.jti).toBeTruthy();
+    // 60s lifetime: exp within 60 seconds of iat (allow clock slack).
+    expect(payload.exp - payload.iat).toBeLessThanOrEqual(60);
+    expect(payload.exp - payload.iat).toBeGreaterThan(50);
+  });
+
+  it('mints for a super_admin who carries a tenant claim', async () => {
+    const token = await makeToken({ role: 'super_admin', tenantId: 't1' });
+    const res = await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    }), makeEnv());
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    const { payload } = decodeJwt(body.token);
+    expect(payload.tenantId).toBe('t1');
+  });
+
+  it('mints unique jti values across two calls (single-use depends on unique jti)', async () => {
+    const token = await makeToken({ role: 'admin', tenantId: 't1' });
+    const first = await (await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    }), makeEnv())).json();
+    const second = await (await app.fetch(new Request(MINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    }), makeEnv())).json();
+    const p1 = decodeJwt(first.token).payload;
+    const p2 = decodeJwt(second.token).payload;
+    expect(p1.jti).not.toBe(p2.jti);
   });
 });

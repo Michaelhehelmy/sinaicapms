@@ -4,15 +4,21 @@ import { API_BASE, TEST_TENANT, TEST_CAMPS, TEST_PRODUCTS } from '../../fixtures
 
 // Live SSE broadcast (frozen backend — Broadcaster Durable Object):
 //
-//   GET /api/stream/orders?tenantId=<id>[&token=<jwt>]
+//   POST /api/stream/token                → 60s single-use `stream` token
+//     (admin JWT in Authorization header, not in the URL)
+//   GET /api/stream/orders?tenantId=<id>[&token=<stream-token>]
 //     → first frame { type: 'connected' }, then broadcast frames:
 //       { type: 'new-booking', orderId, campId, checkIn, checkOut }
 //       { type: 'new-lead', leadId, name, subject }
-//     → 401 without token | 400 without tenantId
+//     → 401 without token | 401 with a 24h admin JWT (type check) |
+//       400 without tenantId
 //
-// EventSource cannot attach Authorization headers → token travels as the
-// `token` query param. CORS (hono/cors global) allows the localhost:4320
-// origin, so the stream is opened from a real app page running the browser.
+// Wave 3.4a (F-A16-02): the stream NEVER carries the 24h admin JWT in the
+// URL. The collector mints a fresh 60-second single-use stream token from
+// POST /api/stream/token first (admin JWT rides an Authorization header),
+// then opens the EventSource with that short-lived token. CORS (hono/cors
+// global) allows the localhost:4320 origin, so both fetch calls run from a
+// real app page.
 //
 // Local-dev flakiness guard (verified empirically): under `wrangler dev
 // --local` a DO-backed SSE stream can be silently abandoned ~2.5–3s after
@@ -23,9 +29,9 @@ import { API_BASE, TEST_TENANT, TEST_CAMPS, TEST_PRODUCTS } from '../../fixtures
 //   1. waiting for the `connected` frame on the page BEFORE mutating
 //      (`__sseConnected<N>` barrier), so the channel is provably live;
 //   2. issuing the mutating call IMMEDIATELY after connected (≤~1.5s);
-//   3. on a miss, reconnecting with a fresh EventSource and retrying the
-//      mutation (bounded ×2) instead of letting the stale connection
-//      time out the whole test.
+//   3. on a miss, reconnecting with a fresh EventSource + fresh stream token
+//      and retrying the mutation (bounded ×2) instead of letting the stale
+//      connection time out the whole test.
 
 const TIMESTAMP = Date.now();
 const TENANT_ID = String(TEST_TENANT.id);
@@ -54,8 +60,25 @@ function makeCollector(attempt: number) {
     authToken: string;
     attempt: number;
   }) => {
-    return await new Promise<CollectorResult>((resolve) => {
-      const es = new EventSource(`${apiBase}/api/stream/orders?tenantId=${tenantId}&token=${authToken}`);
+    return await new Promise<CollectorResult>(async (resolve) => {
+      // Wave 3.4a (F-A16-02): mint a short-lived single-use stream token
+      // first — the admin JWT stays in an Authorization header and must NEVER
+      // ride the SSE query string.
+      const mintRes = await fetch(`${apiBase}/api/stream/token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!mintRes.ok) {
+        throw new Error(
+          `SSE attempt ${a}: stream token mint failed with status ${mintRes.status}`,
+        );
+      }
+      const minted = (await mintRes.json()) as { token: string };
+      if (!minted.token) {
+        throw new Error(`SSE attempt ${a}: stream token mint returned no token`);
+      }
+
+      const es = new EventSource(`${apiBase}/api/stream/orders?tenantId=${tenantId}&token=${minted.token}`);
       const frames: Array<Record<string, unknown>> = [];
       let connected = false;
       const flag = (n: string, v: boolean) => {
@@ -68,6 +91,8 @@ function makeCollector(attempt: number) {
         es.close();
         resolve({ connected, frames, timedOut: true });
       }, 10_000);
+      const esRef = es;
+      const timerRef = timer;
 
       es.onmessage = (e) => {
         let frame: Record<string, unknown>;
@@ -83,8 +108,8 @@ function makeCollector(attempt: number) {
         }
         if (frame.type === 'new-booking' || frame.type === 'new-lead') {
           flag(`__sseHasEvent${a}`, true);
-          clearTimeout(timer);
-          es.close();
+          clearTimeout(timerRef);
+          esRef.close();
           resolve({ connected, frames, timedOut: false });
         }
       };
@@ -168,11 +193,18 @@ test.describe('Live SSE order stream', () => {
   });
 
   test('stream rejects a missing tenantId with 400', async () => {
+    // A 24h admin JWT would now 401 here (token-type check) — mint the
+    // short-lived stream token first so we isolate the tenantId check.
+    const mint = await apiRequest('POST', '/api/stream/token', undefined, tenantHeaders());
+    expect(mint.status).toBe(201);
+    const streamToken = ((await mint.json()) as { token: string }).token;
+    expect(streamToken).toBeTruthy();
+
     const res = await apiRequest(
       'GET',
       '/api/stream/orders',
       undefined,
-      { Authorization: `Bearer ${token}`, 'x-tenant-id': TENANT_ID },
+      { Authorization: `Bearer ${streamToken}`, 'x-tenant-id': TENANT_ID },
     );
     expect(res.status).toBe(400);
   });

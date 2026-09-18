@@ -49,6 +49,11 @@ export const RATE_LIMIT_POLICIES = {
   'POST /api/marketplace/reviews': { max: 10, window: '1m' },
   // M4: public order-status lookup is read-only but still abuseable — modest cap.
   'GET /api/orders/status/*': { max: 5, window: '1m' },
+  // Wave 3.4a (F-A16-02): short-lived single-use stream-token mint. Per-IP
+  // budget (the limiter keys on cf-connecting-ip, not per-user — honest
+  // caveat): every EventSource (re)connect mints once, so 10/min covers
+  // backoff reconnects while still bounding token spam.
+  'POST /api/stream/token': { max: 10, window: '1m' },
   default: { max: 100, envKey: 'RATE_LIMIT_API' },
 };
 
@@ -90,8 +95,10 @@ export const policyLimiter = (policies = RATE_LIMIT_POLICIES) => {
   });
 
   return async (c, next) => {
-    // SSE streams are exempt from request counting (long-lived connections).
-    if (c.req.path.startsWith('/api/stream/')) {
+    // Long-lived SSE streams are exempt from request counting. The mint
+    // endpoint (POST /api/stream/token) is NOT exempt — it hits the policy
+    // entry above, which is what bounds token acquisition by IP.
+    if (c.req.path === '/api/stream/orders') {
       await next();
       return;
     }
