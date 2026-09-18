@@ -59,6 +59,7 @@ describe('LoginForm', () => {
     (apiClient.posLogin as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       success: true,
       token: 'tok123',
+      refreshToken: 'refresh123',
       user: mockUser,
     });
     const onSuccess = vi.fn();
@@ -69,9 +70,30 @@ describe('LoginForm', () => {
     fireEvent.click(screen.getByTestId('pos-signin-btn'));
 
     await waitFor(() => {
-      expect(session.setTokens).toHaveBeenCalledWith('pos', 'tok123');
+      // F-A8-1: the refresh token must land in the kernel so a 401 after the
+      // access token's 24h expiry can silent-refresh (/pos/auth/refresh).
+      expect(session.setTokens).toHaveBeenCalledWith('pos', 'tok123', 'refresh123');
       expect(session.setUser).toHaveBeenCalledWith('pos', mockUser);
       expect(onSuccess).toHaveBeenCalledWith(mockUser, 'tok123');
+    });
+  });
+
+  it('POS login tolerates a response without refreshToken', async () => {
+    const mockUser = { id: 1, name: 'Test' };
+    (apiClient.posLogin as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: true,
+      token: 'tok123',
+      user: mockUser,
+    });
+    render(<LoginForm realm="pos" onPosSuccess={vi.fn()} />);
+
+    fireEvent.change(screen.getByTestId('pos-identifier'), { target: { value: 'user@test.com' } });
+    fireEvent.change(screen.getByTestId('pos-password'), { target: { value: 'pass1234' } });
+    fireEvent.click(screen.getByTestId('pos-signin-btn'));
+
+    await waitFor(() => {
+      expect(session.setTokens).toHaveBeenCalledWith('pos', 'tok123', undefined);
+      expect(session.setUser).toHaveBeenCalledWith('pos', mockUser);
     });
   });
 

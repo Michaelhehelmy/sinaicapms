@@ -34,6 +34,7 @@ vi.mock('@/lib/navigation', async (importOriginal) => ({
 
 import * as api from '@/lib/api';
 import { push, replace } from '@/lib/navigation';
+import { session } from '@/lib/session';
 const mockPosLogin = vi.mocked(api.posLogin);
 const mockPosGetDashboard = vi.mocked(api.posGetDashboard);
 const mockPosGetProducts = vi.mocked(api.posGetProducts);
@@ -245,6 +246,24 @@ describe('POSApp', () => {
       });
       expect(localStorage.getItem('pos_token')).toBeNull();
       expect(localStorage.getItem('pos_user')).toBeNull();
+    });
+
+    // F-A8-2 regression: apiFetch calls session.clear('pos') on an
+    // unrecoverable 401. The POS shell subscribes to auth-change events and
+    // must drop its stale local identity so the login redirect actually fires.
+    it('re-renders to login when the session is cleared externally (apiFetch 401)', async () => {
+      loginAsTestUser();
+      render(<POSApp />);
+      await waitFor(() => {
+        expect(screen.getByText('Sign out')).toBeInTheDocument();
+      });
+      // Simulate apiFetch's 401 handling — clears the kernel, emits event.
+      session.clear('pos');
+      await waitFor(() => {
+        expect(screen.getByText('SinaiCamps POS')).toBeInTheDocument();
+      });
+      expect(localStorage.getItem('pos_token')).toBeNull();
+      expect(replace).toHaveBeenCalledWith('/pos/login');
     });
   });
 

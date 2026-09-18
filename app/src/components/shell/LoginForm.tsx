@@ -40,7 +40,10 @@ function PosLoginForm({ onSuccess }: { onSuccess: (u: PosUser, t: string) => voi
       }
       // Phase 6: tokens/user persist through the session kernel (same legacy
       // keys — pos_token / pos_user — so existing terminals keep working).
-      session.setTokens('pos', data.token);
+      // F-A8-1: persist the refresh token too — without it a 401 after the
+      // access token's 24h expiry can never silent-refresh, and
+      // `apiFetch`'s /pos/auth/refresh path (T7) dead-ends at getRefreshToken.
+      session.setTokens('pos', data.token, data.refreshToken);
       session.setUser('pos', data.user);
       onSuccess(data.user, data.token);
     } catch (err: any) {

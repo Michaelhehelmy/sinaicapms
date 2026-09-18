@@ -89,6 +89,8 @@
 
 ## 3. Findings Register (v2 — re-graded per owner review)
 
+> **Register header — 2026-09-19 (owner directive):** F-A14-2, F-A2-1, F-A3-2 are withdrawn — verified already-fixed or never-buggy on direct inspection. Three of the original findings were false positives. The audit's finding precision is lower than its severity classifications implied. Retained regression tests: 22 (F-A2-1: 9, F-A3-2: 1, F-A3-1: 12).
+
 ### P0 — Critical (production down, data corruption, or false security/roadmap claims)
 
 <table>
@@ -228,10 +230,10 @@ Proxy logs / referrer / browser history leak the credential
 <code>LoginForm.tsx:43</code> — <code>setTokens('pos', data.token)</code> omits refreshToken<br>
 POSApp does not subscribe to <code>session.onAuthChange()</code>; <code>apiFetch</code> clears session but React state stays stale → login redirect never fires
 </td>
-<td>POS session silently dies at 24h; user stuck on expired shell</td>
 <td>Pass refreshToken to setTokens; subscribe POSApp to auth-state change</td>
 <td>A8</td>
 </tr>
+<tr><td><strong>F-A8-1 / F-A8-2 ⇧ → <span style="color:#1b5e20">DONE — Wave 3.3</span></strong></td><td colspan="4"><b>2026-09-19: FIXED in Wave 3.3.</b> POS login now persists the refresh token (<code>PosLoginForm</code> passes <code>data.refreshToken</code> — schema <code>refreshToken?: string</code> — into <code>session.setTokens('pos', data.token, data.refreshToken)</code> so the 24h-expiry silent-refresh path in <code>apiFetch</code> has a token to exchange); <code>POSAppShell</code> subscribes to <code>session.onAuthChange</code> and drops <code>token</code>/<code>user</code> on a de-auth event for the pos realm, so the existing redirect effect sends cashiers back to <code>/pos/login</code> instead of stranding them on an expired shell. Regression tests: LoginForm refreshtoken assertions (2) + new POSApp session-clear re-render test (1).</td></tr>
 
 <tr>
 <td><strong>F-A21-04/05/06/07</strong></td>
@@ -280,6 +282,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 <tr><td><strong>F-A19-01..09</strong></td><td>Accessibility: 9× P2 across BookingCalendar drawer (no focus mgmt), InboxPanel tabs (no keyboard pattern), Select.tsx (no aria-activedescendant), ShopCatalog search/category (unlabeled), ShopCatalog toast (unannounced), StorefrontCart qty buttons (bare glyphs), gray-400/stone-400/placeholder contrast fails, modals lack aria-modal</td><td>A19 report (15 total; 9 P2 + 6 P3; zero P0/P1)</td><td>Batch a11y fixes per surface (Admin / POS / Storefront) — Wave 7 (does not block launch)</td><td>A19</td></tr>
 
 <tr><td><strong>F-A3-2 / A1-F002</strong></td><td>Check-in order lookup: <code>camp_id</code> derived from request body rather than tenant-verified room</td><td>Part of the A22-01 blast radius; A1 also flagged <code>orders.js:238</code> (camp_id from body trusted)</td><td>Derive <code>camp_id</code> from the tenant-verified room row (same wave as 3a)</td><td>A3, A1, A22</td></tr>
+<tr><td><strong>F-A3-2 ⇧ → <span style="color:#b00020">WITHDRAWN — false positive</span></strong></td><td colspan="4"><b>2026-09-19: WITHDRAWN in Wave 3.2.</b> The check-in handler destructures only <code>{ early_checkin, adult_count, child_count, room_id }</code> (orders.js:946-949) and the orders UPDATE never includes <code>camp_id</code> — the value is derived from the tenant-verified room row (A22-01 ownership JOIN at orders.js:979-989). Verified against pre-A22 code at <code>0d1975c^</code>: the handler never destructured <code>camp_id</code> even before the fix. One regression guard test retained (asserts no <code>camp_id</code> in the orders UPDATE, smuggled camp_id ignored, response <code>roomId</code>).</td></tr>
 
 <tr><td><strong>F-A1-F001</strong></td><td><code>pos-users.js:196/255</code> — email/username duplicate check not scoped by <code>organization_id</code></td><td>A1 db audit: cross-org username collision possible in POS users</td><td>Scope duplicate check by org (backend fix)</td><td>A1</td></tr>
 

@@ -183,6 +183,24 @@ function POSAppShell() {
     [],
   );
 
+  // F-A8-2: subscribe to kernel auth changes — apiFetch clears the POS session
+  // (session.clear('pos')) on an unrecoverable 401, but that only touches
+  // localStorage. Without this subscription the shell's React state stays
+  // stale (`user`/`token` still set) and the login redirect never fires,
+  // leaving cashiers stuck on an expired session. Drop the local identity on
+  // de-auth so the redirect effect below sends them back to /pos/login.
+  useEffect(
+    () =>
+      session.onAuthChange((event) => {
+        if (event.realm !== 'pos') return;
+        if (!event.authenticated) {
+          setToken(null);
+          setUser(null);
+        }
+      }),
+    [],
+  );
+
   // Redirect to /pos/login when not authenticated (pushState replace — no reload)
   useEffect(() => {
     if (!user || !token) {
