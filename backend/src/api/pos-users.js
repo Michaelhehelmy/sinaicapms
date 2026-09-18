@@ -194,8 +194,9 @@ export async function handlePosUsersRoute(request, env, tenantId) {
       }
 
       const { results: dup } = await env.DB.prepare(
-        'SELECT id FROM pos_users WHERE email = ? OR username = ?'
-      ).bind(email, username).all();
+        `SELECT id FROM pos_users
+         WHERE (email = ? OR username = ?) AND organization_id = ?`
+      ).bind(email, username, organizationId).all();
       if (dup.length > 0) return errorResponse('Email or username already exists', 409);
 
       const passwordHash = await hashPassword(password);
@@ -253,8 +254,9 @@ export async function handlePosUsersRoute(request, env, tenantId) {
 
       if (data.email !== undefined || data.username !== undefined) {
         const { results: dup } = await env.DB.prepare(
-          'SELECT id FROM pos_users WHERE (email = ? OR username = ?) AND id != ?'
-        ).bind(data.email ?? '', data.username ?? '', userId).all();
+          `SELECT id FROM pos_users
+           WHERE (email = ? OR username = ?) AND id != ? AND organization_id = ?`
+        ).bind(data.email ?? '', data.username ?? '', userId, organizationId).all();
         if (dup.length > 0) return errorResponse('Email or username already exists', 409);
       }
 

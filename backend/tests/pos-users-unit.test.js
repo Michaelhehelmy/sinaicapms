@@ -284,7 +284,7 @@ describe('handlePosUsersRoute', () => {
     it('creates a user: omits id from INSERT, hashes password, returns numeric last_row_id', async () => {
       const db = makeDb({
         ...mappingOk,
-        'WHERE email = ? OR username = ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
+        '(email = ? OR username = ?) AND organization_id = ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
         'INSERT INTO pos_users': (ch) => ch.run.mockResolvedValue({ meta: { last_row_id: 99 } }),
         'SELECT id, username': (ch) => ch.first.mockResolvedValue({
           id: 99, username: 'cashier1', email: 'cashier1@test.com',
@@ -350,10 +350,10 @@ describe('handlePosUsersRoute', () => {
       expect(body.errors[0].field).toBe('password');
     });
 
-    it('returns 409 when the email already exists', async () => {
+    it('returns 409 when the email already exists (same org)', async () => {
       const db = makeDb({
         ...mappingOk,
-        'WHERE email = ? OR username = ?': (ch) => ch.all.mockResolvedValue({ results: [{ id: 5 }] }),
+        '(email = ? OR username = ?) AND organization_id = ?': (ch) => ch.all.mockResolvedValue({ results: [{ id: 5 }] }),
       });
       const req = makeRequest('POST', 'https://x.com/api/pos-users', {
         email: 'dup@test.com', password: 'password123', firstName: 'F', lastName: 'L',
@@ -362,12 +362,16 @@ describe('handlePosUsersRoute', () => {
       expect(res.status).toBe(409);
       const body = await res.json();
       expect(body.error).toBe('Email or username already exists');
+      // F-A1-F001: the dup check must be scoped to the requesting org (7).
+      const dup = findBy(db, '(email = ? OR username = ?) AND organization_id');
+      expect(dup.sql).toContain('organization_id = ?');
+      expect(dup.bindArgs).toEqual(['dup@test.com', 'dup@test.com', 7]);
     });
 
-    it('returns 409 when the username already exists (email differs)', async () => {
+    it('returns 409 when the username already exists (email differs, same org)', async () => {
       const db = makeDb({
         ...mappingOk,
-        'WHERE email = ? OR username = ?': (ch) => ch.all.mockResolvedValue({ results: [{ id: 5 }] }),
+        '(email = ? OR username = ?) AND organization_id = ?': (ch) => ch.all.mockResolvedValue({ results: [{ id: 5 }] }),
       });
       const req = makeRequest('POST', 'https://x.com/api/pos-users', {
         email: 'other@test.com', username: 'takenuser', password: 'password123',
@@ -377,6 +381,35 @@ describe('handlePosUsersRoute', () => {
       expect(res.status).toBe(409);
       const body = await res.json();
       expect(body.error).toBe('Email or username already exists');
+      const dup = findBy(db, '(email = ? OR username = ?) AND organization_id');
+      expect(dup.sql).toContain('organization_id = ?');
+      expect(dup.bindArgs).toEqual(['other@test.com', 'takenuser', 7]);
+    });
+
+    it('F-A1-F001: allows the same email/username when it belongs to ANOTHER org', async () => {
+      // Org 7 creating with an email that exists in org 99: the scoped dup
+      // check must return no rows (org filter) and the create must succeed.
+      const db = makeDb({
+        ...mappingOk,
+        '(email = ? OR username = ?) AND organization_id = ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
+        'INSERT INTO pos_users': (ch) => ch.run.mockResolvedValue({ meta: { last_row_id: 77 } }),
+        'SELECT id, username': (ch) => ch.first.mockResolvedValue({
+          id: 77, username: 'sharedcash', email: 'shared@test.com',
+          first_name: 'Shared', last_name: 'Cash', role: 'cashier',
+        }),
+      });
+      const req = makeRequest('POST', 'https://x.com/api/pos-users', {
+        email: 'shared@test.com', username: 'sharedcash', password: 'password123',
+        firstName: 'Shared', lastName: 'Cash',
+      }, bearer(adminToken));
+      const res = await handlePosUsersRoute(req, { DB: db, JWT_SECRET }, 'acaciacamp');
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.id).toBe(77);
+      const dup = findBy(db, '(email = ? OR username = ?) AND organization_id');
+      expect(dup.sql).toContain('organization_id = ?');
+      expect(dup.bindArgs).toEqual(['shared@test.com', 'sharedcash', 7]);
     });
 
     it('returns 400 for an invalid role', async () => {
@@ -393,7 +426,7 @@ describe('handlePosUsersRoute', () => {
     it('uses an explicit username and defaults role to cashier', async () => {
       const db = makeDb({
         ...mappingOk,
-        'WHERE email = ? OR username = ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
+        '(email = ? OR username = ?) AND organization_id = ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
         'INSERT INTO pos_users': (ch) => ch.run.mockResolvedValue({ meta: { last_row_id: 100 } }),
       });
       const req = makeRequest('POST', 'https://x.com/api/pos-users', {
@@ -414,7 +447,7 @@ describe('handlePosUsersRoute', () => {
     it('handles create when run() returns no meta (id -> null)', async () => {
       const db = makeDb({
         ...mappingOk,
-        'WHERE email = ? OR username = ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
+        '(email = ? OR username = ?) AND organization_id = ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
         'INSERT INTO pos_users': (ch) => ch.run.mockResolvedValue({ success: true }),
       });
       const req = makeRequest('POST', 'https://x.com/api/pos-users', {
@@ -430,7 +463,7 @@ describe('handlePosUsersRoute', () => {
     it('returns 400 when the DB throws during create', async () => {
       const db = makeDb({
         ...mappingOk,
-        'WHERE email = ? OR username = ?': (ch) => ch.all.mockRejectedValue(new Error('DB fail')),
+        '(email = ? OR username = ?) AND organization_id = ?': (ch) => ch.all.mockRejectedValue(new Error('DB fail')),
       });
       const req = makeRequest('POST', 'https://x.com/api/pos-users', {
         email: 'boom@test.com', password: 'password123', firstName: 'F', lastName: 'L',
@@ -496,7 +529,7 @@ describe('handlePosUsersRoute', () => {
       expect(body.errors[0].field).toBe('role');
     });
 
-    it('returns 409 when changing to an email/username owned by another user', async () => {
+    it('returns 409 when changing to an email/username owned by another user (same org)', async () => {
       const db = makeDb({
         ...mappingOk,
         ...existsOk,
@@ -506,6 +539,26 @@ describe('handlePosUsersRoute', () => {
       const res = await handlePosUsersRoute(req, { DB: db, JWT_SECRET }, 'acaciacamp');
       expect(res.status).toBe(409);
       expect((await res.json()).error).toBe('Email or username already exists');
+      // F-A1-F001: the PATCH dup check must also be org-scoped.
+      const dup = findBy(db, '(email = ? OR username = ?) AND id != ?');
+      expect(dup.sql).toContain('organization_id = ?');
+      expect(dup.bindArgs).toEqual(['taken@test.com', '', '5', 7]);
+    });
+
+    it('F-A1-F001: allows changing email/username when the collision is in ANOTHER org', async () => {
+      const db = makeDb({
+        ...mappingOk,
+        ...existsOk,
+        '(email = ? OR username = ?) AND id != ?': (ch) => ch.all.mockResolvedValue({ results: [] }),
+        'UPDATE pos_users SET': (ch) => ch.run.mockResolvedValue({ success: true }),
+      });
+      const req = makeRequest('PATCH', 'https://x.com/api/pos-users/5', { email: 'taken@test.com' }, bearer(adminToken));
+      const res = await handlePosUsersRoute(req, { DB: db, JWT_SECRET }, 'acaciacamp');
+      expect(res.status).toBe(200);
+      expect((await res.json()).success).toBe(true);
+      const dup = findBy(db, '(email = ? OR username = ?) AND id != ?');
+      expect(dup.sql).toContain('organization_id = ?');
+      expect(dup.bindArgs).toEqual(['taken@test.com', '', '5', 7]);
     });
 
     it('returns 400 when the DB throws during update', async () => {
