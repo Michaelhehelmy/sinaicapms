@@ -31,7 +31,6 @@ const posOrderSchema = z.object({
   // commit batch below.
   tableId: z.string({ message: 'Table ID must be text' }).max(64, 'Table ID is too long').optional(),
   // Client-side tip display — accepted so it's not silently stripped.
-  // TODO: Add tip_amount column to pos_transactions and persist it.
   tipAmount: z.number().min(0).optional(),
 }).strip();
 
@@ -657,8 +656,8 @@ pos.post('/orders', async (c) => {
            status, subtotal, tax_amount, tax_rate, total_amount,
            paid_amount, payment_method, payment_status, notes,
             amount_cash, amount_card, idempotency_key, table_id, kitchen_status,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))`
+            tip_amount, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))`
       ).bind(
         orderId, tenantId, organizationId, storeId, orderNumber,
         String(posUser.userId),
@@ -667,7 +666,8 @@ pos.post('/orders', async (c) => {
         notes || null,
         finalAmountCash, finalAmountCard,
         idempotencyKey || null,
-        tableId
+        tableId,
+        tipAmount || 0
       )
     );
 
