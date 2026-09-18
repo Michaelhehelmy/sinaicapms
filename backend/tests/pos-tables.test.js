@@ -507,12 +507,14 @@ describe('POS order flow — dine-in table integration', () => {
     expect(body.order.tableId).toBe('tbl_x');
     expect(body.order.kitchenStatus).toBe('pending');
 
-    // The transaction INSERT carries the table reference (last bound param).
+    // The transaction INSERT carries the table reference (second-to-last
+    // bound param — tip_amount is the final bind after Wave 2.4).
     const txCalls = db.prepare.mock.calls;
     const txIdx = txCalls.findIndex(([sql]) => String(sql).includes('INSERT INTO pos_transactions'));
     expect(txIdx).toBeGreaterThan(-1);
     const txBinds = txCalls[txIdx].length ? db.prepare.mock.results[txIdx].value.bind.mock.calls[0] : [];
-    expect(txBinds[txBinds.length - 1]).toBe('tbl_x');
+    expect(txBinds[txBinds.length - 2]).toBe('tbl_x');
+    expect(txBinds[txBinds.length - 1]).toBe(0);
 
     // The occupy UPDATE rides in the SAME atomic batch, right after the
     // transaction INSERT and before any item INSERT.

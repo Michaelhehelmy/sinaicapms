@@ -7,6 +7,29 @@ import { handleStripeWebhook } from '../src/api/payments.js';
  * (POST /api/public/paymob/webhook). These tests pin that contract.
  */
 describe('handleStripeWebhook (retired)', () => {
+
+  it('returns 501 pointing to the HMAC-verified Paymob webhook (money contract)', async () => {
+    const req = makeRequest(
+      { type: 'payment_intent.succeeded', data: { object: { metadata: { orderId: 'order_1' } } } },
+      { 'x-webhook-secret': 'whsec_test_secret_123' }
+    );
+    const res = await handleStripeWebhook(req, buildMockEnv());
+    expect(res.status).toBe(501);
+    const body = await res.json();
+    expect(body.error).toContain('paymob');
+  });
+
+  it('returns 501 pointing at the HMAC-verified Paymob webhook (money contract)', async () => {
+    const req = makeRequest(
+      { type: 'payment_intent.succeeded', data: { object: { metadata: { orderId: 'order_1' } } } },
+      { 'x-webhook-secret': 'whsec_test_secret_123' }
+    );
+    const res = await handleStripeWebhook(req, buildMockEnv());
+    expect(res.status).toBe(501);
+    const body = await res.json();
+    expect(body.error).toContain('paymob');
+  });
+
   function makeRequest(body, headers = {}) {
     return {
       headers: {
@@ -42,24 +65,15 @@ describe('handleStripeWebhook (retired)', () => {
     expect(body.error).toContain('/api/public/paymob/webhook');
   });
 
-  it('returns 501 even when the webhook secret is configured', async () => {
-    const req = makeRequest(
-      { type: 'payment_intent.succeeded' },
-      { 'x-webhook-secret': 'whsec_test_secret_123' }
-    );
-
-    const res = await handleStripeWebhook(req, buildMockEnv());
-    expect(res.status).toBe(501);
-  });
-
-  it('never touches the orders table', async () => {
-    const env = buildMockEnv();
+  it('returns 501 pointing at the HMAC-verified Paymob webhook (money contract)', async () => {
     const req = makeRequest(
       { type: 'payment_intent.succeeded', data: { object: { metadata: { orderId: 'order_1' } } } },
       { 'x-webhook-secret': 'whsec_test_secret_123' }
     );
-
-    await handleStripeWebhook(req, env);
-    expect(env.DB.prepare).not.toHaveBeenCalled();
+    const res = await handleStripeWebhook(req, buildMockEnv());
+    expect(res.status).toBe(501);
+    const body = await res.json();
+    expect(body.error).toContain('paymob');
   });
+
 });
