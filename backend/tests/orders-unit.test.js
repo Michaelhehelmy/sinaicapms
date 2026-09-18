@@ -1474,6 +1474,38 @@ describe('handleOrdersRoute', () => {
       expect(sqls.some((s) => s.includes("UPDATE rooms_new SET status = 'occupied'"))).toBe(true);
     });
 
+    it('F-A3-2: camp_id NEVER flows from the request body into the orders UPDATE (derived from the verified room row only)', async () => {
+      const sqls = [];
+      const { db } = makeDbMock();
+      db.batch.mockResolvedValue([{ meta: { changes: 1 } }, { meta: { changes: 1 } }]);
+      const fn = chainMock([
+        // order lookup: the restoring row retains its ORIGINAL camp_id ('c1')
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', room_id: 'room-own', camp_id: 'c1' }); },
+        // ownership check: the verified room comes back with its OWN camp_id ('c2')
+        (ch) => { ch.first.mockResolvedValue({ id: 'room-own', camp_id: 'c2' }); },
+      ]);
+      db.prepare.mockImplementation((sql) => { sqls.push(sql); return fn(); });
+      // Body tries to smuggle a rogue camp_id — the handler must destructure
+      // ONLY early_checkin/adult_count/child_count/room_id (no camp_id).
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/checkin', {
+        room_id: 'room-own', camp_id: 'camp-ROGUE', early_checkin: true, adult_count: 2,
+      });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const resBody = await res.json();
+      // The orders UPDATE is built ONLY from early_checkin/adult_count/child_count/room_id
+      const ordersUpdate = sqls.find((s) => s.includes('UPDATE orders SET'));
+      expect(ordersUpdate).toBeDefined();
+      expect(ordersUpdate).toContain('early_checkin = ?');
+      expect(ordersUpdate).toContain('room_id = ?');
+      expect(ordersUpdate).not.toContain('camp_id');
+      // The rooms_new UPDATE targets ONLY the verified room id
+      const roomsUpdate = sqls.find((s) => s.includes("UPDATE rooms_new SET status = 'occupied'"));
+      expect(roomsUpdate).toBeDefined();
+      expect(roomsUpdate).toContain('WHERE id = ?');
+      expect(resBody.roomId).toBe('room-own');
+    });
+
     // Original A22 cross-tenant probe, ported verbatim: tenant B OWNS the room
     // (it exists and is available in B's project), but the request runs under
     // tenant A. The tenant-scoped ownership JOIN makes B's room invisible to A,
