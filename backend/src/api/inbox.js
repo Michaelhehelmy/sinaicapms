@@ -134,7 +134,7 @@ inboxRoutes.get('/', async (c) => {
     envelope.unread = (unreadLeads?.[0]?.total || 0) + (unreadBookings?.[0]?.total || 0);
     return jsonResponse(envelope);
   } catch (e) {
-    return errorResponse('Failed to fetch inbox');
+    return errorResponse('Failed to fetch inbox', 500);
   }
 });
 

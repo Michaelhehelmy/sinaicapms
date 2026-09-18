@@ -45,7 +45,7 @@ categoriesRoutes.get('/', async (c) => {
     ).bind(tenantId).all();
     return cachedJsonResponse(results, 300);
   } catch (e) {
-    return errorResponse('Failed to load categories');
+    return errorResponse('Failed to load categories', 500);
   }
 });
 

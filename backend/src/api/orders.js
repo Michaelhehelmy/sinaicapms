@@ -376,7 +376,7 @@ ordersRoutes.get('/status/:ref', async (c) => {
       room_name: order.room_name,
     });
   } catch (e) {
-    return errorResponse('Failed to fetch order status');
+    return errorResponse('Failed to fetch order status', 500);
   }
 });
 

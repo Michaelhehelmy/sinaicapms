@@ -133,7 +133,7 @@ adminSettingsRoutes.get('/', async (c) => {
     const row = await c.env.DB.prepare('SELECT * FROM platform_settings WHERE id = 1').first();
     return jsonResponse(parseSettingsRow(row));
   } catch (e) {
-    return errorResponse('Failed to load settings');
+    return errorResponse('Failed to load settings', 500);
   }
 });
 
@@ -208,7 +208,7 @@ adminSettingsRoutes.put('/', async (c) => {
 
     return jsonResponse({ success: true, ...currentSettings });
   } catch (e) {
-    return errorResponse('Failed to update settings');
+    return errorResponse('Failed to update settings', 500);
   }
 });
 
@@ -238,7 +238,7 @@ adminSettingsRoutes.get('/feature-flags', async (c) => {
       hasMore: false,
     });
   } catch (e) {
-    return errorResponse('Failed to load feature flags');
+    return errorResponse('Failed to load feature flags', 500);
   }
 });
 
@@ -266,7 +266,7 @@ adminSettingsRoutes.put('/feature-flags/:id', async (c) => {
 
     return jsonResponse({ success: true, id: flagId, enabled });
   } catch (e) {
-    return errorResponse('Failed to toggle feature flag');
+    return errorResponse('Failed to toggle feature flag', 500);
   }
 });
 
