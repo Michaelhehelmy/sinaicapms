@@ -425,12 +425,6 @@ reservationsRoutes.post('/', async (c) => {
         }
       }
 
-      if (mealPlanTotal > 0) {
-        itemStmts.push(c.env.DB.prepare(
-          'UPDATE orders SET total_amount = total_amount + ? WHERE id = ?'
-        ).bind(mealPlanTotal, ordId));
-      }
-
       if (itemStmts.length > 0) await c.env.DB.batch(itemStmts);
       if (posStmts.length > 0) await c.env.DB.batch(posStmts);
     }

@@ -36,6 +36,7 @@ function makeRoutingDb() {
   const db = {
     prepare: vi.fn((sql) => {
       const stmt = {
+        sql,
         bind: vi.fn((...binds) => { stmt.boundBinds = binds; return stmt; }),
         boundBinds: [],
         all: vi.fn(async () => (await runHandler(sql, stmt.boundBinds)) ?? { results: [], meta: { changes: 0 } }),
@@ -162,6 +163,51 @@ describe('GET /api/public/reservations (public reservation)', () => {
     expect(data.paymobEnabled).toBe(false);
     expect(data.paymobIntention).toBeNull();
     expect(data.fallbackWhatsApp).toBe(true);
+  });
+
+  it('stores orders.total_amount once (room + mealPlan, no double-count UPDATE), and the response total matches', async () => {
+    // Wave 2.5 regression: the handler previously re-added mealPlanTotal to the
+    // stored order via `UPDATE orders SET total_amount = total_amount + ?`
+    // AFTER the INSERT already wrote effectiveTotal (roomPrice + mealPlanTotal),
+    // leaving orders.total_amount = room + 2×meals. That UPDATE is gone; the DB
+    // total must equal roomPrice + mealPlanTotal and the response must match it.
+    const db = makeRoutingDb()
+      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4, camp_id: 'camp_1' }] }))
+      .on(/from orders[\s\S]*order_state_id != 'cancelled'/i, () => ({ results: [] }))
+      .on(/select r\.product_id[\s\S]*join projects c/i, () => ({ results: [{ product_id: 'room_prod' }] }))
+      .on(/from pos_products where id = \? and tenant_id/i, () => ({ results: [{ base_price: '500' }] }))
+      .on(/from rate_plans_new/i, () => ({ results: [] }))
+      .on(/from price_overrides/i, () => ({ results: [] }))
+      .on(/from pos_products\s+where id in/i, () => ({ results: [{ id: 'meal_1', name: 'Half-board', selling_price: '300' }] }))
+      .on(/from tenant_org_mapping/i, () => ({ results: [] }))
+      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }));
+
+    const app = mount('t1');
+    // No PM keys -> WhatsApp fallback envelope carrying effectiveTotal.
+    const res = await post(app, makeEnv(db), validReservationBody({
+      items: [{ product_id: 'meal_1', quantity: 1 }],
+    }));
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data.duplicate).toBe(false);
+    expect(data.orderId).toBeTruthy();
+
+    // Room price: 500/night × 2 nights (2026-10-01 → 2026-10-03) = 1000.
+    // Meal plan: 300 × 1. Stored total must be 1300, not 1600.
+    const inserts = db.statements
+      .filter(s => /insert into orders/i.test(s.sql))
+      // The guarded INSERT is a SELECT…INSERT; "total_amount" sits at bind 8:
+      // (id, tenant_id, camp_id, room_id, customer_id, check_in_date,
+      //  check_out_date, number_of_people, total_amount=8, reference=9).
+      .filter(s => /WHERE NOT EXISTS/.test(s.sql));
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].boundBinds[8]).toBe(1300);
+    // API layer camel-cases response keys (total_amount -> totalAmount).
+    expect(data.totalAmount).toBe(1300);
+
+    // The double-count writer must not exist anywhere in the request.
+    const updates = db.statements.filter(s => /update orders set total_amount/i.test(s.sql));
+    expect(updates).toHaveLength(0);
   });
 
   // Deferred until the source stops reading c.req.raw.text() after the body was
