@@ -176,9 +176,10 @@ describe('Broadcaster DO routing', () => {
     return { b, ctx, storage, store };
   }
 
-  async function openStream(b, tenantId = 't1', overrides = {}) {
+  async function openStream(b, tenantId = 't1', overrides = {}, lastEventId = '') {
     const token = await makeStreamToken(overrides);
-    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=${tenantId}&token=${token}`, { method: 'GET' }));
+    const marker = lastEventId ? `&lastEventId=${encodeURIComponent(lastEventId)}` : '';
+    const res = await b.fetch(new Request(`http://broadcaster/connect?tenantId=${tenantId}&token=${token}${marker}`, { method: 'GET' }));
     return { res, reader: res.body.getReader() };
   }
 
@@ -275,6 +276,174 @@ describe('Broadcaster DO routing', () => {
     ]);
     expect(next.framed).toBe(false);
     await reader.cancel();
+  });
+
+  describe('bounded replay (Wave 3.4b, F-A16-03)', () => {
+    const decode = (value) => new TextDecoder().decode(value);
+
+    async function broadcast(b, tenantId, event) {
+      return b.fetch(new Request('http://broadcaster/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ tenantId, event }),
+      }));
+    }
+
+    it('emits an SSE id line when an id is supplied, and stays byte-identical without one', () => {
+      expect(makeEventMessage({ type: 'x' }, 7)).toBe('id: 7\ndata: {"type":"x"}\n\n');
+      expect(makeEventMessage({ type: 'x' })).toBe('data: {"type":"x"}\n\n');
+    });
+
+    it('retains a broadcast even with zero live subscribers (the crux regression)', async () => {
+      const { b } = makeBroadcaster();
+      // No subscriber is connected at broadcast time — the pre-3.4b code
+      // early-returned without retaining anything, which is exactly the
+      // offline-client case replay exists to serve.
+      const res = await broadcast(b, 't1', { type: 'first' });
+      expect(await res.json()).toEqual({ ok: true, delivered: 0 });
+
+      const { reader } = await openStream(b, 't1', {}, '0');
+      const first = decode((await reader.read()).value);
+      expect(first).toContain('"type":"first"');
+      expect(first).toContain('id: 1');
+      expect(first).not.toContain('event: reset');
+      const second = decode((await reader.read()).value);
+      expect(second).toContain('"type":"connected"');
+      await reader.cancel();
+    });
+
+    it('replays only the missed frames when the marker is inside the buffer, with no reset', async () => {
+      const { b } = makeBroadcaster();
+      await broadcast(b, 't1', { type: 'e1' });
+      await broadcast(b, 't1', { type: 'e2' });
+      await broadcast(b, 't1', { type: 'e3' });
+
+      // Marker 1: the client already has e1, so only e2/e3 are replayed and the
+      // coverage is provably contiguous (no reset).
+      const { reader } = await openStream(b, 't1', {}, '1');
+      const first = decode((await reader.read()).value);
+      expect(first).not.toContain('event: reset');
+      expect(first).toContain('"type":"e2"');
+      expect(first).toContain('id: 2');
+      const second = decode((await reader.read()).value);
+      expect(second).toContain('"type":"e3"');
+      expect(second).toContain('id: 3');
+      expect(decode((await reader.read()).value)).toContain('"type":"connected"');
+      await reader.cancel();
+    });
+
+    it('sends reset before the bounded replay when the marker predates the buffer', async () => {
+      const { b } = makeBroadcaster();
+      // Overflow the 100-event count cap so ids 1-1 (id 1) is evicted.
+      for (let i = 0; i < 101; i += 1) await broadcast(b, 't1', { type: 'bulk', i });
+
+      // Marker 0 is older than the oldest retained id (2) → coverage unprovable.
+      const { reader } = await openStream(b, 't1', {}, '0');
+      const first = decode((await reader.read()).value);
+      expect(first).toBe('event: reset\ndata: {}\n\n');
+      const replayed = decode((await reader.read()).value);
+      expect(replayed).toContain('id: 2');
+      expect(replayed).toContain('"type":"bulk"');
+      await reader.cancel();
+    });
+
+    it('treats a marker exactly one behind the buffer start as contiguous (no reset)', async () => {
+      const { b } = makeBroadcaster();
+      for (let i = 0; i < 101; i += 1) await broadcast(b, 't1', { type: 'bulk', i });
+
+      const { reader } = await openStream(b, 't1', {}, '1');
+      const first = decode((await reader.read()).value);
+      expect(first).not.toContain('event: reset');
+      expect(first).toContain('id: 2');
+      await reader.cancel();
+    });
+
+    it('sends reset with an empty replay when a marker is presented but the buffer is empty', async () => {
+      const { b } = makeBroadcaster();
+      const { reader } = await openStream(b, 't1', {}, '42');
+      expect(decode((await reader.read()).value)).toBe('event: reset\ndata: {}\n\n');
+      expect(decode((await reader.read()).value)).toContain('"type":"connected"');
+      await reader.cancel();
+    });
+
+    it('sends reset followed by the full buffer when the marker is unparsable', async () => {
+      const { b } = makeBroadcaster();
+      await broadcast(b, 't1', { type: 'e1' });
+      await broadcast(b, 't1', { type: 'e2' });
+
+      const { reader } = await openStream(b, 't1', {}, 'not-a-number');
+      expect(decode((await reader.read()).value)).toBe('event: reset\ndata: {}\n\n');
+      expect(decode((await reader.read()).value)).toContain('id: 1');
+      await reader.cancel();
+    });
+
+    it('keeps a first connect with no marker replay-free and reset-free', async () => {
+      const { b } = makeBroadcaster();
+      await broadcast(b, 't1', { type: 'e1' });
+      const { reader } = await openStream(b, 't1');
+      const first = decode((await reader.read()).value);
+      expect(first).toContain('"type":"connected"');
+      expect(first).not.toContain('event: reset');
+      expect(first).not.toContain('id: 1');
+      await reader.cancel();
+    });
+
+    it('caps the buffer at 100 events, evicting oldest-first', async () => {
+      const { b } = makeBroadcaster();
+      for (let i = 0; i < 105; i += 1) await broadcast(b, 't1', { type: 'bulk', i });
+
+      const state = b.replay.get('t1');
+      expect(state.entries).toHaveLength(100);
+      expect(state.entries[0].id).toBe(6);
+      expect(state.entries[99].id).toBe(105);
+    });
+
+    it('caps retained bytes at 128KB, evicting oldest-first until under the cap', async () => {
+      const { b } = makeBroadcaster();
+      // ~70KB per frame: two frames overflow 128KB, so the oldest is evicted.
+      const blob = 'x'.repeat(70000);
+      await broadcast(b, 't1', { type: 'big', blob });
+      await broadcast(b, 't1', { type: 'big', blob });
+
+      const state = b.replay.get('t1');
+      expect(state.bytes).toBeLessThanOrEqual(128 * 1024);
+      expect(state.entries).toHaveLength(1);
+      expect(state.entries[0].id).toBe(2);
+    });
+
+    it('fails closed: an append failure drops the event from fan-out entirely', async () => {
+      const { b } = makeBroadcaster();
+      const { reader } = await openStream(b);
+      await reader.read();
+
+      b.appendToHistory = () => {
+        throw new Error('replay store exploded');
+      };
+
+      const res = await broadcast(b, 't1', { type: 'new-booking', orderId: 'o1' });
+      expect(res.status).toBe(500);
+
+      // No live subscriber may receive a frame the replay buffer rejected —
+      // otherwise a reconnecting client silently misses it.
+      const next = await Promise.race([
+        reader.read().then(({ value }) => ({ framed: value !== undefined })),
+        new Promise((r) => setTimeout(() => r({ framed: false }), 20)),
+      ]);
+      expect(next.framed).toBe(false);
+      await reader.cancel();
+    });
+
+    it('keeps replay buffers isolated per tenant', async () => {
+      const { b } = makeBroadcaster();
+      await broadcast(b, 't1', { type: 'for-t1' });
+
+      // t1's buffer must not bleed into another tenant's replay window.
+      expect(b.replay.has('other')).toBe(false);
+      const { reader } = await openStream(b, 'other', { tenantId: 'other' });
+      const first = decode((await reader.read()).value);
+      expect(first).toContain('"type":"connected"');
+      expect(first).not.toContain('for-t1');
+      await reader.cancel();
+    });
   });
 
   it('returns 404 for unknown DO paths', async () => {

@@ -14,12 +14,26 @@ class FakeEventSource {
   url: string;
   readyState = 0;
   onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
+  onmessage: ((event: { data: string; lastEventId?: string }) => void) | null = null;
   onerror: (() => void) | null = null;
+  listeners: Record<string, Array<(event: unknown) => void>> = {};
 
   constructor(url: string) {
     this.url = url;
     FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, handler: (event: unknown) => void) {
+    (this.listeners[type] ||= []).push(handler);
+  }
+
+  removeEventListener(type: string, handler: (event: unknown) => void) {
+    this.listeners[type] = (this.listeners[type] || []).filter((h) => h !== handler);
+  }
+
+  /** Test helper: emit a named SSE event (e.g. `reset`). */
+  emit(type: string, event: unknown = {}) {
+    for (const handler of this.listeners[type] || []) handler(event);
   }
 
   close() {
@@ -426,5 +440,86 @@ describe('useSseOrders', () => {
       vi.advanceTimersByTime(60000);
     });
     expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
+  // ── replay marker, reset frame, backoff reset (Wave 3.4b/3.4c) ─────
+
+  it('sends the latest received id as lastEventId on reconnect', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useSseOrders(baseProps));
+    await flush();
+    expect(FakeEventSource.instances[0].url).not.toContain('lastEventId=');
+
+    act(() => {
+      FakeEventSource.instances[0].onmessage?.({
+        data: 'data: {"type":"new-booking","orderId":"o1"}',
+        lastEventId: '41',
+      });
+    });
+    act(() => {
+      FakeEventSource.instances[0].onerror?.();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await flush();
+
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(FakeEventSource.instances[1].url).toContain('lastEventId=41');
+  });
+
+  it('restarts the backoff at 3s after a successful open (F-A16-04)', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useSseOrders(baseProps));
+    await flush();
+
+    // Climb the curve: two consecutive failures push the next delay to 12s.
+    act(() => {
+      FakeEventSource.instances[0].onerror?.();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    await flush();
+    act(() => {
+      FakeEventSource.instances[1].onerror?.();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(6000);
+    });
+    await flush();
+    expect(FakeEventSource.instances).toHaveLength(3);
+
+    // A successful open proves the transport recovered → attempt resets to 0.
+    act(() => {
+      FakeEventSource.instances[2].onopen?.();
+    });
+    act(() => {
+      FakeEventSource.instances[2].onerror?.();
+    });
+
+    // With the reset curve the retry is 3s, not the mid-curve 12s.
+    await act(async () => {
+      vi.advanceTimersByTime(2999);
+    });
+    await flush();
+    expect(FakeEventSource.instances).toHaveLength(3);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    await flush();
+    expect(FakeEventSource.instances).toHaveLength(4);
+  });
+
+  it('forwards onReset from the stream to the caller', async () => {
+    const onReset = vi.fn();
+    renderHook(() => useSseOrders({ ...baseProps, onReset }));
+    await flush();
+
+    act(() => {
+      FakeEventSource.instances[0].emit('reset');
+    });
+
+    expect(onReset).toHaveBeenCalledTimes(1);
   });
 });

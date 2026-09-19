@@ -189,11 +189,20 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
     [campIds, queryClient],
   );
 
+  // Replay coverage unprovable (the client was offline longer than the bounded
+  // buffer): REFETCH the visible windows — not invalidate — so fresh data fills
+  // the gap before replayed events are applied on top.
+  const handleSseReset = useCallback(() => {
+    void queryClient.refetchQueries({ queryKey: ['admin', 'availability'], type: 'active' });
+    void queryClient.refetchQueries({ queryKey: ['admin', 'price-overrides'], type: 'active' });
+  }, [queryClient]);
+
   const { connected: sseConnected } = useSseOrders({
     enabled: sseEnabled,
     tenantId,
     token: accessToken ?? undefined,
     onEvent: handleSseEvent,
+    onReset: handleSseReset,
   });
 
   const firstDay = startOfMonth(viewStart);

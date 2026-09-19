@@ -273,7 +273,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 
 <tr><td><strong>F-A22-02</strong></td><td>Anonymous cross-tenant catalog reads via <code>x-tenant-id</code> header pivot</td><td>Public GET storefront endpoints accept arbitrary <code>x-tenant-id</code> and return that tenant's catalog without auth (intentional public scope, but header pivots across tenants)</td><td>Verify this is intended (public marketplace reads); if not, bind public reads to hostname-derived tenant only</td><td>A22 (runtime probe), A7</td></tr>
 
-<tr><td><strong>F-A16-03/04</strong></td><td>SSE: no <code>Last-Event-ID</code> replay (event loss on reconnect) + attempt counter never resets</td><td>A16 report; DO emits no replay support; connect attempts counter monotonically grows</td><td>Add replay buffer (bounded) or document best-effort; reset counter on success</td><td>A16</td></tr>
+<tr><td><strong>F-A16-03/04 ⇧ → <span style="color:#1b5e20">DONE — Wave 3.4a/3.4b/3.4c</span></strong></td><td colspan="4"><b>2026-09-19: FIXED across Wave 3.4a–3.4c.</b> <b>3.4a</b> shipped the short-lived SSE-only token mint (<code>POST /api/stream/token</code>, 60s single-use jti burned via DO storage) so the 24h admin JWT never lands in a query string. <b>3.4b</b> adds the bounded replay buffer (<code>MAX_REPLAY_EVENTS = 100</code> + <code>MAX_REPLAY_BYTES = 128 * 1024</code>, drop-oldest) with an <code>id:</code> on every frame, an <code>event: reset</code> frame when the marker predates the buffer (client refetches rather than applying a partial replay), and <b>append → fan-out, fail-closed</b> ordering so a subscriber can never see a frame the replay buffer rejected. The crux: <code>broadcast()</code> previously early-returned <code>delivered: 0</code> with <i>zero retention</i> when no subscriber was live — exactly the offline-client case replay must serve. <b>3.4c</b> resets the reconnect attempt counter on a successful open so backoff restarts at 3s instead of resuming mid-curve. Regression tests: +12 backend (zero-subscriber retention, in-buffer replay, stale→reset, unknown marker, empty-buffer marker, count cap, byte cap, fail-closed append, per-tenant isolation) and +13 frontend (marker advances on receipt incl. deduped frames, reset listener + removal on close, reconnect carries the advanced marker, backoff resets after open).</td></tr>
 
 <tr><td><strong>F-A20-01</strong></td><td><code>PERF_BASELINE.md</code> is 4.2× stale — claims 501 KiB, actual 2112 KiB total JS</td><td>A20 measured current bundle; doc predates storefront islands + admin panels</td><td>Re-run measurement, update baseline, add "measure + update on major islands change" note</td><td>A20</td></tr>
 
@@ -343,3 +343,41 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 ---
 
 ---
+
+## Wave 6.6 — Human Testing Pre-Flight
+
+**Purpose:** prove the three human-facing surfaces work end-to-end on staging with real accounts, real logins, and a real feedback loop — the last claim class that automated tests cannot settle. **Deploy is held until Wave 6.5 AND Wave 6.6 both pass.**
+
+**Substrate (verified real — the first plan claim to survive direct inspection after three false positives):**
+- `scripts/seed-test-users.js` (5954 B) — idempotent (a 409 is treated as success), env-overridable via `API_BASE_URL`, `TENANT_ID`, `TEST_ADMIN_PASSWORD`, `TEST_POS_PASSWORD`. Creates `admin.test@acaciacamp.com` / `TestPass123!` and `pos.test@acaciacamp.com` / `pass1234` (username `testpos`), logging in as super admin first.
+- `backend/migrations/0029*.sql:51` seeds the super admin `admin@sinaicamps.com` (bcrypt `$2b$10$qRNP…`, role `super_admin`, `tenant_id = NULL`, comment `-- Password: sinairoot`).
+- `app/src/components/debug/DebugFeedbackWidget.tsx` (widget) + `app/src/components/admin/FeedbackPanel.tsx` (owner panel).
+- 30-day debug cookie: `app/src/layouts/PublicLayout.astro:784` sets `sc_debug=1; path=/; max-age=2592000; SameSite=Lax`; `:62` gates the widget on `?debug=1` **or** the cookie.
+
+### 6.6.1 — Seed the staging accounts
+Run `node scripts/seed-test-users.js` against the staging API base.
+**Done when:** the script exits 0 and reports both test accounts; a second run is safe (idempotent 409 path).
+
+### 6.6.2 — Prove the three logins live
+Log in as `admin@sinaicamps.com` (super admin), `admin.test@acaciacamp.com` (tenant admin), and `pos.test@acaciacamp.com` (POS).
+**Done when:** all three reach their intended shell on staging with no 401/403 — not merely "the login form renders".
+
+### 6.6.3 — Exercise the debug feedback loop on all three surfaces
+Submit one Feedback report from each surface: a public page with `?debug=1`, the admin SPA, and POS. Each submission must carry a screenshot (base64 → R2 → `/api/media/` URL).
+**Done when:** 3 submissions succeed and 3 rows exist server-side.
+
+### 6.6.4 — Owner verification + staging checklist (DEPLOY GATE)
+The owner confirms all five, on staging, before deploy:
+1. `node scripts/seed-test-users.js` ran green against staging.
+2. All 3 accounts logged in (§6.6.2).
+3. 3 Feedback reports submitted, one per surface (§6.6.3).
+4. The 3 reports appear in the owner's Feedback panel **with screenshots rendered**.
+5. The 3 test reports are deleted/archived.
+
+**Three behavioral gaps this checklist exists to close** — file-presence was verified in the pre-reads; *behavior* was not:
+
+| # | Gap | Why file-presence is not enough |
+|---|-----|---------------------------------|
+| 1 | **Super-admin tenant binding** | Login passes `tenantId: 'marketplace'`, while `0029` seeds `tenant_id = NULL`. Whether login succeeds — and with which tenant scope — can only be proven by an actual login on staging. |
+| 2 | **Live login** | "Accounts can log in" is only true after `scripts/seed-test-users.js` actually runs against staging; the seed and the login must both be exercised live, not assumed. |
+| 3 | **Screenshot + panel lifecycle** | `DebugFeedbackWidget.tsx` and `FeedbackPanel.tsx` exist, but base64→R2 embedding, panel render/full-size view, and the `open → in progress → resolved` transition are unverified behavior. |

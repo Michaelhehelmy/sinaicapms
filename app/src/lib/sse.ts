@@ -135,6 +135,20 @@ export interface OpenOrdersStreamOptions {
   lastEventId?: string;
   /** Called with every parsed, non-duplicate event. */
   onEvent: (event: unknown) => void;
+  /**
+   * Called with the latest server event id (the SSE `id:` field, surfaced by
+   * the browser as `MessageEvent.lastEventId`) on every received frame —
+   * including frames the dedup drops. The caller stores it and sends it back
+   * as `lastEventId` on the next (re)connect so the DO can replay the gap.
+   */
+  onId?: (id: string) => void;
+  /**
+   * Called when the server signals that replay coverage is unprovable (the
+   * client was offline longer than the bounded buffer). The caller should
+   * REFETCH its query — not invalidate — so the gap is filled with fresh data
+   * before replayed events are applied on top.
+   */
+  onReset?: () => void;
   /** Called when the underlying EventSource opens (connected). */
   onOpen?: () => void;
   /** Called when the underlying EventSource errors (drives reconnect). */
@@ -184,6 +198,8 @@ export function openOrdersStream({
   token,
   lastEventId,
   onEvent,
+  onId,
+  onReset,
   onOpen,
   onError,
   signal,
@@ -193,12 +209,23 @@ export function openOrdersStream({
   const source = new EventSource(url);
   let closed = false;
 
+  // `event: reset` is a named frame the DO sends when replay coverage is
+  // unprovable (stale marker) so the consumer refetches before applying replay.
+  const handleReset = () => {
+    onReset?.();
+  };
+  source.addEventListener('reset', handleReset);
+
   // Deduplicate `new-booking` events by orderId: the broadcaster may re-send
   // a booking across reconnects, and the calendar must apply it only once.
   // `connected` heartbeats (no orderId) always pass through.
   const seenKeys = new Set<string>();
 
   source.onmessage = (msg) => {
+    // Advance the replay marker on RECEIPT — before the dedup return — or a
+    // replayed duplicate would leave the marker frozen and the client would
+    // re-request the same window forever.
+    if (msg.lastEventId) onId?.(msg.lastEventId);
     const parsed = parseSSEEvent(msg.data);
     if (parsed === null) return;
     const orderId = (parsed as { orderId?: unknown }).orderId;
@@ -225,6 +252,7 @@ export function openOrdersStream({
     source.onopen = null;
     source.onmessage = null;
     source.onerror = null;
+    source.removeEventListener('reset', handleReset);
     source.close();
   };
 
@@ -265,6 +293,8 @@ export function openInboxStream({
   token,
   lastEventId,
   onEvent,
+  onId,
+  onReset,
   onOpen,
   onError,
   signal,
@@ -274,12 +304,20 @@ export function openInboxStream({
   const source = new EventSource(url);
   let closed = false;
 
+  // Same reset contract as openOrdersStream: refetch on unprovable coverage.
+  const handleReset = () => {
+    onReset?.();
+  };
+  source.addEventListener('reset', handleReset);
+
   // Deduplicate by event type + id so a `new-lead` and a `new-booking` that
   // happen to share a numeric id never collapse into one, while replays of
   // the same (type, id) across reconnects are applied only once.
   const seenKeys = new Set<string>();
 
   source.onmessage = (msg) => {
+    // Marker advances on receipt, before dedup — see openOrdersStream.
+    if (msg.lastEventId) onId?.(msg.lastEventId);
     const parsed = parseSSEEvent(msg.data);
     if (parsed === null) return;
     const event = parsed as { type?: unknown; orderId?: unknown; leadId?: unknown };
@@ -311,6 +349,7 @@ export function openInboxStream({
     source.onopen = null;
     source.onmessage = null;
     source.onerror = null;
+    source.removeEventListener('reset', handleReset);
     source.close();
   };
 

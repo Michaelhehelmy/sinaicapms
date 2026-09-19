@@ -8,11 +8,18 @@
  *
  * Routes handled inside the DO:
  *   GET  /connect?tenantId=<id>&token=<stream-token>[&lastEventId=…] → SSE
- *        stream (`text/event-stream`). Sends an initial
+ *        stream (`text/event-stream`). When `lastEventId` is present the DO
+ *        first emits `event: reset` if replay coverage is unprovable, replays
+ *        the bounded backlog it missed, then sends the initial
  *        `data: {"type":"connected"}` event, then a `: ping` comment line
  *        every 25s.
- *   POST /broadcast              → body `{ tenantId, event }` fans `event` out
- *                                  to every live controller of that tenant.
+ *   POST /broadcast              → body `{ tenantId, event }`. The frame is
+ *                                  retained in the bounded replay buffer
+ *                                  BEFORE fan-out (fail-closed), then fanned
+ *                                  out to every live controller of that tenant.
+ *                                  Retention happens even with zero live
+ *                                  subscribers — that offline case is exactly
+ *                                  what replay exists to serve.
  *
  * Stream-token auth (Wave 3.4a, F-A16-02): the worker forwards a minted
  * 60-second `stream` token; the DO re-verifies it here (defense-in-depth),
@@ -38,6 +45,11 @@ const HEARTBEAT_MS = 25000;
 const SSE_HEARTBEAT = ': ping\n\n';
 const MAX_CONNECTIONS_PER_TENANT = 100;
 const STREAM_TOKEN_TTL_SECONDS = 60;
+// Bounded replay buffer (Wave 3.4b, F-A16-03). TWO caps: an event count and a
+// byte budget. A chatty tenant could otherwise fill DO memory with a single
+// burst of large events, so the byte cap trims first when events are chunky.
+const MAX_REPLAY_EVENTS = 100;
+const MAX_REPLAY_BYTES = 128 * 1024;
 const SSE_RESPONSE_HEADERS = {
   'Content-Type': 'text/event-stream',
   'Cache-Control': 'no-cache',
@@ -53,13 +65,22 @@ function streamError(status, message) {
 }
 
 /**
- * Serialize an event into a single SSE `data:` frame. JSON.stringify escapes
- * embedded newlines, so the output is always a one-line `data: <json>` event.
+ * Serialize an event into a single SSE frame. JSON.stringify escapes embedded
+ * newlines, so the output is always a one-line `data: <json>` event.
+ *
+ * When `id` is provided, an `id: <n>` line is prepended. The browser exposes
+ * that as `MessageEvent.lastEventId`, which is the replay marker the client
+ * echoes back on reconnect. The 1-arg form is byte-for-byte unchanged so the
+ * existing helper tests stay valid.
+ *
  * @param {Object} event
+ * @param {number|string|null} [id]
  * @returns {string}
  */
-export function makeEventMessage(event) {
-  return `data: ${JSON.stringify(event)}\n\n`;
+export function makeEventMessage(event, id) {
+  const frame = `data: ${JSON.stringify(event)}\n\n`;
+  if (id === undefined || id === null) return frame;
+  return `id: ${id}\n${frame}`;
 }
 
 /**
@@ -80,6 +101,82 @@ export class Broadcaster {
     this.env = env;
     /** @type {Map<string, Set<object>>} tenantId → Set of connection records */
     this.channels = new Map();
+    // Replay state, keyed by tenantId. The worker routes one DO instance per
+    // tenant via idFromName(tenantId), so keying is defense-in-depth: a
+    // misrouted broadcast must never land in another tenant's replay window.
+    // In-memory only — instance eviction degrades replay to best-effort and
+    // costs zero D1/KV/R2 writes.
+    /** @type {Map<string, {seq: number, entries: Array<{id: number, message: Uint8Array, bytes: number}>, bytes: number}>} */
+    this.replay = new Map();
+  }
+
+  /** Read-or-create the replay state for a tenant. */
+  getReplayState(tenantId) {
+    let state = this.replay.get(tenantId);
+    if (!state) {
+      state = { seq: 0, entries: [], bytes: 0 };
+      this.replay.set(tenantId, state);
+    }
+    return state;
+  }
+
+  /**
+   * Retain one broadcast frame for replay, trimming oldest-first until BOTH
+   * the count and byte caps hold. A throw is the caller's signal to fail
+   * closed (drop the event from fan-out too) instead of letting live
+   * subscribers diverge from the replay buffer.
+   * @param {string} tenantId
+   * @param {number} id
+   * @param {Uint8Array} message
+   */
+  appendToHistory(tenantId, id, message) {
+    const state = this.getReplayState(tenantId);
+    const bytes = message.byteLength ?? message.length;
+    state.entries.push({ id, message, bytes });
+    state.bytes += bytes;
+    while (state.entries.length > MAX_REPLAY_EVENTS || state.bytes > MAX_REPLAY_BYTES) {
+      const evicted = state.entries.shift();
+      if (!evicted) break;
+      state.bytes -= evicted.bytes;
+    }
+  }
+
+  /**
+   * Decide what a reconnecting client must receive.
+   *
+   * `stale` means coverage cannot be proven — the marker is unparsable, or it
+   * predates the oldest buffered id (events between marker+1 and
+   * entries[0].id-1 were evicted), or the client presented a marker while the
+   * buffer is empty (e.g. the DO was evicted). A stale client is sent an
+   * `event: reset` frame so it refetches, then the bounded replay.
+   *
+   * A marker exactly one behind entries[0].id is NOT stale: the client has
+   * seen everything up to the buffer start, so the replay is contiguous.
+   *
+   * @param {string} tenantId
+   * @param {string|null} markerRaw
+   * @returns {{stale: boolean, missed: Array<{id: number, message: Uint8Array}>}}
+   */
+  computeReplay(tenantId, markerRaw) {
+    const state = this.replay.get(tenantId) ?? { entries: [] };
+    const present = markerRaw !== null && markerRaw !== '';
+    if (!present) {
+      // First connect with no marker: nothing was missed, so no reset.
+      return { stale: false, missed: [] };
+    }
+    const marker = Number.parseInt(markerRaw, 10);
+    if (!Number.isFinite(marker)) {
+      // Unparsable marker: coverage unprovable → reset + full bounded replay.
+      return { stale: true, missed: state.entries.slice() };
+    }
+    if (state.entries.length === 0) {
+      // Client has state but we can prove nothing → reset, nothing to replay.
+      return { stale: true, missed: [] };
+    }
+    return {
+      stale: marker < state.entries[0].id - 1,
+      missed: state.entries.filter((entry) => entry.id > marker),
+    };
   }
 
   async fetch(request) {
@@ -168,6 +265,17 @@ export class Broadcaster {
 
     const stream = new ReadableStream({
       start: (controller) => {
+        // Replay (Wave 3.4b, F-A16-03): if the client presents a marker, tell
+        // it to refetch when coverage is unprovable, then stream back the
+        // bounded backlog it missed — all BEFORE announcing `connected`.
+        const { stale, missed } = this.computeReplay(tenantId, lastEventId);
+        if (stale) {
+          controller.enqueue(encoder.encode('event: reset\ndata: {}\n\n'));
+        }
+        for (const entry of missed) {
+          controller.enqueue(entry.message);
+        }
+
         controller.enqueue(encoder.encode(makeEventMessage({ type: 'connected' })));
 
         const set = this.getOrCreateSet(tenantId);
@@ -184,8 +292,8 @@ export class Broadcaster {
           interval: null,
           cancelled: false,
           tenantId,
-          // Wave 3.4a: connect marker forwarded from the request (replay
-          // consumption of the marker is the follow-up Wave 3.4b).
+          // The replay marker was consumed by computeReplay() above, before
+          // the stream went live; retained here for observability.
           lastEventId: lastEventId || null,
         };
         set.add(conn);
@@ -245,15 +353,29 @@ export class Broadcaster {
       });
     }
 
+    // Assign the replay id and retain the frame BEFORE fan-out (fail-closed).
+    // If retention fails, the event must NOT reach live subscribers either —
+    // otherwise a reconnecting client silently misses an event that a live
+    // client saw. Append → fan-out, never fan-out → append.
+    const replayState = this.getReplayState(tenantId);
+    const id = ++replayState.seq;
+    const message = new TextEncoder().encode(makeEventMessage(body.event, id));
+    try {
+      this.appendToHistory(tenantId, id, message);
+    } catch {
+      return streamError(500, 'Replay buffer append failed');
+    }
+
     const set = this.channels.get(tenantId);
     if (!set || set.size === 0) {
+      // No live subscribers — the frame is still retained above, which is the
+      // entire point of replay: the offline client is the case it must serve.
       return new Response(JSON.stringify({ ok: true, delivered: 0 }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const message = new TextEncoder().encode(makeEventMessage(body.event));
     let delivered = 0;
     for (const conn of set) {
       if (conn.cancelled) {

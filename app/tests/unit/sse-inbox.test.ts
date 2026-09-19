@@ -15,12 +15,26 @@ class FakeEventSource {
   url: string;
   readyState = 0;
   onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
+  onmessage: ((event: { data: string; lastEventId?: string }) => void) | null = null;
   onerror: (() => void) | null = null;
+  listeners: Record<string, Array<(event: unknown) => void>> = {};
 
   constructor(url: string) {
     this.url = url;
     FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, handler: (event: unknown) => void) {
+    (this.listeners[type] ||= []).push(handler);
+  }
+
+  removeEventListener(type: string, handler: (event: unknown) => void) {
+    this.listeners[type] = (this.listeners[type] || []).filter((h) => h !== handler);
+  }
+
+  /** Test helper: emit a named SSE event (e.g. `reset`). */
+  emit(type: string, event: unknown = {}) {
+    for (const handler of this.listeners[type] || []) handler(event);
   }
 
   close() {

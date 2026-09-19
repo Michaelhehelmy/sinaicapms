@@ -165,6 +165,11 @@ export default function InboxPanel({ tenantId, token, onOpenOrder }: InboxPanelP
     tenantId,
     token,
     onEvent: handleSseEvent,
+    onReset: () => {
+      // Unprovable replay coverage → REFETCH (not invalidate): we want fresh
+      // data now, not a stale-cache render followed by a background fetch.
+      void refetch();
+    },
   });
 
   const handleRowClick = useCallback(

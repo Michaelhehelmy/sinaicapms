@@ -19,12 +19,26 @@ class FakeEventSource {
   url: string;
   readyState = 0;
   onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
+  onmessage: ((event: { data: string; lastEventId?: string }) => void) | null = null;
   onerror: (() => void) | null = null;
+  listeners: Record<string, Array<(event: unknown) => void>> = {};
 
   constructor(url: string) {
     this.url = url;
     FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, handler: (event: unknown) => void) {
+    (this.listeners[type] ||= []).push(handler);
+  }
+
+  removeEventListener(type: string, handler: (event: unknown) => void) {
+    this.listeners[type] = (this.listeners[type] || []).filter((h) => h !== handler);
+  }
+
+  /** Test helper: emit a named SSE event (e.g. `reset`). */
+  emit(type: string, event: unknown = {}) {
+    for (const handler of this.listeners[type] || []) handler(event);
   }
 
   close() {
@@ -358,6 +372,79 @@ describe('openOrdersStream', () => {
     FakeEventSource.instances[0].onmessage?.({ data: 'data: {"type":"connected"}' });
     expect(onEvent).not.toHaveBeenCalled();
   });
+
+  // ── replay marker + reset frame (Wave 3.4b, F-A16-03) ──────────────
+
+  it('calls onId with the frame id before delivering the event', () => {
+    const order: string[] = [];
+    const onEvent = vi.fn(() => order.push('event'));
+    const onId = vi.fn(() => order.push('id'));
+
+    openOrdersStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent, onId });
+    FakeEventSource.instances[0].onmessage?.({
+      data: 'data: {"type":"new-booking","orderId":"o1"}',
+      lastEventId: '7',
+    });
+
+    expect(onId).toHaveBeenCalledWith('7');
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    // The marker must advance before the consumer's handler runs.
+    expect(order).toEqual(['id', 'event']);
+  });
+
+  it('advances the marker even when the event is deduplicated', () => {
+    const onEvent = vi.fn();
+    const onId = vi.fn();
+
+    openOrdersStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent, onId });
+    const es = FakeEventSource.instances[0];
+    es.onmessage?.({ data: 'data: {"type":"new-booking","orderId":"o1"}', lastEventId: '1' });
+    es.onmessage?.({ data: 'data: {"type":"new-booking","orderId":"o1"}', lastEventId: '2' });
+
+    expect(onEvent).toHaveBeenCalledTimes(1); // deduped
+    expect(onId).toHaveBeenCalledTimes(2);
+    expect(onId).toHaveBeenNthCalledWith(2, '2');
+  });
+
+  it('does not call onId for a frame that carries no id', () => {
+    const onId = vi.fn();
+    openOrdersStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent: () => {}, onId });
+    FakeEventSource.instances[0].onmessage?.({ data: 'data: {"type":"connected"}' });
+    expect(onId).not.toHaveBeenCalled();
+  });
+
+  it('calls onReset when the server emits a reset frame', () => {
+    const onReset = vi.fn();
+    openOrdersStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent: () => {}, onReset });
+    FakeEventSource.instances[0].emit('reset');
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops delivering reset after close', () => {
+    const onReset = vi.fn();
+    const { close } = openOrdersStream({
+      apiBase: API,
+      tenantId: 't1',
+      token: 'tok',
+      onEvent: () => {},
+      onReset,
+    });
+    const es = FakeEventSource.instances[0];
+    close();
+    es.emit('reset');
+    expect(onReset).not.toHaveBeenCalled();
+  });
+
+  it('tolerates omitted onId/onReset callbacks', () => {
+    expect(() => {
+      openOrdersStream({ apiBase: API, tenantId: 't1', token: 'tok', onEvent: () => {} });
+      FakeEventSource.instances[0].onmessage?.({
+        data: 'data: {"type":"connected"}',
+        lastEventId: '3',
+      });
+      FakeEventSource.instances[0].emit('reset');
+    }).not.toThrow();
+  });
 });
 
 // ── openInboxStream ────────────────────────────────────────────────────
@@ -543,5 +630,26 @@ describe('openInboxStream', () => {
     close();
     FakeEventSource.instances[0].onmessage?.({ data: 'data: {"type":"new-lead","leadId":"l1"}' });
     expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  // ── replay marker + reset frame (Wave 3.4b, F-A16-03) ──────────────
+
+  it('calls onId with the frame id and calls onReset on a reset frame', () => {
+    const onId = vi.fn();
+    const onReset = vi.fn();
+    openInboxStream({
+      apiBase: API,
+      tenantId: 't1',
+      token: 'tok',
+      onEvent: () => {},
+      onId,
+      onReset,
+    });
+    const es = FakeEventSource.instances[0];
+    es.emit('reset');
+    es.onmessage?.({ data: 'data: {"type":"new-lead","leadId":"l1"}', lastEventId: '9' });
+
+    expect(onReset).toHaveBeenCalledTimes(1);
+    expect(onId).toHaveBeenCalledWith('9');
   });
 });

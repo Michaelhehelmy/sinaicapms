@@ -43,10 +43,20 @@ export interface UseSseInboxOptions {
   token?: string;
   /** API base including the `/api` prefix; defaults to `API_BASE` from api.ts. */
   apiBase?: string;
-  /** When provided, forwarded to the backend as `lastEventId` on (re)connects. */
+  /**
+   * Seed for the replay marker. The hook self-tracks the latest id received
+   * (SSE `id:` via `onId`) and sends THAT on every (re)connect — this prop is
+   * only the starting point, so a static value never freezes the marker.
+   */
   lastEventId?: string;
   /** Called with every parsed, non-duplicate event. */
   onEvent: (event: unknown) => void;
+  /**
+   * Called when the server reports unprovable replay coverage (stale marker).
+   * Consumers must REFETCH their query (not invalidate) so the gap is filled
+   * with fresh data before replayed events apply on top.
+   */
+  onReset?: () => void;
   /**
    * Called when the hook gives up on the stream: a mint 401/403, or two
    * consecutive ambiguous mint failures. Consumers should clear the admin
@@ -71,6 +81,7 @@ export function useSseInbox({
   apiBase = API_BASE,
   lastEventId,
   onEvent,
+  onReset,
   onAuthError,
 }: UseSseInboxOptions): UseSseInboxResult {
   const [connected, setConnected] = useState(false);
@@ -84,6 +95,8 @@ export function useSseInbox({
   onEventRef.current = onEvent;
   const onAuthErrorRef = useRef(onAuthError);
   onAuthErrorRef.current = onAuthError;
+  const onResetRef = useRef(onReset);
+  onResetRef.current = onReset;
 
   useEffect(() => {
     if (!enabled || !token || !tenantId) {
@@ -95,7 +108,9 @@ export function useSseInbox({
     // narrowing into the nested `connect` closure below.
     const activeToken = token;
     const activeTenantId = tenantId;
-    const activeLastEventId = lastEventId;
+    // Self-tracking replay marker: seeded from the prop, advanced by every
+    // received frame id, and sent back on each reconnect. Never frozen.
+    let lastSeenId = lastEventId;
 
     let attempt = 0;
     let consecutiveMintFailures = 0;
@@ -156,9 +171,19 @@ export function useSseInbox({
         apiBase,
         tenantId: activeTenantId,
         token: streamToken,
-        lastEventId: activeLastEventId,
+        lastEventId: lastSeenId,
         onEvent: (event) => onEventRef.current(event),
-        onOpen: () => setConnected(true),
+        onId: (id) => {
+          lastSeenId = id;
+        },
+        onReset: () => onResetRef.current?.(),
+        onOpen: () => {
+          // 3.4c (F-A16-04): a successful open proves the transport recovered,
+          // so the backoff restarts at BASE_DELAY_MS rather than resuming
+          // mid-curve on the next drop.
+          attempt = 0;
+          setConnected(true);
+        },
         onError: scheduleReconnect,
       });
     }
