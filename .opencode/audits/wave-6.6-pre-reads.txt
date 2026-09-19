@@ -1,0 +1,104 @@
+=== ls scripts/seed-test-users.js ===
+-rw-rw-r-- 1 michael michael 5954 Sep  9 16:00 scripts/seed-test-users.js
+
+=== seed script head ===
+/**
+ * Seed human-testing test users for SinaiCamps.
+ *
+ * Creates the two API-creatable role accounts used by human testers
+ * (documented in docs/TESTING_GUIDE_TESTER.md):
+ *   - Camp admin:  admin.test@acaciacamp.com  (tenant admin for acaciacamp)
+ *   - POS cashier: pos.test@acaciacamp.com    (POS user for acaciacamp)
+ *
+ * The super admin (admin@sinaicamps.com) is seeded by migration 0029 and has
+ * NO public creation API — it is not created and its credentials are NOT
+ * printed here (owner-only, see docs/TESTING_GUIDE_OWNER.md). Logging in as
+ * the super admin is required internally to create the tenant admin.
+ *
+ * Idempotent: creation routes return 409 when the account already exists,
+ * which the script treats as success (safe to re-run).
+ *
+ * Usage:
+ *   node scripts/seed-test-users.js
+ *
+ * Env overrides (all optional):
+ *   API_BASE_URL         default http://127.0.0.1:8787
+ *   SUPER_ADMIN_EMAIL    default admin@sinaicamps.com
+ *   SUPER_ADMIN_PASSWORD default sinairoot
+ *   TENANT_ID            default acaciacamp
+ *   TEST_ADMIN_PASSWORD  default TestPass123!
+ *   TEST_POS_PASSWORD    default pass1234  (POST /api/pos-users enforces min 8 chars)
+ */
+
+const API_BASE = process.env.API_BASE_URL || 'http://127.0.0.1:8787';
+const SUPER_ADMIN = {
+  email: process.env.SUPER_ADMIN_EMAIL || 'admin@sinaicamps.com',
+  password: process.env.SUPER_ADMIN_PASSWORD || 'sinairoot',
+};
+const TENANT_ID = process.env.TENANT_ID || 'acaciacamp';
+const TEST_ADMIN = {
+  email: 'admin.test@acaciacamp.com',
+  password: process.env.TEST_ADMIN_PASSWORD || 'TestPass123!',
+};
+const TEST_POS = {
+  email: 'pos.test@acaciacamp.com',
+  username: 'testpos',
+  password: process.env.TEST_POS_PASSWORD || 'pass1234',
+};
+
+async function apiRequest(method, path, body, headers = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res;
+}
+
+async function main() {
+  console.log(`\n🌱 Seeding test users against ${API_BASE}\n`);
+
+  // 1. Super admin login (seeded by migration 0029 — never re-created).
+  const loginRes = await apiRequest('POST', '/api/auth/login', {
+    email: SUPER_ADMIN.email,
+    password: SUPER_ADMIN.password,
+    tenantId: 'marketplace',
+  });
+  if (!loginRes.ok) {
+    console.error('❌ Super admin login failed:', loginRes.status, await loginRes.text());
+    console.error('   (Ensure wrangler dev is running and migration 0029 applied.)');
+    process.exit(1);
+  }
+  const superToken = (await loginRes.json()).token;
+  console.log('  ✅ Super admin login OK');
+
+  // 2. Camp admin for acaciacamp (POST /api/admin/admins → handleSuperAdminRoute).
+  const adminRes = await apiRequest('POST', '/api/admin/admins', {
+    email: TEST_ADMIN.email,
+    password: TEST_ADMIN.password,
+    tenantId: TENANT_ID,
+    role: 'admin',
+    firstName: 'Test',
+    lastName: 'Admin',
+  }, { Authorization: `Bearer ${superToken}` });
+  if (adminRes.status === 409) {
+
+=== migration 0029 super-admin seed ===
+46:-- Default super_admin user
+47:-- Password: sinairoot (bcrypt hash)
+51:    ('superadmin', NULL, 'admin@sinaicamps.com', '$2b$10$qRNPVasnC6D0gn5W4.NuGuMUAEhfCMmtmkS4HnWnaZOumKt04vXdG', 'super_admin', 'Super', 'Admin', 1, CURRENT_TIMESTAMP);
+
+=== feedback widget files ===
+app/src/components/debug
+app/src/components/debug/DebugFeedbackWidget.tsx
+app/src/components/admin/FeedbackPanel.tsx
+
+=== feedback widget public gate (?debug=1) ===
+app/src/components/debug/DebugFeedbackWidget.tsx:12: *  - public pages → only after `?debug=1` set the `sc_debug` flag (regular
+app/src/components/debug/DebugFeedbackWidget.tsx:29:const DEBUG_FLAG_KEY = 'sc_debug';
+app/src/components/debug/DebugFeedbackWidget.tsx:32:/** Set the debug flag from `?debug=1`; clear from `?debug=0`. Mount-time. */
+app/src/components/debug/DebugFeedbackWidget.tsx:45:    // The layout's inline script strips `?debug=1` (history.replaceState)
+app/src/components/debug/DebugFeedbackWidget.tsx:46:    // immediately after persisting the `sc_debug` cookie — so by hydration
+app/src/components/debug/DebugFeedbackWidget.tsx:49:    return document.cookie.includes('sc_debug=1');
+app/src/components/debug/DebugFeedbackWidget.tsx:206:  // A visible?debug=1 on the current URL is plenty to reveal the widget.
+grep: app/src/lib/**/*ebug*: No such file or directory
