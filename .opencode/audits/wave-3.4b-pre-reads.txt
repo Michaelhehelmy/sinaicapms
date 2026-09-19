@@ -1,0 +1,82 @@
+=== generated: 2026-09-19 (post-ack) — base 20de851 (3.4a shipped ebaa60df9ce1110bf1a8897c207e2d3ce6f28135) ===
+
+=== OWNER DECISIONS (D1–D4), ANSWERED ===
+D1  bounded replay — CONFIRMED (DO memory + DO storage only; no D1/KV/R2, no migration)
+D2  NON-BREAKING `onId` callback — CONFIRMED (do NOT change `onEvent(event)`; 142 SSE tests untouched)
+D3  N=100 events/tenant — CONFIRMED **plus a 128 KB byte cap**; drop-oldest until under both caps
+D4  ordering a → b → c — CONFIRMED (3.4c rides after 3.4b)
+
+=== PLAN SCOPE (FINAL_IMPLEMENTATION_PLAN.md:276, P2) ===
+F-A16-03/04: "SSE: no Last-Event-ID replay (event loss on reconnect) + attempt
+counter never resets" — "Add replay buffer (bounded) or document best-effort;
+reset counter on success".
+
+=== `ls -la` EVIDENCE (every plan-stated path, before edit) ===
+-rw-rw-r-- 6637 Sep 19 00:51 app/src/hooks/useSseInbox.ts
+-rw-rw-r-- 6200 Sep 19 00:50 app/src/hooks/useSseOrders.ts
+-rw-rw-r-- 11276 Sep 19 00:50 app/src/lib/sse.ts
+-rw-rw-r-- 10497 Sep 19 00:49 backend/src/durable/broadcaster.js
+-rw-rw-r-- 36995 Sep 19 00:57 backend/tests/sse-unit.test.js
+
+=== SERVER — backend/src/durable/broadcaster.js (diff-relevant lines ONLY) ===
+:37-45   constants block → add MAX_REPLAY_EVENTS = 100, MAX_REPLAY_BYTES = 131072
+:61-63   makeEventMessage(event) → makeEventMessage(event, id?) — emit
+         `id: <id>\n` before `data: …` ONLY when id is provided (keeps the
+         existing 1-arg call sites + tests source-compatible)
+:78-83   constructor → add this.seq = 0 and this.history = [] (instance == tenant:
+         idFromName(tenantId) guarantees one DO per tenant, so one counter +
+         one buffer are already tenant-scoped)
+:249-254 broadcast() EARLY RETURN when no live subscribers — **THE CRUX**: it
+         returns before anything is retained, which is exactly why a
+         disconnected client loses events. The history append MUST move ABOVE
+         this early return or replay is inert.
+:256-257 message build → assign `const id = ++this.seq` then build with id, and
+         push { id, message, bytes } to this.history with byte accounting +
+         drop-oldest trim to BOTH caps.
+:121     lastEventId = url.searchParams.get('lastEventId') (already parsed)
+:187-189 conn.lastEventId stored with the "follow-up Wave 3.4b" comment → now
+         CONSUMED: number-parse the marker and replay history entries with
+         id > marker BEFORE the initial `connected` frame (:171).
+         Unknown/stale marker (below oldest buffered id) → replay the whole
+         (bounded) buffer, best-effort. Non-numeric/absent → no replay.
+
+=== CLIENT — app/src/lib/sse.ts (diff-relevant lines ONLY) ===
+:112-122 parseSSEEvent(raw) — UNTOUCHED (D2: no signature change)
+:124-144 OpenOrdersStreamOptions → add ` /** Latest server event id (SSE `id:` field). */ onId?: (id: string) => void; `
+:158-169 buildStreamUrl — UNTOUCHED (already appends `&lastEventId=`)
+:201-211 openOrdersStream source.onmessage → call `onId?.(msg.lastEventId)` on
+         RECEIPT (before the dedup `seenKeys` return at :207) so the marker
+         advances even for a duplicate replay. Source is `MessageEvent.lastEventId`
+         — the browser populates it natively from `id:` frames; no custom parser.
+:181-190 destructure `onId` from options.
+:262-271 / :282-298 openInboxStream — mirror exactly (:242 already aliases
+         OpenInboxStreamOptions = OpenOrdersStreamOptions, so `onId` is inherited).
+
+=== HOOKS — app/src/hooks/useSseOrders.ts + useSseInbox.ts (mirror pair) ===
+useSseOrders.ts:38-39  `lastEventId` prop doc → becomes the INITIAL seed
+useSseOrders.ts:90     const activeLastEventId = lastEventId (captured once) →
+                       replace with a ref seeded from the prop, advanced by onId
+useSseOrders.ts:147-155 openOrdersStream({…}) → add onId, pass the ref value as
+                       `lastEventId` on EVERY connect
+useSseOrders.ts:153    3.4c: `onOpen: () => setConnected(true)` → reset
+                       `attempt = 0` on a successful open
+useSseOrders.ts:174     effect deps — `lastEventId` stays (seed change rebuilds)
+useSseInbox.ts:46-47 / :98 / :159 / :170-171  identical shape (mirror all four)
+
+=== NEW TESTS REQUIRED ===
+SERVER  id: emitted on broadcast; buffered WITH ZERO LIVE SUBSCRIBERS (the
+        regression that proves the crux fix); replay of id > marker; count cap
+        (101st evicts oldest); **OWNER-MANDATED D3 TEST: oversize event set →
+        buffer trims to the 128 KB BYTE cap, not the count cap**; stale marker →
+        bounded full-buffer replay; non-numeric marker → no replay.
+CLIENT  onId fires with msg.lastEventId; a deduped frame STILL advances onId;
+        onId omitted → no crash.
+HOOKS   reconnect URL carries the ADVANCED marker (not the static seed);
+        **3.4c: backoff returns to 3s after a successful open** (regression for
+        the monotonic counter).
+CADENCE unchanged: pre-edit reads (this file) → owner ack → edit → commit with
+full diff + breaking-notes + caller-audit → push → SHA.
+
+=== GUARD — MUST NOT TOUCH ===
+D1/KV/R2, any migration, `parseSSEEvent` signature, the 2 hook consumers'
+call sites, `mintStreamToken`, the 3.4a stream-token tests.
