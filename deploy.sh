@@ -336,7 +336,13 @@ deploy_backend() {
   mkdir -p "$SCRIPT_DIR/backups"
   BACKUP_FILE="$SCRIPT_DIR/backups/campmaster-$(date +%Y%m%d-%H%M%S).sql"
   if retry "npx wrangler d1 export $D1_NAME --remote --output '$BACKUP_FILE'" "D1 backup"; then
-    log "✅ D1 export saved to $BACKUP_FILE"
+    if [ -s "$BACKUP_FILE" ]; then
+      log "✅ D1 export saved to $BACKUP_FILE ($(wc -c < "$BACKUP_FILE") bytes)"
+    else
+      log "❌ D1 backup file is empty — aborting deploy to prevent data loss"
+      log "   (d1 export reported success but produced no data)"
+      exit 1
+    fi
   else
     log "❌ D1 backup failed after 3 attempts — aborting deploy to prevent data loss"
     log "   You can retry with: ./deploy.sh --backend"
