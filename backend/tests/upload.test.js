@@ -31,6 +31,11 @@ async function handleUploadRoute(req, env = {}, _tenant = null) {
 async function handleMediaRoute(req, env = {}) {
   return dispatch(appFor(mediaRoutes, '/api/media', null), req, env);
 }
+// DELETE needs an authenticated scope — mount with tenant + user preserved.
+function handleMediaDelete(tenantId, user) {
+  const app = mountRouter(mediaRoutes, { tenantId, user, basePath: '/api/media' });
+  return (req, env = {}) => dispatch(app, req, env);
+}
 
 function makeRequest(method, path, opts = {}) {
   const { body, headers = {}, filename } = opts;
@@ -47,6 +52,7 @@ function makeBucketSpy() {
   const bucket = {
     put: vi.fn().mockResolvedValue({}),
     get: vi.fn().mockResolvedValue(null),
+    delete: vi.fn().mockResolvedValue({}),
   };
   return bucket;
 }
@@ -364,5 +370,90 @@ describe('handleMediaRoute — GET /api/media/*', () => {
     const res = await handleMediaRoute(makeRequest('GET', '/api/media/media/%zz'), env);
     expect(res.status).toBe(404);
     expect(bucket.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleMediaRoute — DELETE /api/media/* (F-A17-01 R2 purge)', () => {
+  const KEY = 'media/tenant_1/11111111-2222-3333-4444-555555555555.jpg';
+
+  it('returns 401 when no authenticated user is in scope', async () => {
+    const bucket = makeBucketSpy();
+    const env = { MEDIA_BUCKET: bucket };
+    const del = handleMediaDelete(null, null);
+    const res = await del(makeRequest('DELETE', `/api/media/${KEY}`), env);
+    expect(res.status).toBe(401);
+    expect(bucket.delete).not.toHaveBeenCalled();
+  });
+
+  it('purges the R2 object for a tenant-scoped key', async () => {
+    const bucket = makeBucketSpy();
+    const env = { MEDIA_BUCKET: bucket };
+    const del = handleMediaDelete('tenant_1', { id: 'u1', role: 'admin' });
+    const res = await del(makeRequest('DELETE', `/api/media/${KEY}`), env);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.key).toBe(KEY);
+    expect(bucket.delete).toHaveBeenCalledWith(KEY);
+  });
+
+  it('rejects a key that embeds another tenant prefix before reaching R2', async () => {
+    const bucket = makeBucketSpy();
+    const env = { MEDIA_BUCKET: bucket };
+    const del = handleMediaDelete('tenant_1', { id: 'u1', role: 'admin' });
+    const res = await del(
+      makeRequest('DELETE', '/api/media/media/tenant_2/11111111-2222-3333-4444-555555555555.jpg'),
+      env
+    );
+    expect(res.status).toBe(403);
+    expect(bucket.delete).not.toHaveBeenCalled();
+  });
+
+  it('allows a super_admin (null tenantId) to purge any tenant key', async () => {
+    const bucket = makeBucketSpy();
+    const env = { MEDIA_BUCKET: bucket };
+    const del = handleMediaDelete(null, { id: 'sa1', role: 'super_admin' });
+    const res = await del(
+      makeRequest('DELETE', '/api/media/media/tenant_2/11111111-2222-3333-4444-555555555555.jpg'),
+      env
+    );
+    expect(res.status).toBe(200);
+    expect(bucket.delete).toHaveBeenCalledWith('media/tenant_2/11111111-2222-3333-4444-555555555555.jpg');
+  });
+
+  it('returns 404 for path-traversal / malformed keys without touching R2', async () => {
+    const bucket = makeBucketSpy();
+    const env = { MEDIA_BUCKET: bucket };
+    const del = handleMediaDelete('tenant_1', { id: 'u1', role: 'admin' });
+    const dotdot = await del(makeRequest('DELETE', '/api/media/../../etc/passwd'), env);
+    expect(dotdot.status).toBe(404);
+    const badShape = await del(makeRequest('DELETE', '/api/media/media/t1/not-a-uuid.jpg'), env);
+    expect(badShape.status).toBe(404);
+    expect(bucket.delete).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when MEDIA_BUCKET is not configured', async () => {
+    const del = handleMediaDelete('tenant_1', { id: 'u1', role: 'admin' });
+    const res = await del(makeRequest('DELETE', `/api/media/${KEY}`), {});
+    expect(res.status).toBe(503);
+  });
+
+  it('returns 502 when the R2 delete throws', async () => {
+    const bucket = makeBucketSpy();
+    bucket.delete.mockRejectedValueOnce(new Error('r2 down'));
+    const env = { MEDIA_BUCKET: bucket };
+    const del = handleMediaDelete('tenant_1', { id: 'u1', role: 'admin' });
+    const res = await del(makeRequest('DELETE', `/api/media/${KEY}`), env);
+    expect(res.status).toBe(502);
+  });
+
+  it('best-effort: deleting a missing object is a successful no-op', async () => {
+    const bucket = makeBucketSpy();
+    bucket.delete.mockResolvedValueOnce(undefined);
+    const env = { MEDIA_BUCKET: bucket };
+    const del = handleMediaDelete('tenant_1', { id: 'u1', role: 'admin' });
+    const res = await del(makeRequest('DELETE', `/api/media/${KEY}`), env);
+    expect(res.status).toBe(200);
+    expect(bucket.delete).toHaveBeenCalledWith(KEY);
   });
 });

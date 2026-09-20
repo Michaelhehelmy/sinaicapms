@@ -269,7 +269,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 
 <tr><td><strong>F-A14-4</strong></td><td>No CI/CD workflows — zero automated gates</td><td><code>.github/workflows/</code> does not exist; all suites documented but never run automatically</td><td>Add GitHub Actions: lint + unit tests + typecheck on PR; optional deploy on main</td><td>A14</td></tr>
 
-<tr><td><strong>F-A17-01</strong></td><td>R2: no object cleanup on delete — every media delete leaks bytes</td><td>Media delete handlers remove DB rows only; R2 <code>MEDIA_BUCKET</code> objects never purged</td><td>Delete R2 object on media DELETE (best-effort, key-scoped)</td><td>A17</td></tr>
+<tr><td><strong>F-A17-01</strong></td><td>R2: no object cleanup on delete — every media delete leaks bytes</td><td>Media delete handlers remove DB rows only; R2 <code>MEDIA_BUCKET</code> objects never purged</td><td>Delete R2 object on media DELETE (best-effort, key-scoped)</td><td>A17 — <b>DONE, Wave 3.6a</b>: <code>DELETE /api/media/*</code> added (key-scoped, best-effort R2 purge) in this commit</td></tr>
 
 <tr><td><strong>F-A17-02</strong></td><td>R2: import media PUT failure doesn't roll back — phantom provisioning (items 1–N inserted, media N+1 fails)</td><td>Tenant-import handler uploads base64→R2 mid-flow; no compensating deletes on later failure</td><td>Transactional rollback of imported rows on any R2 failure, or two-phase (upload-then-insert with cleanup)</td><td>A17, T1–T5</td></tr>
 
@@ -358,9 +358,10 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 | 3.4c counter reset | ✅ | `8f5ee72d251917781a1ee1e580734b6f0784a96c` |
 | 3.5 per-tenant limiter overlay (F-A18-09) | ✅ | this commit |
 | 3.5b public endpoint budgets (marketplace, onboarding, availability, media, meal-plans, Paymob webhook) | held | — |
-| 3.6 R2 cleanup + import rollback | held | — |
+| 3.6a R2 object purge on media DELETE (F-A17-01) | ✅ | this commit |
+| 3.6b import R2 put rollback (F-A17-02) | held | — |
 
-Gate: 3.5 ✅ → next 3.6 (R2 cleanup + import rollback, F-A17-01/02), then Wave 3 report (C1/C2). 3.5b (public per-group budgets) queued after 3.6 with a **P1 note**: the Paymob payment webhook shares the 100/min IP bucket — a busy NAT'd tenant IP would drop payment callbacks; give the webhook a dedicated/exempt budget in 3.5b. Deploy remains held (Wave 6.5 AND 6.6).
+Gate: 3.5 ✅, 3.6a ✅ → next 3.6b (import R2 put rollback, F-A17-02), then 3.5b (public per-group budgets), then Wave 3 report (C1/C2). 3.5b (public per-group budgets) carries a **P1 note**: the Paymob payment webhook shares the 100/min IP bucket — a busy NAT'd tenant IP would drop payment callbacks; give the webhook a dedicated/exempt budget in 3.5b. Deploy remains held (Wave 6.5 AND 6.6).
 
 ## Wave 6.6 — Human Testing Pre-Flight
 

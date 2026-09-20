@@ -171,4 +171,52 @@ mediaRoutes.on(['GET', 'HEAD'], '*', async (c) => {
   });
 });
 
+/**
+ * DELETE /api/media/* — authenticated, key-scoped R2 purge (F-A17-01 / Wave 3.6a).
+ *
+ * Media delete handlers previously removed DB rows only; the R2 MEDIA_BUCKET
+ * object was never purged, leaking bytes on every delete. This route is the
+ * single object-cleanup primitive: best-effort `MEDIA_BUCKET.delete(key)`,
+ * scoped so a tenant admin can only delete keys that embed their own tenant
+ * prefix (`media/{scope.tenantId}/…`). super_admin (tenantId null in scope)
+ * may delete any key — same cross-tenant semantics as elsewhere.
+ *
+ * Auth: the media mount branches by method (GET/HEAD public, DELETE admin
+ * realm) so DELETE always runs behind requireAuth in index.js. Malformed or
+ * non-matching keys return 404/403 — the key is sanitized exactly like the GET
+ * route (percent-decode once + sanitizeMediaKey), so `..`/null bytes can never
+ * reach the R2 delete. Best-effort: deleting a missing object is a successful
+ * no-op in R2, so no existence check precedes the delete. Never sets CORS.
+ */
+mediaRoutes.delete('*', async (c) => {
+  const scope = getScope(c);
+  const env = c.env;
+  if (!scope?.user) return errorResponse('Unauthorized', 401);
+
+  const pathname = new URL(c.req.url).pathname;
+  let rawKey;
+  try {
+    rawKey = decodeURIComponent(pathname.slice('/api/media/'.length));
+  } catch {
+    return errorResponse('Not found', 404);
+  }
+
+  const key = sanitizeMediaKey(rawKey);
+  if (!key) return errorResponse('Not found', 404);
+
+  // Key-scoped: R2 keys embed the tenant prefix — only that tenant may delete.
+  if (scope.tenantId && !key.startsWith(`media/${scope.tenantId}/`)) {
+    return errorResponse('Forbidden: media key belongs to another tenant', 403);
+  }
+
+  if (!env.MEDIA_BUCKET) return errorResponse('Media storage is not configured', 503);
+
+  try {
+    await env.MEDIA_BUCKET.delete(key);
+  } catch (e) {
+    return errorResponse('Media delete failed', 502);
+  }
+  return jsonResponse({ success: true, key }, 200);
+});
+
 mediaRoutes.all('*', () => errorResponse('Not found', 404));

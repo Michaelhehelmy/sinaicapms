@@ -740,8 +740,11 @@ app.use('/api/upload/*', tenantAwareLimiter());
 app.route('/api/upload', uploadRoutes);
 
 const mediaPublicScope = resolveScope({ public: true });
-app.use('/api/media', mediaPublicScope);
-app.use('/api/media/*', mediaPublicScope);
+const mediaAdminScope = resolveScope();
+const mediaScope = async (c, next) =>
+  c.req.method === 'GET' || c.req.method === 'HEAD' ? mediaPublicScope(c, next) : mediaAdminScope(c, next);
+app.use('/api/media', mediaScope);
+app.use('/api/media/*', mediaScope);
 app.route('/api/media', mediaRoutes);
 
 // ── Project meta, tags, audit log (unified architecture) ──
