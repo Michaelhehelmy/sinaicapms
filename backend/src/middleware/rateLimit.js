@@ -54,6 +54,45 @@ export const RATE_LIMIT_POLICIES = {
   // caveat): every EventSource (re)connect mints once, so 10/min covers
   // backoff reconnects while still bounding token spam.
   'POST /api/stream/token': { max: 10, window: '1m' },
+  // ── Wave 3.5b: explicit budgets for the six PUBLIC surfaces. Before this
+  // they all relied on the generic `/api/*` default (100/min/IP, single
+  // RATE_LIMIT_API dial). Limits are keyed `ip:path` (per-IP-per-PATH), so no
+  // surface ever "shared" a bucket with another path — the real gap was that
+  // each public surface carried the same generic 100 + blanket dial. Now each
+  // group declares its own budget and its own env dial (see readLimitInt), so
+  // ops can tune one surface without touching the global default.
+  //   • Paymob webhook (P1, the real fix): webhook calls arrive FROM Paymob's
+  //     shared egress IPs — one path, one bucket, many tenants' callbacks, all
+  //     behind the same cf-connecting-ip. Under the default 100 that path could
+  //     genuinely throttle high-volume payment traffic. It now gets a DEDICATED
+  //     budget (60/min, dial RATE_LIMIT_PAYMOB) decoupled from RATE_LIMIT_API.
+  //     HMAC is verified INSIDE handlePaymobWebhook (signature = auth), so this
+  //     cap is defense-in-depth; ops can effectively exempt the path by dialing
+  //     RATE_LIMIT_PAYMOB high.
+  //   • ORDERING INVARIANT: `POST /api/public/signup` and
+  //     `POST /api/public/paymob/webhook` are EXACT-path entries and MUST stay
+  //     above any future broad `/api/public*` glob, else onboarding's prefix
+  //     would swallow them. (Today no broad /api/public glob exists; the shared
+  //     `/api/public/*` mount also serves reservations, which intentionally
+  //     stays on the default bucket — not one of the six 3.5b groups.)
+  //   • `GET /api/marketplace*` (300) is the read directory group
+  //     (index/categories/:tenantSlug/review reads); `POST /api/marketplace/
+  //     reviews` above stays its own tighter 10/1m flood cap (method-qualified
+  //     key, untouched).
+  //   • `GET /api/projects/*/meal-plans` uses a MID-path wildcard — see
+  //     policyLimiter (trailing-`*` entries keep exact startsWith semantics;
+  //     only non-trailing `*` compiles to a regex).
+  'GET /api/marketplace*': { max: 300, window: '1m', envKey: 'RATE_LIMIT_MARKETPLACE' },
+  '/api/onboarding*': { max: 20, window: '1m', envKey: 'RATE_LIMIT_ONBOARDING' },
+  'POST /api/public/signup': { max: 5, window: '1m', envKey: 'RATE_LIMIT_SIGNUP' },
+  'GET /api/availability': { max: 120, window: '1m', envKey: 'RATE_LIMIT_AVAILABILITY' },
+  // Media GET/HEAD share one read budget for the same path (the limiter key is
+  // `${ip}:${path}`, method-less — method-qualified entries route to the same
+  // underlying bucket, which is exactly what a coherent asset-read group wants).
+  'GET /api/media*': { max: 300, window: '1m', envKey: 'RATE_LIMIT_MEDIA' },
+  'HEAD /api/media*': { max: 300, window: '1m', envKey: 'RATE_LIMIT_MEDIA' },
+  'GET /api/projects/*/meal-plans': { max: 120, window: '1m', envKey: 'RATE_LIMIT_MEAL_PLANS' },
+  'POST /api/public/paymob/webhook': { max: 60, window: '1m', envKey: 'RATE_LIMIT_PAYMOB' },
   default: { max: 100, envKey: 'RATE_LIMIT_API' },
 };
 
@@ -72,15 +111,28 @@ function readLimitInt(env, key, fallback) {
 }
 
 export const policyLimiter = (policies = RATE_LIMIT_POLICIES) => {
+  // Escape a literal path segment for use inside a RegExp (mid-path `*` only).
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const compiled = [];
   for (const [key, policy] of Object.entries(policies)) {
     if (key === 'default') continue;
-    const parsed = /^(GET|POST|PUT|DELETE|PATCH)\s+(.+)$/.exec(key);
+    const parsed = /^(GET|POST|PUT|DELETE|PATCH|HEAD)\s+(.+)$/.exec(key);
     const pattern = parsed ? parsed[2] : key;
+    // Wave 3.5b: patterns may carry a mid-path wildcard (`*` NOT at the end,
+    // e.g. `GET /api/projects/*/meal-plans`) which compiles to a RegExp with
+    // `*` matching exactly one path segment. Trailing-`*` entries keep the
+    // existing startsWith semantics so `/api/admin*` still matches
+    // `/api/admin/health` — those two meanings are byte-compatible with the
+    // pre-3.5b table.
+    const midWildcard = pattern.includes('*') && !pattern.endsWith('*');
+    const re = midWildcard
+      ? new RegExp('^' + pattern.split('*').map(escapeRe).join('[^/]+') + '$')
+      : null;
     compiled.push({
       method: parsed ? parsed[1] : null,
       prefix: pattern.endsWith('*'),
       base: pattern.endsWith('*') ? pattern.slice(0, -1) : pattern,
+      re,
       run: rateLimitMiddleware({
         windowMs: windowToMs(policy.window),
         max: policy.max,
@@ -104,7 +156,11 @@ export const policyLimiter = (policies = RATE_LIMIT_POLICIES) => {
     }
     for (const entry of compiled) {
       if (entry.method && c.req.method !== entry.method) continue;
-      const hit = entry.prefix ? c.req.path.startsWith(entry.base) : c.req.path === entry.base;
+      const hit = entry.re
+        ? entry.re.test(c.req.path)
+        : entry.prefix
+          ? c.req.path.startsWith(entry.base)
+          : c.req.path === entry.base;
       if (hit) return entry.run(c, next);
     }
     return fallback(c, next);

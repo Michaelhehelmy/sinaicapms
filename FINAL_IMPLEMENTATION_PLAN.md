@@ -346,7 +346,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 
 ---
 
-## Wave 3 — Execution Status (through 3.5)
+## Wave 3 — Execution Status (through 3.6b)
 
 | Item | Status | Commit |
 |------|--------|--------|
@@ -356,12 +356,12 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 | 3.4a stream token | ✅ | `ebaa60d` |
 | 3.4b bounded replay | ✅ | `2afb889` |
 | 3.4c counter reset | ✅ | `8f5ee72d251917781a1ee1e580734b6f0784a96c` |
-| 3.5 per-tenant limiter overlay (F-A18-09) | ✅ | this commit |
-| 3.5b public endpoint budgets (marketplace, onboarding, availability, media, meal-plans, Paymob webhook) | held | — |
-| 3.6a R2 object purge on media DELETE (F-A17-01) | ✅ | this commit |
-| 3.6b import R2 put rollback (F-A17-02) | ✅ | this commit |
+| 3.5 per-tenant limiter overlay (F-A18-09) | ✅ | `dc0715b` |
+| 3.5b public endpoint budgets (marketplace, onboarding, availability, media, meal-plans, Paymob webhook) | ✅ | this commit |
+| 3.6a R2 object purge on media DELETE (F-A17-01) | ✅ | `845a39d` |
+| 3.6b import R2 put rollback (F-A17-02) | ✅ | `4b0fbfa` |
 
-Gate: 3.5 ✅, 3.6a ✅, 3.6b ✅ → next 3.5b (public per-group budgets), then Wave 3 report (C1/C2). 3.5b (public per-group budgets) carries a **P1 note**: the Paymob payment webhook shares the 100/min IP bucket — a busy NAT'd tenant IP would drop payment callbacks; give the webhook a dedicated/exempt budget in 3.5b. Deploy remains held (Wave 6.5 AND 6.6).
+Gate: 3.5 ✅, 3.5b ✅, 3.6a ✅, 3.6b ✅ → Wave 3 fully executed; next is the Wave 3 exit report (C1/C2 + full SHA list + gate assertion). The 3.5b P1 note shipped: the Paymob webhook has a DEDICATED budget decoupled from the generic RATE_LIMIT_API dial (callbacks arrive from Paymob's shared egress IPs into one path — a shared funnel across merchants). Deploy remains held (Wave 6.5 AND 6.6).
 
 ## Wave 6.6 — Human Testing Pre-Flight
 
