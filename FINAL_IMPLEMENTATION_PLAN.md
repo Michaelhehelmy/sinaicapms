@@ -271,7 +271,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 
 <tr><td><strong>F-A17-01</strong></td><td>R2: no object cleanup on delete — every media delete leaks bytes</td><td>Media delete handlers remove DB rows only; R2 <code>MEDIA_BUCKET</code> objects never purged</td><td>Delete R2 object on media DELETE (best-effort, key-scoped)</td><td>A17 — <b>DONE, Wave 3.6a</b>: <code>DELETE /api/media/*</code> added (key-scoped, best-effort R2 purge) in this commit</td></tr>
 
-<tr><td><strong>F-A17-02</strong></td><td>R2: import media PUT failure doesn't roll back — phantom provisioning (items 1–N inserted, media N+1 fails)</td><td>Tenant-import handler uploads base64→R2 mid-flow; no compensating deletes on later failure</td><td>Transactional rollback of imported rows on any R2 failure, or two-phase (upload-then-insert with cleanup)</td><td>A17, T1–T5</td></tr>
+<tr><td><strong>F-A17-02</strong></td><td>R2: import media PUT failure doesn't roll back — phantom provisioning (items 1–N inserted, media N+1 fails)</td><td>Tenant-import handler uploads base64→R2 mid-flow; no compensating deletes on later failure</td><td>Transactional rollback of imported rows on any R2 failure, or two-phase (upload-then-insert with cleanup)</td><td>A17, T1–T5 — <b>DONE, Wave 3.6b</b>: two-phase upload-then-insert-with-cleanup chosen — `importTenantManifest` tracks every R2 key PUT and best-effort deletes them on any failure path (deterministic errors via `fail(…)`, thrown R2/DB errors rolled back then rethrown) in this commit</td></tr>
 
 <tr><td><strong>F-A22-02</strong></td><td>Anonymous cross-tenant catalog reads via <code>x-tenant-id</code> header pivot</td><td>Public GET storefront endpoints accept arbitrary <code>x-tenant-id</code> and return that tenant's catalog without auth (intentional public scope, but header pivots across tenants)</td><td>Verify this is intended (public marketplace reads); if not, bind public reads to hostname-derived tenant only</td><td>A22 (runtime probe), A7</td></tr>
 
@@ -359,9 +359,9 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 | 3.5 per-tenant limiter overlay (F-A18-09) | ✅ | this commit |
 | 3.5b public endpoint budgets (marketplace, onboarding, availability, media, meal-plans, Paymob webhook) | held | — |
 | 3.6a R2 object purge on media DELETE (F-A17-01) | ✅ | this commit |
-| 3.6b import R2 put rollback (F-A17-02) | held | — |
+| 3.6b import R2 put rollback (F-A17-02) | ✅ | this commit |
 
-Gate: 3.5 ✅, 3.6a ✅ → next 3.6b (import R2 put rollback, F-A17-02), then 3.5b (public per-group budgets), then Wave 3 report (C1/C2). 3.5b (public per-group budgets) carries a **P1 note**: the Paymob payment webhook shares the 100/min IP bucket — a busy NAT'd tenant IP would drop payment callbacks; give the webhook a dedicated/exempt budget in 3.5b. Deploy remains held (Wave 6.5 AND 6.6).
+Gate: 3.5 ✅, 3.6a ✅, 3.6b ✅ → next 3.5b (public per-group budgets), then Wave 3 report (C1/C2). 3.5b (public per-group budgets) carries a **P1 note**: the Paymob payment webhook shares the 100/min IP bucket — a busy NAT'd tenant IP would drop payment callbacks; give the webhook a dedicated/exempt budget in 3.5b. Deploy remains held (Wave 6.5 AND 6.6).
 
 ## Wave 6.6 — Human Testing Pre-Flight
 

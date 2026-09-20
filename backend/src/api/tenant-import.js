@@ -31,8 +31,11 @@ const IMAGE_CONTENT_TYPE = {
  * Resolve an image value: data URI → R2 upload → /api/media/ URL;
  * http(s) or /api/media/ URL → unchanged; else null.
  * NO KV writes ever (free-plan quota).
+ * When `uploadedKeys` (array) is passed, every key PUT successfully is pushed
+ * onto it so the import handler can roll partial uploads back on failure
+ * (F-A17-02 / Wave 3.6b). Keys are pushed AFTER the put resolves.
  */
-async function resolveImage(env, tenantId, value) {
+async function resolveImage(env, tenantId, value, uploadedKeys = null) {
   if (!value || typeof value !== 'string') return null;
   if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/api/media/')) {
     return value;
@@ -50,6 +53,7 @@ async function resolveImage(env, tenantId, value) {
   await env.MEDIA_BUCKET.put(key, bytes.buffer, {
     httpMetadata: { contentType: IMAGE_CONTENT_TYPE[ext] },
   });
+  if (uploadedKeys) uploadedKeys.push(key);
   return `/api/media/${key}`;
 }
 
@@ -171,14 +175,16 @@ async function ensureProductInProductsTable(DB, tenantId, productId) {
 }
 
 /**
- * Core import function — exported for T2 reuse and unit testing.
+ * Core import body — extracted so `importTenantManifest` can roll back partial
+ * R2 uploads on ANY failure (F-A17-02 / Wave 3.6b). Deterministic error paths
+ * return `fail(status, message)` (which deletes every tracked key); thrown
+ * R2/DB errors propagate to the importTenantManifest wrapper which also deletes
+ * tracked keys before rethrowing, so the route wrapper keeps its UNIQUE→409 /
+ * generic-500 contract. `fail` is deliberately not used before the first R2
+ * upload (schema 400, unprovisioned-org 409) — nothing to roll back yet.
  * Accepts a parsed (already toSnake'd) manifest payload.
  */
-export async function importTenantManifest(env, tenantId, payload) {
-  const parsed = manifestSchema.safeParse(payload);
-  if (!parsed.success) return validationError(parsed);
-  const data = parsed.data;
-
+async function runImport(env, tenantId, data, uploadedKeys, fail) {
   const counts = {
     products: 0, rooms: 0, rate_plans: 0,
     meal_categories: 0, meals: 0, pos_users: 0,
@@ -199,9 +205,9 @@ export async function importTenantManifest(env, tenantId, payload) {
   // ── 1. Tenant branding/content update ────────────────────────────
   if (data.tenant) {
     const t = data.tenant;
-    const logoUrl = await resolveImage(env, tenantId, t.logo_url);
-    const faviconUrl = await resolveImage(env, tenantId, t.favicon_url);
-    const heroImageUrl = await resolveImage(env, tenantId, t.hero_image_url);
+    const logoUrl = await resolveImage(env, tenantId, t.logo_url, uploadedKeys);
+    const faviconUrl = await resolveImage(env, tenantId, t.favicon_url, uploadedKeys);
+    const heroImageUrl = await resolveImage(env, tenantId, t.hero_image_url, uploadedKeys);
 
     await env.DB.prepare(
       `UPDATE tenants SET
@@ -245,7 +251,7 @@ export async function importTenantManifest(env, tenantId, payload) {
     const stmts = [];
     for (const item of data.products) {
       const pid = item.id || 'prod_' + crypto.randomUUID().slice(0, 12);
-      const imageUrl = await resolveImage(env, tenantId, item.image_url);
+      const imageUrl = await resolveImage(env, tenantId, item.image_url, uploadedKeys);
       productNameToId.set(item.name, pid);
 
       stmts.push(
@@ -266,9 +272,9 @@ export async function importTenantManifest(env, tenantId, payload) {
       await env.DB.batch(stmts);
     } catch (e) {
       if (e?.message?.includes('UNIQUE constraint failed')) {
-        return errorResponse('One or more products already exist (duplicate SKU or ID)', 409);
+        return fail(409, 'One or more products already exist (duplicate SKU or ID)');
       }
-      return errorResponse('Failed to create products: ' + (e?.message || String(e)));
+      return fail(500, 'Failed to create products: ' + (e?.message || String(e)));
     }
     counts.products = data.products.length;
   }
@@ -288,7 +294,7 @@ export async function importTenantManifest(env, tenantId, payload) {
       let productId = room.product_id;
       if (!productId && room.product_name) productId = productNameToId.get(room.product_name);
       if (!productId) {
-        return errorResponse(`Room "${room.name}" references unknown product: ${room.product_name || 'no product_id'}`, 400);
+        return fail(400, `Room "${room.name}" references unknown product: ${room.product_name || 'no product_id'}`);
       }
       await ensureProductInProductsTable(env.DB, tenantId, productId);
 
@@ -323,7 +329,7 @@ export async function importTenantManifest(env, tenantId, payload) {
     const results = await env.DB.batch(roomStmts);
     for (let i = 0; i < results.length; i++) {
       if (results[i]?.meta?.changes === 0) {
-        return errorResponse(`Room "${data.rooms[i].name}" failed: camp or product not found for this tenant`, 404);
+        return fail(404, `Room "${data.rooms[i].name}" failed: camp or product not found for this tenant`);
       }
     }
     counts.rooms = data.rooms.length;
@@ -336,7 +342,7 @@ export async function importTenantManifest(env, tenantId, payload) {
       let productId = rp.product_id;
       if (!productId && rp.product_name) productId = productNameToId.get(rp.product_name);
       if (!productId) {
-        return errorResponse(`Rate plan "${rp.name}" references unknown product: ${rp.product_name || 'no product_id'}`, 400);
+        return fail(400, `Rate plan "${rp.name}" references unknown product: ${rp.product_name || 'no product_id'}`);
       }
       await ensureProductInProductsTable(env.DB, tenantId, productId);
 
@@ -359,7 +365,7 @@ export async function importTenantManifest(env, tenantId, payload) {
     const results = await env.DB.batch(rpStmts);
     for (let i = 0; i < results.length; i++) {
       if (results[i]?.meta?.changes === 0) {
-        return errorResponse(`Rate plan "${data.rate_plans[i].name}" failed: product not found for this tenant`, 404);
+        return fail(404, `Rate plan "${data.rate_plans[i].name}" failed: product not found for this tenant`);
       }
     }
     counts.rate_plans = data.rate_plans.length;
@@ -404,7 +410,7 @@ export async function importTenantManifest(env, tenantId, payload) {
       const mid = meal.id || 'meal_' + crypto.randomUUID().slice(0, 12);
       let categoryId = meal.meal_category_id;
       if (!categoryId && meal.category_name) categoryId = categoryNameToId.get(meal.category_name);
-      const imageUrl = await resolveImage(env, tenantId, meal.image_url);
+      const imageUrl = await resolveImage(env, tenantId, meal.image_url, uploadedKeys);
 
       mealStmts.push(
         env.DB.prepare(
@@ -457,14 +463,56 @@ export async function importTenantManifest(env, tenantId, payload) {
       await env.DB.batch(userStmts);
     } catch (e) {
       if (e?.message?.includes('UNIQUE constraint failed')) {
-        return errorResponse('One or more POS users already exist (duplicate email or username)', 409);
+        return fail(409, 'One or more POS users already exist (duplicate email or username)');
       }
-      return errorResponse('Failed to create POS users: ' + (e?.message || String(e)));
+      return fail(500, 'Failed to create POS users: ' + (e?.message || String(e)));
     }
     counts.pos_users = data.pos_users.length;
   }
 
   return jsonResponse({ success: true, tenant_id: tenantId, counts });
+}
+
+/**
+ * Core import function — exported for T2 reuse and unit testing.
+ * Accepts a parsed (already toSnake'd) manifest payload.
+ *
+ * F-A17-02 / Wave 3.6b — R2 upload rollback: every key PUT successfully by
+ * `runImport` is tracked; on ANY failure (deterministic error via `fail(…)` or
+ * a thrown R2/DB error) every tracked key is best-effort deleted before the
+ * error surfaces, so `items 1–N inserted, media N+1 fails` no longer orphans
+ * objects in MEDIA_BUCKET. Imported *rows* are not rolled back (the plan's
+ * "or" option — two-phase upload-then-insert-with-cleanup — was chosen; no D1
+ * rollback was authorized). Thrown errors are rethrown after rollback so the
+ * route wrapper keeps its UNIQUE→409 / generic-500 contract.
+ */
+export async function importTenantManifest(env, tenantId, payload) {
+  const parsed = manifestSchema.safeParse(payload);
+  if (!parsed.success) return validationError(parsed);
+  const data = parsed.data;
+
+  /** Every R2 key this import has PUT successfully — rolled back on failure. */
+  const uploadedKeys = [];
+  const rollbackUploads = async () => {
+    if (uploadedKeys.length === 0 || !env.MEDIA_BUCKET) return;
+    try {
+      await Promise.all(uploadedKeys.map((k) => env.MEDIA_BUCKET.delete(k)));
+    } catch (e) {
+      // Best-effort only — a failed rollback never masks the original error.
+    }
+    uploadedKeys.length = 0;
+  };
+  const fail = async (status, message) => {
+    await rollbackUploads();
+    return errorResponse(message, status);
+  };
+
+  try {
+    return await runImport(env, tenantId, data, uploadedKeys, fail);
+  } catch (e) {
+    await rollbackUploads();
+    throw e; // route wrapper maps UNIQUE→409, anything else→generic 500
+  }
 }
 
 // ─── Hono route wrapper ─────────────────────────────────────────────

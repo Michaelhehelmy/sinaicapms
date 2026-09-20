@@ -21,7 +21,11 @@ let tenantAdminToken;
 let noTenantAdminToken;
 
 function makeEnv(db) {
-  return { DB: db, MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) }, JWT_SECRET };
+  return {
+    DB: db,
+    MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}), delete: vi.fn().mockResolvedValue({}) },
+    JWT_SECRET,
+  };
 }
 
 /**
@@ -313,6 +317,124 @@ describe('POST /api/tenants/import', () => {
       });
       expect(res.status).toBe(200);
       expect(env.MEDIA_BUCKET.put).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('R2 upload rollback (F-A17-02 / Wave 3.6b)', () => {
+    const b64 = (s = 'fakepngbytes') => Buffer.from(s).toString('base64');
+
+    it('deletes every uploaded key when a later step fails (unknown room product 400)', async () => {
+      const res = await post({
+        tenant: { name: 'Sinai', logoUrl: `data:image/png;base64,${b64()}` },
+        products: [{ name: 'Tent', imageUrl: `data:image/png;base64,${b64()}` }],
+        rooms: [{ name: 'Room 1' }], // no productId/productName → 400 after uploads
+      });
+      expect(res.status).toBe(400);
+      expect(env.MEDIA_BUCKET.put).toHaveBeenCalledTimes(2);
+      const keys = env.MEDIA_BUCKET.put.mock.calls.map(([k]) => k);
+      expect(env.MEDIA_BUCKET.delete).toHaveBeenCalledTimes(2);
+      const deleted = env.MEDIA_BUCKET.delete.mock.calls.map(([k]) => k);
+      expect(deleted.sort()).toEqual(keys.sort());
+    });
+
+    it('deletes uploaded keys when the products batch hits a UNIQUE 409', async () => {
+      const db = makeDb({
+        query: happyPathQuery,
+        batch: () => {
+          throw new Error('D1_ERROR: UNIQUE constraint failed: pos_products.sku');
+        },
+      });
+      env.DB = db;
+      const res = await post({
+        tenant: { name: 'Sinai', logoUrl: `data:image/png;base64,${b64()}` },
+        products: [{ name: 'A', imageUrl: `data:image/png;base64,${b64()}` }],
+      });
+      expect(res.status).toBe(409);
+      expect(env.MEDIA_BUCKET.put).toHaveBeenCalledTimes(2); // logo + product image
+      expect(env.MEDIA_BUCKET.delete).toHaveBeenCalledTimes(2);
+      const deleted = env.MEDIA_BUCKET.delete.mock.calls.map(([k]) => k);
+      const keys = env.MEDIA_BUCKET.put.mock.calls.map(([k]) => k);
+      expect(deleted.sort()).toEqual(keys.sort());
+    });
+
+    it('deletes uploaded keys when a room guard yields changes=0 (404)', async () => {
+      const db = makeDb({
+        query: happyPathQuery,
+        batch: (items) =>
+          items.map(({ sql }) =>
+            sql.includes('INSERT INTO rooms_new') ? { meta: { changes: 0 } } : { meta: { changes: 1 } },
+          ),
+      });
+      env.DB = db;
+      const res = await post({
+        tenant: { name: 'Sinai', logoUrl: `data:image/png;base64,${b64()}` },
+        products: [{ id: 't2_prod', name: 'Other Tent' }],
+        rooms: [{ name: 'Room 1', productId: 't2_prod' }],
+      });
+      expect(res.status).toBe(404);
+      expect(env.MEDIA_BUCKET.delete).toHaveBeenCalledTimes(1);
+      expect(env.MEDIA_BUCKET.delete.mock.calls[0][0]).toMatch(/^media\/tenant_1\//);
+    });
+
+    it('deletes uploaded keys when a POS-user UNIQUE 409 fires after media uploads', async () => {
+      const db = makeDb({
+        query: happyPathQuery,
+        batch: (items) => {
+          if (items.some(({ sql }) => sql.includes('INSERT INTO pos_users'))) {
+            throw new Error('D1_ERROR: UNIQUE constraint failed: pos_users.email');
+          }
+          return items.map(() => ({ meta: { changes: 1 } }));
+        },
+      });
+      env.DB = db;
+      const res = await post({
+        posUsers: [{ email: 'dup@sinai.com', password: 'password123', firstName: 'A', lastName: 'B' }],
+        menu: {
+          meals: [{ name: 'Grill', imageUrl: `data:image/png;base64,${b64()}` }],
+        },
+      });
+      expect(res.status).toBe(409);
+      expect(env.MEDIA_BUCKET.put).toHaveBeenCalledTimes(1);
+      expect(env.MEDIA_BUCKET.delete).toHaveBeenCalledTimes(1);
+      expect(env.MEDIA_BUCKET.delete.mock.calls[0][0]).toMatch(/^media\/tenant_1\//);
+    });
+
+    it('deletes already-uploaded keys when a later R2 put throws (500)', async () => {
+      const b = makeEnv(makeDb({ query: happyPathQuery }));
+      b.MEDIA_BUCKET.put = vi.fn()
+        .mockResolvedValueOnce({}) // logo OK
+        .mockRejectedValueOnce(new Error('r2 down')); // favicon throws
+      env = b;
+      const res = await post({
+        tenant: {
+          name: 'Sinai',
+          logoUrl: `data:image/png;base64,${b64()}`,
+          faviconUrl: `data:image/png;base64,${b64()}`,
+        },
+      });
+      expect(res.status).toBe(500);
+      expect(env.MEDIA_BUCKET.put).toHaveBeenCalledTimes(2);
+      expect(env.MEDIA_BUCKET.delete).toHaveBeenCalledTimes(1);
+      expect(env.MEDIA_BUCKET.delete.mock.calls[0][0]).toMatch(/^media\/tenant_1\//);
+      expect(env.MEDIA_BUCKET.delete.mock.calls[0][0]).not.toBe(
+        env.MEDIA_BUCKET.put.mock.calls[1][0], // never the key the failing put could not write
+      );
+    });
+
+    it('does not call delete on a fully successful import', async () => {
+      const res = await post({
+        tenant: { name: 'Sinai', logoUrl: `data:image/png;base64,${b64()}` },
+      });
+      expect(res.status).toBe(200);
+      expect(env.MEDIA_BUCKET.put).toHaveBeenCalledTimes(1);
+      expect(env.MEDIA_BUCKET.delete).not.toHaveBeenCalled();
+    });
+
+    it('does not call delete when a pre-upload validation error fires (nothing uploaded)', async () => {
+      const res = await post({ products: [{ sku: 'X' }] });
+      expect(res.status).toBe(400);
+      expect(env.MEDIA_BUCKET.put).not.toHaveBeenCalled();
+      expect(env.MEDIA_BUCKET.delete).not.toHaveBeenCalled();
     });
   });
 
