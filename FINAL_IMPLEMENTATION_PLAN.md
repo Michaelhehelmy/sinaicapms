@@ -357,11 +357,11 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 | 3.4b bounded replay | ✅ | `2afb889` |
 | 3.4c counter reset | ✅ | `8f5ee72d251917781a1ee1e580734b6f0784a96c` |
 | 3.5 per-tenant limiter overlay (F-A18-09) | ✅ | `dc0715b` |
-| 3.5b public endpoint budgets (marketplace, onboarding, availability, media, meal-plans, Paymob webhook) | ✅ | this commit |
+| 3.5b public endpoint budgets (marketplace, onboarding, availability, media, meal-plans, Paymob webhook) | ✅ | `ca7bb3e` |
 | 3.6a R2 object purge on media DELETE (F-A17-01) | ✅ | `845a39d` |
 | 3.6b import R2 put rollback (F-A17-02) | ✅ | `4b0fbfa` |
 
-Gate: 3.5 ✅, 3.5b ✅, 3.6a ✅, 3.6b ✅ → Wave 3 fully executed; next is the Wave 3 exit report (C1/C2 + full SHA list + gate assertion). The 3.5b P1 note shipped: the Paymob webhook has a DEDICATED budget decoupled from the generic RATE_LIMIT_API dial (callbacks arrive from Paymob's shared egress IPs into one path — a shared funnel across merchants). Deploy remains held (Wave 6.5 AND 6.6).
+**Wave 3 exit report — 2026-09-20:** All ten Wave 3 items executed and pushed. **C1 (super_admin cross-tenant bypass) — verified no-bypass**: `resolveScope.js:179` rejects any non-super_admin token whose `tenantId` doesn't equal the resolved tenant (`403 Forbidden: Access denied to this tenant partition`); only `super_admin` may override via `?tenantId=` (`resolveScope.js:171-174, 203-204`) — an intentional, accepted management capability, not an unrestricted bypass; the same contract holds in both scope-resolution branches. **C2 (no sibling checkin endpoint) — verified**: `orders.js` has exactly one checkin route (`PATCH /:id/checkin` @946); the A22-01 room-ownership guard (tenant-scoped JOIN, `orders.js:979-989`) still present; the handler destructures only `{ early_checkin, adult_count, child_count, room_id }` from the body (`:951`) — `camp_id` is never accepted from the client (F-A3-2 held). **Deploy gate G3 cleared** (Wave 1 G1 + Wave 2 G2 + Wave 3 G3 all green). Deploy remains held (Wave 6.5 AND 6.6). Next: Wave 4 (4a–4i).
 
 ## Wave 6.6 — Human Testing Pre-Flight
 
