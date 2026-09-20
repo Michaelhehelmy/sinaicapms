@@ -273,7 +273,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 
 <tr><td><strong>F-A22-02</strong></td><td>Anonymous cross-tenant catalog reads via <code>x-tenant-id</code> header pivot</td><td>Public GET storefront endpoints accept arbitrary <code>x-tenant-id</code> and return that tenant's catalog without auth (intentional public scope, but header pivots across tenants)</td><td>Verify this is intended (public marketplace reads); if not, bind public reads to hostname-derived tenant only</td><td>A22 (runtime probe), A7</td></tr>
 
-<tr><td><strong>F-A16-03/04 ⇧ → <span style="color:#1b5e20">DONE — Wave 3.4a/3.4b/3.4c</span></strong></td><td colspan="4"><b>2026-09-19: FIXED across Wave 3.4a–3.4c.</b> <b>3.4a</b> shipped the short-lived SSE-only token mint (<code>POST /api/stream/token</code>, 60s single-use jti burned via DO storage) so the 24h admin JWT never lands in a query string. <b>3.4b</b> adds the bounded replay buffer (<code>MAX_REPLAY_EVENTS = 100</code> + <code>MAX_REPLAY_BYTES = 128 * 1024</code>, drop-oldest) with an <code>id:</code> on every frame, an <code>event: reset</code> frame when the marker predates the buffer (client refetches rather than applying a partial replay), and <b>append → fan-out, fail-closed</b> ordering so a subscriber can never see a frame the replay buffer rejected. The crux: <code>broadcast()</code> previously early-returned <code>delivered: 0</code> with <i>zero retention</i> when no subscriber was live — exactly the offline-client case replay must serve. <b>3.4c</b> resets the reconnect attempt counter on a successful open so backoff restarts at 3s instead of resuming mid-curve. Regression tests: +12 backend (zero-subscriber retention, in-buffer replay, stale→reset, unknown marker, empty-buffer marker, count cap, byte cap, fail-closed append, per-tenant isolation) and +13 frontend (marker advances on receipt incl. deduped frames, reset listener + removal on close, reconnect carries the advanced marker, backoff resets after open).</td></tr>
+<tr><td><strong>F-A16-03/04 ⇧ → <span style="color:#1b5e20">DONE — Wave 3.4a/3.4b/3.4c</span></strong></td><td colspan="4"><b>2026-09-19: FIXED across Wave 3.4a–3.4c.</b> <b>3.4a</b> shipped the short-lived SSE-only token mint (<code>POST /api/stream/token</code>, 60s single-use jti burned via DO storage) so the 24h admin JWT never lands in a query string. <b>3.4b</b> adds the bounded replay buffer (<code>MAX_REPLAY_EVENTS = 100</code> + <code>MAX_REPLAY_BYTES = 128 * 1024</code>, drop-oldest) with an <code>id:</code> on every frame, an <code>event: reset</code> frame when the marker predates the buffer (client refetches rather than applying a partial replay), and <b>append → fan-out, fail-closed</b> ordering so a subscriber can never see a frame the replay buffer rejected. The crux: <code>broadcast()</code> previously early-returned <code>delivered: 0</code> with <i>zero retention</i> when no subscriber was live — exactly the offline-client case replay must serve. <b>3.4c</b> resets the reconnect attempt counter on a successful open so backoff restarts at 3s instead of resuming mid-curve. Regression tests: +12 backend (zero-subscriber retention, in-buffer replay, stale→reset, unknown marker, empty-buffer marker, count cap, byte cap, fail-closed append, per-tenant isolation) and +13 frontend (marker advances on receipt incl. deduped frames, reset listener + removal on close, reconnect carries the advanced marker, backoff resets after open). <b>F-A16-04 → DONE — Wave 3.4c, closed 2026-09-20</b>: the counter-reset code shipped bundled inside <code>2afb889</code> (one-commit-per-sub-wave deviation, accepted + recorded in the commit body <code>=== SCOPE NOTE ===</code>); formal DONE row + Wave 3 status table landed via commit <code>8f5ee72d251917781a1ee1e580734b6f0784a96c</code> (logbook/plan-only commit, no code change).</td></tr>
 
 <tr><td><strong>F-A20-01</strong></td><td><code>PERF_BASELINE.md</code> is 4.2× stale — claims 501 KiB, actual 2112 KiB total JS</td><td>A20 measured current bundle; doc predates storefront islands + admin panels</td><td>Re-run measurement, update baseline, add "measure + update on major islands change" note</td><td>A20</td></tr>
 
@@ -343,6 +343,21 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 ---
 
 ---
+
+## Wave 3 — Execution Status (through 3.4c)
+
+| Item | Status | Commit |
+|------|--------|--------|
+| 3.1 pos-users org scope | ✅ | `79bb584` |
+| 3.2 camp_id from room row | ✅ | `24d3b86` |
+| 3.3 POS refresh + auth change | ✅ | `5609e3c` |
+| 3.4a stream token | ✅ | `ebaa60d` |
+| 3.4b bounded replay | ✅ | `2afb889` |
+| 3.4c counter reset | ✅ | `8f5ee72d251917781a1ee1e580734b6f0784a96c` |
+| 3.5 rate limiter tenant keys | held | — |
+| 3.6 R2 cleanup + import rollback | held | — |
+
+Gate: 3.4c ✅ → next 3.5 (rate limiter tenant-aware keys, F-A18-09) then 3.6 (R2 cleanup + import rollback, F-A17-01/02). Deploy remains held (Wave 6.5 AND 6.6).
 
 ## Wave 6.6 — Human Testing Pre-Flight
 
