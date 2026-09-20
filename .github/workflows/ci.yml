@@ -62,6 +62,12 @@ jobs:
       - name: Run vitest
         run: npx vitest run
 
+      - name: Build (Astro)
+        # PR-level gate: catch compile/asset errors before deploy. Budget and
+        # perf enforcement live in budget.json + `npm run lighthouse` (F-A20-01
+        # PERF_BASELINE is documentation-only; budget.json is the gate).
+        run: npm run build
+
   # ─────────────────────────────────────────────
   # Root Integration Tests
   # ─────────────────────────────────────────────
