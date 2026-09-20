@@ -111,4 +111,8 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Check OpenAPI spec generation
-        run: npx vite-node scripts/generate-openapi.js
+        # Regenerate from the route registry (source of truth) and FAIL on drift,
+        # so a registry change that forgets to regenerate openapi.json breaks CI.
+        run: |
+          npx vite-node scripts/generate-openapi.js
+          git diff --exit-code -- openapi.json
