@@ -1,0 +1,68 @@
+# Wave 3.5b — Pre-Edit Reads (public per-group budgets)
+
+Date: 2026-09-20. Read-only evidence gathered BEFORE any 3.5b edits.
+
+## READ 1 — backend/src/middleware/rateLimit.js (full file, 232 lines)
+
+- `RATE_LIMIT_POLICIES` is a single ordered declarative table; first match wins;
+  `default` (max 100, envKey `RATE_LIMIT_API`) covers everything unmatched.
+- Existing entries: `POST /api/auth/pos-login` 15, `/api/auth/*` 30, `POST /api/tenants` 5/5m,
+  `GET /api/tenants*` 60, `/api/admin*` 20, `/api/payments*` 20, `POST /api/pos/auth/login` 15,
+  `POST /api/pos/auth/refresh` 30, `/api/pos/*` 60, `/api/leads` 10, `/api/contact` 10,
+  `POST /api/feedback` 6, `POST /api/marketplace/reviews` 10/1m, `GET /api/orders/status/*` 5/1m,
+  `POST /api/stream/token` 10/1m, `default` 100.
+- `policyLimiter` compile: key regex `/^(GET|POST|PUT|DELETE|PATCH)\s+(.+)$/` (NOT HEAD);
+  prefix = `pattern.endsWith('*')`, base = trailing-`*` stripped; hit = startsWith(base) or exact.
+  No mid-path wildcard (`*` only at end). `default` is not compiled into entries (fallback limiter).
+- `rateLimitMiddleware` skips when `ENVIRONMENT === 'test'`; keys on `cf-connecting-ip` only;
+  optional `makeKey`; KV-backed when `RATE_LIMIT_KV && RATE_LIMIT_KV_ENABLED !== 'false'`
+  (fail-closed), else in-memory map; per-request `envKey` dial via `readLimitInt`.
+- `tenantAwareLimiter` (Wave 3.5): second `app.use()` after authed gates; key `t:{ip}:{tenantId}:{path}`;
+  no-op unless `scope.user && scope.tenantId`.
+- SSE `/api/stream/orders` exempted inside policyLimiter.
+
+## READ 2 — backend/src/index.js mounts (public surfaces)
+
+- Line 145: `app.use('/api/*', policyLimiter())` — global limiter FIRST (before all scopes).
+- marketplace: 581-584 `marketplacePublicScope` on `/api/marketplace` + `/api/marketplace/*`.
+- onboarding: 587-592 `onboardingPublicScope` on `/api/public`, `/api/public/*`,
+  `/api/onboarding`, `/api/onboarding/*`; router mounted at `app.route('/api', onboardingRoutes)`.
+- availability: 716-718 `availabilityPublicScope` on `/api/availability` only (read-only, 60s header cache).
+- Paymob webhook: 730-732 `publicReservationsScope` on `/api/public/paymob/webhook` +
+  `/api/public/paymob/webhook/*`, then `app.post('/api/public/paymob/webhook', handlePaymobWebhook)`.
+- media: 742-748 `mediaScope` method-branch (GET/HEAD → mediaPublicScope, else admin) on
+  `/api/media` + `/api/media/*` (no tenantAwareLimiter — media has no tenant limiter line).
+- meal-plans: 792-794 `mealPlansPublicScope` on `/api/projects/:id/meal-plans`; router mounted
+  at `app.route('/api/projects', mealPlanRoutes)` — single GET only, no catch-all.
+- Other public/mixed: meta (757), tags (761-771), camps/products/rooms/rateplans (630-671 GET public),
+  me (614-624 GET public), leads POST (601-612), reservations (725-728), storefront (832).
+
+## READ 3 — Router path list (grep route handlers)
+
+- marketplace.js: GET `/`, GET `/categories`, GET `/:tenantSlug`, POST `/reviews`, GET `/reviews/:projectId`.
+- onboarding.js: POST `/public/signup`, GET `/onboarding/status/:token`, POST `/onboarding/setup`,
+  POST `/onboarding/tenant`.
+- orders.js (availabilityRoutes): GET `/availability/` (read-only) via `availabilityRoutes.get('/')`.
+- meal-plans.js: GET `/:id/meal-plans`.
+- paymob-webhook.js: `handlePaymobWebhook` — HMAC signature verified INSIDE handler (signature is the auth).
+
+## READ 4 — backend/tests/rate-limit-tenant.test.js (full file, 245 lines)
+
+- `makeCtx(path, ip, scope, envOverrides, method)` builds a Hono-like ctx with
+  `ENVIRONMENT: 'production'` default (so rate limiting is NOT skipped), header stubs
+  (`cf-connecting-ip`, spoofed `x-tenant-id`), `get('scope')`, and a `json` spy.
+- Tests clear `globalThis._rateLimitMap` in beforeEach. Existing anchors cover:
+  tenant limiter isolation/throttling/header-inert/pass-through/KV/fail-closed/envKey,
+  global policy anchors (stream token max 10 not shadowed; unknown path default bucket
+  via `RATE_LIMIT_API: '2'` dial; global limiter not tenant-aware).
+- No public per-group budget tests exist yet — 3.5b additions go here.
+
+## READ 5 — Design note for 3.5b (from logbook fold 2026-09-20 WAVE 3.5)
+
+- Deferred work: public per-group budgets (marketplace, onboarding, availability, media,
+  meal-plans, Paymob webhook). **P1**: Paymob webhook shares the default 100/min IP bucket —
+  busy NAT'd tenant IP would drop payment callbacks; needs a dedicated/exempt budget.
+- So: add declaration-ordered policy entries ABOVE `default` for the six groups, each with its
+  own envKey dial (matching the existing convention), and a dedicated budget for
+  `POST /api/public/paymob/webhook`. Optional: extend the method regex to HEAD (media HEAD reads)
+  and support mid-path `*` (meal-plans `/api/projects/*/meal-plans` shape) — both small, tested changes.
