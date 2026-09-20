@@ -1,0 +1,93 @@
+# Wave 3.6 Pre-Edit Reads — 2026-09-20 (before any 3.6a/3.6b edit)
+
+## READ 1: backend/src/api/upload.js — MEDIA_BUCKET access
+101:  if (!env.MEDIA_BUCKET) return errorResponse('Media storage is not configured', 503);
+127:  await env.MEDIA_BUCKET.put(key, body, {
+162:  const obj = await env.MEDIA_BUCKET.get(key);
+
+## READ 2: backend/src/api/tenant-import.js — MEDIA_BUCKET access
+48:  if (!env.MEDIA_BUCKET) return null;
+50:  await env.MEDIA_BUCKET.put(key, bytes.buffer, {
+
+## READ 3: tests matching upload/import/r2
+-rw-rw-r-- 1 michael michael 16914 Sep 20 10:47 backend/tests/tenant-import-smoke.test.js
+-rw-rw-r-- 1 michael michael 25059 Sep 20 10:47 backend/tests/tenant-import.test.js
+-rw-rw-r-- 1 michael michael 13901 Sep 20 10:47 backend/tests/upload.test.js
+
+## READ 4: upload.js head + mediaRoutes tail (3.6a target)
+- Head imports: { jsonResponse, errorResponse } from '../utils/response'; Hono; z; getScope from resolveScope
+- mediaRoutes.on(['GET','HEAD'], '*', handler): decodeURIComponent(pathname.slice('/api/media/'.length)),
+  sanitizeMediaKey(rawKey), !key -> 404, MEDIA_BUCKET.get(key), !obj -> 404, return obj.body.
+- mediaRoutes.all('*', () => errorResponse('Not found', 404));  (NO DELETE verb today — confirmed)
+
+## READ 5: backend/src/index.js — media/upload mounts (lines 735-746)
+const uploadAdminScope = resolveScope();
+app.use('/api/upload', uploadAdminScope);
+app.use('/api/upload/*', tenantAwareLimiter());
+app.route('/api/upload', uploadRoutes);
+
+const mediaPublicScope = resolveScope({ public: true });
+app.use('/api/media', mediaPublicScope);
+app.use('/api/media/*', mediaPublicScope);
+app.route('/api/media', mediaRoutes);
+
+## READ 6: backend/src/index.js — metaScope method-branch pattern (lines 225-231) to mirror
+const metaPublicScope = resolveScope({ public: true });
+const metaAdminScope = resolveScope();
+const metaScope = async (c, next) =>
+  c.req.method === 'GET' ? metaPublicScope(c, next) : metaAdminScope(c, next);
+app.use('/api/tenants/:tenantId/meta/*', metaScope);
+app.use('/api/tenants/:tenantId/meta/*', tenantAwareLimiter());
+app.route('/api/tenants/:tenantId/meta', tenantMetaRoutes);
+
+Other method-branch mounts in index.js: lines 514, 527, 540, 558, 571, 606, 619, 633, 644, 655, 666,
+700, 704 (OrdersApiBatch method-check), 761 (tagsPublicScope/tagsAdminScope).
+
+## READ 7: ls -la on plan-stated paths (F-A17-01/02)
+-rw-rw-r-- 1 michael michael 24861 Sep 20 10:47 backend/src/api/tenant-import.js
+-rw-rw-r-- 1 michael michael  6473 Sep 20 10:47 backend/src/api/upload.js
+-rw-rw-r-- 1 michael michael 16914 Sep 20 10:47 backend/tests/tenant-import-smoke.test.js
+-rw-rw-r-- 1 michael michael 25059 Sep 20 10:47 backend/tests/tenant-import.test.js
+-rw-rw-r-- 1 michael michael 13901 Sep 20 10:47 backend/tests/upload.test.js
+
+## READ 8: tenant-import.js full flow map (3.6b target)
+- resolveImage(env, tenantId, value) lines 35-56: data URI -> R2 put ({httpMetadata}) -> /api/media/{key}; else passthrough/null
+- importTenantManifest(env, tenantId, payload) line 177:
+  * schema.safeParse; !success -> validationError(parsed) [no uploads yet]
+  * ensureTenantOrg; !organizationId -> errorResponse('Tenant is not provisioned for POS', 409) [no uploads yet]
+  * Section 1 tenant branding: resolveImage logo/favicon/hero (lines 202-204) THEN UPDATE tenants
+  * Section 2 products: per-item resolveImage(item.image_url) (line 248) -> batch INSERT; catches:
+    UNIQUE -> 409 errorResponse; else 'Failed to create products' errorResponse
+  * Section 3 rooms: unknown product -> 400 errorResponse; batch; changes===0 -> 404 errorResponse
+  * Section 4 rate plans: unknown product -> 400 errorResponse; batch; changes===0 -> 404 errorResponse
+  * Section 5 meal categories: batch (no R2)
+  * Section 6 meals: per-meal resolveImage(meal.image_url) (line 407) -> batch (no error catch)
+  * Section 7 pos_users: batch; catches UNIQUE -> 409 errorResponse; else 'Failed to create POS users'
+  * success -> jsonResponse({success, tenant_id, counts})
+KEY: after the FIRST resolveImage put succeeds, EVERY subsequent return errorResponse(...) / thrown
+batch error can orphan already-uploaded R2 keys (F-A17-02: "items 1-N inserted, media N+1 fails").
+
+## READ 9: upload.test.js harness (3.6a test target)
+- mountRouter(routes, { basePath, tenantId }) stub scope { tenantId, user } — imported from helpers/routerHarness
+- makeBucketSpy(): { put: vi.fn(), get: vi.fn() } — no delete spy yet (add for 3.6a)
+- makeRequest(method, path, {body, headers, filename}) builder
+
+## READ 10: tenant-import.test.js harness (3.6b test target)
+- env made at line 24: { DB, MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}) }, JWT_SECRET }
+  (add delete spy for 3.6b); uses REAL-auth mountRouterAuthenticated for /api/tenants/import.
+
+## READ 11: routerHarness.js
+- mountRouter: injected scope middleware (stub) -> c.set('scope', { tenantId, user }); NOT production resolveScope
+- mountRouterAuthenticated: PRODUCTION resolveScope(scopeOptions) + requireAuth — for real-auth suites
+- signAdminToken(user, secret) -> generateToken wrapper
+
+## Design notes (pre-edit, for commit bodies)
+3.6a: no DELETE verb on mediaRoutes today. Add mediaRoutes.delete('*') with admin-scoped mount
+(method-branch like metaScope: GET/HEAD public, else admin). Handler: sanitize key (sanitizeMediaKey),
+key-scoped tenant check (key startsWith `media/{scope.tenantId}/` unless super_admin), best-effort
+env.MEDIA_BUCKET.delete(key) (missing object -> R2 delete is a no-op success; thrown -> 502), 503 when
+no bucket, 401 when no scope.user. Mount change: mediaPublicScope -> mediaScope method-branch.
+
+3.6b: importTenantManifest must track uploaded R2 keys and best-effort delete them on ANY failure.
+Wrap body so both thrown errors (checkout/media batch) AND error-response returns roll back once.
+Add delete spy to tenant-import.test.js env; assert delete called with prior put keys when a later step fails.
