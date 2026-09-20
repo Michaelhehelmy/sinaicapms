@@ -217,9 +217,9 @@ export default function CampBooking({ tenantId, tenantName, primaryColor, roomTy
         if (cancelled) return;
         const price =
           typeof (res as { total_price?: unknown } | null | undefined)?.total_price === 'number'
-            ? (res as { total_price: number }).total_price
+            ? ((res as { total_price?: unknown }).total_price as number)
             : typeof (res as { totalPrice?: unknown } | null | undefined)?.totalPrice === 'number'
-              ? (res as { totalPrice: number }).totalPrice
+              ? ((res as { totalPrice?: unknown }).totalPrice as number)
               : null;
         setServerPrice(price);
       })

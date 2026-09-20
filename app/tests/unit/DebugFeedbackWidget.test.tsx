@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { DebugFeedbackWidget } from '@/components/debug/DebugFeedbackWidget';
+import type { FeedbackInput } from '@/lib/api';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 // The widget reads identity from the session kernel and dynamic-imports both
@@ -25,7 +26,7 @@ vi.mock('html2canvas', () => ({
   default: vi.fn(async () => fakeCanvas),
 }));
 
-const submitFeedback = vi.fn(async () => ({ success: true, id: 'fb_test' }));
+const submitFeedback = vi.fn(async (input: FeedbackInput) => ({ success: true, id: 'fb_test' }));
 vi.mock('@/lib/api', () => ({
   submitFeedback,
 }));

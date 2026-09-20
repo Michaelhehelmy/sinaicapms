@@ -1434,7 +1434,7 @@ export const menuRoutes = [
 // menu_config + type); super-admin GETs additionally add admin_email/admin_name
 // (modelled as optional adminEmail/adminName). POST /api/tenants is SUPER-ADMIN
 // ONLY (P0-7); PUT /api/me is auth + tenant scoped.
-const tenantTypeSchema = z.enum(['camp', 'supermarket', 'transportation', 'other']);
+const tenantTypeSchema = z.enum(['camp', 'supermarket', 'transportation', 'restaurant', 'custom', 'other']);
 
 const tenantSchema = z
   .object({

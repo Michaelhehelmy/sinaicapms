@@ -803,7 +803,7 @@ describe('super admin cross-tenant APIs', () => {
   });
 
   it('getAdminPayoutEligible with params', async () => {
-    const result = await getAdminPayoutEligible({ tenantId: 1, limit: 5 });
+    const result = await getAdminPayoutEligible({ tenantId: '1', limit: 5 });
     expect(result).toEqual({ data: [] });
     const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toContain('tenantId=1');
@@ -816,7 +816,7 @@ describe('super admin cross-tenant APIs', () => {
   });
 
   it('getAdminPayouts with params', async () => {
-    const result = await getAdminPayouts({ page: 1, pageSize: 20, tenantId: 1, status: 'paid' });
+    const result = await getAdminPayouts({ page: 1, pageSize: 20, tenantId: '1', status: 'paid' });
     expect(result).toEqual({ data: [] });
     const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(url).toContain('status=paid');
@@ -829,7 +829,7 @@ describe('super admin cross-tenant APIs', () => {
 
   it('createAdminPayout', async () => {
     mockFetch({ id: '1', success: true });
-    await createAdminPayout({ tenantId: 1, paymentIds: ['p1'], method: 'bank_transfer' });
+    await createAdminPayout({ tenantId: '1', paymentIds: ['p1'], method: 'bank_transfer' });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 

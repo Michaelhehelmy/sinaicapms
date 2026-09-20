@@ -1586,7 +1586,7 @@ export function useAdminAuditQuery(params?: Record<string, string>) {
 // ─── Feedback (human-testing debug reports, Super Admin) ───────────────
 
 /** Fetch the feedback list (paged; screenshot omitted on list rows). */
-export function useFeedbackListQuery(params?: { status?: string; authorType?: string; page?: number; pageSize?: number }) {
+export function useFeedbackListQuery(params?: { status?: api.FeedbackStatus; authorType?: api.FeedbackAuthorType; page?: number; pageSize?: number }) {
   return useQuery<api.Paginated<FeedbackReport>>({
     queryKey: queryKeys.feedback({
       ...(params?.status ? { status: params.status } : {}),

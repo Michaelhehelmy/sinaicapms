@@ -9461,7 +9461,7 @@ export interface components {
             name: string;
             subdomain: string;
             /** @enum {string} */
-            type: "camp" | "supermarket" | "transportation" | "other";
+            type: "camp" | "supermarket" | "transportation" | "restaurant" | "custom" | "other";
             customDomain?: string | null;
             logoUrl?: string | null;
             faviconUrl?: string | null;
@@ -9498,7 +9498,7 @@ export interface components {
             name: string;
             subdomain: string;
             /** @enum {string} */
-            type?: "camp" | "supermarket" | "transportation" | "other";
+            type?: "camp" | "supermarket" | "transportation" | "restaurant" | "custom" | "other";
             customDomain?: string;
             logoUrl?: string;
             faviconUrl?: string;
@@ -9528,7 +9528,7 @@ export interface components {
             name?: string | null;
             subdomain?: string | null;
             /** @enum {string} */
-            type?: "camp" | "supermarket" | "transportation" | "other";
+            type?: "camp" | "supermarket" | "transportation" | "restaurant" | "custom" | "other";
             message?: string;
             customDomain?: string | null;
             logoUrl?: string | null;
@@ -9664,7 +9664,7 @@ export interface components {
             customDomain?: string | null;
             name: string;
             /** @enum {string} */
-            type: "camp" | "supermarket" | "transportation" | "other";
+            type: "camp" | "supermarket" | "transportation" | "restaurant" | "custom" | "other";
             logoUrl?: string | null;
             faviconUrl?: string | null;
             primaryColor?: string | null;
@@ -9711,7 +9711,7 @@ export interface components {
             name?: string;
             subdomain?: string;
             /** @enum {string} */
-            type?: "camp" | "supermarket" | "transportation" | "other";
+            type?: "camp" | "supermarket" | "transportation" | "restaurant" | "custom" | "other";
             customDomain?: string;
             logoUrl?: string;
             faviconUrl?: string;
