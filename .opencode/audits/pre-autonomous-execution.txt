@@ -1,0 +1,48 @@
+=== git log -15 ===
+dc0715b fix(rate-limit): per-tenant limiter overlay on scoped surfaces — audit F-A18-09
+1b5c73b test(sse): close F-A16-04 (counter reset) — shipped in 2afb889
+2afb889 fix(sse): bounded replay buffer with reset frame for stale markers — audit F-A16-03
+674471e chore(audit): Wave 3.4b pre-edit reads — bounded replay + counter reset
+20de851 chore(audit): Wave 6.6 pre-edit reads — human testing phase preflight
+ebaa60d fix(sse): short-lived single-use stream token — audit F-A16-02
+1938c43 chore(audit): Wave 3.4 pre-edit reads — SSE token/replay/counter state
+5609e3c fix(pos): persist refresh token + subscribe shell to auth change — audit F-A8-1/2
+24d3b86 fix(orders): derive camp_id from verified room row, not request body — audit F-A3-2
+79bb584 fix(pos-users): scope email/username dup check by organization_id — audit F-A1-F001
+c01c1c8 docs(plan): mark F-A2-1 WITHDRAWN — false positive (errorResponse default was always 500); log Wave 2 completion + C1/C2 confirmations
+73b4578 docs(logbook): record owner directive 2026-09-18 — Wave 2.5 accepted, Wave 2.3 audit authorized
+94dddd2 fix(api): explicit 500 on errorResponse catch traps — audit Wave 2.3
+afe12a9 docs(logbook): record owner directive 2026-09-18 — cleanup accepted, Wave 2.5 authorized, historical backfill deferred
+3780f4a fix(reservations): remove meal-plan double-count UPDATE — audit Wave 2.5
+
+=== git status --short ===
+?? .opencode/audits/pre-autonomous-execution.txt
+?? .opencode/summaries/
+?? docs/examples/acacia-manifest.json
+
+=== git log origin/main..HEAD ===
+
+=== migrations ===
+99
+backend/migrations/0097_feedback.sql
+backend/migrations/0098_storefront_paymob.sql
+backend/migrations/0099_normalize_marketplace_payouts_ids.sql
+
+=== test baseline (backend) ===
+
+[2m Test Files [22m [1m[32m85 passed[39m[22m[90m (85)[39m
+[2m      Tests [22m [1m[32m2229 passed[39m[22m[90m (2229)[39m
+[2m   Start at [22m 22:37:11
+[2m   Duration [22m 13.34s[2m (transform 8.91s, setup 0ms, import 25.20s, tests 42.63s, environment 17ms)[22m
+
+
+=== test baseline (frontend) ===
+
+[2m Test Files [22m [1m[32m137 passed[39m[22m[90m (137)[39m
+[2m      Tests [22m [1m[32m3416 passed[39m[22m[90m (3416)[39m
+[2m   Start at [22m 22:37:25
+[2m   Duration [22m 44.08s[2m (transform 20.77s, setup 21.39s, import 60.26s, tests 199.41s, environment 146.33s)[22m
+
+
+=== HEAD sha ===
+dc0715bf0321533cd7e3b3e9e6c84ce14c425088
