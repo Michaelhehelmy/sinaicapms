@@ -125,13 +125,17 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
     // Use cf-connecting-ip only (Cloudflare-populated, not spoofable)
     const ip = c.req.header('cf-connecting-ip') || 'unknown';
     const path = c.req.path;
+    // Optional key builder (Wave 3.5 / F-A18-09): the per-tenant limiter
+    // supplies a tenant-scoped key here; the global limiter keeps the default
+    // `${ip}:${path}` composite so existing policy buckets are unchanged.
+    const coreKey = options.makeKey ? options.makeKey(ip, path) : `${ip}:${path}`;
     const windowSec = Math.ceil(options.windowMs / 1000);
 
     // KV-backed rate limiting (distributed across all isolates).
     // RATE_LIMIT_KV_ENABLED="false" forces the in-memory fallback below.
     if (c.env && c.env.RATE_LIMIT_KV && c.env.RATE_LIMIT_KV_ENABLED !== 'false') {
       try {
-        const windowKey = `${ip}:${path}:${Math.floor(Date.now() / options.windowMs)}`;
+        const windowKey = `${coreKey}:${Math.floor(Date.now() / options.windowMs)}`;
         const current = await c.env.RATE_LIMIT_KV.get(windowKey);
         const count = current ? parseInt(current, 10) : 0;
 
@@ -154,7 +158,7 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
 
     // Fallback: in-memory per-isolate (not distributed, but better than nothing)
     try {
-      const ipPathKey = `${ip}:${path}`;
+      const ipPathKey = coreKey;
       const now = Date.now();
 
       if (!globalThis._rateLimitMap) globalThis._rateLimitMap = new Map();
@@ -185,5 +189,44 @@ export const rateLimitMiddleware = (options = { windowMs: 60000, max: 100 }) => 
       // Fail-closed: deny on error
       return c.json({ success: false, error: 'Rate limit check failed' }, 429);
     }
+  };
+};
+
+/**
+ * Per-tenant rate limiter (Wave 3.5, audit F-A18-09).
+ *
+ * Composes the same KV/memory bucket machinery as `rateLimitMiddleware` but
+ * keys on the VERIFIED tenant claim stamped by `resolveScope` /
+ * `superAdminAuth` — `${ip}:tenant:${scope.tenantId}:${path}`. The tenant
+ * component comes from the JWT (post-auth), never from the client-settable
+ * `x-tenant-id` header, so rotating a spoofed header is inert (it cannot
+ * mint fresh buckets).
+ *
+ * Mounted as a second `app.use()` line immediately after each authenticated
+ * or mixed-visibility `resolveScope` mount (Shape 1): Hono runs middleware in
+ * registration order, so the auth middleware's 401 short-circuit executes
+ * first — a rejected request is NEVER debited against a tenant bucket — and a
+ * request that never reached an authed surface (or rides a public branch that
+ * set `scope.user` to null) passes through untouched, staying bounded by the
+ * global `policyLimiter` mounted at `/api/*`.
+ */
+export const tenantAwareLimiter = (options = { windowMs: 60000, max: 100, envKey: 'RATE_LIMIT_TENANT' }) => {
+  return async (c, next) => {
+    if (c.env && c.env.ENVIRONMENT === 'test') {
+      await next();
+      return;
+    }
+    const scope = typeof c.get === 'function' ? c.get('scope') : null;
+    // Only token-verified identities with a resolved tenant are credited.
+    if (!scope || !scope.user || !scope.tenantId) {
+      await next();
+      return;
+    }
+    return rateLimitMiddleware({
+      windowMs: options.windowMs,
+      max: options.max,
+      envKey: options.envKey,
+      makeKey: (ip, path) => `t:${ip}:${scope.tenantId}:${path}`,
+    })(c, next);
   };
 };

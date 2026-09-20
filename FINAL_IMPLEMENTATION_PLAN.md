@@ -90,6 +90,8 @@
 ## 3. Findings Register (v2 — re-graded per owner review)
 
 > **Register header — 2026-09-19 (owner directive):** F-A14-2, F-A2-1, F-A3-2 are withdrawn — verified already-fixed or never-buggy on direct inspection. Three of the original findings were false positives. The audit's finding precision is lower than its severity classifications implied. Retained regression tests: 22 (F-A2-1: 9, F-A3-2: 1, F-A3-1: 12).
+>
+> **Register header — 2026-09-20 (owner directive):** FOURTH false positive on direct inspection — the F-A18-09 sub-claim "5 public endpoints with no rate limit" is withdrawn. Zero unlimited public `/api/*` endpoints exist; the only unlimited routes are `/` and `/healthz` (intentional, for LB health checks) and the sole hard policy exemption is `/api/stream/orders`. The REAL F-A18-09 residue is the per-IP+path limiter key (no tenant dimension) → fixed by Wave 3.5's per-tenant overlay `tenantAwareLimiter` (key = `t:<ip>:<scope.tenantId>:<path>`, mounted as a Shape-1 second `app.use()` line after every authenticated scoped gate). Finding precision continues to under-deliver vs severity labels.
 
 ### P0 — Critical (production down, data corruption, or false security/roadmap claims)
 
@@ -303,7 +305,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 <tr><td>F-A17-03/04</td><td>Import media: malformed base64 500s whole import; no magic-byte validation</td><td>Per-item validation errors instead of whole-import 500; magic-byte check before upload</td></tr>
 <tr><td>F-A17-07</td><td>Health check reports false "missing bucket" when R2 binding errors; docs claim manual creation (stale)</td><td>Fix health probe; update wrangler.toml comment to "bucket exists; automation added for new envs"</td></tr>
 <tr><td>F-A18-07</td><td>CORS doc inaccurate (<code>credentials: true</code> claim false; code actually correct single-source)</td><td>Fix security-guide.md CORS section to match code</td></tr>
-<tr><td>F-A18-09</td><td>Rate limiter per-IP+path, not per-tenant; 5 public endpoints with no rate limit</td><td>Add tenant-aware keys where sensible; verify public endpoints covered by policy table</td></tr>
+<tr><td>F-A18-09</td><td>Rate limiter per-IP+path, not per-tenant — <b>REAL</b>, fixed Wave 3.5 (tenant-aware key on verified scope, Shape 1 post-auth mount). Sub-claim "5 public endpoints with no rate limit" — <b>WITHDRAWN, false positive</b> (zero unlimited public endpoints)</td><td>Wave 3.5 overlay limiter keyed <code>t:&lt;ip&gt;:&lt;tenantId&gt;:&lt;path&gt;</code>; public per-group budgets deferred to Wave 3.5b (Paymob webhook P1: shared 100/min IP bucket would drop payment callbacks)</td></tr>
 <tr><td>F-A15-1</td><td>69 dead exports in <code>app/src/lib/api.ts</code> (24% of 291) — **confirmed by A9 regenerated consumer graph; stays P3** (owner asked to re-check for P2; A9 found no dynamic/string-key dispatch → P3)</td><td>Prune or auto-generate from consumer graph (Wave 5a)</td></tr>
 <tr><td>F-A15-2</td><td>8 dead exports in <code>sharedAuth.js</code></td><td>Delete dead surface (Wave 5b)</td></tr>
 <tr><td>F-A15-3</td><td><code>softDelete.js</code> (213 lines) wholly dead file, zero imports</td><td>Delete + its test (Wave 5c)</td></tr>
@@ -344,7 +346,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 
 ---
 
-## Wave 3 — Execution Status (through 3.4c)
+## Wave 3 — Execution Status (through 3.5)
 
 | Item | Status | Commit |
 |------|--------|--------|
@@ -354,10 +356,11 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 | 3.4a stream token | ✅ | `ebaa60d` |
 | 3.4b bounded replay | ✅ | `2afb889` |
 | 3.4c counter reset | ✅ | `8f5ee72d251917781a1ee1e580734b6f0784a96c` |
-| 3.5 rate limiter tenant keys | held | — |
+| 3.5 per-tenant limiter overlay (F-A18-09) | ✅ | this commit |
+| 3.5b public endpoint budgets (marketplace, onboarding, availability, media, meal-plans, Paymob webhook) | held | — |
 | 3.6 R2 cleanup + import rollback | held | — |
 
-Gate: 3.4c ✅ → next 3.5 (rate limiter tenant-aware keys, F-A18-09) then 3.6 (R2 cleanup + import rollback, F-A17-01/02). Deploy remains held (Wave 6.5 AND 6.6).
+Gate: 3.5 ✅ → next 3.6 (R2 cleanup + import rollback, F-A17-01/02), then Wave 3 report (C1/C2). 3.5b (public per-group budgets) queued after 3.6 with a **P1 note**: the Paymob payment webhook shares the 100/min IP bucket — a busy NAT'd tenant IP would drop payment callbacks; give the webhook a dedicated/exempt budget in 3.5b. Deploy remains held (Wave 6.5 AND 6.6).
 
 ## Wave 6.6 — Human Testing Pre-Flight
 

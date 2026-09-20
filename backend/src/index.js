@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
 import { getTenant } from './middleware/tenant';
-import { policyLimiter } from './middleware/rateLimit';
+import { policyLimiter, tenantAwareLimiter } from './middleware/rateLimit';
 import { requireAuth, extractRequestToken } from './middleware/requireAuth.js';
 import { handleAuthRoute } from './api/auth';
 import { handleTenants } from './api/tenants';
@@ -227,6 +227,7 @@ const metaAdminScope = resolveScope();
 const metaScope = async (c, next) =>
   c.req.method === 'GET' ? metaPublicScope(c, next) : metaAdminScope(c, next);
 app.use('/api/tenants/:tenantId/meta/*', metaScope);
+app.use('/api/tenants/:tenantId/meta/*', tenantAwareLimiter());
 app.route('/api/tenants/:tenantId/meta', tenantMetaRoutes);
 
 // ── Tenant data import (POST /api/tenants/import — admin auth, tenant-scoped) ──
@@ -244,6 +245,7 @@ const tenantImportScope = resolveScope({
 });
 app.use('/api/tenants/import', tenantImportScope);
 app.use('/api/tenants/import/*', tenantImportScope);
+app.use('/api/tenants/import/*', tenantAwareLimiter());
 app.route('/api/tenants/import', tenantImportRoutes);
 
 // ── Tenant routes (S-C1 fix: only explicit GET + POST, no app.all shadow) ──
@@ -272,6 +274,11 @@ const superAdminGate = requireAuth({
 async function superAdminAuth(c, next) {
   const auth = await superAdminGate(c.req.raw, c.env);
   if (auth instanceof Response) return auth;
+  // Wave 3.5 (F-A18-09): stamp the verified token claim so the per-tenant
+  // limiter can budget /api/admin/* by tenant. super_admin tokens carry
+  // tenantId:null (cross-tenant ops are impossible to attribute to one
+  // tenant — those requests stay bounded by the global policy table).
+  c.set('scope', { tenantId: auth.user?.tenantId ?? null, user: auth.user });
   await next();
 }
 
@@ -292,6 +299,12 @@ for (const [prefix, handler] of [
   app.route(`/api${prefix}`, handler);
 }
 
+// Wave 3.5 (F-A18-09): per-tenant limiter for the /api/admin surface. Runs
+// after superAdminAuth stamps scope at the panel roots; legacy catch-all
+// handlers (which auth internally and never reach c.get('scope')) pass
+// through untouched and stay bounded by the global policy table.
+app.use('/api/admin/*', tenantAwareLimiter());
+
 // Legacy handlers (own auth gate — wrap for Hono compatibility)
 app.all('/api/admin/health', async (c) => handleAdminHealthRoute(c.req.raw, c.env));
 app.all('/api/admin/health/*', async (c) => handleAdminHealthRoute(c.req.raw, c.env));
@@ -304,6 +317,7 @@ app.all('/api/admin/reports/*', async (c) => handleAdminReportsRoute(c.req.raw, 
 const tenantBillingScope = resolveScope();
 app.use('/api/tenant/billing', tenantBillingScope);
 app.use('/api/tenant/billing/*', tenantBillingScope);
+app.use('/api/tenant/billing/*', tenantAwareLimiter());
 app.route('/api/tenant/billing', tenantBillingRoutes);
 
 // Legacy catch-all admin route
@@ -324,6 +338,7 @@ app.route('/api/pos', posRoutes);
 // POS barcode lookup — resolveScope resolves tenantId from POS or admin JWT.
 app.use('/api/pos/products/barcode/*', resolveScope({ dualRealm: true }));
 app.route('/api/pos/products/barcode', posBarcodeRoutes);
+app.use('/api/pos/*', tenantAwareLimiter());
 
 // ── Contact form (public; POST /api/contact 10/min via policy table).
 // Phase 9: DEPRECATED alias of POST /api/leads (source defaults to 'contact').
@@ -465,12 +480,14 @@ app.get('/api/openapi.json', (c) => c.json(buildOpenApiDocument()));
 const reportsScope = resolveScope();
 app.use('/api/reports', reportsScope);
 app.use('/api/reports/*', reportsScope);
+app.use('/api/reports/*', tenantAwareLimiter());
 app.route('/api/reports', reportsRoutes);
 
 // ── Inventory (Phase 4 T1) — admin-scoped low-stock reporting.
 const inventoryScope = resolveScope();
 app.use('/api/inventory', inventoryScope);
 app.use('/api/inventory/*', inventoryScope);
+app.use('/api/inventory/*', tenantAwareLimiter());
 app.route('/api/inventory', inventoryRoutes);
 
 // ── Price overrides (Phase 4 T1) — tenant-scoped CRUD (GET list / PUT bulk
@@ -478,12 +495,14 @@ app.route('/api/inventory', inventoryRoutes);
 const priceOverridesScope = resolveScope();
 app.use('/api/price-overrides', priceOverridesScope);
 app.use('/api/price-overrides/*', priceOverridesScope);
+app.use('/api/price-overrides/*', tenantAwareLimiter());
 app.route('/api/price-overrides', priceOverridesRoutes);
 
 // ── Plans (Phase 4 T1) — tenant-scoped via camp ownership.
 const plansScope = resolveScope();
 app.use('/api/plans', plansScope);
 app.use('/api/plans/*', plansScope);
+app.use('/api/plans/*', tenantAwareLimiter());
 app.route('/api/plans', plansRoutes);
 
 // ── Meal categories (Phase 4 T1). Mixed visibility, matching the legacy
@@ -497,6 +516,7 @@ const mealCategoriesScope = async (c, next) =>
     : mealCategoriesAdminScope(c, next);
 app.use('/api/meal-categories', mealCategoriesScope);
 app.use('/api/meal-categories/*', mealCategoriesScope);
+app.use('/api/meal-categories/*', tenantAwareLimiter());
 app.route('/api/meal-categories', mealCategoriesRoutes);
 
 // ── Categories (Phase 4 T1). Same mixed visibility: GET public
@@ -509,6 +529,7 @@ const categoriesScope = async (c, next) =>
     : categoriesAdminScope(c, next);
 app.use('/api/categories', categoriesScope);
 app.use('/api/categories/*', categoriesScope);
+app.use('/api/categories/*', tenantAwareLimiter());
 app.route('/api/categories', categoriesRoutes);
 
 // ── Meals (Phase 4 T1). Same mixed visibility: GET public (menu browsing),
@@ -521,6 +542,7 @@ const mealsScope = async (c, next) =>
     : mealsAdminScope(c, next);
 app.use('/api/meals', mealsScope);
 app.use('/api/meals/*', mealsScope);
+app.use('/api/meals/*', tenantAwareLimiter());
 app.route('/api/meals', mealsRoutes);
 
 // ── Promotions (discount engine). Mixed visibility by path+method: GET is
@@ -539,6 +561,7 @@ const promotionsScope = async (c, next) =>
   isPromotionsPublic(c) ? promotionsPublicScope(c, next) : promotionsAdminScope(c, next);
 app.use('/api/promotions', promotionsScope);
 app.use('/api/promotions/*', promotionsScope);
+app.use('/api/promotions/*', tenantAwareLimiter());
 app.route('/api/promotions', promotionsRoutes);
 
 // ── Dynamic Service Module. GET /public/:slug is public; everything else is admin-scoped.
@@ -550,6 +573,7 @@ const servicesScope = async (c, next) =>
   isServicesPublic(c) ? servicesPublicScope(c, next) : servicesAdminScope(c, next);
 app.use('/api/services', servicesScope);
 app.use('/api/services/*', servicesScope);
+app.use('/api/services/*', tenantAwareLimiter());
 app.route('/api/services', servicesRoutes);
 
 // ── Public Marketplace (C3). All endpoints are public (no auth required).
@@ -571,6 +595,7 @@ app.route('/api', onboardingRoutes);
 const inboxAdminScope = resolveScope();
 app.use('/api/inbox', inboxAdminScope);
 app.use('/api/inbox/*', inboxAdminScope);
+app.use('/api/inbox/*', tenantAwareLimiter());
 app.route('/api/inbox', inboxRoutes);
 
 // ── Leads (Phase 4 T1). POST is public (contact/reservation forms; 10/min
@@ -583,6 +608,7 @@ const leadsScope = async (c, next) =>
     : leadsAdminScope(c, next);
 app.use('/api/leads', leadsScope);
 app.use('/api/leads/*', leadsScope);
+app.use('/api/leads/*', tenantAwareLimiter());
 app.route('/api/leads', leadsRoutes);
 
 // ── /api/me (Phase 4 T1). Mixed visibility: GET is public (R-9 — graceful
@@ -594,6 +620,7 @@ const meScope = async (c, next) =>
     ? mePublicScope(c, next)
     : meAdminScope(c, next);
 app.use('/api/me', meScope);
+app.use('/api/me/*', tenantAwareLimiter());
 app.route('/api/me', meRoutes);
 
 // ── Catalog routers (Phase 4 T1): camps / products / rooms / rateplans.
@@ -608,6 +635,7 @@ const catalogScope = async (c, next) =>
     : catalogAdminScope(c, next);
 app.use('/api/camps', catalogScope);
 app.use('/api/camps/*', catalogScope);
+app.use('/api/camps/*', tenantAwareLimiter());
 app.route('/api/camps', campsRoutes);
 
 const productsPublicScope = resolveScope({ public: true });
@@ -618,6 +646,7 @@ const productsScope = async (c, next) =>
     : productsAdminScope(c, next);
 app.use('/api/products', productsScope);
 app.use('/api/products/*', productsScope);
+app.use('/api/products/*', tenantAwareLimiter());
 app.route('/api/products', productsRoutes);
 
 const roomsPublicScope = resolveScope({ public: true });
@@ -628,6 +657,7 @@ const roomsScope = async (c, next) =>
     : roomsAdminScope(c, next);
 app.use('/api/rooms', roomsScope);
 app.use('/api/rooms/*', roomsScope);
+app.use('/api/rooms/*', tenantAwareLimiter());
 app.route('/api/rooms', roomsRoutes);
 
 const ratePlansPublicScope = resolveScope({ public: true });
@@ -638,6 +668,7 @@ const ratePlansScope = async (c, next) =>
     : ratePlansAdminScope(c, next);
 app.use('/api/rateplans', ratePlansScope);
 app.use('/api/rateplans/*', ratePlansScope);
+app.use('/api/rateplans/*', tenantAwareLimiter());
 app.route('/api/rateplans', ratePlansRoutes);
 
 // ── Cross-project connections (project_links, migration 0085). Internal admin
@@ -646,6 +677,7 @@ app.route('/api/rateplans', ratePlansRoutes);
 const projectLinksAdminScope = resolveScope();
 app.use('/api/projects/links', projectLinksAdminScope);
 app.use('/api/projects/links/*', projectLinksAdminScope);
+app.use('/api/projects/links/*', tenantAwareLimiter());
 app.route('/api/projects/links', projectLinksRoutes);
 
 // ── Project items (project_items, migration 0086). Type-aware per-project
@@ -654,6 +686,7 @@ app.route('/api/projects/links', projectLinksRoutes);
 const projectItemsAdminScope = resolveScope();
 app.use('/api/projects/items', projectItemsAdminScope);
 app.use('/api/projects/items/*', projectItemsAdminScope);
+app.use('/api/projects/items/*', tenantAwareLimiter());
 app.route('/api/projects/items', projectItemsRoutes);
 
 // ── Orders. Mixed visibility by path+method: public are GET /api/orders/status/:ref
@@ -676,6 +709,7 @@ const ordersScope = async (c, next) => {
 };
 app.use('/api/orders', ordersScope);
 app.use('/api/orders/*', ordersScope);
+app.use('/api/orders/*', tenantAwareLimiter());
 app.route('/api/orders', ordersRoutes);
 
 // ── Availability (Phase 4 T1). Fully public read-only (60s header cache).
@@ -702,6 +736,7 @@ app.post('/api/public/paymob/webhook', async (c) => handlePaymobWebhook(c.req.ra
 // streams from R2 (the key embeds the tenantId, so no auth is needed).
 const uploadAdminScope = resolveScope();
 app.use('/api/upload', uploadAdminScope);
+app.use('/api/upload/*', tenantAwareLimiter());
 app.route('/api/upload', uploadRoutes);
 
 const mediaPublicScope = resolveScope({ public: true });
@@ -717,6 +752,7 @@ app.route('/api/media', mediaRoutes);
 // has no public surface — super_admin/admin listing only. Single star
 // use-lines throughout (one middleware run; see note at the meta mount).
 app.use('/api/projects/:projectId/meta/*', metaScope);
+app.use('/api/projects/:projectId/meta/*', tenantAwareLimiter());
 app.route('/api/projects/:projectId/meta', projectMetaRoutes);
 
 const tagsPublicScope = resolveScope({ public: true });
@@ -724,13 +760,16 @@ const tagsAdminScope = resolveScope();
 const tagsScope = async (c, next) =>
   c.req.method === 'GET' ? tagsPublicScope(c, next) : tagsAdminScope(c, next);
 app.use('/api/tags/*', tagsScope);
+app.use('/api/tags/*', tenantAwareLimiter());
 app.route('/api/tags', tagsRoutes);
 
 app.use('/api/projects/:projectId/tags/*', catalogScope);
+app.use('/api/projects/:projectId/tags/*', tenantAwareLimiter());
 app.route('/api/projects/:projectId/tags', projectTagsRoutes);
 
 const auditAdminScope = resolveScope();
 app.use('/api/audit/*', auditAdminScope);
+app.use('/api/audit/*', tenantAwareLimiter());
 app.route('/api/audit', auditRoutes);
 
 // ── Restaurant pillar: POS floor tables (0069). Dual-realm scope: admin AND
@@ -739,6 +778,7 @@ app.route('/api/audit', auditRoutes);
 const posTablesDualScope = resolveScope({ dualRealm: true });
 app.use('/api/pos-tables', posTablesDualScope);
 app.use('/api/pos-tables/*', posTablesDualScope);
+app.use('/api/pos-tables/*', tenantAwareLimiter());
 app.route('/api/pos-tables', posTablesRoutes);
 
 // ── Meal plans (0070): public read for project meal plan options ──────────
@@ -755,24 +795,28 @@ app.route('/api/projects', mealPlanRoutes);
 const financialsScope = resolveScope();
 app.use('/api/financials', financialsScope);
 app.use('/api/financials/*', financialsScope);
+app.use('/api/financials/*', tenantAwareLimiter());
 app.route('/api/financials', financialsRoutes);
 
 // HR & Payroll — employees, leave, payroll, recruitment
 const hrScope = resolveScope();
 app.use('/api/hr', hrScope);
 app.use('/api/hr/*', hrScope);
+app.use('/api/hr/*', tenantAwareLimiter());
 app.route('/api/hr', hrRoutes);
 
 // Supply Chain — warehouses, stock, transfers, POs, BOMs, manufacturing
 const supplyScope = resolveScope();
 app.use('/api/supply', supplyScope);
 app.use('/api/supply/*', supplyScope);
+app.use('/api/supply/*', tenantAwareLimiter());
 app.route('/api/supply', supplyRoutes);
 
 // CRM & Projects — contacts, leads, opportunities, tasks, tickets
 const crmScope = resolveScope();
 app.use('/api/crm', crmScope);
 app.use('/api/crm/*', crmScope);
+app.use('/api/crm/*', tenantAwareLimiter());
 app.route('/api/crm', crmRoutes);
 
 // Storefront — mixed visibility: public read (products, cart, pages, blog), admin mutations.
@@ -799,12 +843,14 @@ const storefrontScope = async (c, next) => {
 };
 app.use('/api/storefront', storefrontScope);
 app.use('/api/storefront/*', storefrontScope);
+app.use('/api/storefront/*', tenantAwareLimiter());
 app.route('/api/storefront', storefrontRoutes);
 
 // AI & Intelligence — dynamic pricing, forecasting, anomalies, automation
 const aiScope = resolveScope();
 app.use('/api/ai', aiScope);
 app.use('/api/ai/*', aiScope);
+app.use('/api/ai/*', tenantAwareLimiter());
 app.route('/api/ai', aiRoutes);
 
 // ── API terminal fallback ─────────────────────────────────

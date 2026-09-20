@@ -18,6 +18,7 @@ vi.mock('../src/middleware/tenant.js', () => ({
 vi.mock('../src/middleware/rateLimit.js', () => ({
   rateLimitMiddleware: vi.fn(() => async (c, next) => { await next(); }),
   policyLimiter: vi.fn(() => async (c, next) => { await next(); }),
+  tenantAwareLimiter: vi.fn(() => async (c, next) => { await next(); }),
 }));
 
 import app from '../src/index.js';
