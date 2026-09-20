@@ -363,6 +363,26 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 
 **Wave 3 exit report — 2026-09-20:** All ten Wave 3 items executed and pushed. **C1 (super_admin cross-tenant bypass) — verified no-bypass**: `resolveScope.js:179` rejects any non-super_admin token whose `tenantId` doesn't equal the resolved tenant (`403 Forbidden: Access denied to this tenant partition`); only `super_admin` may override via `?tenantId=` (`resolveScope.js:171-174, 203-204`) — an intentional, accepted management capability, not an unrestricted bypass; the same contract holds in both scope-resolution branches. **C2 (no sibling checkin endpoint) — verified**: `orders.js` has exactly one checkin route (`PATCH /:id/checkin` @946); the A22-01 room-ownership guard (tenant-scoped JOIN, `orders.js:979-989`) still present; the handler destructures only `{ early_checkin, adult_count, child_count, room_id }` from the body (`:951`) — `camp_id` is never accepted from the client (F-A3-2 held). **Deploy gate G3 cleared** (Wave 1 G1 + Wave 2 G2 + Wave 3 G3 all green). Deploy remains held (Wave 6.5 AND 6.6). Next: Wave 4 (4a–4i).
 
+---
+
+## Wave 4 — Execution Status (through 4i)
+
+| Item | Status | Commit |
+|------|--------|--------|
+| 4a — CI vitest gate | ✅ verify-only (already present) | — |
+| 4b — OpenAPI parity CI gate (A9-parity) | ✅ | `c555a02` |
+| 4c — `--rollback` deploy flag | ✅ verify-only (already present) | — |
+| 4d — npm audit triage | ✅ | `9cafd61` |
+| 4e — staging routes / stale Stripe env (F-A14-8, F-A14-6, F-A14-9) | ✅ | `e672c5c`, `5d67c2d` |
+| 4f — migration cap 200 | ✅ verify-only (99 files < 200) | — |
+| 4g — frontend tsc errors (8 pre-existing) | ✅ | `1c2e4a3` |
+| 4h — CI Astro build gate (F-A20-01 PERF_BASELINE verify-only: budget.json + lighthouse is the perf gate) | ✅ | `d4cff17` |
+| 4i — observability/rollback trigger | ✅ documented (no logpush target exists; backup non-empty check shipped `b90bb3e`) | `b90bb3e` |
+| F-A14-7 — root lint/typecheck scripts | ✅ | `392d234` |
+| T2b — root lint cleanup (17 pre-existing errors) | ✅ | `7d17b26` |
+
+**Wave 4 exit report — 2026-09-21:** All Wave 4 items executed (9 code commits + 4 verify-only). **F-A1-F004 (cleanup redundant indexes, migration 0100) — NOT applied, superseded**: owner pre-decision deferred index drops; the migration stays proposed-only (`backend/migrations/0100_cleanup_redundant_indexes.sql` reverted to proposed). **Verify-only items confirmed**: 4a — `ci.yml` frontend-tests job already runs vitest; 4c — `deploy.sh:42` `--rollback` flag + two-step Worker version-pin drill (`rollback_worker`, documented); 4f — `backend/migrations/` has 99 SQL files, well under the 200 cap; F-A20-01 — `app/budget.json` + `npm run lighthouse` remain the perf gate (PERF_BASELINE is doc-only, no new budget rows needed). **4d gap fixed during verification**: the first audit commit's `>=` overrides let npm resolve nanoid 6.0.1 / undici 8.10.2 / brace-expansion 5.0.12 (major jumps); corrected to in-major pinned patched versions (nanoid 3.3.18, undici 7.29.1, postcss 8.5.28, brace-expansion 1.1.21, adm-zip 0.6.1) — lesson folded into the commit: **override RANGES resolve to the LATEST tag, always pin the patched major line**. **Final Wave 4 SHA list**: 4b `c555a02`, 4d `9cafd61` (amended twice from `4f702a5` → `3ec7fe0` → final), 4e `e672c5c` + `5d67c2d`, 4g `1c2e4a3`, 4h `d4cff17`, 4i/F-A14-10 `b90bb3e`, F-A14-7 `392d234`, lint `7d17b26`. **Gate assertion**: tsc 0 errors, app 3416/3416 (137 files), backend 2254/2254 (85 files), `astro build` exit 0, eslint 0 errors, audits 0 high at root/backend/app (residue: @vitest/mocker + storybook uuid, dev-only, major-bump-blocked). **Deploy gate G4 cleared** (G1–G4 all green). Deploy remains held ONLY by G6.5 (staging) AND G6.6 (human pre-flight). False-positive register stays at 4. Next: Wave 5 (5a dead api.ts exports, 5b sharedAuth dead exports, 5c softDelete.js, 5d dead imports; no historical-backfill proposal this cycle).
+
 ## Wave 6.6 — Human Testing Pre-Flight
 
 **Purpose:** prove the three human-facing surfaces work end-to-end on staging with real accounts, real logins, and a real feedback loop — the last claim class that automated tests cannot settle. **Deploy is held until Wave 6.5 AND Wave 6.6 both pass.**
