@@ -19,8 +19,8 @@ import {
   getProjectType,
   buildMetaOps,
   isMetaOpsEmpty,
+  type MetaRow,
 } from '@/lib/project-types';
-import type { MetaRow } from '@/lib/project-types';
 import type { Camp } from '@/hooks/useAdminData';
 import type { ProjectLink } from '@/lib/api';
 
@@ -349,7 +349,6 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
         capacity: parseInt(form.capacity) || 0,
         status: form.status as 'active' | 'inactive' | 'completed',
         notes: form.notes.trim(),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         projectType,
       } as any,
       {

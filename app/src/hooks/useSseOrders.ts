@@ -23,8 +23,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { API_BASE } from '@/lib/api';
-import { mintStreamToken, StreamTokenMintError } from '@/lib/sse';
-import { openOrdersStream, type OrdersStreamHandle } from '@/lib/sse';
+import { mintStreamToken, StreamTokenMintError, openOrdersStream, type OrdersStreamHandle } from '@/lib/sse';
 
 export interface UseSseOrdersOptions {
   /** When false the stream is not opened (e.g., calendar page not visible). */

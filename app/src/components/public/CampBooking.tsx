@@ -6,8 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { cn, INK, readableTextOn, normalizeAssetUrl } from '@/lib/utils';
 import { hexToRgba } from '@/lib/theme';
-import { getProjectMealPlans, calculatePrice } from '@/lib/api';
-import type { ProjectMealPlan } from '@/lib/api';
+import { getProjectMealPlans, calculatePrice, type ProjectMealPlan } from '@/lib/api';
 
 interface RoomType {
   id: string;

@@ -31,8 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { API_BASE } from '@/lib/api';
-import { mintStreamToken, StreamTokenMintError } from '@/lib/sse';
-import { openInboxStream, type InboxStreamHandle } from '@/lib/sse';
+import { mintStreamToken, StreamTokenMintError, openInboxStream, type InboxStreamHandle } from '@/lib/sse';
 
 export interface UseSseInboxOptions {
   /** When false the stream is not opened (e.g., inbox panel not visible). */

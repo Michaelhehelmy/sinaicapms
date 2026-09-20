@@ -12,18 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FormModal } from '@/components/ui/FormModal';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth';
-import { apiFetch } from '@/lib/api';
-import { getAdminTenants } from '@/lib/api';
-import {
-  getAdminPublicPayments,
-  getAdminPayouts,
-  getAdminPayout,
-  createAdminPayout,
-  markAdminPayoutPaid,
-  cancelAdminPayout,
-  type PublicPayment,
-  type MarketplacePayout,
-} from '@/lib/api';
+import { apiFetch, getAdminTenants, getAdminPublicPayments, getAdminPayouts, getAdminPayout, createAdminPayout, markAdminPayoutPaid, cancelAdminPayout, type PublicPayment, type MarketplacePayout } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface TenantRecord {

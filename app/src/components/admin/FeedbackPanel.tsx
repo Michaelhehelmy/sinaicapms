@@ -7,8 +7,7 @@ import { DataTable } from '@/components/ui/DataTable';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
 import { useFeedbackListQuery, useUpdateFeedbackStatusMutation } from '@/hooks/useQueryHooks';
-import { getFeedback } from '@/lib/api';
-import type { FeedbackDetail, FeedbackReport, FeedbackStatus } from '@/lib/api';
+import { getFeedback, type FeedbackDetail, type FeedbackReport, type FeedbackStatus } from '@/lib/api';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },

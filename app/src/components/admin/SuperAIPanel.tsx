@@ -9,8 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/lib/auth';
-import { apiFetch } from '@/lib/api';
-import { getAdminTenants } from '@/lib/api';
+import { apiFetch, getAdminTenants } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 interface TenantRecord {

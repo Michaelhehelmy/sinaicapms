@@ -26,8 +26,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/Toast';
 import * as api from '@/lib/api';
-import { apiFetch } from '@/lib/api';
-import type { Paginated } from '@/lib/api';
 import type {
   AdminAuditPage,
   AdminHealthMetricsPayload,
@@ -215,9 +213,9 @@ export function useRoomsQuery() {
 /** Fetch orders with optional filters */
 export function useOrdersQuery(params?: Record<string, string>) {
   const toastError = useErrorToast();
-  return useQuery<Paginated<Order>>({
+  return useQuery<api.Paginated<Order>>({
     queryKey: queryKeys.orders(params),
-    queryFn: () => api.getOrders(params) as Promise<Paginated<Order>>,
+    queryFn: () => api.getOrders(params) as Promise<api.Paginated<Order>>,
     throwOnError: (err) => {
       toastError('Failed to load orders', err);
       return false;
@@ -351,9 +349,9 @@ export function useAdminStatsQuery() {
 /** Fetch all tenants (super admin) — T6: paginated envelope via GET /admin/tenants */
 export function useTenantsQuery() {
   const toastError = useErrorToast();
-  return useQuery<Paginated<unknown>>({
+  return useQuery<api.Paginated<unknown>>({
     queryKey: queryKeys.tenants,
-    queryFn: () => api.getAdminTenants() as Promise<Paginated<unknown>>,
+    queryFn: () => api.getAdminTenants() as Promise<api.Paginated<unknown>>,
     throwOnError: (err) => {
       toastError('Failed to load tenants', err);
       return false;
@@ -1458,7 +1456,7 @@ export function useStorefrontCartsQuery() {
   const toastError = useErrorToast();
   return useQuery({
     queryKey: queryKeys.storefrontCarts,
-    queryFn: () => apiFetch<unknown[]>('/storefront/admin/carts'),
+    queryFn: () => api.apiFetch<unknown[]>('/storefront/admin/carts'),
     throwOnError: (err) => {
       toastError('Failed to load carts', err);
       return false;
@@ -1471,7 +1469,7 @@ export function useStorefrontOrdersQuery() {
   const toastError = useErrorToast();
   return useQuery({
     queryKey: queryKeys.storefrontOrders,
-    queryFn: () => apiFetch<unknown[]>('/storefront/admin/orders'),
+    queryFn: () => api.apiFetch<unknown[]>('/storefront/admin/orders'),
     throwOnError: (err) => {
       toastError('Failed to load storefront orders', err);
       return false;
@@ -1589,7 +1587,7 @@ export function useAdminAuditQuery(params?: Record<string, string>) {
 
 /** Fetch the feedback list (paged; screenshot omitted on list rows). */
 export function useFeedbackListQuery(params?: { status?: string; authorType?: string; page?: number; pageSize?: number }) {
-  return useQuery<Paginated<FeedbackReport>>({
+  return useQuery<api.Paginated<FeedbackReport>>({
     queryKey: queryKeys.feedback({
       ...(params?.status ? { status: params.status } : {}),
       ...(params?.authorType ? { authorType: params.authorType } : {}),

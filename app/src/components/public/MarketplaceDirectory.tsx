@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getMarketplaceListings, getMarketplaceCategories } from '@/lib/api';
-import type { MarketplaceListing, MarketplaceCategory } from '@/lib/api';
+import { getMarketplaceListings, getMarketplaceCategories, type MarketplaceListing, type MarketplaceCategory } from '@/lib/api';
 import { escHtml, getLocationDisplay } from '@/lib/utils';
 
 const PAGE_SIZE = 12;

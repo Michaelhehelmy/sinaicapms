@@ -6,8 +6,7 @@ import { StatusTag } from '@/components/ui/StatusTag';
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/lib/auth';
-import { useAdminUsersQuery } from '@/hooks/useQueryHooks';
-import { queryKeys } from '@/hooks/useQueryHooks';
+import { useAdminUsersQuery, queryKeys } from '@/hooks/useQueryHooks';
 import { updateAdminUser, deleteAdminUser } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
