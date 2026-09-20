@@ -15,7 +15,9 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:report": "playwright show-report tests/e2e/results/html",
-    "test:e2e:coverage": "COVERAGE_ENABLED=true CI=true npx playwright test"
+    "test:e2e:coverage": "COVERAGE_ENABLED=true CI=true npx playwright test",
+    "typecheck": "cd app && npx tsc --noEmit",
+    "lint": "cd app && npm run lint"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
