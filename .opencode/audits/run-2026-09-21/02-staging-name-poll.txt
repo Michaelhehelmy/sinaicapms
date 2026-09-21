@@ -1,0 +1,3 @@
+── §3 name-source poll — sanctioned census register census (register census rows for staging resource-create):
+5:e91ce94 §1 staging preconditions verified — byte-anchored, evidence on disk
+── (nothing above = register holds NO staging resource-create name rows → §3 scaffold BLOCKED-on-name-source; report ABSENT)
