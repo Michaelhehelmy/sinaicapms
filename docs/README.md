@@ -32,7 +32,7 @@ Welcome to the SinaiCamps documentation. This guide covers everything from quick
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Astro 5.18.x + React 19.2.x + Tailwind CSS v4 (TypeScript) |
+| Frontend | Astro 7.3.1 + React 19.2.x + Tailwind CSS v4 (TypeScript) |
 | API / Backend | Hono on Cloudflare Workers (JavaScript) |
 | Database | Cloudflare D1 (SQLite) |
 | Cache / Rate Limiting | Cloudflare KV + R2 |
