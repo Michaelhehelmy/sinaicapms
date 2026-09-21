@@ -81,12 +81,12 @@ All user data rendered in Astro templates is escaped via `escHtml()` from `app/s
 
 65+ usages across the frontend — every user-facing field is escaped.
 
-### Layer 3: `sanitizeInput()` middleware (backend, defense-in-depth)
+### Layer 3: ~~`sanitizeInput()` middleware~~ — REMOVED (Hono 4.12 dropped it: silent no-op)
 
-The `sanitizeInput` middleware in `backend/src/middleware/sanitize.js` strips dangerous patterns from request bodies before storage:
+Sanitization removed: no `sanitizeInput` middleware exists — `backend/src/middleware/sanitize.js` is absent from disk. Since Hono 4.12 the old middleware was a silent no-op, so it was REMOVED. The active contract is: zod validation at the API boundary + `escHtml`/escaping at render (see `backend/src/index.js` T2 note, L147).
+No pattern-stripping occurs anywhere: `javascript:` URLs, embedded HTML, and options-like patterns pass through to the boundary, where zod rejects them and `escHtml` neutralizes them at render.
 
-- `<script>` tags (and variants like `<script/`, `<sc<script>ript>`)
-- `on*` event handlers (`onclick=`, `onerror=`, etc.)
+
 - `javascript:` protocol URLs
 
 This middleware is mounted on `/api/*` in `backend/src/index.js` and applies to all POST/PUT/PATCH requests.
