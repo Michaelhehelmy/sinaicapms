@@ -45,7 +45,7 @@ Zone behavior: `localhost:4321` is the marketplace zone by default. To exercise 
 cd backend && npx vitest run      # backend unit: 2225 tests / 84 files
 cd app && npx vitest run          # frontend unit: 3416 tests / 137 files
 npx vitest run                    # root integration: 255 tests / 37 files
-CI=true npx playwright test       # E2E: 566 total / 552 gate (14 env-skipped)
+CI=true npx playwright test       # E2E: 929 total / 919 gate (14 env-skipped)
 ```
 
 E2E notes (see `TESTING.md`): port hygiene first (`ss -tlnp | grep -E '4320|8787'`); tenant pages hang on `load` in dev → specs use `waitUntil: 'domcontentloaded'`.
