@@ -22,7 +22,7 @@ Status of the production-readiness backlog, as of the **T9–T18** batch plus th
 
 | Area | Status | Next step |
 | --- | --- | --- |
-| Staging DNS | Blocked on human | Create `staging.sinaicamps.com` → Pages DNS record, then `./deploy.sh --staging` |
+| Staging DNS | Blocked on human | Create `staging.sinaicamps.com` → Workers custom-domain DNS record/route, then `./deploy.sh --staging` |
 | Git remote + push | **Repo created** — `github.com/Michaelhehelmy/campmaster` (private), `origin` set; commit `5d11305` local. Push blocked on OAuth `workflow` scope — approve the `gh auth refresh -h github.com -s workflow` device flow, or drop `.github/workflows/*` from pushed history |
 | Credential vault | Owner action | Store rotated admin credentials (2 accounts) |
 | Lighthouse execution | Tooling ready | Run `cd app && npm run lighthouse` against a live preview once a URL is up |

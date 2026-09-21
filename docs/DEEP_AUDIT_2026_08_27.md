@@ -1,5 +1,6 @@
 # SinaiCamps Deep Audit Report
 **Date:** 2026-08-27  
+**Truth update 2026-09-21:** F-A14-2, F-A2-1, F-A3-2, F-A18-09, F-A15-2 do not exist in this file (scheme here is C1–C4 + W1–W10) — marked WITHDRAWN per Wave 6a false-positive review.  
 **Auditor:** Orchestrator Agent  
 **Scope:** Full-stack audit — 270+ endpoints, 3,601 tests, ~155 frontend API functions, 18 admin panels, POS subsystem
 

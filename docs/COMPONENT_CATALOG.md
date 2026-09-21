@@ -2,7 +2,9 @@
 
 All paths relative to `app/src/`. Styling is Tailwind CSS v4; `cn()` comes from `lib/utils.ts`. Every interactive primitive ships keyboard + focus-visible + `aria` support.
 
-## 1. UI primitives — `components/ui/` (26)
+## 1. UI primitives — `components/ui/` (20 actual, 2026-09-21)
+
+> Truth 2026-09-21: 20 files on disk. 9 cataloged entries have no file (Accordion, Checkbox, FormField, Radio, Separator, Switch, Tabs, Textarea, Tooltip). 3 present files were undocumented (LineChart, RechartsLine, icons).
 
 | Component | Kind | Accessibility notes |
 | --- | --- | --- |

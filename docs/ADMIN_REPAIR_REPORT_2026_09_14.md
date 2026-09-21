@@ -148,4 +148,4 @@ errors in `SuperTenantsPanel.tsx`, `CampBooking.tsx`, `useQueryHooks.ts`,
 ## 5. Deploy
 
 `./deploy.sh` was NOT run. It is the only remaining step and affects
-production (Worker + D1 migrations + Pages). Requires explicit approval.
+production (Worker + D1 migrations + Workers frontend). Requires explicit approval.

@@ -1,9 +1,11 @@
 # Performance Baseline — Bundle Analysis
 
+> Snapshot 2026-08-07, historical only — re-run with `ANALYZE=1 npm run build` / `npx tsx tests/lighthouse/run.ts` before quoting. TBT threshold is 300ms in harness (`tests/lighthouse/run.ts`), not 200ms. Astro line below updated to installed 7.x.
+
 > **Status**: snapshot of the 2026-08-07 build. Active enforcement now lives in `app/budget.json` + `npm run lighthouse` (T15, 2026-08-13) — the same targets (CLS < 0.1, LCP < 2.5 s, TBT < 200 ms, resource sizes) are enforced there against a live preview URL.
 
 - **Build date:** 2026-08-07
-- **App:** `sinaicamps/app` — Astro 5.18.2, Vite 6.4.3, React 19.2.8, output: `server` (Cloudflare Workers adapter)
+- **App:** `sinaicamps/app` — Astro 7.3.1 (installed), Vite 6.4.3, React 19.2.8, output: `server` (Cloudflare Workers adapter)
 - **Measured from:** `app/dist/_astro/` (browser-facing client assets)
 
 ## How to reproduce
