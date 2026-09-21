@@ -1,6 +1,6 @@
 # SinaiCamps — Final Polish Plan (Locked)
 
-Done: 3 of 4 waves shipped (2026-08-09 → 2026-08-12); §3.10 PWA/offline POS is PLANNED — service-worker.js / manifest.webmanifest not yet on disk (see register census: planned since 2026-09-21).
+> **Implementation status**: Waves 1–3 shipped (2026-08-09 → 2026-08-12 sprint; T1–T7; see `AGENT_LOGBOOK.md`). §3.10 PWA/offline POS is PLANNED, not shipped — no service-worker.js / manifest.webmanifest on disk.
 > **Rule of thumb**: waves must not regress the production E2E suite (`tenant 122/122`, cross-cutting `76 pass / 3 skip`).
 > **Implementation status**: all 4 waves shipped in the 2026-08-09 → 2026-08-12 sprint (T1–T7; see `AGENT_LOGBOOK.md`). This file is the locked plan, kept for reference.
 
