@@ -1,0 +1,193 @@
+WAVE 6 — PRE-EDIT READS
+=======================
+Docs inventory + claim census. Reads-only. No doc edited in this commit.
+Prepared: 2026-09-21. Base: current HEAD.
+
+=== DOCS INVENTORY (25 files) ===
+
+Root: README.md (355 lines)
+docs/:
+  MIGRATION_GUIDE.md           49 lines
+  TESTING.md                   59 lines
+  QUICK_START.md               77 lines
+  security-guide.md           190 lines
+  POLISH_PLAN.md              121 lines
+  API_SURFACE.md              574 lines
+  API_CONTRACT.md              68 lines
+  ARCHITECTURE.md              89 lines
+  COMPONENT_CATALOG.md         75 lines
+  DEVELOPER_ROADMAP.md         32 lines
+  PERF_BASELINE.md            127 lines
+  DEEP_AUDIT_2026_08_27.md    189 lines
+  ADMIN_REPAIR_REPORT_2026_09_14.md  150 lines
+  tenant-import.md            154 lines
+  camp-guide.md               118 lines
+  restaurant-guide.md         147 lines
+  service-guide.md            151 lines
+  supermarket-guide.md        127 lines
+  analytics-guide.md          122 lines
+  TESTING_GUIDE_OWNER.md       60 lines
+  TESTING_GUIDE_TESTER.md      73 lines
+  README.md                   108 lines (docs index)
+  audit-2026-09-15-route-gaps.md  48 lines
+Total docs/*.md lines: ~3,160 (+ README.md 355 = ~3,515)
+
+Owner's per-doc commit order covers 22 files (groups 1-17). docs/README.md
+(docs index) and docs/audit-2026-09-15-route-gaps.md (audit artifact) exist
+in docs/ but are NOT in the owner's per-doc list — flag for adjudication in
+the exit report (keep/trim/leave as-is).
+
+=== PER-DOC CLAIM CENSUS (top-5 factual claims + line refs + status) ===
+
+1. README.md
+   L48  "53 numbered files" (DB layer diagram)  -> FALSE (99 .sql in backend/migrations/)
+   L66  "currently 53, head 0053_camp_ownership.sql" -> FALSE (head 0099_normalize_marketplace_payouts_ids.sql)
+   L115 "migrations (53 numbered files)"         -> FALSE (99)
+   L136 "Astro 7.x"                              -> TRUE (app/package.json "astro": "^7.3.1"; installed 7.3.1)
+   L141 "backend 2096 · frontend 3417 · integration 262" -> FALSE (backend 2225/2225/84 · frontend 3416/3416/137 · integration 262 tests/37 files)
+   L142 "E2E 566 total — 552 gate passing · 14 env-skipped" -> FALSE (now ~919 gate passing · ~929 total; CI env-skips ≤15)
+   L223 "backend 2096 tests / 81 files"          -> FALSE (2225 / 84)
+   L226 "frontend 3417 tests / 132 files"        -> FALSE (3416 / 137)
+   L229 "169 tests / 10 files" (root integration) -> FALSE (262 / 37)
+   L232 "E2E 566 total — 552 gate"               -> FALSE (~929/~919)
+   L300 "/api/payments/create-intent, /api/payments/confirm, /api/payments/webhook" -> create-intent + confirm FALSE (routes retired; no handler), webhook TRUE (index.js:331, payments.js:44)
+
+2. MIGRATION_GUIDE.md
+   L5   "53 numbered migration files ... 0053_camp_ownership.sql" -> FALSE (99 files, head 0099)
+   L13  "next number 0054"                       -> FALSE (next is 0100)
+   L19  "43 numbered migrations" (older line)    -> FALSE
+   L46-47 "1082 backend/36 · 1465 frontend/74"   -> FALSE (2225/84 · 3416/137)
+   L46-47 "552 E2E gate"                         -> FALSE (919 gate)
+
+3. TESTING.md
+   L7   "backend: 1082 tests / 36 files"         -> FALSE (2225 / 84)
+   L8   "frontend: 1465 tests / 74 files"        -> FALSE (3416 / 137)
+   L9   "root integration: 169 tests / 10 files" -> FALSE (262 / 37)
+   L10  "E2E 566 total — 552 gate"               -> FALSE (~929 / ~919)
+
+4. QUICK_START.md
+   L45-48 "1082/36 backend · 1465/74 frontend · 169/10 integration · 566/552 E2E" -> all FALSE (see TESTING.md)
+   L64  "production: Worker + D1 + Pages frontend" -> FALSE (Pages retired at production cutover; frontend deploys as Worker campmaster-marketplace via deploy.sh)
+   L68  "staging.sinaicamps.com -> Pages DNS record" -> FALSE (staging is a Worker env, ./deploy.sh --staging)
+
+5. security-guide.md
+   L?   "sanitizeInput middleware active"        -> FALSE (backend/src/middleware/sanitize.js does NOT exist; index.js:147 documents REMOVED silent no-op since Hono 4.12; contract is zod-at-boundary + escHtml-at-render)
+   L?   "migration 0076 sanitize_user_data"      -> TRUE (backend/migrations/0076_sanitize_user_data.sql exists)
+   L?   "65+ escHtml usages"                     -> essentially TRUE (73 escHtml( instances across 13 files — understated, not wrong)
+
+6. POLISH_PLAN.md
+   L3/L5 "PWA/offline POS included" + "all 4 waves shipped" -> FALSE for PWA (§3.10 planned, NOT shipped; app/public/service-worker.js and manifest.webmanifest do NOT exist)
+   L96-98 migration table:
+     "0051 add_amenities"        -> FALSE (actual 0051_remove_seed_data.sql)
+     "0052 create_reviews"       -> FALSE (actual 0052_add_tenants_type.sql)
+     "0053 payment_intents"      -> FALSE (actual 0053_camp_ownership.sql; NO payment_intents table exists anywhere in migrations or src — grep returns zero)
+   L33  "PWA SW must register only in the POS shell" -> planned; no SW file to verify
+
+7. API_SURFACE.md (574 lines — endpoint tables)
+   L478-484 Payments (Stripe Mock):
+     "/payments/create-intent POST payments.js handleCreatePaymentIntent" -> FALSE (no such export; no create-intent route in index.js; retired)
+     "/payments/confirm POST payments.js handleConfirmPayment" -> FALSE (no such export; no confirm route)
+     "/payments/webhook POST payments.js handleStripeWebhook" -> TRUE (index.js:331 mounts POST /api/payments/webhook -> handleStripeWebhook; payments.js:44 exports it)
+   L470-477 Upload & Media (upload.js /api/media/*) -> consistent with MEDIA_BUCKET R2 routing (TRUE by architecture; spot-cited index.js upload mount)
+   Full row-by-row audit deferred to the API_SURFACE.md per-doc commit (574 lines).
+
+8. API_CONTRACT.md
+   L5   "113 exported functions in app/src/lib/api.ts" -> FALSE (316 lines matching ^export in api.ts — undercount by ~2.8x; flag exact measure in commit)
+   L51  auth group "register, login, refresh, reset" -> TRUE (auth.js refresh flow exists: refreshSchema auth.js:53, subRoute==='refresh' auth.js:196)
+   L?   endpoint list -> matches openapi.json-backed contract; full diff in per-doc commit.
+
+9. ARCHITECTURE.md
+   L5   "Astro 5.18.x"-era stack reference        -> FALSE vs current Astro 7.3.1 (see README.md:136 / package.json)
+   L71  "53 numbered" (migrations)                -> FALSE (99)
+   L86-87 "1082/36 backend · 1465/74 frontend"    -> FALSE (2225/84 · 3416/137)
+
+10. COMPONENT_CATALOG.md
+    L5   "26 UI primitives in app/src/components/ui" -> TRUE per AGENTS.md count (26 components/ui)
+    L?   "18 admin panels"                        -> TRUE (18 panels + SPA host)
+
+11. DEVELOPER_ROADMAP.md
+    L19  "53 migrations"                          -> FALSE (99)
+    L25  "Staging DNS ... Pages DNS record"       -> FALSE (Worker env staging; ./deploy.sh --staging)
+    L?   "552 E2E gate" / "556 E2E gate"          -> FALSE (~919 current)
+    L?   "T13 16/16 panels" vs 18 panels elsewhere -> internal count inconsistency (16 vs 18) — flag
+
+12. PERF_BASELINE.md
+    L6   "Astro 5.18.2"                           -> FALSE ("astro": "^7.3.1"; installed 7.3.1)
+    L7-9 perf test counts (1082/1465-era)         -> FALSE (2225/84 · 3416/137)
+
+13. DEEP_AUDIT_2026_08_27.md (point-in-time audit snapshot, 189 lines)
+    L4   "270+ endpoints, 3,601 tests, ~155 frontend API functions, 18 admin panels, 14 actionable (4 critical, 10 warnings)" -> PARTIAL: 18 panels TRUE; "3,601 tests" and endpoint census are snapshot-date-accurate but stale vs current totals; keep as dated artifact, add "as-of 2026-08-27" framing in per-doc commit
+    C1/C2 "admin-users.js / admin-stats.js imported but never mounted" -> RESOLVED on current code (both files DELETED T27 — index.js:11 comment); snapshot finding, still valid as historical
+    W8   "pos-barcode route has no posAuth"       -> RESOLVED (index.js:338-340 resolveScope({ dualRealm: true }) + POS barcode route mounted)
+
+14. ADMIN_REPAIR_REPORT_2026_09_14.md
+    L8-9 "backend 2106/2106 (81 files) · frontend 3310/3310 (134)" -> FALSE/STALE (current 2225/84 · 3416/137)
+    L151 "staging Pages"                         -> FALSE (Worker env staging)
+    L?   "payments webhook retired" assertions    -> verify against current index.js:331 (webhook still mounted) in per-doc commit
+
+15. tenant-import.md
+    L3-5 "POST /api/tenants/import one-call provisioning" -> TRUE (route mounted; smoke test gate exists)
+    L151 "cd backend && npx vitest run tests/tenant-import-smoke.test.js" -> TRUE (file exists)
+    L16-19 identity/super-admin 403 semantics      -> TRUE per AGENTS.md import contract
+    L73/78 "rooms_new / rate_plans_new guards"     -> TRUE (guarded INSERT…SELECT tables)
+
+16. camp-guide.md
+    L21 "acaciacamp.sinaicamps.com subdomain portal" -> TRUE by zone model (tenant.ts:119-121 *.sinaicamps.com -> subdomain)
+    L86 room lifecycle available->reserved->occupied->cleaning->available -> consistent with room status conventions (TRUE by schema statuses; verify comanda in per-doc commit)
+    L104-116 admin panel table -> matches 18-panel admin surface (TRUE)
+
+17. restaurant-guide.md
+    L7-44 tables + sections -> TRUE (pos_tables with section TEXT column — migration 0069_restaurant_tables.sql)
+    L137-146 payment methods (Cash/Card/E-Wallet/Instapay/Tab) -> partial (POS local methods e-wallet/Instapay/cash TRUE per README.md:180; "Card"/"Tab" unverified)
+    L83-108 kitchen courses (Appetizer/Main/Dessert) -> UNVERIFIABLE via this read pass — verify meal_categories/kitchen flows in per-doc commit
+
+18. service-guide.md
+    L107-128 service_definitions/items/bookings -> TRUE (0072_dynamic_services.sql creates service_definitions, service_items, service_bookings)
+    L112-127 reviews/availability               -> TRUE (0075_business_enhancements.sql: service_reviews, service_availability)
+    L22-36 custom fields JSON schema            -> verify in per-doc commit (schema exists pattern-wise)
+
+19. supermarket-guide.md
+    L11-15 "sinaicamps.com/pos branded 404; POS tenant-only" -> TRUE (zone model)
+    L34-65 promotions (BOGO/percentage/fixed)   -> TRUE schema-level (0068_fix_triggers_and_promotions.sql)
+    L88-101 stock adjustments + audit trail     -> TRUE schema-level (pos_stock_adjustments 0010; audit log)
+    L109-118 "Print or skip receipt"            -> UNVERIFIABLE in read pass — verify POS frontend print path in per-doc commit
+
+20. analytics-guide.md
+    L117 "GET /api/reports/revenue"             -> TRUE (reports.js:61 reportsRoutes.get('/revenue'))
+    L118 "GET /api/reports/customers"           -> FALSE (actual route /customer-metrics — reports.js:296)
+    L119 "GET /api/reports/products"            -> FALSE (actual route /top-products — reports.js:151)
+    L120 "GET /api/reports/inventory"           -> FALSE (actual route /low-stock — reports.js:225)
+    L102-111 scheduled reports (Settings->Reports) -> UNVERIFIABLE in read pass; verify admin panel in per-doc commit
+
+21. TESTING_GUIDE_OWNER.md
+    L11  super-admin admin@sinaicamps.com / sinairoot seeded by migration 0029 -> TRUE (0029_seed_data.sql:47-51 bcrypt hash + super_admin role row)
+    L19  scripts/seed-test-users.js exists      -> TRUE (file present)
+
+22. TESTING_GUIDE_TESTER.md
+    L38  "?debug=1 sets a 30-day cookie, widget shows on every page" -> TRUE (DebugFeedbackWidget.tsx reads ?debug=1 -> sets sc_debug localStorage + cookie check; widget gated)
+    L38  widget hidden by default on public pages -> TRUE (debug/ gating)
+
+23. docs/README.md (docs index) — TOC only; verify staleness of linked titles in per-doc pass if touched.
+
+24. docs/audit-2026-09-15-route-gaps.md (audit artifact) — not in owner list; adjudication only.
+
+=== KNOWN CORRECTIONS (owner-provided) — VERIFIED ===
+
+1. Migration count 53 -> 99:   VERIFIED (grep -rln migrations: 99 .sql files 0001..0099)
+2. Test counts stale:          VERIFIED (backend 2225/84, frontend 3416/137, integration 262/37, E2E ~919 gate)
+3. QUICK_START Pages -> Worker:  VERIFIED (deploy.sh + README deploy table: frontend deploys as Worker campmaster-marketplace)
+4. security-guide sanitizeInput removed:  VERIFIED (no sanitize.js; index.js:147)
+5. POLISH_PLAN §3.9/3.10 planned-not-shipped: VERIFIED (no service-worker.js / manifest.webmanifest)
+6. MIGRATION_GUIDE head 0053 -> 0099: VERIFIED
+7. API_SURFACE Stripe Mock section: VERIFIED (located L478-484; create-intent/confirm rows FALSE, webhook row TRUE)
+8. 1082/1465/169/566 claims in 4 docs: VERIFIED stale across TESTING/QUICK_START/MIGRATION_GUIDE/ARCHITECTURE
+9. Admin-users/stats DEEP_AUDIT C1/C2: VERIFIED resolved (deleted T27)
+10. Astro version split: VERIFIED README correct (7.x) vs PERF_BASELINE/ARCHITECTURE stale (5.18.x)
+
+=== ADJUDICATION QUEUE (for exit report) ===
+- docs/README.md + docs/audit-2026-09-15-route-gaps.md: in docs/, outside owner's per-doc list
+- DEVELOPER_ROADMAP 16-panels vs 18-panels internal inconsistency
+- restaurant-guide card/tab payment methods + kitchen courses: UNVERIFIABLE in read pass
+- supermarket-guide receipt print: UNVERIFIABLE in read pass
+- analytics-guide scheduled reports: UNVERIFIABLE in read pass
+- API_CONTRACT 113 vs 316 exports: measure is ambiguous (113 could be a narrow count); owner adjudication requested in that commit
