@@ -1,0 +1,12 @@
+
+ ⛅️ wrangler 4.114.0 (update available 4.136.0)
+───────────────────────────────────────────────
+Getting User settings...
+👋 You are logged in with an Account API Token, associated with the account Michael.he.helmy@gmail.com's Account.
+ℹ️  The API Token is read from the CLOUDFLARE_API_TOKEN environment variable.
+┌──────────────────────────────────────┬──────────────────────────────────┐
+│ Account Name                         │ Account ID                       │
+├──────────────────────────────────────┼──────────────────────────────────┤
+│ Michael.he.helmy@gmail.com's Account │ 160e5baf51934e3af06e3028a83de5b8 │
+└──────────────────────────────────────┴──────────────────────────────────┘
+🔓 To see token permissions visit https://dash.cloudflare.com/160e5baf51934e3af06e3028a83de5b8/api-tokens
