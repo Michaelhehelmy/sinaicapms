@@ -2,7 +2,7 @@
 
 ## 1. What migrations are
 
-Cloudflare D1 (SQLite) schema lives as numbered `.sql` files in `backend/migrations/`. **Current head: `0053_camp_ownership.sql`** (53 migrations total; `SCHEMA_DIRECTION_PLAN.md` in the same dir is a planning note, not a migration).
+Cloudflare D1 (SQLite) schema lives as numbered `.sql` files in `backend/migrations/`. **Current head: `0099_normalize_marketplace_payouts_ids.sql`** (99 migrations total; `SCHEMA_DIRECTION_PLAN.md` in the same dir is a planning note, not a migration).
 
 Migrations are applied in filename order. Never edit an applied migration — create a new numbered file.
 
@@ -10,7 +10,7 @@ Migrations are applied in filename order. Never edit an applied migration — cr
 
 Use the **`db-migration` skill** (`.opencode/skills/database/db-migration/SKILL.md`) — it encodes this flow:
 
-1. Create `backend/migrations/0054_<slug>.sql` with the next number.
+1. Create `backend/migrations/0100_<slug>.sql` with the next number.
 2. Style: `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ... ADD COLUMN` (SQLite) — prefer additive, idempotent DDL.
 3. Apply locally: `npx wrangler d1 migrations apply <DB_NAME> --local --config backend/wrangler.toml` (check the DB name in `backend/wrangler.toml` `[[d1_databases]]`).
 4. Apply remotely: `./deploy.sh` applies migrations during deploy; or `npx wrangler d1 migrations apply <DB_NAME> --remote --config backend/wrangler.toml`.
@@ -34,8 +34,9 @@ Cloudflare's free plan allows **1,000 KV writes/day**. A KV write per API reques
 
 | File | Change |
 | --- | --- |
-| `0053_camp_ownership.sql` | Camp ownership model |
-| `0052_add_tenants_type.sql` | Tenant type column |
+| `0099_normalize_marketplace_payouts_ids.sql` | Normalize `marketplace_payouts` tenant_id/created_by to TEXT (A2) |
+| `0098_storefront_paymob.sql` | Storefront checkout Paymob columns |
+| `0097_feedback.sql` | Human-testing debug feedback reports |
 | earlier | `pos_users` generated name + `organization_id`, `pos_transactions` cashier refs |
 
 ## 6. Verification
