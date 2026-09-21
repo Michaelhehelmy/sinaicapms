@@ -12,7 +12,7 @@ This file is the primary system prompt instruction manual for OpenCode agents wo
 | **Developer** | Michael Helmy |
 | **Github** | [Michaelhehelmy/campmaster](https://github.com/Michaelhehelmy/campmaster) (private) |
 | **Production URL** | [sinaicamps.com](https://sinaicamps.com) (staging: `staging.sinaicamps.com` via `./deploy.sh --staging`) |
-| **Frontend** | Astro 5.18.x + React 19.2.x + Tailwind CSS v4 |
+| **Frontend** | Astro 7.3.1 + React 19.2.x + Tailwind CSS v4 |
 | **Backend** | Hono on Cloudflare Workers |
 | **Language** | TypeScript (frontend), JavaScript (backend) |
 | **Database** | Cloudflare D1 (SQLite) |
