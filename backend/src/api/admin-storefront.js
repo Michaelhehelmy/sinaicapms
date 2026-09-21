@@ -6,7 +6,7 @@
  *   GET /products   — paginated cross-tenant product listing
  */
 import { Hono } from 'hono';
-import { jsonResponse, errorResponse } from '../utils/response.js';
+import { jsonResponse } from '../utils/response.js';
 import { parsePagination, paginationEnvelope } from '../utils/pagination.js';
 
 const router = new Hono();

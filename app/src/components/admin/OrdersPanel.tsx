@@ -3,7 +3,6 @@ import { useOrdersQuery, useOrderDetailQuery, useRoomsQuery, useCampsQuery, useU
 import { DataTable } from '@/components/ui/DataTable';
 import { FormModal } from '@/components/ui/FormModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { StatusTag } from '@/components/ui/StatusTag';
 import { useToast } from '@/components/ui/Toast';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';

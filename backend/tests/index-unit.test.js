@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock all route handlers to return simple responses, but keep the REAL
 // module exports (zod schemas etc.) via importOriginal — registry.js

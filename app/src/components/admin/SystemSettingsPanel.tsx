@@ -7,7 +7,7 @@ import { FormModal } from '@/components/ui/FormModal';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useToast } from '@/components/ui/Toast';
 import { useAdminSettingsQuery, queryKeys } from '@/hooks/useQueryHooks';
-import { getAdminSettings, updateAdminSettings } from '@/lib/api';
+import { updateAdminSettings } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 
 type SettingsTab = 'features' | 'emails' | 'defaults' | 'branding' | 'payments';

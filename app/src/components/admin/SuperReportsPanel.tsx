@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { useAdminReportsQuery, useAdminScheduledReportsQuery } from '@/hooks/useQueryHooks';
 import { useToast } from '@/components/ui/Toast';
 import { generateAdminReport, createAdminScheduledReport, deleteAdminScheduledReport } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
 
 export default function SuperReportsPanel() {
   const { showToast } = useToast();

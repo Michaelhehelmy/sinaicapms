@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import { Hono } from 'hono';
 
 describe('hono param probe', () => {

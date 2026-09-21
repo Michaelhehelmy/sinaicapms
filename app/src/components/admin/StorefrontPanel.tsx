@@ -8,12 +8,11 @@ import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
-import { queryKeys, useStorefrontPagesQuery, useStorefrontBlogPostsQuery, useStorefrontBlogCategoriesQuery, useStorefrontCartsQuery, useStorefrontOrdersQuery } from '@/hooks/useQueryHooks';
+import { useStorefrontPagesQuery, useStorefrontBlogPostsQuery, useStorefrontBlogCategoriesQuery, useStorefrontCartsQuery, useStorefrontOrdersQuery } from '@/hooks/useQueryHooks';
 
 type Tab = 'pages' | 'blog' | 'blogCategories' | 'carts' | 'orders';
 

@@ -19,7 +19,6 @@ import {
   useHrLeaveRequestsQuery,
   useHrPayrollRunsQuery,
   useHrJobPostsQuery,
-  queryKeys,
 } from '@/hooks/useQueryHooks';
 
 type Tab = 'employees' | 'leave-types' | 'leave-requests' | 'payroll' | 'recruitment';

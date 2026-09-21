@@ -3,7 +3,7 @@
  *
  * client:load island. Reads session from localStorage, fetches cart via API.
  */
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getStorefrontCart,

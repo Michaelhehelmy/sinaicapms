@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency } from '@/lib/utils';
-import { queryKeys, useCrmContactsQuery, useCrmLeadsQuery, useCrmOpportunitiesQuery, useCrmTasksQuery, useCrmTicketsQuery, useCrmKnowledgeArticlesQuery } from '@/hooks/useQueryHooks';
+import { useCrmContactsQuery, useCrmLeadsQuery, useCrmOpportunitiesQuery, useCrmTasksQuery, useCrmTicketsQuery, useCrmKnowledgeArticlesQuery } from '@/hooks/useQueryHooks';
 
 type Tab = 'contacts' | 'leads' | 'opportunities' | 'tasks' | 'tickets' | 'knowledge';
 

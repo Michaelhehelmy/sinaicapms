@@ -2,7 +2,6 @@ import React, { useCallback } from 'react';
 import { StatCard } from '@/components/ui/StatCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { useAdminPerformanceQuery } from '@/hooks/useQueryHooks';
 import { useToast } from '@/components/ui/Toast';

@@ -20,7 +20,6 @@ import {
   useFinancialPaymentsQuery,
   useFinancialTaxRatesQuery,
   useFinancialPayoutsQuery,
-  queryKeys,
 } from '@/hooks/useQueryHooks';
 
 type Tab = 'accounts' | 'journals' | 'invoices' | 'payments' | 'taxes';

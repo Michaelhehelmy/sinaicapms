@@ -3,7 +3,6 @@ import type { Camp } from '@/hooks/useAdminData';
 import { useOccupancyReportQuery, useRevenueReportQuery, useBookingsReportQuery } from '@/hooks/useQueryHooks';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';

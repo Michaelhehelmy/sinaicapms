@@ -17,7 +17,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { jsonResponse, errorResponse, toCamel, toSnake } from '../utils/response.js';
+import { jsonResponse, errorResponse, toCamel } from '../utils/response.js';
 import { validationError } from '../utils/errors.js';
 import { getScope } from '../middleware/resolveScope.js';
 

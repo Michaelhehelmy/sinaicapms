@@ -11,7 +11,7 @@ import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { queryKeys, useAIPredictionsQuery, useAIPriceRulesQuery, useAIAutomationRulesQuery, useAIAutomationLogsQuery } from '@/hooks/useQueryHooks';
+import { useAIPredictionsQuery, useAIPriceRulesQuery, useAIAutomationRulesQuery, useAIAutomationLogsQuery } from '@/hooks/useQueryHooks';
 import BrowserAIPanel from './BrowserAIPanel';
 
 type Tab = 'predictions' | 'priceRules' | 'automationRules' | 'automationLogs' | 'forecast' | 'browserAI';

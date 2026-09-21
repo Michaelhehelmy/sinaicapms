@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 // Signature-compatible shims: legacy handlers took (Request, env, tenantId).
 // They now execute against the Hono sub-routers mounted by index.js. Apps are
 // cached per (basePath, tenantId) because tests mix tenant and marketplace

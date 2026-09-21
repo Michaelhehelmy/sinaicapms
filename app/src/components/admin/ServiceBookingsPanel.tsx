@@ -12,7 +12,6 @@ import { Select } from '@/components/ui/Select';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { queryKeys } from '@/hooks/useQueryHooks';
 
 const BOOKING_STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
