@@ -50,7 +50,7 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 ## 3. Frontend (app/)
 
-- **Astro 5** pages under `app/src/pages/` — static prerendering by default, zone-aware.
+- **Astro 7** pages under `app/src/pages/` — static prerendering by default, zone-aware.
 - **React 19 islands** only where interactivity is required (`client:*` directives). Currently just 4 public islands: `CampBooking` (`client:visible`), `MarketplaceDirectory` (`client:visible` on `/marketplace`), `ReservationSummary` (`client:load`), `TenantMenu` (`client:load`).
 - **TanStack Query** for all admin data (`useQueryHooks`, `useAdminData`). The admin SPA was fully migrated off raw `fetch` — no `window.*` cross-file globals remain.
 - **Design system**: 26 primitives in `app/src/components/ui/` (see `COMPONENT_CATALOG.md`), Tailwind CSS v4 tokens, `cn()` util.
@@ -68,7 +68,7 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 ## 5. Database & migrations
 
-- **D1 (SQLite)** — schema lives in `backend/migrations/` (currently **53 migrations**, latest `0053_camp_ownership.sql`).
+- **D1 (SQLite)** — schema lives in `backend/migrations/` (currently **99 migrations**, latest `0099_normalize_marketplace_payouts_ids.sql`).
 - One numbered `.sql` file per migration, applied in order via `wrangler d1 migrations apply` (see `MIGRATION_GUIDE.md` and the `db-migration` skill).
 - KV holds **only** rate-limit state (`RATE_LIMIT_KV`); `KV_CACHE` is bound but never written — public-read caching uses `Cache-Control` headers via `cachedJsonResponse` (no KV writes, free-plan safe). R2 (`MEDIA_BUCKET` = `campmaster-media`) holds uploads (wired in staging + prod). SSE is broadcast through the `BROADCASTER` Durable Object (admin inbox/orders).
 
@@ -83,7 +83,7 @@ Four suites — see `TESTING.md` for exact counts and commands:
 
 | Suite | Location | Count |
 | --- | --- | --- |
-| Backend unit | `backend/` | 1082 tests / 36 files |
-| Frontend unit | `app/` | 1465 tests / 74 files |
-| Root integration | repo root | 169 tests / 10 files |
-| E2E (Playwright) | `tests/e2e/` | 566 total / 552 gate (14 env-skipped) |
+| Backend unit | `backend/` | 2225 tests / 84 files (see TESTING.md) |
+| Frontend unit | `app/` | 3416 tests / 137 files (see TESTING.md) |
+| Root integration | repo root | 255 tests (see TESTING.md) |
+| E2E (Playwright) | `tests/e2e/` | see TESTING.md for gate counts |

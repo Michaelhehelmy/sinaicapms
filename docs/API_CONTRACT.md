@@ -2,7 +2,7 @@
 
 ## 1. The contract lives in the client
 
-The **single source of truth** for the frontend↔backend contract is `app/src/lib/api.ts` — a typed client with **113 exported functions** covering every endpoint the frontend uses. The backend mirrors it: every route registered in `backend/src/routes/registry.js` and every handler in `backend/src/api/**` / `backend/src/routes/pos/**`.
+The **single source of truth** for the frontend↔backend contract is `app/src/lib/api.ts` — a typed client with **~276 exported functions** covering every endpoint the frontend uses. The backend mirrors it: every route registered in `backend/src/routes/registry.js` and every handler in `backend/src/api/**` / `backend/src/routes/pos/**`.
 
 **Rule**: if a frontend feature needs data, add a function to `api.ts` (or extend one), and make the backend handler match its shape. Never inline raw `fetch` calls in components (the admin SPA migration to TanStack Query removed the last ones).
 

@@ -475,13 +475,13 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 | `/upload` | POST | `upload.js` | R2 bucket (`MEDIA_BUCKET`) | Auth | Upload image to R2 (multipart or octet-stream, ≤8MB, jpg/png/webp/gif) |
 | `/media/*` | GET | `upload.js` (mediaRoutes) | R2 bucket (`MEDIA_BUCKET`) | Public | Stream stored media object (immutable cache, tenant-scoped keys) |
 
-## Payments (Stripe Mock)
+## Payments (Retired mock-Stripe — always 501)
+
+> RETIRED: `POST /api/payments/webhook` now replies 501. Real callbacks go to `POST /api/public/paymob/webhook` (HMAC-verified). `create-intent`/`confirm` no longer exist.
 
 | Endpoint | Method | Backend Handler | DB Tables | Auth | Purpose |
 |----------|--------|-----------------|-----------|------|---------|
-| `/payments/create-intent` | POST | `payments.js` (`handleCreatePaymentIntent`) | `orders` | Auth | Create mock Stripe PaymentIntent for order |
-| `/payments/confirm` | POST | `payments.js` (`handleConfirmPayment`) | `orders` | Auth | Confirm mock payment, mark order paid |
-| `/payments/webhook` | POST | `payments.js` (`handleStripeWebhook`) | `orders` | x-webhook-secret header | Mock Stripe webhook (payment_intent.succeeded) |
+| `/payments/webhook` | POST | `payments.js` (`handleStripeWebhook` — RETIRED, always 501) | — (mutates nothing) | none | Retired mock-Stripe webhook; real callbacks go to POST /api/public/paymob/webhook (HMAC-verified) |
 
 ## Onboarding (Self-Service)
 
