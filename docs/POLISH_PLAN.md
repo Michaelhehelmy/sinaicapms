@@ -2,7 +2,7 @@
 
 > **Implementation status**: Waves 1–3 shipped (2026-08-09 → 2026-08-12 sprint; T1–T7; see `AGENT_LOGBOOK.md`). §3.10 PWA/offline POS is PLANNED, not shipped — no service-worker.js / manifest.webmanifest on disk.
 > **Rule of thumb**: waves must not regress the production E2E suite (`tenant 122/122`, cross-cutting `76 pass / 3 skip`).
-> **Implementation status**: all 4 waves shipped in the 2026-08-09 → 2026-08-12 sprint (T1–T7; see `AGENT_LOGBOOK.md`). This file is the locked plan, kept for reference.
+> **Implementation status**: Waves 1–3 shipped; §3.10 PWA planned, not shipped. This file is the locked plan, kept for reference.
 
 ## Scope decisions (user-approved)
 
@@ -75,7 +75,7 @@
 | 3.7 | POS: server-side order pagination (`?page&pageSize&status`) | `routes/pos/index.js`, `OrdersView.tsx` |
 | 3.8 | POS: session handling — 401 → `/pos/login` toast redirect; per-identifier lockout; single login limiter | `app/src/lib/api.ts`, `backend/src/index.js`, `sharedAuth.js` |
 | 3.9 | POS tender parity: quick-cash, custom amount, per-item discount, barcode input, keyboard shortcuts | `CartPanel.tsx`, `ProductsView.tsx`, `routes/pos/index.js` |
-| 3.10 | **PWA/offline POS**: Workbox SW (vendored `workbox-sw.js` in `app/public`) caching `/api/pos/products` stale-while-revalidate, IndexedDB cart, offline order queue replayed via `idempotencyKey`; manifest + icons + registration in POS shell only | `app/public/service-worker.js`, `app/public/manifest.webmanifest`, `app/src/layouts/POSLayout.astro`, `app/src/pages/pos/[...rest]/index.astro` |
+| 3.10 | **PWA/offline POS (PLANNED, not shipped)**: Workbox SW (vendored `workbox-sw.js` in `app/public`) caching `/api/pos/products` stale-while-revalidate, IndexedDB cart, offline order queue replayed via `idempotencyKey`; manifest + icons + registration in POS shell only — `app/public/service-worker.js` and `app/public/manifest.webmanifest` do not exist on disk | `app/public/service-worker.js`, `app/public/manifest.webmanifest`, `app/src/layouts/POSLayout.astro`, `app/src/pages/pos/[...rest]/index.astro` |
 | 3.11 | POS design tokens + a11y: brand accent (kill indigo), modal focus trap/aria, icon `aria-label`s, pause poll on hidden tab | `POSLayout.astro`, `ProductsView.tsx`, `CartPanel.tsx`, `ReceiptModal.tsx`, `DashboardView.tsx` |
 | 3.12 | Backend: SSE auth — short-lived single-use `/api/stream/token` instead of JWT in query string | `backend/src/index.js`, `sse.ts` |
 | 3.13 | Backend: POS reports `GET /api/pos/reports/summary?from&to&groupBy` | `backend/src/routes/pos/index.js` (new module) |
