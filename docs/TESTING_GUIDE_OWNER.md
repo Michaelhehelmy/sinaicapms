@@ -38,7 +38,7 @@ Created accounts (documented for testers in TESTING_GUIDE_TESTER.md):
 Only you test these tabs; testers cannot reach them:
 
 - [ ] **Dashboard** — KPI cards, charts, alerts render; numbers match reality
-- [ ] **Tenants** — create/edit/delete tenant flow (start with a throwaway tenant), tenant type switch (hotel/camp/restaurant/custom), marketplace branding
+- [ ] **Tenants** — create/edit/delete tenant flow (start with a throwaway tenant), tenant type switch (camp/supermarket/transportation/restaurant/custom/other), marketplace branding
 - [ ] **All Orders** — filter, status change, order detail across ALL tenants
 - [ ] **Users** — search admins, reset password, role visibility
 - [ ] **System Settings** — global branding, site config persists after refresh

@@ -47,7 +47,7 @@ Rate plans define pricing for specific date ranges (seasonal pricing):
    - **End Date** — When the rate expires
 4. Save the rate plan
 
-Multiple rate plans can overlap; the most specific (date-matching) plan takes precedence.
+Multiple rate plans can overlap; precedence logic UNVERIFIABLE — `GET rate-plans` returns all plans.
 
 ---
 
@@ -104,14 +104,13 @@ The admin dashboard is organized into panels accessible via the sidebar:
 | Panel | Purpose |
 |-------|---------|
 | **Dashboard** | Overview stats (occupancy, revenue, recent activity) |
-| **Camps** | Camp profiles and settings |
+| **Projects** (nav label; code id `camps`) | Camp profiles and settings |
 | **Rooms** | Room type management |
 | **Rate Plans** | Pricing and seasonal rates |
-| **Reservations** | Booking management |
-| **Orders** | Guest orders and charges |
+| **Orders** (nav id `reservations`) | Booking/order management (single panel — no separate Orders row) |
 | **Staff** | Staff accounts and roles |
 | **Meals** | Menu and meal plan management |
-| **Inventory** | Stock tracking |
+| **Low Stock + Supply + Promotions** | Stock tracking (no single Inventory panel) |
 | **Reports** | Revenue and occupancy analytics |
 | **Settings** | Camp-level configuration |
 

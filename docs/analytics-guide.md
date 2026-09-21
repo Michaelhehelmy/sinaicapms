@@ -10,12 +10,9 @@ The analytics dashboard is accessible from the admin panel under **Reports**. It
 
 | Tab | Focus |
 |-----|-------|
-| **Overview** | High-level KPIs and trends |
-| **Revenue** | Detailed revenue breakdown |
-| **Customers** | Guest demographics and behavior |
-| **Products** | Room and product performance |
-| **Kitchen** | Meal sales and kitchen metrics |
-| **Inventory** | Stock levels and movement |
+| **occupancy** | Occupancy analytics (live) |
+| **revenue** | Revenue analytics (live) |
+| **bookings** | Bookings list (live) |
 
 ---
 
@@ -40,9 +37,7 @@ Revenue is also categorized by how guests paid:
 |--------|----------|
 | **Cash** | Physical cash payments |
 | **Card** | Credit/debit card transactions |
-| **E-Wallet** | Mobile wallet payments |
-| **Instapay** | Bank transfer payments |
-| **Online** | Web payment gateway |
+| **Split** | cash+card split (live values: cash\|card\|split; Paymob webhook covers booking orders only when PM_ENABLED=true) |
 
 This breakdown helps reconcile payment processor settlements and cash flow.
 
@@ -92,12 +87,8 @@ Track how many guests return:
 
 All report data can be exported for external analysis:
 
-1. Navigate to the desired report tab
+1. Navigate to the desired report tab (tenant panel has no Export button — exports live in super-admin templates as CSV/JSON, no PDF)
 2. Set filters and date range
-3. Click **Export**
-4. Choose format:
-   - **CSV** — For spreadsheets and data analysis
-   - **PDF** — For sharing and presentations
 
 ### Scheduled Reports
 
@@ -108,15 +99,16 @@ For recurring reporting needs:
    - Frequency (daily, weekly, monthly)
    - Recipients (email addresses)
    - Format preference
-3. Reports are generated and delivered automatically
+3. Reports are generated from templates (schedules persist in memory only, no email delivery)
 
 ### API Access
 
 For programmatic access to analytics data:
 
 - `GET /api/reports/revenue` — Revenue data
-- `GET /api/reports/customers` — Customer metrics
-- `GET /api/reports/products` — Product performance
-- `GET /api/reports/inventory` — Inventory status
+- `GET /api/reports/customer-metrics` — Customer metrics
+- `GET /api/reports/top-products` — Product performance
+- `GET /api/reports/low-stock` — Inventory status
+- plus `occupancy, bookings, kitchen-performance, revenue-breakdown, seasonal`
 
 All report endpoints require admin authentication.

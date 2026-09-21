@@ -37,9 +37,7 @@ The POS supports multiple promotion types:
 
 ### Buy One Get One (BOGO)
 
-- Buy X items, get Y free (or discounted)
-- Configure: buy quantity, get quantity, eligible products/categories
-- Applies automatically at checkout when conditions are met
+- BOGO — every 2nd item free (fixed logic, not configurable X/Y)
 
 ### Percentage Discount
 
@@ -62,7 +60,7 @@ Navigate to the **Promotions** section in the POS admin:
 3. Set discount value
 4. Activate the promotion
 
-Promotions stack according to priority rules configured in settings.
+Only the best eligible promotion applies per line item (no stacking).
 
 ---
 
@@ -91,10 +89,7 @@ Manually adjust inventory when needed:
 
 1. Navigate to **Inventory**
 2. Select the product to adjust
-3. Choose adjustment type:
-   - **Restock** — Add received inventory
-   - **Damage** — Remove damaged items
-   - **Correction** — Fix count discrepancies
+3. Enter signed quantity + reason text (no fixed Restock/Damage/Correction enum)
 4. Enter the quantity and reason
 5. Save the adjustment
 
@@ -109,10 +104,10 @@ All adjustments are logged with timestamps and operator info for audit trails.
 1. Open a shift (enter starting cash amount)
 2. Add products to the cart by scanning barcode or searching
 3. Apply promotions (auto-applied or manual entry)
-4. Select payment method:
+4. Select payment method (live: Cash / Card / Split — e-wallet/Instapay planned, not live):
    - **Cash** — Enter amount received, system calculates change
    - **Card** — Process card payment
-   - **E-Wallet** — Mobile payment options
+   - **Split** — cash+card split
 5. Complete the transaction
 6. Print or skip receipt
 

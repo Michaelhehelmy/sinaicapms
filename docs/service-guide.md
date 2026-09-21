@@ -59,10 +59,7 @@ Pricing tiers allow different rates based on conditions:
 
 | Tier Type | Example |
 |-----------|---------|
-| **Season** | Summer rate vs. winter rate |
-| **Weekday/Weekend** | Different rates for peak days |
-| **Group Size** | Discounts for larger parties |
-| **Early Bird** | Advance booking discounts |
+| **standard / premium / luxury** | `PUT /items/:id/pricing` with `price_premium` (live — no Season/Weekday/Group/Early Bird) |
 
 Each tier specifies a price override and the conditions under which it applies.
 
@@ -76,12 +73,11 @@ Service bookings follow a status workflow:
 
 | Status | Description |
 |--------|-------------|
-| **pending** | Awaiting confirmation from staff |
-| **confirmed** | Booking accepted, slot reserved |
-| **in-progress** | Service is being delivered |
-| **completed** | Service finished successfully |
-| **cancelled** | Booking cancelled by guest or staff |
-| **no-show** | Guest did not appear |
+| **pending** | Awaiting confirmation |
+| **confirmed** | Accepted, slot reserved |
+| **en_route** | Staff en route |
+| **completed** | Finished |
+| **canceled** | Cancelled (single-l spelling) |
 
 ### Worker Assignment
 
@@ -90,7 +86,7 @@ Assign staff members to service bookings:
 1. Open the booking
 2. Click **Assign Worker**
 3. Select from available staff with the right skills
-4. The worker receives the assignment in their dashboard
+4. The worker assignment is stored on the booking (worker dashboard inbox UNVERIFIABLE)
 
 Worker assignments help track performance and manage scheduling.
 
@@ -120,12 +116,7 @@ After a service is completed, guests can leave reviews:
 
 In the admin panel:
 
-- View all reviews with average ratings
-- Respond to guest feedback
-- Flag inappropriate reviews
-- Track review trends over time
-
-Reviews appear on the public portal to help future guests choose services.
+- View all reviews with average ratings (list + create only; public catalog excludes reviews — no Respond/Flag endpoints)
 
 ---
 
@@ -133,19 +124,11 @@ Reviews appear on the public portal to help future guests choose services.
 
 ### Viewing Availability
 
-The availability calendar shows:
-
-- **Green** — Available slots
-- **Yellow** — Limited availability
-- **Red** — Fully booked
-- **Grey** — Unavailable (blocked dates)
+The availability calendar shows raw slots (`available_date/from/to/worker_id/is_available` via `GET /items/:id/availability`) — no color thresholds, no block/capacity endpoints.
 
 ### Managing Availability
 
 1. Navigate to the **Availability** section
-2. Select a service and date range
-3. Block or unblock dates
-4. Adjust capacity per slot
-5. Save changes
+2. Select a service and date range (slot CRUD as-is — no block/unblock/capacity API)
 
 Availability updates propagate to the public booking portal in real-time.

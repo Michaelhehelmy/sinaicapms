@@ -1,5 +1,7 @@
 # SinaiCamps — Tester Guide (Human-Testing Phase)
 
+> Truth 2026-09-21: credentials + `?debug=1` + zone hosts verified against `scripts/seed-test-users.js` and `routeZones.ts`; sub-tabs not individually re-verified.
+
 This is the guide for **testers**. It covers the debug **Feedback widget**, the surfaces you are allowed to test, and your login credentials.
 
 > **Boundary (read first):** Only the owner tests the **super admin dashboard** (Global Operator Mode: Tenants, All Orders, Users, System Settings, Audit Log, Subscriptions, Financials, HR, Supply Chain, CRM, Storefront, AI, Reports, System Health, Performance, Feedback). Your accounts below **cannot** open it — if you ever see a "Global Operator Mode" sidebar, log out and report it in the Feedback widget instead of poking around.

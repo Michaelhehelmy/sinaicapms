@@ -44,7 +44,7 @@ Every other caller who includes `identity` gets **403 `Only super-admin can prov
 ## Sections reference
 
 ### `identity` *(optional, super-admin)*
-`name`, `subdomain` (lowercase `[a-z0-9]` + hyphens, 3–63 chars), `type`, `email`, `password` (≥ 8),
+`name`, `subdomain` (lowercase alphanumerics + hyphens, 1 char or 3–63 chars; 2-char rejected), `type`, `email`, `password` (≥ 8),
 `firstName`, `lastName`, `businessType?`. `subdomain` and admin `email` are checked for uniqueness
 (400 if taken).
 

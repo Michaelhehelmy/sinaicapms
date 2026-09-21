@@ -20,9 +20,9 @@ Navigate to the **Tables** section in the admin panel:
 
 ### Sections
 
-Organize tables into sections for logical grouping:
+Organize tables into sections (free-text label, e.g. Indoor, Outdoor…):
 
-| Section | Description |
+| Section example | Description |
 |---------|-------------|
 | **Indoor** | Main dining area tables |
 | **Outdoor** | Patio and terrace seating |
@@ -72,11 +72,8 @@ Reservations can be released (cancelled) before the scheduled time:
 
 | Status | Description |
 |--------|-------------|
-| **confirmed** | Reservation is active and table is held |
-| **seated** | Guest has arrived and is seated |
-| **completed** | Meal finished, table released |
-| **released** | Reservation cancelled before seating |
-| **no-show** | Guest did not arrive within the grace period |
+| **reserved** | Reservation active via PATCH /:id/reserve |
+| **available** | Freed via PATCH /:id/release (only-if-reserved) — no auto-suggest, no grace period |
 
 ---
 
@@ -93,7 +90,7 @@ Meals are organized into courses for kitchen management:
 ### Managing Orders
 
 1. Orders arrive in the kitchen queue with course indicators
-2. Kitchen staff mark courses as **preparing** → **ready** → **served**
+2. Kitchen staff mark per-item course as **pending → served → completed** (order-level `kitchen_status` is separate: preparing → ready → served)
 3. Each course progresses independently
 4. The table's order is complete when all courses are served
 
@@ -127,12 +124,11 @@ Split a table's bill by items or evenly:
 
 ### Tips
 
-Tips are added during payment processing:
+Tips persist on booking orders (PATCH /orders/:id/tip); POS tip shows on the immediate receipt only and is not stored/surfaced in reports.
 
 1. Review the bill total
 2. Add tip amount (manual entry or percentage preset)
 3. Tip is included in the final charge
-4. Tips are tracked in staff reports
 
 ### Payment Methods
 
@@ -140,8 +136,6 @@ Tips are added during payment processing:
 |--------|-----------|
 | **Cash** | Enter amount, calculate change |
 | **Card** | Process via card terminal |
-| **E-Wallet** | Mobile payment (Vodafone Cash, etc.) |
-| **Instapay** | Bank transfer via Instapay |
-| **Tab** | Charge to room/reservation account |
+| **Split** | cash+card split (live) — Tab not implemented (use split or separate order + PATCH /orders/:id/split) |
 
 All payment methods are recorded in the transaction log for reconciliation.
