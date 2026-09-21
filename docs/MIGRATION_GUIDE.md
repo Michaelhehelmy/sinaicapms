@@ -44,7 +44,7 @@ Cloudflare's free plan allows **1,000 KV writes/day**. A KV write per API reques
 After any migration:
 
 ```bash
-cd backend && npx vitest run          # 1082 tests / 36 files
-cd app && npx vitest run              # 1465 tests / 74 files
-npx vitest run                        # root integration, 169 tests / 10 files
+cd backend && npx vitest run          # 2225 tests / 84 files
+cd app && npx vitest run              # 3416 tests / 137 files
+npx vitest run --config vitest.integration.config.ts   # root integration, 255 tests / 37 files
 ```
