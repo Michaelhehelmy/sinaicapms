@@ -42,9 +42,9 @@ Zone behavior: `localhost:4321` is the marketplace zone by default. To exercise 
 ## 4. Tests
 
 ```bash
-cd backend && npx vitest run      # backend unit: 1082 tests / 36 files
-cd app && npx vitest run          # frontend unit: 1465 tests / 74 files
-npx vitest run                    # root integration: 169 tests / 10 files
+cd backend && npx vitest run      # backend unit: 2225 tests / 84 files
+cd app && npx vitest run          # frontend unit: 3416 tests / 137 files
+npx vitest run                    # root integration: 255 tests / 37 files
 CI=true npx playwright test       # E2E: 566 total / 552 gate (14 env-skipped)
 ```
 
@@ -61,11 +61,11 @@ cd app && npm run lighthouse      # audits http://localhost:4321 against budget.
 ## 6. Deploy
 
 ```bash
-./deploy.sh               # production: Worker + D1 migrations + Pages frontend
+./deploy.sh               # production: Worker + D1 migrations + Workers frontend
 ./deploy.sh --staging     # staging: validates [env.staging] in backend/wrangler.toml first
 ```
 
-Staging requires `staging.sinaicamps.com` → Pages DNS to be created in Cloudflare first (human action).
+Staging requires `staging.sinaicamps.com` → Workers DNS to be created in Cloudflare first (human action).
 
 ## 7. Generated API types
 
