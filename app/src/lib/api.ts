@@ -1585,45 +1585,6 @@ export interface MarketplaceCategory {
   projectCount: number;
 }
 
- interface MarketplaceTenantProfile {
-  tenant: {
-    id: string;
-    name: string;
-    subdomain: string;
-    description: string | null;
-    primaryColor: string | null;
-    location: string | null;
-    phone: string | null;
-    capacity: number | null;
-    currency: string | null;
-  };
-  projects: Array<{
-    id: string;
-    name: string;
-    description: string | null;
-    type: string | null;
-    capacity: number | null;
-    slug: string | null;
-  }>;
-  reviews: Array<{
-    id: string;
-    reviewerName: string;
-    rating: number;
-    comment: string | null;
-    createdAt: string;
-    projectName: string;
-  }>;
-  categories: Array<{ name: string; slug: string }>;
-}
-
- interface MarketplaceReview {
-  id: string;
-  reviewerName: string;
-  rating: number;
-  comment: string | null;
-  createdAt: string;
-}
-
 export function getMarketplaceListings(params?: { search?: string; category?: string; page?: number; pageSize?: number }) {
   const searchParams = new URLSearchParams();
   if (params?.search) searchParams.set('search', params.search);
@@ -1638,19 +1599,9 @@ export function getMarketplaceListings(params?: { search?: string; category?: st
 
 export function getMarketplaceCategories() {
   return apiFetch<MarketplaceCategory[]>('/marketplace/categories');
-}// ─── Inventory Adjustments (B2.2) ───────────────────────────────────────
- interface InventoryAdjustment {
-  id: string;
-  tenantId: string;
-  productId: string;
-  adjustment: number;
-  reason: string;
-  reference: string | null;
-  notes: string | null;
-  createdBy: string | null;
-  createdAt: string;
-  productName?: string;
-}// ─── Service Enhancements (B4) ──────────────────────────────────────────
+}
+
+// ─── Service Enhancements (B4) ──────────────────────────────────────────
 export function assignServiceWorker(bookingId: string, workerId: string) {
   return apiFetch<{ id: string; assigned_worker_id: string; success: boolean }>(
     `/services/bookings/${encodeURIComponent(bookingId)}/assign`,
