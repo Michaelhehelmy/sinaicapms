@@ -19,7 +19,7 @@ SinaiCamps is built as **four independent layers that are isolated from each oth
                                 │ HTTPS
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  1. FRONTEND  (app/ — Astro 5 + React 19 + Tailwind v4)             │
+│  1. FRONTEND  (app/ — Astro 7 + React 19 + Tailwind v4)             │
 │     • Renders UI only (public marketplace, tenant sites, admin, POS)│
 │     • SSR for public pages + React islands (client:*) where needed  │
 │     • NEVER talks to the database directly                          │
@@ -45,7 +45,7 @@ SinaiCamps is built as **four independent layers that are isolated from each oth
 │       worker may query it │   │     • KV_CACHE (bound; read   │
 │     • Migrations only via │   │       caching via Cache-      │
 │       backend/migrations/ │   │       Control headers)        │
-│     • 53 numbered files   │   │     • R2 MEDIA_BUCKET (uploads│
+│     • 99 numbered files   │   │     • R2 MEDIA_BUCKET (uploads│
 └───────────────────────────┘   │       — media images)         │
                                 │     • Never read by frontend  │
                                 └───────────────────────────────┘
@@ -63,7 +63,7 @@ SinaiCamps is built as **four independent layers that are isolated from each oth
 ### How they are physically connected
 
 - **Frontend ↔ Backend**: Both live as Workers on the same zone (`sinaicamps.com`). Cloudflare **Worker routes** send `/api/*` to the `campmaster-backend` Worker; everything else is served by the `campmaster-marketplace` Worker (Astro SSR, built with `@astrojs/cloudflare`). The frontend Worker calls the backend through the `API_BACKEND` **service binding** (not a same-zone `fetch()`, which Cloudflare rejects with error 1042), resolved in `app/src/middleware/tenant.ts` from the `cloudflare:workers` `env`. In dev, Astro's dev server proxies `/api/*` to `wrangler dev` on `:8787`. The API client (`app/src/lib/api.ts`) is the single shared contract — one function per endpoint, typed responses (`app/src/lib/api-types.ts` regenerated from `backend/openapi.json`).
-- **Backend ↔ Database**: D1 binding `env.DB` (`campmaster-db`) declared in `backend/wrangler.toml`. Every schema change is a numbered migration in `backend/migrations/` (currently **53**, head `0053_camp_ownership.sql`) applied with `wrangler d1 migrations apply`. No ORM — parameterized SQL.
+- **Backend ↔ Database**: D1 binding `env.DB` (`campmaster-db`) declared in `backend/wrangler.toml`. Every schema change is a numbered migration in `backend/migrations/` (currently **99**, head `0099_normalize_marketplace_payouts_ids.sql`) applied with `wrangler d1 migrations apply`. No ORM — parameterized SQL.
 - **Backend ↔ KV / R2 / DO**: `RATE_LIMIT_KV` (rate limiting), `KV_CACHE` (bound; read caching is done with `Cache-Control` headers on public responses — no KV writes), `MEDIA_BUCKET` (R2 uploads), and `BROADCASTER` (Durable Object for SSE) — all declared in `backend/wrangler.toml`. Rate limiting is **KV-backed with an in-memory fallback** (see [Rate Limiting & KV](#rate-limiting--kv-free-plan-warning)).
 - **Tenant isolation is enforced twice**: `app/src/middleware/tenant.ts` resolves the tenant/zone for rendering, and `backend/src/middleware/` re-validates tenant context + JWT on every API call. The frontend can never bypass the backend's checks.
 
@@ -112,7 +112,7 @@ sinaicamps/
 │       ├── middleware/         Auth, RBAC, rate limiting, tenant
 │       ├── services/           Business logic
 │       └── utils/              Response helpers, error handling
-│   └── migrations/             Layer 3 — D1 schema migrations (53 numbered files)
+│   └── migrations/             Layer 3 — D1 schema migrations (99 numbered files)
 │
 ├── tests/                      All test suites
 │   ├── unit/                   Backend unit tests
@@ -138,8 +138,8 @@ sinaicamps/
 | **3. Database** | Cloudflare D1 (SQLite) — `campmaster-db` (+ isolated `campmaster-db-staging`) |
 | **4. Cache / Rate Limiting** | Cloudflare KV (`RATE_LIMIT_KV`, `KV_CACHE`) + R2 (`MEDIA_BUCKET`) |
 | **Auth** | JWT (HS256) + bcrypt password hashing; POS uses a separate `pos_token` |
-| **Unit Tests** | Vitest (backend 2096 · frontend 3417 · integration 262) |
-| **E2E Tests** | Playwright (566 total — 552 gate passing · 14 env-skipped in CI mode) |
+| **Unit Tests** | Vitest (backend 2096 · frontend 3417 · integration 262) — UNVERIFIABLE, counts drift |
+| **E2E Tests** | Playwright (566 total — 552 gate passing · 14 env-skipped in CI mode) — UNVERIFIABLE, counts drift |
 | **Deployment** | Cloudflare Workers (frontend `campmaster-marketplace` + API `campmaster-backend`) via `deploy.sh` (`--staging` supported) |
 
 ---
@@ -220,16 +220,16 @@ npm run dev        # http://localhost:4321 (Astro default), proxies /api/* → :
 ### 3. Run Tests
 
 ```bash
-# Backend unit + POS integration tests (2096 tests / 81 files)
+# Backend unit + POS integration tests (2096 tests / 81 files) — UNVERIFIABLE, counts drift
 cd backend && npx vitest run
 
-# Frontend app unit tests (3417 tests / 132 files)
+# Frontend app unit tests (3417 tests / 132 files) — UNVERIFIABLE, counts drift
 cd app && npx vitest run
 
-# Root integration tests (169 tests / 10 files)
+# Root integration tests (169 tests / 10 files) — UNVERIFIABLE, counts drift
 npx vitest run
 
-# E2E tests (566 total — 552 gate passing · 14 env-skipped in CI mode; boots wrangler dev + astro dev)
+# E2E tests (566 total — 552 gate passing · 14 env-skipped in CI mode; boots wrangler dev + astro dev) — UNVERIFIABLE
 CI=true npx playwright test
 ```
 
@@ -310,7 +310,7 @@ CRUD for `/api/camps/*`, `/api/rooms/*`, `/api/rateplans/*`, `/api/reservations/
 
 ## Database
 
-One Cloudflare D1 database (`campmaster-db`, **53 numbered migrations** in `backend/migrations/`, head `0053_camp_ownership.sql`). Only the backend Worker touches it. Key tables:
+One Cloudflare D1 database (`campmaster-db`, **99 numbered migrations** in `backend/migrations/`, head `0099_normalize_marketplace_payouts_ids.sql`). Only the backend Worker touches it. Key tables:
 
 | Table | Purpose |
 |-------|---------|
