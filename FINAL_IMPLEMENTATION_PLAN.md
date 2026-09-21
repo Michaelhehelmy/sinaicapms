@@ -35,7 +35,7 @@
 | OpenAPI | 85 paths / **125 ops documented** vs **341 concrete routes** → **71% undocumented** | A9 live route-table probe |
 | API contract | 291 `api.ts` exports → **235 resolve to live handlers, 70 non-API, 0 unresolved** | A9 (305-row mapping table) |
 | Deploy model | **Cloudflare Workers** (Pages retired at prod cutover) | `deploy.sh` + `app/wrangler.toml` (A14) |
-| R2 bucket | **`campmaster-media` EXISTS** in prod (created 2026-08-08) — v1 F-A14-2 was STALE | A17 runtime probe |
+| R2 bucket | **`campmaster-media` EXISTS** in prod (created 2026-08-08) — F-A14-2 **WITHDRAWN — false positive (R2 bucket exists since 2026-08-08)** | A17 runtime probe |
 | `RATE_LIMIT_KV_ENABLED` | `"false"` in all env blocks; in-memory fallback active | `wrangler.toml:51,85` + `rateLimit.js:125` (A2/A14/A18) |
 | `JWT_SECRET` | No fallback; throws immediately if unset (by design) | `requireAuth.js:103` → `getJwtSecret()` (A3) |
 | SQL injection | **None** — all queries parameterized | A18 (A18-11) |
@@ -92,6 +92,24 @@
 > **Register header — 2026-09-19 (owner directive):** F-A14-2, F-A2-1, F-A3-2 are withdrawn — verified already-fixed or never-buggy on direct inspection. Three of the original findings were false positives. The audit's finding precision is lower than its severity classifications implied. Retained regression tests: 22 (F-A2-1: 9, F-A3-2: 1, F-A3-1: 12).
 >
 > **Register header — 2026-09-20 (owner directive):** FOURTH false positive on direct inspection — the F-A18-09 sub-claim "5 public endpoints with no rate limit" is withdrawn. Zero unlimited public `/api/*` endpoints exist; the only unlimited routes are `/` and `/healthz` (intentional, for LB health checks) and the sole hard policy exemption is `/api/stream/orders`. The REAL F-A18-09 residue is the per-IP+path limiter key (no tenant dimension) → fixed by Wave 3.5's per-tenant overlay `tenantAwareLimiter` (key = `t:<ip>:<scope.tenantId>:<path>`, mounted as a Shape-1 second `app.use()` line after every authenticated scoped gate). Finding precision continues to under-deliver vs severity labels.
+>
+> === AUDIT PRECISION NOTE ===
+> 5 findings were WITHDRAWN on direct inspection (false positives):
+>   F-A14-2, F-A2-1, F-A3-2, F-A18-09, F-A15-2
+> 1 finding was directionally correct but materially undercounted:
+>   F-A15-1 (register: 69 dead exports; actual: 34)
+> The audit's finding precision was lower than its severity classifications implied.
+> Future work must verify each finding against current code before acting.
+>
+> === METHODOLOGY: STATIC ANALYSIS LIMITS (appendix, Wave 6a) ===
+> Naive AST walkers do not see:
+>   - QualifiedName type-position access (api.X<T>)
+>   - Dynamic imports (await import('@/lib/api'))
+>   - Re-exports that alias symbols
+> Dead-export counts MUST be cross-checked with:
+>   tsc --noUnusedLocals
+>   grep for dynamic import patterns
+> Future audits: never trust a single-tool count for dead-code findings.
 
 ### P0 — Critical (production down, data corruption, or false security/roadmap claims)
 
@@ -196,9 +214,9 @@ Fix APPLIED at <code>orders.js:979-989</code>: rejects unless room belongs to te
 </tr>
 
 <tr>
-<td><strong>F-A2-1 ⇧ P1 → <span style="color:#b00020">WITHDRAWN — false positive</span></strong></td>
+<td><strong>F-A2-1 ⇧ P1 → <span style="color:#b00020">WITHDRAWN — false positive (errorResponse default was 500)</span></strong></td>
 <td><strike><code>errorResponse</code> status omitted in 8 catch blocks → implicit 200 with success:false (re-graded per owner review §4.2)</strike><br>
-<b>2026-09-18: WITHDRAWN.</b> <code>errorResponse(message, status = 500)</code> — the default was always 500, so <code>errorResponse(msg)</code> returns 500, never 200. The P1 premise was internally contradictory (cited the 500 default and claimed 200 in the same sentence). F-A2-1 is NOT-A-BUG; verified directly in Wave 2.3 (<code>94dddd2</code>). Explicit <code>, 500</code> added to all 8 catch traps (no functional change) and 9 regression tests retained as guards.</td>
+<b>2026-09-18: WITHDRAWN — false positive (errorResponse default was 500).</b> <code>errorResponse(message, status = 500)</code> — the default was always 500, so <code>errorResponse(msg)</code> returns 500, never 200. The P1 premise was internally contradictory (cited the 500 default and claimed 200 in the same sentence). F-A2-1 is NOT-A-BUG; verified directly in Wave 2.3 (<code>94dddd2</code>). Explicit <code>, 500</code> added to all 8 catch traps (no functional change) and 9 regression tests retained as guards.</td>
 <td><strike>Silent server errors; caching poisoned; monitoring blind</strike> — none</td>
 <td><strike>Explicit <code>errorResponse('...', 500)</code> ...</strike> — done as explicit-confirmation + regression tests (kept)</td>
 <td>A2 (withdrawn)</td>
@@ -284,7 +302,7 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 <tr><td><strong>F-A19-01..09</strong></td><td>Accessibility: 9× P2 across BookingCalendar drawer (no focus mgmt), InboxPanel tabs (no keyboard pattern), Select.tsx (no aria-activedescendant), ShopCatalog search/category (unlabeled), ShopCatalog toast (unannounced), StorefrontCart qty buttons (bare glyphs), gray-400/stone-400/placeholder contrast fails, modals lack aria-modal</td><td>A19 report (15 total; 9 P2 + 6 P3; zero P0/P1)</td><td>Batch a11y fixes per surface (Admin / POS / Storefront) — Wave 7 (does not block launch)</td><td>A19</td></tr>
 
 <tr><td><strong>F-A3-2 / A1-F002</strong></td><td>Check-in order lookup: <code>camp_id</code> derived from request body rather than tenant-verified room</td><td>Part of the A22-01 blast radius; A1 also flagged <code>orders.js:238</code> (camp_id from body trusted)</td><td>Derive <code>camp_id</code> from the tenant-verified room row (same wave as 3a)</td><td>A3, A1, A22</td></tr>
-<tr><td><strong>F-A3-2 ⇧ → <span style="color:#b00020">WITHDRAWN — false positive</span></strong></td><td colspan="4"><b>2026-09-19: WITHDRAWN in Wave 3.2.</b> The check-in handler destructures only <code>{ early_checkin, adult_count, child_count, room_id }</code> (orders.js:946-949) and the orders UPDATE never includes <code>camp_id</code> — the value is derived from the tenant-verified room row (A22-01 ownership JOIN at orders.js:979-989). Verified against pre-A22 code at <code>0d1975c^</code>: the handler never destructured <code>camp_id</code> even before the fix. One regression guard test retained (asserts no <code>camp_id</code> in the orders UPDATE, smuggled camp_id ignored, response <code>roomId</code>).</td></tr>
+<tr><td><strong>F-A3-2 ⇧ → <span style="color:#b00020">WITHDRAWN — false positive (already remediated by A22-01)</span></strong></td><td colspan="4"><b>2026-09-19: WITHDRAWN — false positive (already remediated by A22-01).</b> The check-in handler destructures only <code>{ early_checkin, adult_count, child_count, room_id }</code> (orders.js:946-949) and the orders UPDATE never includes <code>camp_id</code> — the value is derived from the tenant-verified room row (A22-01 ownership JOIN at orders.js:979-989). Verified against pre-A22 code at <code>0d1975c^</code>: the handler never destructured <code>camp_id</code> even before the fix. One regression guard test retained (asserts no <code>camp_id</code> in the orders UPDATE, smuggled camp_id ignored, response <code>roomId</code>).</td></tr>
 
 <tr><td><strong>F-A1-F001</strong></td><td><code>pos-users.js:196/255</code> — email/username duplicate check not scoped by <code>organization_id</code></td><td>A1 db audit: cross-org username collision possible in POS users</td><td>Scope duplicate check by org (backend fix)</td><td>A1</td></tr>
 
@@ -305,9 +323,9 @@ A21 report — full sweep of POS/PWA surface; backend idempotency exists, client
 <tr><td>F-A17-03/04</td><td>Import media: malformed base64 500s whole import; no magic-byte validation</td><td>Per-item validation errors instead of whole-import 500; magic-byte check before upload</td></tr>
 <tr><td>F-A17-07</td><td>Health check reports false "missing bucket" when R2 binding errors; docs claim manual creation (stale)</td><td>Fix health probe; update wrangler.toml comment to "bucket exists; automation added for new envs"</td></tr>
 <tr><td>F-A18-07</td><td>CORS doc inaccurate (<code>credentials: true</code> claim false; code actually correct single-source)</td><td>Fix security-guide.md CORS section to match code</td></tr>
-<tr><td>F-A18-09</td><td>Rate limiter per-IP+path, not per-tenant — <b>REAL</b>, fixed Wave 3.5 (tenant-aware key on verified scope, Shape 1 post-auth mount). Sub-claim "5 public endpoints with no rate limit" — <b>WITHDRAWN, false positive</b> (zero unlimited public endpoints)</td><td>Wave 3.5 overlay limiter keyed <code>t:&lt;ip&gt;:&lt;tenantId&gt;:&lt;path&gt;</code>; public per-group budgets deferred to Wave 3.5b (Paymob webhook P1: shared 100/min IP bucket would drop payment callbacks)</td></tr>
-<tr><td>F-A15-1</td><td>69 dead exports in <code>app/src/lib/api.ts</code> (24% of 291) — **confirmed by A9 regenerated consumer graph; stays P3** (owner asked to re-check for P2; A9 found no dynamic/string-key dispatch → P3)</td><td>✅ DONE (Wave 5a): 34 pruned in <code>5599675</code> (15 fns + 1 re-export deleted, 19 types stripped) + 3 fully-dead stripped types deleted in <code>9868b6b</code>. Register's 69 → authoritative 35 verified vs tsc oracle; remaining register items are false positives via <code>api.X</code> type positions + dynamic import. Gate: app tsc 0 / vitest 3416 / eslint 0 / astro build 0</td></tr>
-<tr><td>F-A15-2</td><td>8 dead exports in <code>sharedAuth.js</code></td><td>✅ WITHDRAWN (Wave 5b, **FIFTH false positive** — verify-only): all 14 exports have live consumers (7 prod: generateToken/verifyToken/requireAuth/superAdminGate/requireSuperAdmin/resolveScope/streamTokenPolicy; 7 test/internal). No changes made</td></tr>
+<tr><td>F-A18-09</td><td>Rate limiter per-IP+path, not per-tenant — <b>REAL</b>, fixed Wave 3.5 (tenant-aware key on verified scope, Shape 1 post-auth mount). Sub-claim "5 public endpoints with no rate limit" — <b>WITHDRAWN — false positive (zero unlimited public endpoints; real residue = per-tenant key, fixed in dc0715b)</b></td><td>Wave 3.5 overlay limiter keyed <code>t:&lt;ip&gt;:&lt;tenantId&gt;:&lt;path&gt;</code>; public per-group budgets deferred to Wave 3.5b (Paymob webhook P1: shared 100/min IP bucket would drop payment callbacks)</td></tr>
+<tr><td>F-A15-1</td><td>69 dead exports in <code>app/src/lib/api.ts</code> (24% of 291) — **confirmed by A9 regenerated consumer graph; stays P3** (owner asked to re-check for P2; A9 found no dynamic/string-key dispatch → P3)</td><td>⚡ **PARTIALLY CORRECTED — 34 dead exports pruned, not 69; directionally right, magnitude wrong** (Wave 5a): 34 pruned in <code>5599675</code> (15 fns + 1 re-export deleted, 19 types stripped) + 3 fully-dead stripped types deleted in <code>9868b6b</code>. Register's 69 → authoritative 35 verified vs tsc oracle; remaining register items are false positives via <code>api.X</code> type positions + dynamic import (see METHODOLOGY appendix). Gate: app tsc 0 / vitest 3416 / eslint 0 / astro build 0</td></tr>
+<tr><td>F-A15-2</td><td>8 dead exports in <code>sharedAuth.js</code></td><td>✅ <b>WITHDRAWN — false positive (all 14 sharedAuth exports used)</b> (Wave 5b, **FIFTH false positive** — verify-only): all 14 exports have live consumers (7 prod: generateToken/verifyToken/requireAuth/superAdminGate/requireSuperAdmin/resolveScope/streamTokenPolicy; 7 test/internal). No changes made</td></tr>
 <tr><td>F-A15-3</td><td><code>softDelete.js</code> (213 lines) wholly dead file, zero imports</td><td>✅ DONE (Wave 5c <code>26f67e2</code>): file + its test deleted; grep clean; backend vitest 2225/2225</td></tr>
 <tr><td>F-A15-4</td><td>21 dead imports across backend (4) + frontend (17)</td><td>✅ DONE (Wave 5d <code>236e65a</code>): 31 imports removed (backend 10: 3 prod + 7 test; frontend 21 named). React default imports and <code>IconPos</code> (TenantImportPanel) left untouched as out-of-register noise. Gate: app tsc 0 / vitest 3416 / backend vitest 2225 / eslint 0</td></tr>
 <tr><td>F-A15-5</td><td>6 duplication clusters (<code>escapeUrl</code> ×5, <code>sanitizeForJsonLd</code> ×3, <code>normalizeAssetUrl</code> ×3, <code>escHtml</code> ×4, <code>slugify</code> ×2)</td><td>Centralize into <code>utils.ts</code>; note <code>is:inline</code> copies are required</td></tr>
