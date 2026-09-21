@@ -93,13 +93,7 @@ describe('api.ts — services module', () => {
     await expectResolves(() => api.getServiceBookings());
     await expectResolves(() => api.createServiceBooking({ serviceItemId: 'i1' }));
     await expectResolves(() => api.updateBookingStatus('b1', 'confirmed'));
-    await expectResolves(() => api.getPublicServiceCatalog('acacia'));
     await expectResolves(() => api.assignServiceWorker('b1', 'w1'));
-    await expectResolves(() => api.getServiceAvailability('i1'));
-    await expectResolves(() => api.createServiceAvailabilitySlot('i1', { availableDate: '2026-09-01' }));
-    await expectResolves(() => api.getServiceReviews('i1'));
-    await expectResolves(() => api.submitServiceReview('b1', { rating: 5 }));
-    await expectResolves(() => api.updateServicePricing('i1', { priceTier: 'premium' }));
   });
 });
 
@@ -111,23 +105,16 @@ describe('api.ts — analytics + onboarding + marketplace', () => {
     await expectResolves(() => api.getRevenueBreakdown());
     await expectResolves(() => api.getCustomerMetrics());
     await expectResolves(() => api.getSeasonalComparison());
-    await expectResolves(() => api.getInventoryAdjustments());
-    await expectResolves(() => api.createInventoryAdjustment({ productId: 'p1', quantity: 5 }));
-    await expectResolves(() => api.getReorderSuggestions());
   });
   it('onboarding', async () => {
     await expectResolves(() => api.signupTenant('tee1', { email: 'a@b.c', password: 'x' }));
     await expectResolves(() => api.getOnboardingStatus('tee1'));
     await expectResolves(() => api.completeOnboarding('tee1', {}));
     await expectResolves(() => api.updateOnboardingTenant('tee1', {}));
-    await expectResolves(() => api.autoLogin('tok'));
   });
   it('marketplace', async () => {
     await expectResolves(() => api.getMarketplaceListings());
     await expectResolves(() => api.getMarketplaceCategories());
-    await expectResolves(() => api.getMarketplaceTenantProfile('tee1'));
-    await expectResolves(() => api.submitMarketplaceReview({ rating: 5 }));
-    await expectResolves(() => api.getMarketplaceReviews('tee1'));
   });
 });
 

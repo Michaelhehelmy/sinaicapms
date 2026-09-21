@@ -35,7 +35,6 @@ export const API_BASE = isLocal
 // Legacy key names are re-exported for back-compat imports.
 import { session, type Realm } from './session';
 import { toSnake } from './utils';
-export { REFRESH_TOKEN_KEY } from './session';
 
 // T6: pagination envelope shape shared by list endpoints
 // { data, total, page, pageSize, hasMore } — clean migration from limit/offset
@@ -300,7 +299,7 @@ export function saveProduct(data: Schemas['ProductCreateRequest'] | Schemas['Pro
   });
 }
 
-export interface BulkCreateResponse {
+ interface BulkCreateResponse {
   ids: string[];
   count: number;
   success: boolean;
@@ -536,7 +535,7 @@ export function updateBranding(data: Schemas['TenantMeUpdateRequest']) {
 }
 
 // ─── Tenant Billing ────────────────────────────────────────────────
-export interface TenantBillingPlan {
+ interface TenantBillingPlan {
   name: string;
   price: string;
   period: string;
@@ -1289,7 +1288,7 @@ export interface Promotion {
   created_at: string;
 }
 
-export interface PromotionApplyRequest {
+ interface PromotionApplyRequest {
   items: Array<{ productId: string; quantity: number }>;
 }
 
@@ -1431,12 +1430,6 @@ export function updateBookingStatus(id: string, status: string) {
     body: JSON.stringify({ status }),
   });
 }
-
-// Public catalog
-export function getPublicServiceCatalog(slug: string) {
-  return apiFetch<{ tenant: { id: string; name: string }; definitions: ServiceDefinition[] }>(`/services/public/${slug}`);
-}
-
 // ─── Analytics (supplementary) ─────────────────────────────────────────
 // getRevenueReport and getOccupancyReport already exist in the Reports section.
 // These add POS-specific analytics not covered by existing report functions.
@@ -1564,22 +1557,7 @@ export function updateOnboardingTenant(data: {
     method: 'POST',
     body: JSON.stringify(data),
   });
-}
-
-// ─── Auto-Login (C1.1) ───────────────────────────────────────────────────
-export function autoLogin(token: string) {
-  return apiFetch<{
-    success: boolean;
-    token: string;
-    refreshToken: string;
-    user: { id: string; name: string; email: string; role: string; tenantId: string };
-  }>('/auth/auto-login', {
-    method: 'POST',
-    body: JSON.stringify({ token }),
-  });
-}
-
-// ─── Marketplace (C3) ────────────────────────────────────────────────────
+}// ─── Marketplace (C3) ────────────────────────────────────────────────────
 export interface MarketplaceListing {
   tenantId: string;
   tenantName: string;
@@ -1607,7 +1585,7 @@ export interface MarketplaceCategory {
   projectCount: number;
 }
 
-export interface MarketplaceTenantProfile {
+ interface MarketplaceTenantProfile {
   tenant: {
     id: string;
     name: string;
@@ -1638,7 +1616,7 @@ export interface MarketplaceTenantProfile {
   categories: Array<{ name: string; slug: string }>;
 }
 
-export interface MarketplaceReview {
+ interface MarketplaceReview {
   id: string;
   reviewerName: string;
   rating: number;
@@ -1660,25 +1638,8 @@ export function getMarketplaceListings(params?: { search?: string; category?: st
 
 export function getMarketplaceCategories() {
   return apiFetch<MarketplaceCategory[]>('/marketplace/categories');
-}
-
-export function getMarketplaceTenantProfile(slug: string) {
-  return apiFetch<MarketplaceTenantProfile>(`/marketplace/${encodeURIComponent(slug)}`);
-}
-
-export function submitMarketplaceReview(data: { project_id: string; reviewer_name?: string; rating: number; comment?: string }) {
-  return apiFetch<{ id: string; success: boolean }>('/marketplace/reviews', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export function getMarketplaceReviews(projectId: string) {
-  return apiFetch<MarketplaceReview[]>(`/marketplace/reviews/${encodeURIComponent(projectId)}`);
-}
-
-// ─── Inventory Adjustments (B2.2) ───────────────────────────────────────
-export interface InventoryAdjustment {
+}// ─── Inventory Adjustments (B2.2) ───────────────────────────────────────
+ interface InventoryAdjustment {
   id: string;
   tenantId: string;
   productId: string;
@@ -1689,103 +1650,13 @@ export interface InventoryAdjustment {
   createdBy: string | null;
   createdAt: string;
   productName?: string;
-}
-
-export function getInventoryAdjustments() {
-  return apiFetch<InventoryAdjustment[]>('/inventory/adjustments');
-}
-
-export function createInventoryAdjustment(data: {
-  product_id: string;
-  adjustment: number;
-  reason?: string;
-  reference?: string;
-  notes?: string;
-}) {
-  return apiFetch<{ id: string; success: boolean; new_stock: number }>('/inventory/adjustments', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export function getReorderSuggestions() {
-  return apiFetch<{ suggestions: Array<{
-    id: string;
-    name: string;
-    stockQuantity: number;
-    reorderPoint: number;
-    minStockLevel: number;
-    supplierName: string | null;
-    suggestedOrderQty: number;
-  }> }>('/inventory/reorder-suggestions');
-}
-
-// ─── Service Enhancements (B4) ──────────────────────────────────────────
+}// ─── Service Enhancements (B4) ──────────────────────────────────────────
 export function assignServiceWorker(bookingId: string, workerId: string) {
   return apiFetch<{ id: string; assigned_worker_id: string; success: boolean }>(
     `/services/bookings/${encodeURIComponent(bookingId)}/assign`,
     { method: 'PATCH', body: JSON.stringify({ assigned_worker_id: workerId }) }
   );
-}
-
-export function getServiceAvailability(itemId: string) {
-  return apiFetch<Array<{
-    id: string;
-    serviceItemId: string;
-    workerId: string | null;
-    availableDate: string;
-    availableFrom: string;
-    availableTo: string;
-    isAvailable: number;
-  }>>(`/services/items/${encodeURIComponent(itemId)}/availability`);
-}
-
-export function createServiceAvailabilitySlot(itemId: string, data: {
-  availableDate: string;
-  availableFrom: string;
-  availableTo: string;
-  workerId?: string;
-  isAvailable?: number;
-}) {
-  return apiFetch<{ id: string; success: boolean }>(
-    `/services/items/${encodeURIComponent(itemId)}/availability`,
-    { method: 'POST', body: JSON.stringify(toSnake(data)) }
-  );
-}
-
-export function getServiceReviews() {
-  return apiFetch<Array<{
-    id: string;
-    serviceItemId: string;
-    customerName: string | null;
-    rating: number;
-    comment: string | null;
-    createdAt: string;
-    itemName?: string;
-  }>>('/services/reviews');
-}
-
-export function submitServiceReview(data: {
-  serviceItemId: string;
-  bookingId?: string;
-  customerName?: string;
-  rating: number;
-  comment?: string;
-}) {
-  return apiFetch<{ id: string; success: boolean }>('/services/reviews', {
-    method: 'POST',
-    body: JSON.stringify(toSnake(data)),
-  });
-}
-
-export function updateServicePricing(itemId: string, data: { priceTier: string; pricePremium?: number }) {
-  return apiFetch<{ id: string; success: boolean }>(
-    `/services/items/${encodeURIComponent(itemId)}/pricing`,
-    { method: 'PUT', body: JSON.stringify(toSnake(data)) }
-  );
-}
-
-// ─── Analytics Enhancements (C2) ─────────────────────────────────────────
+}// ─── Analytics Enhancements (C2) ─────────────────────────────────────────
 export function getRevenueBreakdown(days?: number) {
   const qs = days ? `?days=${days}` : '';
   return apiFetch<{
@@ -1883,7 +1754,7 @@ export function createTaxRate(data: { name: string; rate: number; jurisdiction?:
 // operator). GET /financials/payouts returns a PLAIN ARRAY — matching the
 // tenant financials module's list convention (jsonResponse(results) in
 // backend financials.js) — NOT a paginated envelope.
-export interface TenantPayout {
+ interface TenantPayout {
   id: string;
   amount: number;
   currency: string;
@@ -2033,13 +1904,7 @@ export function saveCrmKnowledgeArticle(data: { title: string; content: string; 
       }),
     },
   );
-}
-
-export function deleteCrmKnowledgeArticle(id: string) {
-  return apiFetch<{ success: boolean }>(`/crm/knowledge-articles/${encodeURIComponent(id)}`, { method: 'DELETE' });
-}
-
-// ─── Storefront (Agent E) ──────────────────────────────────────────────────
+}// ─── Storefront (Agent E) ──────────────────────────────────────────────────
 /** Public product catalog page — unified {data,total,page,pageSize,hasMore} envelope. */
 export function getStorefrontProducts(params?: { category?: string; search?: string; page?: number; pageSize?: number }) {
   const qs = params ? '?' + new URLSearchParams(Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined)) as Record<string, string>).toString() : '';
@@ -2221,11 +2086,11 @@ export interface MarketplacePayout {
   cancelledAt: string | null;
 }
 
-export interface MarketplacePayoutDetail extends MarketplacePayout {
+ interface MarketplacePayoutDetail extends MarketplacePayout {
   items: PublicPayment[];
 }
 
-export interface CreatePayoutRequest {
+ interface CreatePayoutRequest {
   tenantId: string;
   paymentIds: string[];
   method: string;
@@ -2389,7 +2254,7 @@ export function toggleAIAutomationRule(id: string) {
   return apiFetch(`/ai/automation-rules/${encodeURIComponent(id)}/toggle`, { method: 'POST' });
 }
 
-export interface AiForecastPoint {
+ interface AiForecastPoint {
   date: string;
   predictedDemand: number;
   confidence: number;
@@ -2439,7 +2304,7 @@ export function resumeAdminSubscription(id: string) {
 
 // ─── Admin Subscriptions (typed) ────────────────────────────────────────────
 
-export interface AdminSubscriptionRow {
+ interface AdminSubscriptionRow {
   tenantId: string;
   tenantName: string;
   planId: string | null;
@@ -2466,13 +2331,13 @@ export function getAdminSubscriptions(params?: Record<string, string>) {
 
 // ─── Admin Reports API Functions ────────────────────────────────────────────
 
-export interface AdminReportParameter {
+ interface AdminReportParameter {
   name: string;
   type: string;
   options?: string[];
 }
 
-export interface AdminReportTemplate {
+ interface AdminReportTemplate {
   id: string;
   name: string;
   description: string;
@@ -2485,7 +2350,7 @@ export interface AdminReportsPayload {
   reports: AdminReportTemplate[];
 }
 
-export interface AdminScheduledReport {
+ interface AdminScheduledReport {
   id: string;
   reportId: string;
   parameters?: Record<string, unknown>;
@@ -2500,7 +2365,7 @@ export interface AdminScheduledReportsPayload {
   scheduled: AdminScheduledReport[];
 }
 
-export interface AdminReportJobResult {
+ interface AdminReportJobResult {
   jobId: string;
   status: string;
   downloadUrl: string;
@@ -2529,7 +2394,7 @@ export function deleteAdminScheduledReport(id: string) {
 
 // ─── Admin Performance API Functions ────────────────────────────────────────
 
-export interface AdminPerformanceTenant {
+ interface AdminPerformanceTenant {
   id: string;
   name: string;
   metrics: {
@@ -2588,7 +2453,7 @@ export async function exportAdminPerformance(format = 'csv'): Promise<Blob> {
 
 // ─── Admin Health API Functions ─────────────────────────────────────────────
 
-export type AdminHealthStatus = 'ok' | 'degraded' | 'down' | 'skipped';
+ type AdminHealthStatus = 'ok' | 'degraded' | 'down' | 'skipped';
 
 export interface AdminHealthSnapshot {
   workers: { status: AdminHealthStatus; uptime?: number };
@@ -2598,7 +2463,7 @@ export interface AdminHealthSnapshot {
   overall: AdminHealthStatus | 'unknown';
 }
 
-export interface AdminHealthMetricPoint {
+ interface AdminHealthMetricPoint {
   timestamp: string;
   workers: { requests: number; errors: number; latencyMs: number };
   d1: { queries: number; errors: number; latencyMs: number };
@@ -2619,7 +2484,7 @@ export function getAdminHealthMetrics() {
 
 // ─── Admin Audit API Functions ──────────────────────────────────────────────
 
-export interface AdminAuditRow {
+ interface AdminAuditRow {
   id: number | string;
   tenant_id?: string | null;
   user_id?: string | null;
