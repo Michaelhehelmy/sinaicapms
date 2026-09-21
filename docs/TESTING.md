@@ -4,9 +4,9 @@
 
 | Suite | Command | Count |
 | --- | --- | --- |
-| Backend unit | `cd backend && npx vitest run` | **1082 tests / 36 files** |
-| Frontend unit | `cd app && npx vitest run` | **1465 tests / 74 files** |
-| Root integration | `npx vitest run` | **169 tests / 10 files** |
+| Backend unit | `cd backend && npx vitest run` | **2225 tests / 84 files** |
+| Frontend unit | `cd app && npx vitest run` | **3416 tests / 137 files** |
+| Root integration | `npx vitest run` | **255 tests / 37 files** (262 registered; 7 dropped by the documented 30-min `/api/auth` login-limit flake)
 | E2E | `CI=true npx playwright test` | **566 total / 552 gate passed, 14 env-skipped** |
 
 ## E2E specifics
@@ -45,7 +45,7 @@ Tenant E2E pages can hang on `load` in `astro dev` because logo/favicon point at
 
 ## Writing tests
 
-- **Unit**: Vitest. Backend tests live in `backend/` (36 files); frontend in `app/` (74 files, colocated or under `app/src/**/__tests__`).
+- **Unit**: Vitest. Backend tests live in `backend/` (**84 files**); frontend in `app/` (**137 files**, colocated or under `app/src/**/__tests__`).
 - **Integration**: `tests/` root, run via `vitest.integration.config.ts` (`npm run test:integration`).
 - **E2E**: Playwright specs in `tests/e2e/specs/` with shared pages/fixtures in `tests/e2e/pages/` and `tests/e2e/fixtures/`.
 - Reusable processes: use the `fix-failing-test` skill (`.opencode/skills/testing/fix-failing-test/SKILL.md`) to debug failures and `new-e2e-test` (`.opencode/skills/testing/new-e2e-test/SKILL.md`) to add specs.
