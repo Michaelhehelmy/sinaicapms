@@ -1,0 +1,25 @@
+=== run start: 2026-09-21T15:46:23Z ===
+=== pwd ===
+/home/michael/devin/opencode-workspace/sinaicamps
+=== git log -5 ===
+e91ce94 §1 staging preconditions verified — byte-anchored, evidence on disk
+1aeb182 docs(quick-start): census rows reconciled to live gold; Pages project retired — Workers deploy
+765a497 docs(agents): census-register rows reconciled to live gold
+37ec4f0 docs(testing): reconcile TESTING.md test-count census with live gold
+c17d736 docs(migration-guide): verification test counts — 1082/1465/169 → 2225/3416/255
+=== git status ===
+?? .opencode/audits/run-2026-09-21/
+?? .opencode/summaries/
+?? docs/examples/acacia-manifest.json
+?? scripts-recon.js
+=== origin sync ===
+=== backend tests ===
+[2m      Tests [22m [1m[32m2225 passed[39m[22m[90m (2225)[39m
+[2m   Start at [22m 18:46:24
+[2m   Duration [22m 12.85s[2m (transform 8.13s, setup 0ms, import 22.44s, tests 41.02s, environment 14ms)[22m
+
+=== frontend tests ===
+[2m      Tests [22m [1m[32m3416 passed[39m[22m[90m (3416)[39m
+[2m   Start at [22m 18:46:37
+[2m   Duration [22m 43.83s[2m (transform 26.31s, setup 22.25s, import 67.26s, tests 194.03s, environment 142.69s)[22m
+
