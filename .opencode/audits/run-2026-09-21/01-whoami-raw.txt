@@ -1,0 +1,42 @@
+
+ ⛅️ wrangler 4.114.0 (update available 4.136.0)
+───────────────────────────────────────────────
+Getting User settings...
+👋 You are logged in with an OAuth Token, associated with the email michael.he.helmy@gmail.com.
+🔐 Credentials are stored in: /home/michael/.config/.wrangler/config/default.toml
+┌──────────────────────────────────────┬──────────────────────────────────┐
+│ Account Name                         │ Account ID                       │
+├──────────────────────────────────────┼──────────────────────────────────┤
+│ Michael.he.helmy@gmail.com's Account │ 160e5baf51934e3af06e3028a83de5b8 │
+└──────────────────────────────────────┴──────────────────────────────────┘
+🔓 Token Permissions:
+Scope (Access)
+- user (read)
+- offline_access 
+- account (read)
+- workers (write)
+- workers_kv (write)
+- workers_routes (write)
+- workers_scripts (write)
+- workers_tail (read)
+- d1 (write)
+- pages (write)
+- zone (read)
+- ssl_certs (write)
+- ai (write)
+- ai-search (write)
+- ai-search (run)
+- websearch.run 
+- agent-memory (write)
+- queues (write)
+- pipelines (write)
+- secrets_store (write)
+- artifacts (write)
+- flagship (write)
+- containers (write)
+- cloudchamber (write)
+- connectivity (admin)
+- email_routing (write)
+- email_sending (write)
+- browser (write)
+- challenge-widgets.write 
