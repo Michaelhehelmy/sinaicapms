@@ -93,6 +93,11 @@ RATE_LIMIT_LOGIN = "20"
 RATE_LIMIT_API = "100"
 # Wave 1 (F-A13-2) — see production [vars]; staging mirrors prod.
 STOREFRONT_CART_ENABLED = "true"
+# Paymob — mirror prod defaults (disabled); secrets via `wrangler secret put --env staging`.
+PM_ENABLED = "false"
+PM_BASE_URL = "https://accept.paymob.com"
+PM_PUBLIC_KEY = ""
+PM_CURRENCY = "EGP"
 
 [[env.staging.routes]]
 pattern = "staging.sinaicamps.com/api/*"
