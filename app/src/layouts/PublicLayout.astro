@@ -775,7 +775,7 @@ const jsonLd = sanitizeForJsonLd({
 
   <!-- Human-testing debug feedback widget: server-gated (cookie/query) so
        regular visitors ship zero extra JS. -->
-  {debugEnabled && <DebugFeedbackWidget client:visible />}
+  {debugEnabled && <DebugFeedbackWidget client:load /> /* load, not visible: SSR renders null until the flag/session resolves, so a visible-gated island would never intersect/hydrate */}
   <script is:inline>
     (function () {
       try {
