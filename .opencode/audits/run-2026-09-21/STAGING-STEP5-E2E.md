@@ -41,3 +41,8 @@ marker (e.g. hero testid), not just status codes.
 Next: owner moves staging.sinaicamps.com custom domain to
 campmaster-marketplace-staging (dashboard), removes it from backend worker,
 then agent reruns this config.
+
+## Rerun 2026-09-22 ~10:05 UTC (after zone fix 5689ed3 + staging redeploy)
+GREEN: 11 passed / 0 failed (17.4s). All 6 prior env-drift failures resolved
+by routing + `staging.sinaicamps.com` marketplace recognition. No spec fixes
+needed; no real bugs.
