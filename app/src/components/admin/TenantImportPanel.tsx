@@ -239,8 +239,17 @@ export function TenantImportPanel() {
     },
     onError: (err) => {
       const message = err instanceof Error ? err.message : String(err);
-      setSubmitError(message);
-      showToast(`Import failed — ${message}`, 'error');
+      const fields = (err as { fieldErrors?: Array<{ field?: unknown; message?: unknown }> })
+        .fieldErrors;
+      const fieldText = Array.isArray(fields)
+        ? fields
+            .map((f) => `${String(f.field ?? '?')}: ${String(f.message ?? '')}`.trim())
+            .filter(Boolean)
+            .join('; ')
+        : '';
+      const detail = fieldText ? `${message} — ${fieldText}` : message;
+      setSubmitError(detail);
+      showToast(`Import failed — ${detail}`, 'error');
     },
   });
 

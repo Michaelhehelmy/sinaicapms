@@ -247,7 +247,15 @@ export async function apiFetch<T = unknown>(
           (errData as Record<string, unknown>).error ||
           (errData as Record<string, unknown>).message ||
           `API error: ${response.status}`;
-        throw new Error(typeof msg === 'string' ? msg : String(msg));
+        const err = new Error(typeof msg === 'string' ? msg : String(msg));
+        // Surface HTTP status + Zod field errors without changing the message
+        // contract (callers read err.message as before).
+        (err as { status?: number }).status = response.status;
+        const fieldErrors = (errData as Record<string, unknown>).errors;
+        if (Array.isArray(fieldErrors)) {
+          (err as { fieldErrors?: unknown }).fieldErrors = fieldErrors;
+        }
+        throw err;
       }
 
       const data = await response.json();
