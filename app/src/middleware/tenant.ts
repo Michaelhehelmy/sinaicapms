@@ -100,10 +100,12 @@ export function resolveApiFetcher(
 function resolveTenantId(url: URL): string {
   const hostname = url.hostname;
 
-  // Marketplace
+  // Marketplace (prod apex + staging apex — staging must precede the
+  // subdomain branch below, whose endsWith would claim it as tenant "staging")
   if (
     hostname === 'sinaicamps.com' ||
-    hostname === 'www.sinaicamps.com'
+    hostname === 'www.sinaicamps.com' ||
+    hostname === 'staging.sinaicamps.com'
   ) {
     return 'marketplace';
   }
