@@ -6,6 +6,7 @@ import { escHtml } from '@/lib/utils';
 
 type Schemas = components['schemas'];
 import { useToast } from '@/components/ui/Toast';
+import { session } from '@/lib/session';
 import { Card, CardHeader, CardBody, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
@@ -65,7 +66,7 @@ const countRows = [
  * tenant-scoped data bundle (auth tenant inferred) or a full provisioning
  * manifest (`identity` block → brand-new tenant, super_admin only).
  */
-export function parseManifest(raw: string): ParseManifestResult {
+export function parseManifest(raw: string, opts?: { forbidIdentity?: boolean }): ParseManifestResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -105,6 +106,13 @@ export function parseManifest(raw: string): ParseManifestResult {
     counts.posUsers;
 
   if (identity) {
+    if (opts?.forbidIdentity) {
+      return {
+        ok: false,
+        error:
+          'This template is for existing tenants. Remove the identity block to import as tenant admin.',
+      };
+    }
     const identityName = nonEmptyString(identity.name);
     const subdomain = nonEmptyString(identity.subdomain);
     if (!identityName || !subdomain) {
@@ -183,6 +191,12 @@ export function TenantImportPanel() {
   const [parseError, setParseError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<Schemas['TenantImportResponse'] | null>(null);
+  // Tenant-admin path must never carry an identity block (super-admin-only
+  // provisioning). Role comes from the session kernel — no AuthProvider
+  // needed. Null (e.g. unit tests without a session) keeps legacy behavior.
+  const role = session.getUser<{ role?: string }>('admin')?.role ?? null;
+  const forbidIdentity = role !== null && role !== 'super_admin';
+  const isSuperAdmin = role === 'super_admin';
   const manifestRef = useRef<Schemas['TenantImportRequest'] | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -190,7 +204,7 @@ export function TenantImportPanel() {
     setRaw(text);
     setResult(null);
     setSubmitError(null);
-    const parsed = parseManifest(text);
+    const parsed = parseManifest(text, { forbidIdentity });
     if (parsed.ok) {
       setPreview(parsed.preview);
       manifestRef.current = parsed.manifest;
@@ -244,6 +258,12 @@ export function TenantImportPanel() {
             </p>
           </div>
         </CardHeader>
+        {isSuperAdmin && (
+          <div data-testid="import-superadmin-warning" role="note" className="border-b border-warning-100 bg-warning-50 px-4 py-3 text-sm font-medium text-warning-700">
+            You are importing as super-admin. The identity block provisions a new tenant. To import
+            into an existing tenant, log in as that tenant admin.
+          </div>
+        )}
         <CardBody className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-semibold text-gray-700">Manifest source</span>
