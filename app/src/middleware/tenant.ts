@@ -126,8 +126,10 @@ function resolveTenantId(url: URL): string {
   // Custom domain (acaciacamp.com, www.acaciacamp.com, etc.) → return the
   // hostname as the lookup key, with a leading `www.` stripped so the
   // backend custom_domain match works. The backend /api/tenants/:id
-  // supports custom_domain lookup.
-  const host = hostname.replace(/^www\./, '');
+  // supports custom_domain lookup. Staging mirrors (staging.acaciacamp.com)
+  // resolve to the same tenant: strip one leading `staging.` label when the
+  // remainder is still a full domain (contains a dot).
+  const host = hostname.replace(/^www\./, '').replace(/^staging\.([\w-]+\.[\w.-]+)$/, '$1');
   return host;
 }
 

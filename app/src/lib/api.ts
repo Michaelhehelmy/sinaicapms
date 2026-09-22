@@ -86,7 +86,12 @@ export function getTenantId(): string {
     return 'marketplace';
   }
 
-  const parts = host.split('.');
+  // Staging mirror of a custom tenant domain (staging.acaciacamp.com):
+  // resolve as the underlying domain so the first label is the tenant id.
+  // Mirrors middleware/tenant.ts. Prod apex + staging apex already returned
+  // above; a remainder without a dot is left untouched.
+  const normalized = host.replace(/^staging\.([\w-]+\.[\w.-]+)$/, '$1');
+  const parts = normalized.split('.');
   if (
     parts.length > 1 &&
     parts[0] !== 'www' &&
