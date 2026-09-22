@@ -84,6 +84,9 @@ PM_CURRENCY = "EGP"
 # Secrets (JWT_SECRET, etc.) must be set separately:
 #   echo "<value>" | npx wrangler secret put JWT_SECRET --env staging
 # ─────────────────────────────────────────────
+[env.staging]
+name = "campmaster-backend-staging"
+
 [env.staging.vars]
 ENVIRONMENT = "staging"
 RATE_LIMIT_KV_ENABLED = "false"
