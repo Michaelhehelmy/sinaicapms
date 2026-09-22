@@ -24,13 +24,15 @@ assets = { directory = "./dist", binding = "ASSETS" }
 binding = "API_BACKEND"
 service = "campmaster-backend"
 
-# Staging variant (mirrors backend [env.staging]). The backend worker keeps
-# the same `campmaster-backend` name in staging (no name override in
-# backend/wrangler.toml [env.staging]); deployed via ./deploy.sh --staging.
+# Staging variant: deploys as `campmaster-marketplace-staging` talking to
+# `campmaster-backend-staging`. NOTE: the Astro adapter generates
+# dist/server/wrangler.json at build time and wrangler deploys THAT file, so
+# [env.staging] here is decorative — deploy.sh patches the generated JSON
+# post-build (name + API_BACKEND + SESSION) before `wrangler deploy`.
 [env.staging]
 name = "campmaster-marketplace-staging"
 compatibility_flags = [ "global_fetch_strictly_public", "nodejs_compat" ]
 
 [[env.staging.services]]
 binding = "API_BACKEND"
-service = "campmaster-backend"
+service = "campmaster-backend-staging"

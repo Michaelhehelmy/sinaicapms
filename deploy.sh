@@ -435,7 +435,8 @@ deploy_frontend() {
     "
   fi
 
-  log "Deploying to Cloudflare Workers ($WORKER_NAME)..."
+  PATCHED_NAME="$(node -e "console.log(require('./dist/server/wrangler.json').name)" 2>/dev/null || echo "$WORKER_NAME")"
+  log "Deploying to Cloudflare Workers ($PATCHED_NAME)..."
   if retry "npx wrangler deploy $ENV_FLAG 2>&1" "Worker deploy"; then
     log "✅ Frontend deployed"
   else
