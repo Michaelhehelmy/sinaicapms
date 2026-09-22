@@ -84,7 +84,7 @@ function KitchenCard({
           {timeAgo(order.createdAt, now)}
         </span>
       </div>
-      <div className="text-xs text-gray-400 mt-0.5">#{order.orderNumber}</div>
+      <div className="text-xs text-gray-500 mt-0.5">#{order.orderNumber}</div>
 
       <ul className="mt-2 space-y-0.5 text-sm text-gray-700" data-testid="kitchen-items">
         {(order.items?.length ?? 0) > 0 ? (
@@ -94,7 +94,7 @@ function KitchenCard({
             </li>
           ))
         ) : (
-          <li className="text-gray-400 italic">Items unavailable</li>
+          <li className="text-gray-500 italic">Items unavailable</li>
         )}
       </ul>
 
@@ -176,7 +176,7 @@ export default function KitchenView() {
     <div className="p-6 space-y-4 overflow-y-auto h-full" data-testid="pos-kitchen">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-bold text-gray-900">Kitchen</h2>
-        <span className="text-xs text-gray-400" data-testid="kitchen-refresh-note">
+        <span className="text-xs text-gray-500" data-testid="kitchen-refresh-note">
           Auto-refreshes every {KITCHEN_REFRESH_MS / 1000}s
         </span>
       </div>
@@ -213,7 +213,7 @@ export default function KitchenView() {
                     />
                   ))}
                   {tickets.length === 0 && (
-                    <div className="text-xs text-gray-300 text-center py-4 border border-dashed border-gray-200 rounded-lg">
+                    <div className="text-xs text-gray-500 text-center py-4 border border-dashed border-gray-200 rounded-lg">
                       Empty
                     </div>
                   )}

@@ -45,7 +45,7 @@ export default function ShiftOverlay({ onShiftOpened }: { onShiftOpened: (shift:
       initialFocus={() => cashWrapRef.current?.querySelector('input') ?? null}
     >
       <div className="py-2 text-center">
-        <div className="mb-4 flex justify-center text-gray-400"><IconShift size={40} strokeWidth={1.5} /></div>
+        <div className="mb-4 flex justify-center text-gray-500" aria-hidden="true"><IconShift size={40} strokeWidth={1.5} /></div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Open Cash Drawer</h2>
         <p className="text-sm text-gray-500 mb-6">Enter your starting cash balance to begin taking orders.</p>
         {error && <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}

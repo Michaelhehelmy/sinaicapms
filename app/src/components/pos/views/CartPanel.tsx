@@ -183,19 +183,21 @@ export default function CartPanel({
                 size="sm"
                 onClick={() => updateQty(item.product.id, -1)}
                 data-testid="qty-decrease"
+                aria-label={`Decrease quantity of ${item.product.name}`}
                 className="w-11 h-11 p-0 min-w-0 justify-center text-base"
               >
-                -
+                <span aria-hidden="true">-</span>
               </Button>
-              <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
+              <span className="w-6 text-center text-sm font-medium" role="status" aria-label={`Quantity of ${item.product.name}: ${item.quantity}`}>{item.quantity}</span>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => updateQty(item.product.id, 1)}
                 data-testid="qty-increase"
+                aria-label={`Increase quantity of ${item.product.name}`}
                 className="w-11 h-11 p-0 min-w-0 justify-center text-base"
               >
-                +
+                <span aria-hidden="true">+</span>
               </Button>
             </div>
             <div className="w-16 text-right text-sm font-semibold text-gray-900">${(item.product.sellingPrice * item.quantity).toFixed(2)}</div>
@@ -210,7 +212,7 @@ export default function CartPanel({
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><circle cx="7" cy="7" r="1.5" /></svg>
               Discount
               {promoResult?.items?.some((i) => i.promotion_name) && (
-                <span className="text-xs text-gray-400 font-normal ml-1">
+                <span className="text-xs text-gray-500 font-normal ml-1">
                   ({[...new Set(promoResult.items.filter((i) => i.promotion_name).map((i) => i.promotion_name))].join(', ')})
                 </span>
               )}

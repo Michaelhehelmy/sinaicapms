@@ -202,6 +202,20 @@ describe('CartPanel', () => {
     expect(setCart).toHaveBeenCalled();
   });
 
+  it('labels quantity buttons with the product name (F-A19-07 POS)', () => {
+    const cart = [{ product: { ...sampleProduct, sellingPrice: 10 }, quantity: 2 }];
+    render(<CartPanel cart={cart} setCart={vi.fn()} onCheckout={vi.fn()} user={userWithTaxRate} />);
+    expect(
+      screen.getByRole('button', { name: 'Decrease quantity of Water Bottle' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Increase quantity of Water Bottle' }),
+    ).toBeInTheDocument();
+    // Quantity readout is announced to screen readers.
+    const qty = screen.getByRole('status', { name: 'Quantity of Water Bottle: 2' });
+    expect(qty).toHaveTextContent('2');
+  });
+
   it('updates quantity via the reduce so decrease removes item at 0', () => {
     const cart = [{ product: { ...sampleProduct, sellingPrice: 10 }, quantity: 1 }];
     const setCart = vi.fn();
