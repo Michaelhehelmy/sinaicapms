@@ -79,7 +79,10 @@ export function getTenantId(): string {
 
   const host = window.location.hostname;
 
-  if (host === 'sinaicamps.com' || host === 'www.sinaicamps.com') {
+  // Prod apex + staging apex resolve to the marketplace scope (staging must
+  // precede the subdomain branch below, which would otherwise claim it as
+  // tenant "staging" and break all apex logins — mirrors middleware/tenant.ts).
+  if (host === 'sinaicamps.com' || host === 'www.sinaicamps.com' || host === 'staging.sinaicamps.com') {
     return 'marketplace';
   }
 
