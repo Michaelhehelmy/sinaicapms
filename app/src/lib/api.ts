@@ -13,11 +13,17 @@ const isLocal =
     window.location.hostname.endsWith('.127.0.0.1'));
 
 /* v8 ignore next -- SSR guard */
+const _host = typeof window !== 'undefined' ? window.location.hostname : '';
+/* Staging mirrors of custom tenant domains (staging.acaciacamp.com) behave
+   same-origin: Cloudflare routes their /api/* to the backend worker, so no
+   cross-origin base is needed. Mirrors middleware/tenant.ts. */
+const _isStagingMirror = _host === 'staging.sinaicamps.com' || (_host.startsWith('staging.') && _host.slice(8).includes('.'));
 const isSinaicamps =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'sinaicamps.com' ||
     window.location.hostname === 'www.sinaicamps.com' ||
-    window.location.hostname.endsWith('.sinaicamps.com'));
+    window.location.hostname.endsWith('.sinaicamps.com') ||
+    _isStagingMirror);
 
 /* v8 ignore next -- SSR guard */
 const isCustomDomain =

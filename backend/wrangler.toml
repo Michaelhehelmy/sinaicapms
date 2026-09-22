@@ -106,6 +106,16 @@ PM_CURRENCY = "EGP"
 pattern = "staging.sinaicamps.com/api/*"
 zone_name = "sinaicamps.com"
 
+# Staging tenant mirrors: *.staging subdomain path + custom-domain staging
+# mirrors (staging.acaciacamp.com lives in the tenant's own zone).
+[[env.staging.routes]]
+pattern = "*.staging.sinaicamps.com/api/*"
+zone_name = "sinaicamps.com"
+
+[[env.staging.routes]]
+pattern = "staging.acaciacamp.com/api/*"
+zone_name = "acaciacamp.com"
+
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "campmaster-db-staging"

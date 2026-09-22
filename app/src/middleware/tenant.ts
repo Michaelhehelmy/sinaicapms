@@ -140,7 +140,12 @@ function getApiBase(url: URL): string {
     url.hostname.endsWith('.localhost') ||
     url.hostname.endsWith('.127.0.0.1');
   if (isLocal) return 'http://localhost:8787/api/v1';
-  const isSinaicamps = url.hostname === 'sinaicamps.com' || url.hostname.endsWith('.sinaicamps.com');
+  // Same-origin API (service binding on Workers) for prod hosts, the
+  // staging apex, and staging mirrors of custom tenant domains
+  // (staging.acaciacamp.com) — otherwise SSR would call PROD and die on CORS.
+  const hostname = url.hostname;
+  const isStagingMirror = hostname === 'staging.sinaicamps.com' || (hostname.startsWith('staging.') && hostname.slice(8).includes('.'));
+  const isSinaicamps = hostname === 'sinaicamps.com' || hostname.endsWith('.sinaicamps.com') || isStagingMirror;
   return isSinaicamps ? `${url.origin}/api/v1` : `https://sinaicamps.com/api/v1`;
 }
 
