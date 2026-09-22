@@ -422,6 +422,19 @@ deploy_frontend() {
     exit 1
   fi
 
+  if [ "$DEPLOY_ENV" = "staging" ]; then
+    log "Patching generated wrangler.json for staging env..."
+    node -e "
+      const fs = require('fs');
+      const p = 'dist/server/wrangler.json';
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+      j.name = 'campmaster-marketplace-staging';
+      j.services = (j.services || []).map(function (s) { return s.binding === 'API_BACKEND' ? Object.assign({}, s, { service: 'campmaster-backend-staging' }) : s; });
+      j.kv_namespaces = (j.kv_namespaces || []).map(function (k) { return k.binding === 'SESSION' ? Object.assign({}, k, { id: 'c5ce9cfa20844996a88077d1f389b938' }) : k; });
+      fs.writeFileSync(p, JSON.stringify(j, null, 2));
+    "
+  fi
+
   log "Deploying to Cloudflare Workers ($WORKER_NAME)..."
   if retry "npx wrangler deploy $ENV_FLAG 2>&1" "Worker deploy"; then
     log "✅ Frontend deployed"
