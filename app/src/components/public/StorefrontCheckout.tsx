@@ -1,7 +1,7 @@
 /**
  * StorefrontCheckout — customer form → checkout → Paymob iframe or WhatsApp fallback.
  *
- * client:load island. Reads cart from session, POSTs to checkout endpoint.
+ * client:visible island. Reads cart from session, POSTs to checkout endpoint.
  * If Paymob is enabled, opens the Paymob Accept iframe inline for payment.
  * Otherwise, shows a WhatsApp fallback button (wa.me link) for manual payment.
  */

@@ -1,7 +1,7 @@
 /**
  * StorefrontCart — cart page with quantity update, remove, totals.
  *
- * client:load island. Reads session from localStorage, fetches cart via API.
+ * client:visible island. Reads session from localStorage, fetches cart via API.
  */
 import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

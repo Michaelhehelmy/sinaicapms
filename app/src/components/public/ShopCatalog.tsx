@@ -1,7 +1,7 @@
 /**
  * ShopCatalog — product grid with category filter + search + add-to-cart.
  *
- * client:load island. Session ID stored in localStorage (per-tenant).
+ * client:visible island. Session ID stored in localStorage (per-tenant).
  * Uses getStorefrontProducts for browsing + addToStorefrontCart for mutations.
  */
 import { useState, useCallback, useEffect } from 'react';

@@ -775,7 +775,7 @@ const jsonLd = sanitizeForJsonLd({
 
   <!-- Human-testing debug feedback widget: server-gated (cookie/query) so
        regular visitors ship zero extra JS. -->
-  {debugEnabled && <DebugFeedbackWidget client:load />}
+  {debugEnabled && <DebugFeedbackWidget client:visible />}
   <script is:inline>
     (function () {
       try {

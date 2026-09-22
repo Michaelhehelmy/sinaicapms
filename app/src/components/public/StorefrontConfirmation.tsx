@@ -1,7 +1,7 @@
 /**
  * StorefrontConfirmation — order confirmation page.
  *
- * client:load island. Fetches orders via a session and displays the order
+ * client:visible island. Fetches orders via a session and displays the order
  * matching orderNumber, plus a WhatsApp link when the order is pending.
  */
 import { useState, useEffect } from 'react';
