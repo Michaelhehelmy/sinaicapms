@@ -59,6 +59,15 @@ const isLocalAnalyticsHost =
     window.$RefreshReg$ = function() {};
     window.$RefreshSig$ = function(type) { return type; };
     window.__vite_plugin_react_preamble_installed__ = true;
+    try {
+      // Cleanup: app ships zero service workers. Any registration here is a ghost.
+      // Remove this block when PWA/offline ships (see POLISH_PLAN §3.10).
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations()
+          .then(function (regs) { regs.forEach(function (r) { r.unregister(); }); })
+          .catch(function () {});
+      }
+    } catch (e) {}
   </script>
 
   <!-- Plausible analytics loader (production-only, skipped on localhost so
