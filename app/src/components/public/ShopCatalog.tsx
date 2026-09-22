@@ -71,17 +71,25 @@ export default function ShopCatalog({ tenantId, primaryColor }: Props) {
 
       {/* Search + filters */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
+        <label htmlFor="shop-search" className="sr-only">
+          Search products
+        </label>
         <input
+          id="shop-search"
           type="text"
           placeholder="Search products..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-xs rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-stone-500 focus:outline-none"
+          className="w-full max-w-xs rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-900 placeholder:text-stone-500 focus:border-stone-500 focus:outline-none"
         />
+        <label htmlFor="shop-category" className="sr-only">
+          Filter by category
+        </label>
         <select
+          id="shop-category"
           value={category}
           onChange={(e) => { setCategory(e.target.value); setPage(1); }}
-          className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+          className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
         >
           <option value="">All categories</option>
         </select>
@@ -89,7 +97,11 @@ export default function ShopCatalog({ tenantId, primaryColor }: Props) {
 
       {/* Toast */}
       {toast && (
-        <div className="mb-4 rounded-lg bg-stone-900 px-4 py-2 text-sm text-white shadow-sm">
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-4 rounded-lg bg-stone-900 px-4 py-2 text-sm text-white shadow-sm"
+        >
           {toast}
         </div>
       )}
@@ -111,7 +123,7 @@ export default function ShopCatalog({ tenantId, primaryColor }: Props) {
                 {product.imageUrl ? (
                   <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-stone-400">No image</div>
+                  <div className="flex h-full items-center justify-center text-stone-600">No image</div>
                 )}
               </div>
               <div className="p-4">

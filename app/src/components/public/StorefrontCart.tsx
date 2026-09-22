@@ -90,16 +90,18 @@ export default function StorefrontCart({ tenantId, primaryColor }: Props) {
                   if (item.quantity <= 1) removeMutation.mutate(item.id);
                   else updateMutation.mutate({ itemId: item.id, quantity: item.quantity - 1 });
                 }}
+                aria-label={`Decrease quantity of ${item.productName || item.productId}`}
                 className="h-8 w-8 rounded border border-stone-300 text-stone-600 hover:bg-stone-50"
               >
-                −
+                <span aria-hidden="true">−</span>
               </button>
-              <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+              <span className="w-8 text-center text-sm font-medium" role="status" aria-label={`Quantity of ${item.productName || item.productId}: ${item.quantity}`}>{item.quantity}</span>
               <button
                 onClick={() => updateMutation.mutate({ itemId: item.id, quantity: item.quantity + 1 })}
+                aria-label={`Increase quantity of ${item.productName || item.productId}`}
                 className="h-8 w-8 rounded border border-stone-300 text-stone-600 hover:bg-stone-50"
               >
-                +
+                <span aria-hidden="true">+</span>
               </button>
             </div>
 
@@ -107,6 +109,7 @@ export default function StorefrontCart({ tenantId, primaryColor }: Props) {
 
             <button
               onClick={() => removeMutation.mutate(item.id)}
+              aria-label={`Remove ${item.productName || item.productId} from cart`}
               className="text-sm text-red-500 hover:text-red-700"
             >
               Remove

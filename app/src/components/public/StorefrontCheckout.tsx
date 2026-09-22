@@ -146,7 +146,7 @@ export default function StorefrontCheckout({ tenantId, primaryColor }: Props) {
                 Pay via WhatsApp
               </a>
             ) : (
-              <p className="mt-3 text-sm text-stone-400">No phone number provided — contact the host directly.</p>
+              <p className="mt-3 text-sm text-stone-500">No phone number provided — contact the host directly.</p>
             )}
           </div>
         )}

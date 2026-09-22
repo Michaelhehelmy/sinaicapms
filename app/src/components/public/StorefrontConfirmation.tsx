@@ -79,7 +79,7 @@ export default function StorefrontConfirmation({ orderNumber, tenantId, primaryC
       )}
 
       {showWhatsapp && (
-        <p className="mt-6 text-center text-sm text-stone-400">
+        <p className="mt-6 text-center text-sm text-stone-500">
           Questions? Contact <span className="font-medium text-stone-600">{tenantName}</span> directly to speed things up.
         </p>
       )}
