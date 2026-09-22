@@ -273,7 +273,7 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
               return (
                 <div key={`col-${dateKey}`} className="bg-white p-2 min-h-[180px] flex flex-col gap-2">
                   {daySchedules.length === 0 && (
-                    <div className="text-xs text-gray-300 text-center mt-4">No meals scheduled</div>
+                    <div className="text-xs text-gray-500 text-center mt-4">No meals scheduled</div>
                   )}
                   {daySchedules.map((s) => (
                     <div

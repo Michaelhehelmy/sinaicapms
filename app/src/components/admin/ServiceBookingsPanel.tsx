@@ -159,7 +159,7 @@ export default function ServiceBookingsPanel() {
             { key: 'status', header: 'Status', render: (b) => { const s = bookingStatusLabel[String(b.status)] || { text: String(b.status), variant: 'neutral' as const }; return <Badge variant={s.variant} dot size="sm">{s.text}</Badge>; } },
             { key: 'assignedWorkerId', header: 'Worker', render: (b) => {
               const wid = String((b as Record<string, unknown>).assignedWorkerId || '');
-              if (!wid) return <span className="text-xs text-gray-400">Unassigned</span>;
+              if (!wid) return <span className="text-xs text-gray-500">Unassigned</span>;
               const worker = staffList.find((s) => s.id === wid);
               return <span className="text-sm text-gray-700">{worker ? `${worker.firstName} ${worker.lastName}` : wid}</span>;
             }},

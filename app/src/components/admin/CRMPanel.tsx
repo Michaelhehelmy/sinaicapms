@@ -201,7 +201,7 @@ function KanbanBoard({ opportunities, onStageChange }: KanbanBoardProps) {
                 <p className="text-sm font-medium text-gray-900 truncate">{String(opp.name)}</p>
                 <p className="text-xs text-gray-500 mt-1">{formatCurrency(Number(opp.amount || 0))}</p>
                 {String(opp.probability || 0) !== '0' && (
-                  <p className="text-xs text-gray-400 mt-0.5">{String(opp.probability)}% probability</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{String(opp.probability)}% probability</p>
                 )}
                 <div className="flex gap-1 mt-2 flex-wrap">
                   {stage !== 'closed_won' && stage !== 'closed_lost' && (
@@ -255,7 +255,7 @@ function GanttChart({ tasks }: GanttChartProps) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center" data-testid="gantt-chart">
         <p className="text-sm text-gray-500">No tasks with due dates to display in Gantt view.</p>
-        <p className="text-xs text-gray-400 mt-1">Add due dates to tasks to see them on the timeline.</p>
+        <p className="text-xs text-gray-500 mt-1">Add due dates to tasks to see them on the timeline.</p>
       </div>
     );
   }
@@ -289,7 +289,7 @@ function GanttChart({ tasks }: GanttChartProps) {
               {dayHeaders.map(day => {
                 const isToday = day === todayStr;
                 return (
-                  <div key={day} className={`flex-1 px-1 py-2 text-center text-[10px] border-r border-gray-100 ${isToday ? 'bg-blue-50 font-bold text-blue-700' : 'text-gray-400'}`}>
+                  <div key={day} className={`flex-1 px-1 py-2 text-center text-[10px] border-r border-gray-100 ${isToday ? 'bg-blue-50 font-bold text-blue-700' : 'text-gray-500'}`}>
                     {new Date(day + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                 );
@@ -306,7 +306,7 @@ function GanttChart({ tasks }: GanttChartProps) {
               <div key={String(task.id)} className="flex border-b border-gray-100 hover:bg-gray-50">
                 <div className="w-48 min-w-[192px] px-3 py-2 border-r border-gray-200">
                   <p className="text-sm font-medium text-gray-900 truncate">{String(task.title)}</p>
-                  <p className="text-[10px] text-gray-400">{formatLabel(String(task.status))}</p>
+                  <p className="text-[10px] text-gray-500">{formatLabel(String(task.status))}</p>
                 </div>
                 <div className="flex-1 flex relative">
                   {dayHeaders.map((day, i) => {

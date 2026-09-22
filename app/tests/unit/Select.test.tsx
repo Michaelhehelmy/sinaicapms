@@ -319,6 +319,31 @@ describe('Select (searchable)', () => {
     // No error = pass
   });
 
+  it('exposes the highlighted option via aria-activedescendant (F-A19-03)', () => {
+    render(<Select options={flatOptions} searchable />);
+    const trigger = screen.getByRole('combobox');
+    fireEvent.click(trigger);
+    // Nothing highlighted yet — no dangling reference.
+    expect(trigger).not.toHaveAttribute('aria-activedescendant');
+
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const activeId = trigger.getAttribute('aria-activedescendant');
+    expect(activeId).toBeTruthy();
+    expect(document.getElementById(activeId!)).toHaveTextContent('United States');
+    expect(document.getElementById(activeId!)).toHaveAttribute('role', 'option');
+  });
+
+  it('clears aria-activedescendant when the dropdown closes', () => {
+    render(<Select options={flatOptions} searchable />);
+    const trigger = screen.getByRole('combobox');
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    expect(trigger).toHaveAttribute('aria-activedescendant');
+
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(trigger).not.toHaveAttribute('aria-activedescendant');
+  });
+
   it('does not select a disabled grouped option', () => {
     const disabledGroup = [
       {

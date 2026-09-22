@@ -310,7 +310,7 @@ export default function SuperTenantsPanel() {
                 className={inputClass}
                 placeholder="e.g., acaciacamp"
               />
-              <p className="text-xs text-gray-400 mt-1">Will be: {createTenantForm.subdomain || '...'}.sinaicamps.com</p>
+              <p className="text-xs text-gray-500 mt-1">Will be: {createTenantForm.subdomain || '...'}.sinaicamps.com</p>
             </div>
             <div>
               <label className={labelClass}>Type</label>

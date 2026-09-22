@@ -115,7 +115,7 @@ export default function SuperReportsPanel() {
                         ))}
                       </div>
                       {report.parameters.length > 0 && (
-                        <div className="text-[10px] text-gray-400 mb-3">
+                        <div className="text-[10px] text-gray-500 mb-3">
                           Parameters: {report.parameters.map((p) => p.name).join(', ')}
                         </div>
                       )}
@@ -188,7 +188,7 @@ export default function SuperReportsPanel() {
       <Card padding="md">
         <h3 className="text-sm font-bold text-gray-700 mb-3">Scheduled Reports</h3>
         {scheduled.length === 0 ? (
-          <div className="text-center py-8 text-gray-400 text-xs">No scheduled reports yet</div>
+          <div className="text-center py-8 text-gray-500 text-xs">No scheduled reports yet</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">

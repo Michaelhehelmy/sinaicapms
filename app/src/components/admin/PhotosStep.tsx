@@ -189,7 +189,7 @@ export default function PhotosStep({ photos, onChange }: PhotosStepProps) {
         )}
       >
         <svg
-          className="h-8 w-8 text-gray-400"
+          className="h-8 w-8 text-gray-500"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

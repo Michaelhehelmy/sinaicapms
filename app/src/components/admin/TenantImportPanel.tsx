@@ -243,7 +243,7 @@ export function TenantImportPanel() {
               onChange={(e) => applyText(e.target.value)}
               spellCheck={false}
               placeholder='{ "identity": { "name": "…", "subdomain": "…" }, "products": [], "rooms": [], … }'
-              className="min-h-[260px] w-full resize-y rounded-xl border border-warm-200 bg-warm-50/60 p-3.5 font-mono text-xs leading-relaxed text-gray-800 placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              className="min-h-[260px] w-full resize-y rounded-xl border border-warm-200 bg-warm-50/60 p-3.5 font-mono text-xs leading-relaxed text-gray-800 placeholder:text-gray-500 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </div>
 

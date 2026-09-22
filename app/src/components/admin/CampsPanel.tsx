@@ -121,7 +121,7 @@ function ProjectConnections({ projectId, camps }: { projectId: string; camps: Ca
     <div className="mt-6 pt-4 border-t border-gray-100" data-testid="project-connections">
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-bold text-gray-800">Connections</h3>
-        <span className="text-xs text-gray-400">{linkList.length} linked</span>
+        <span className="text-xs text-gray-500">{linkList.length} linked</span>
       </div>
       <p className="text-xs text-gray-500 mb-3">
         Link this project to another one of your projects (e.g. a supermarket supplies a camp, or a
@@ -129,9 +129,9 @@ function ProjectConnections({ projectId, camps }: { projectId: string; camps: Ca
       </p>
 
       {isLoading ? (
-        <div className="text-sm text-gray-400 py-2">Loading connections…</div>
+        <div className="text-sm text-gray-500 py-2">Loading connections…</div>
       ) : linkList.length === 0 ? (
-        <p className="text-sm text-gray-400 py-2" data-testid="connections-empty">
+        <p className="text-sm text-gray-500 py-2" data-testid="connections-empty">
           No connections yet.
         </p>
       ) : (
@@ -142,7 +142,7 @@ function ProjectConnections({ projectId, camps }: { projectId: string; camps: Ca
               <li key={link.id} className="flex items-center justify-between gap-2 px-3 py-2">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{other.name}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-500">
                     {other.projectType ?? 'project'} · {link.linkType}
                   </p>
                 </div>
@@ -506,7 +506,7 @@ export default function CampsPanel({ onRefreshCamps }: CampsPanelProps) {
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-500 transition-colors duration-200 focus:outline-none focus:ring-2 focus:border-brand-500 focus:ring-brand-500"
               placeholder="Paste Google Maps link or type address"
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               Tip: Paste a Google Maps link (e.g., https://maps.google.com/?q=...) and it will auto-embed the map. Or type a simple address.
             </p>
           </div>

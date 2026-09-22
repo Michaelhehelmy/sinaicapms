@@ -299,7 +299,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                   <span
                     className={cn(
                       'hidden sm:block text-sm font-medium',
-                      isActive ? 'text-gray-900' : isDone ? 'text-gray-600' : 'text-gray-400',
+                      isActive ? 'text-gray-900' : isDone ? 'text-gray-600' : 'text-gray-500',
                     )}
                   >
                     {s.label}
@@ -386,7 +386,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                     })}
                   </div>
                   {form.amenities.length === 0 && (
-                    <p className="text-sm text-gray-400" data-testid="wizard-amenities-empty">
+                    <p className="text-sm text-gray-500" data-testid="wizard-amenities-empty">
                       No amenities selected
                     </p>
                   )}
@@ -464,7 +464,7 @@ export default function ListingWizard({ open, onClose, onCreated }: ListingWizar
                     className="mb-3 h-32 w-full rounded-lg object-cover"
                   />
                 ) : (
-                  <div className="mb-3 flex h-32 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
+                  <div className="mb-3 flex h-32 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-500">
                     No photo yet
                   </div>
                 )}

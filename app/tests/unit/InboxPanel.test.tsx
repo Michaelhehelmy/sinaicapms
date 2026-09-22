@@ -408,6 +408,79 @@ describe('InboxPanel SSE live refresh', () => {
   });
 });
 
+describe('InboxPanel tabs keyboard pattern (F-A19-02)', () => {
+  it('exposes tabs with roving tabindex inside a tablist/tabpanel', async () => {
+    api.getInbox.mockResolvedValue(buildFeed([]));
+    renderPanel();
+    await screen.findByTestId('inbox-panel');
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    // Only the selected tab is in the tab order.
+    expect(screen.getByRole('tab', { name: 'All' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tab', { name: 'Leads' })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('tab', { name: 'Bookings' })).toHaveAttribute('tabindex', '-1');
+
+    const panel = screen.getByRole('tabpanel');
+    expect(panel).toHaveAttribute('id', 'inbox-tabpanel');
+    expect(panel).toHaveAttribute('aria-labelledby', 'inbox-tab-all');
+  });
+
+  it('moves to the next tab on ArrowRight and follows with focus', async () => {
+    api.getInbox.mockResolvedValue(buildFeed([]));
+    renderPanel();
+    await screen.findByTestId('inbox-panel');
+
+    const allTab = screen.getByRole('tab', { name: 'All' });
+    allTab.focus();
+    fireEvent.keyDown(allTab, { key: 'ArrowRight' });
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Leads' })).toHaveFocus(),
+    );
+    expect(screen.getByRole('tab', { name: 'Leads' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'All' })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'inbox-tab-leads');
+  });
+
+  it('wraps ArrowLeft from the first tab to the last', async () => {
+    api.getInbox.mockResolvedValue(buildFeed([]));
+    renderPanel();
+    await screen.findByTestId('inbox-panel');
+
+    const allTab = screen.getByRole('tab', { name: 'All' });
+    allTab.focus();
+    fireEvent.keyDown(allTab, { key: 'ArrowLeft' });
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Bookings' })).toHaveFocus(),
+    );
+    expect(screen.getByRole('tab', { name: 'Bookings' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('jumps to the ends with Home and End', async () => {
+    api.getInbox.mockResolvedValue(buildFeed([]));
+    renderPanel();
+    await screen.findByTestId('inbox-panel');
+
+    const leadsTab = screen.getByRole('tab', { name: 'Leads' });
+    fireEvent.click(leadsTab);
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Leads' })).toHaveAttribute('aria-selected', 'true'),
+    );
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Leads' }), { key: 'End' });
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Bookings' })).toHaveFocus(),
+    );
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Bookings' }), { key: 'Home' });
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'All' })).toHaveFocus(),
+    );
+  });
+});
+
 describe('InboxNavBadge', () => {
   it('renders nothing when the count is zero or missing', () => {
     const { rerender } = render(<InboxNavBadge count={0} />);

@@ -386,6 +386,11 @@ export function Select({
           aria-expanded={isOpen}
           aria-haspopup="listbox"
           aria-controls={isOpen ? listboxId : undefined}
+          aria-activedescendant={
+            isOpen && highlightIndex >= 0 && flatFiltered[highlightIndex]
+              ? `${listboxId}-opt-${flatFiltered[highlightIndex].value}`
+              : undefined
+          }
           aria-labelledby={label ? `${id}-label` : undefined}
           aria-invalid={!!error || undefined}
           aria-describedby={

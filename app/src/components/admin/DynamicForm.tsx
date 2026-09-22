@@ -184,7 +184,7 @@ function FieldShell({
           {error}
         </p>
       ) : helpText ? (
-        <p id={`${id}-help`} className="text-xs text-gray-400 mt-1">
+        <p id={`${id}-help`} className="text-xs text-gray-500 mt-1">
           {helpText}
         </p>
       ) : null}

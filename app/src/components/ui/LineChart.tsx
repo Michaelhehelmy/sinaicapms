@@ -15,7 +15,7 @@ export function LineChart({ data, color = '#22c55e', height = 200 }: LineChartPr
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center" style={{ height }}>
-        <p className="text-xs text-gray-400">No data available</p>
+        <p className="text-xs text-gray-500">No data available</p>
       </div>
     );
   }
@@ -24,7 +24,7 @@ export function LineChart({ data, color = '#22c55e', height = 200 }: LineChartPr
     <Suspense
       fallback={
         <div className="flex items-center justify-center" style={{ height }}>
-          <p className="text-xs text-gray-400">Loading chart…</p>
+          <p className="text-xs text-gray-500">Loading chart…</p>
         </div>
       }
     >

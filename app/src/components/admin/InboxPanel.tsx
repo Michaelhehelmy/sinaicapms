@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useInboxQuery,
@@ -115,6 +115,25 @@ export default function InboxPanel({ tenantId, token, onOpenOrder }: InboxPanelP
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [deleteTarget, setDeleteTarget] = useState<InboxItem | null>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // APG tabs keyboard pattern: arrows move between tabs (wrapping),
+  // Home/End jump to the ends; focus follows the newly selected tab.
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent, index: number) => {
+    const order: TabKey[] = TABS.map((t) => t.key);
+    let next: number | null = null;
+    if (e.key === 'ArrowRight') next = (index + 1) % order.length;
+    else if (e.key === 'ArrowLeft') next = (index - 1 + order.length) % order.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = order.length - 1;
+    if (next === null) return;
+    e.preventDefault();
+    setActiveTab(order[next]);
+    const target = next;
+    window.setTimeout(() => {
+      tabRefs.current[target]?.focus();
+    }, 0);
+  }, []);
 
   // Feed params — the same object shapes the query key, so optimistic cache
   // writes below always target the key the panel is currently showing.
@@ -210,7 +229,7 @@ export default function InboxPanel({ tenantId, token, onOpenOrder }: InboxPanelP
             {capitalize(item.status ?? 'new')}
           </Badge>
           {item.source ? (
-            <span className="text-xs text-gray-400">{item.source}</span>
+            <span className="text-xs text-gray-500">{item.source}</span>
           ) : null}
         </div>
         {detail ? (
@@ -314,15 +333,22 @@ export default function InboxPanel({ tenantId, token, onOpenOrder }: InboxPanelP
 
       {/* Tabs */}
       <div role="tablist" aria-label="Inbox filters" className="flex flex-wrap items-center gap-1.5 mt-4">
-        {TABS.map((tab) => {
+        {TABS.map((tab, i) => {
           const active = activeTab === tab.key;
           return (
             <button
               key={tab.key}
+              id={`inbox-tab-${tab.key}`}
               role="tab"
               aria-selected={active}
+              aria-controls="inbox-tabpanel"
+              tabIndex={active ? 0 : -1}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
               data-testid={`inbox-tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
+              onKeyDown={(e) => handleTabKeyDown(e, i)}
               className={cn(
                 'border rounded-lg px-3.5 py-1.5 text-sm font-semibold cursor-pointer transition-colors font-[inherit]',
                 active
@@ -360,7 +386,12 @@ export default function InboxPanel({ tenantId, token, onOpenOrder }: InboxPanelP
         </div>
       ) : null}
 
-      <div className="mt-4">
+      <div
+        className="mt-4"
+        role="tabpanel"
+        id="inbox-tabpanel"
+        aria-labelledby={`inbox-tab-${activeTab}`}
+      >
         {isLoading ? (
           <LoadingSpinner text="Loading inbox..." />
         ) : isError ? (

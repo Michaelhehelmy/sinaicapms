@@ -33,13 +33,13 @@ function JsonDiff({ oldValues, newValues }: { oldValues: unknown; newValues: unk
   const oldObj = typeof oldValues === 'string' ? (() => { try { return JSON.parse(oldValues); } catch { return null; } })() : oldValues;
   const newObj = typeof newValues === 'string' ? (() => { try { return JSON.parse(newValues); } catch { return null; } })() : newValues;
 
-  if (!oldObj && !newObj) return <span className="text-gray-400 text-xs">No changes recorded</span>;
+  if (!oldObj && !newObj) return <span className="text-gray-500 text-xs">No changes recorded</span>;
 
   const oldKeys = oldObj && typeof oldObj === 'object' ? Object.keys(oldObj) : [];
   const newKeys = newObj && typeof newObj === 'object' ? Object.keys(newObj) : [];
   const allKeys = [...new Set([...oldKeys, ...newKeys])];
 
-  if (allKeys.length === 0) return <span className="text-gray-400 text-xs">No changes recorded</span>;
+  if (allKeys.length === 0) return <span className="text-gray-500 text-xs">No changes recorded</span>;
 
   return (
     <div className="text-xs font-mono bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto space-y-1">

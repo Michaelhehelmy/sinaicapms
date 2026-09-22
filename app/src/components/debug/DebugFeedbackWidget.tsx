@@ -380,7 +380,7 @@ export function DebugFeedbackWidget() {
 
           <div>
             <label htmlFor={`${titleId}-view`} className="mb-1 block text-sm font-medium text-gray-700">
-              Your personal point of view <span className="text-xs font-normal text-gray-400">(optional)</span>
+              Your personal point of view <span className="text-xs font-normal text-gray-500">(optional)</span>
             </label>
             <textarea
               id={`${titleId}-view`}
@@ -399,7 +399,7 @@ export function DebugFeedbackWidget() {
             </p>
           )}
 
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-500">
             Sent from {identity.authorType === 'public' ? 'a public page' : `the ${identity.authorType} interface`}
             {identity.authorName ? ` as ${identity.authorName}` : ''} — your page URL and browser details are attached.
           </p>

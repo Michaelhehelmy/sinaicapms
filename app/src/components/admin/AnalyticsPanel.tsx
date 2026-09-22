@@ -36,7 +36,7 @@ function StatCard({ label, value, sub, color }: { label: string; value: string |
     <Card className="flex flex-col gap-1 p-5">
       <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</span>
       <span className={`text-2xl font-bold ${color || 'text-gray-900'}`}>{value}</span>
-      {sub && <span className="text-xs text-gray-400">{sub}</span>}
+      {sub && <span className="text-xs text-gray-500">{sub}</span>}
     </Card>
   );
 }

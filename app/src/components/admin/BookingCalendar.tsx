@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   addDays,
@@ -124,6 +124,9 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
   const dayRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerTriggerRef = useRef<HTMLElement | null>(null);
 
   // ─── Derived data ───────────────────────────────────────────────────
 
@@ -348,6 +351,8 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
 
   const selectDay = useCallback(
     (key: string) => {
+      // Remember the trigger so focus can be restored when the drawer closes.
+      drawerTriggerRef.current = document.activeElement as HTMLElement | null;
       setSelectedDateKey(key);
       setOverrideInput(overrideByDate.has(key) ? String(overrideByDate.get(key)) : '');
     },
@@ -358,6 +363,44 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
     setSelectedDateKey(null);
     setOverrideInput('');
   }, []);
+
+  // ─── Drawer a11y: initial focus, ESC dismissal, focus trap, focus restore ─
+  useEffect(() => {
+    if (!selectedDateKey) return;
+    const trigger = drawerTriggerRef.current;
+    const timer = window.setTimeout(() => {
+      drawerCloseRef.current?.focus();
+    }, 0);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeDrawer();
+        return;
+      }
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = Array.from(
+        drawerRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('keydown', onKeyDown);
+      trigger?.focus?.();
+    };
+  }, [selectedDateKey, closeDrawer]);
 
   const shiftWindow = useCallback((delta: number) => {
     setViewStart((prev) => addMonths(startOfMonth(prev), delta));
@@ -522,7 +565,7 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
           {activeProduct ? activeProduct.name : ''} —{' '}
           {formatCurrency(getDayPrice(fromKey))} base / night
         </span>
-        <span className="text-gray-300">|</span>
+        <span className="text-gray-400" aria-hidden="true">|</span>
         <span>
           {windowAvailability === null
             ? 'Availability loading'
@@ -551,7 +594,7 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
             </div>
             <div className="grid grid-cols-7 gap-1 mb-1">
               {WEEKDAY_LABELS.map((w) => (
-                <div key={w} className="text-center text-[10px] uppercase tracking-wide text-gray-400">
+                <div key={w} className="text-center text-[10px] uppercase tracking-wide text-gray-500">
                   {w}
                 </div>
               ))}
@@ -609,6 +652,7 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
         <div className="fixed inset-0 z-50" data-testid="override-drawer">
           <div className="absolute inset-0 bg-black/40" onClick={closeDrawer} aria-hidden="true" />
           <aside
+            ref={drawerRef}
             role="dialog"
             aria-modal="true"
             aria-label={`Price for ${format(selectedDate, 'EEEE, MMMM d, yyyy')}`}
@@ -623,6 +667,7 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
               </div>
               <button
                 type="button"
+                ref={drawerCloseRef}
                 onClick={closeDrawer}
                 aria-label="Close"
                 className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -681,7 +726,7 @@ export default function BookingCalendar({ campIds, camps, onNavigateToTab }: Boo
                   placeholder="e.g. 150"
                   disabled={saving || clearing}
                 />
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 mt-1">
                   Set a fixed price for this night. Saving replaces the base or rate-plan price.
                 </p>
               </div>

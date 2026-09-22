@@ -651,3 +651,58 @@ describe('BookingCalendar SSE live refresh', () => {
     expect(screen.queryByTestId('live-badge')).not.toBeInTheDocument();
   });
 });
+
+describe('BookingCalendar drawer a11y (F-A19-01)', () => {
+  it('moves focus to the Close button when the drawer opens', async () => {
+    renderCalendar();
+    await screen.findByText(format(new Date(), 'MMMM yyyy'));
+
+    fireEvent.click(dayButton(todayKey));
+    expect(screen.getByTestId('override-drawer')).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus(),
+    );
+  });
+
+  it('closes on Escape and restores focus to the triggering day', async () => {
+    renderCalendar();
+    await screen.findByText(format(new Date(), 'MMMM yyyy'));
+
+    // Real browsers focus the button on click; jsdom fireEvent does not,
+    // so focus it explicitly to mirror the browser trigger.
+    dayButton(todayKey).focus();
+    fireEvent.click(dayButton(todayKey));
+    expect(screen.getByTestId('override-drawer')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('override-drawer')).not.toBeInTheDocument();
+    expect(dayButton(todayKey)).toHaveFocus();
+  });
+
+  it('traps Shift+Tab from the first focusable back to the last', async () => {
+    renderCalendar();
+    await screen.findByText(format(new Date(), 'MMMM yyyy'));
+
+    fireEvent.click(dayButton(todayKey));
+    const closeBtn = await screen.findByRole('button', { name: 'Close' });
+    await waitFor(() => expect(closeBtn).toHaveFocus());
+
+    // Close is the first focusable: Shift+Tab wraps to the last (Save override).
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: 'Save override' })).toHaveFocus();
+  });
+
+  it('wraps Tab from the last focusable back to the first', async () => {
+    renderCalendar();
+    await screen.findByText(format(new Date(), 'MMMM yyyy'));
+
+    fireEvent.click(dayButton(todayKey));
+    const saveBtn = await screen.findByRole('button', { name: 'Save override' });
+    saveBtn.focus();
+    expect(saveBtn).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
+  });
+});

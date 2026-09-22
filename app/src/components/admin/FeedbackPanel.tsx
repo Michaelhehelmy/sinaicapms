@@ -224,22 +224,22 @@ export default function FeedbackPanel() {
           <CardBody>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">What happened</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">What happened</p>
                 <p className="mt-1 text-sm text-gray-800">{expandedRowData.message}</p>
               </div>
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Personal point of view</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Personal point of view</p>
                 <p className="mt-1 text-sm text-gray-600">{expandedRowData.personalView || '—'}</p>
               </div>
             </div>
 
             <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
               <div>
-                <dt className="text-xs font-medium text-gray-400">Page</dt>
+                <dt className="text-xs font-medium text-gray-500">Page</dt>
                 <dd className="mt-0.5 break-all text-xs text-gray-700">{expandedRowData.pageUrl}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium text-gray-400">Tester</dt>
+                <dt className="text-xs font-medium text-gray-500">Tester</dt>
                 <dd className="mt-0.5 text-gray-700">
                   {expandedRowData.authorName || 'Anonymous'}
                   {expandedRowData.authorEmail ? ` (${expandedRowData.authorEmail})` : ''}
@@ -247,12 +247,12 @@ export default function FeedbackPanel() {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs font-medium text-gray-400">Browser</dt>
+                <dt className="text-xs font-medium text-gray-500">Browser</dt>
                 <dd className="mt-0.5 max-h-16 overflow-hidden text-xs text-gray-500">{expandedRowData.userAgent || '—'}</dd>
               </div>
               {expandedRowData.tenantId && (
                 <div>
-                  <dt className="text-xs font-medium text-gray-400">Tenant</dt>
+                  <dt className="text-xs font-medium text-gray-500">Tenant</dt>
                   <dd className="mt-0.5 text-xs text-gray-500">{expandedRowData.tenantId}</dd>
                 </div>
               )}
@@ -260,9 +260,9 @@ export default function FeedbackPanel() {
 
             {/* Screenshot */}
             <div className="mt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Screenshot</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Screenshot</p>
               {loadingShot ? (
-                <p className="mt-1 text-xs text-gray-400">Loading screenshot…</p>
+                <p className="mt-1 text-xs text-gray-500">Loading screenshot…</p>
               ) : screenshot ? (
                 <a href={screenshot} target="_blank" rel="noreferrer" data-testid="feedback-screenshot-link">
                   <img
@@ -273,7 +273,7 @@ export default function FeedbackPanel() {
                   />
                 </a>
               ) : (
-                <p className="mt-1 text-xs text-gray-400">No screenshot attached.</p>
+                <p className="mt-1 text-xs text-gray-500">No screenshot attached.</p>
               )}
             </div>
 

@@ -87,13 +87,13 @@ export default function TenantPerformancePanel() {
         <Card padding="md">
           <h3 className="text-xs font-bold text-gray-700 mb-3">Top by Revenue</h3>
           {rankings.revenue.length === 0 ? (
-            <div className="text-xs text-gray-400 py-4 text-center">No data</div>
+            <div className="text-xs text-gray-500 py-4 text-center">No data</div>
           ) : (
             <ol className="space-y-2">
               {rankings.revenue.map((r, i) => (
                 <li key={r.tenantId} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-400 font-mono w-4">{i + 1}.</span>
+                    <span className="text-gray-500 font-mono w-4">{i + 1}.</span>
                     <span className="text-gray-800 font-medium">{r.name}</span>
                   </div>
                   <span className="text-green-600 font-semibold">{formatCurrency(r.revenue)}</span>
@@ -107,13 +107,13 @@ export default function TenantPerformancePanel() {
         <Card padding="md">
           <h3 className="text-xs font-bold text-gray-700 mb-3">Top by Occupancy</h3>
           {rankings.occupancy.length === 0 ? (
-            <div className="text-xs text-gray-400 py-4 text-center">No data</div>
+            <div className="text-xs text-gray-500 py-4 text-center">No data</div>
           ) : (
             <ol className="space-y-2">
               {rankings.occupancy.map((r, i) => (
                 <li key={r.tenantId} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-400 font-mono w-4">{i + 1}.</span>
+                    <span className="text-gray-500 font-mono w-4">{i + 1}.</span>
                     <span className="text-gray-800 font-medium">{r.name}</span>
                   </div>
                   <span className="text-blue-600 font-semibold">{r.occupancy}%</span>
@@ -127,13 +127,13 @@ export default function TenantPerformancePanel() {
         <Card padding="md">
           <h3 className="text-xs font-bold text-gray-700 mb-3">Top by Growth</h3>
           {rankings.growth.length === 0 ? (
-            <div className="text-xs text-gray-400 py-4 text-center">No data</div>
+            <div className="text-xs text-gray-500 py-4 text-center">No data</div>
           ) : (
             <ol className="space-y-2">
               {rankings.growth.map((r, i) => (
                 <li key={r.tenantId} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-400 font-mono w-4">{i + 1}.</span>
+                    <span className="text-gray-500 font-mono w-4">{i + 1}.</span>
                     <span className="text-gray-800 font-medium">{r.name}</span>
                   </div>
                   <span className="text-purple-600 font-semibold">{r.growthRate}%</span>
@@ -148,7 +148,7 @@ export default function TenantPerformancePanel() {
       <Card padding="md">
         <h3 className="text-sm font-bold text-gray-700 mb-3">All Tenants</h3>
         {tenants.length === 0 ? (
-          <div className="text-center py-8 text-gray-400 text-xs">No tenant data available</div>
+          <div className="text-center py-8 text-gray-500 text-xs">No tenant data available</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
