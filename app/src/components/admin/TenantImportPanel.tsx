@@ -132,6 +132,47 @@ export function parseManifest(raw: string): ParseManifestResult {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Tenant-scoped starter template (no identity block — tenant admins only) */
+/* ------------------------------------------------------------------ */
+
+export function buildTenantManifestTemplate(): Record<string, unknown> {
+  return {
+    tenant: {
+      currency: 'EGP',
+      primaryColor: '#2e7d32',
+      logoUrl: '',
+      faviconUrl: '',
+      heroImageUrl: '',
+      footerText: '',
+      location: '',
+      whatsappNumber: '',
+      phone: '',
+      email: '',
+      description: '',
+    },
+    products: [{ name: '', basePrice: 0, type: 'room' }],
+    rooms: [{ name: '', productName: '', status: 'available', maxGuests: 2 }],
+    ratePlans: [{ name: '', productName: '', pricePerNight: 0 }],
+    menu: { categories: [], meals: [] },
+    posUsers: [],
+  };
+}
+
+export function downloadTenantManifestTemplate(): void {
+  const blob = new Blob([JSON.stringify(buildTenantManifestTemplate(), null, 2)], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'tenant-manifest-template.json';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Panel                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -206,6 +247,15 @@ export function TenantImportPanel() {
         <CardBody className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-semibold text-gray-700">Manifest source</span>
+            <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="import-download-template"
+              onClick={downloadTenantManifestTemplate}
+            >
+              Download template
+            </Button>
             <input
               ref={fileInputRef}
               id="import-file-input"
@@ -227,7 +277,12 @@ export function TenantImportPanel() {
             >
               Load from file
             </Button>
+            </div>
           </div>
+          <p data-testid="import-schema-hint" className="text-xs text-gray-500">
+            The template has no identity block (tenant admins import into their own tenant).
+            See docs/tenant-import.md for field reference.
+          </p>
 
           <div>
             <label
