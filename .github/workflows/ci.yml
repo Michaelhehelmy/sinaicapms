@@ -122,3 +122,11 @@ jobs:
         run: |
           npx vite-node scripts/generate-openapi.js
           git diff --exit-code -- openapi.json
+
+      - name: Gate /api/camps references to the sunset shim
+        # Phase 3 rename: /api/camps is a sunset alias (deletion 2026-10-23).
+        # Route references (quote-prefixed, so './api/camps' module imports
+        # don't trip it) may only live in the alias shim; registry.js stays
+        # allowlisted until the companion OpenAPI rename (paths → /api/projects).
+        run: |
+          ! grep -rn -E "['\"]/api/camps" src | grep -v -e "src/api/camps-alias.js" -e "src/routes/registry.js" || (echo "Stale /api/camps reference outside the sunset shim" && exit 1)

@@ -59,7 +59,7 @@ describe('getTenantSSRData', () => {
     expect(data.tenant?.name).toBe('Acacia Camp');
     expect(data.camps).toHaveLength(1);
     expect(data.roomTypes).toHaveLength(1);
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8787/api/v1/camps', {
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8787/api/v1/projects', {
       headers: { 'x-tenant-id': 'acacia' },
     });
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8787/api/v1/products', {

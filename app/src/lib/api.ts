@@ -285,17 +285,17 @@ export function getAuthMe() {
   return apiFetch<Schemas['AuthMe']>('/auth/me');
 }
 
-// ─── Camps ────────────────────────────────────────────────────────────
+// ─── Camps (canonical /api/projects mount; /api/camps is a sunset alias) ──
 export function getCamps() {
-  return apiFetch<Schemas['CampList']>('/camps');
+  return apiFetch<Schemas['CampList']>('/projects');
 }
 
 export function getCamp(id: number | string) {
-  return apiFetch<Schemas['Camp']>(`/camps/${id}`);
+  return apiFetch<Schemas['Camp']>(`/projects/${id}`);
 }
 
 export function saveCamp(data: Schemas['CampCreateRequest'] | Schemas['CampUpdateRequest'], editId?: number | string) {
-  return apiFetch<Schemas['IdResponse'] | Schemas['SuccessResponse']>(editId ? `/camps/${editId}` : '/camps', {
+  return apiFetch<Schemas['IdResponse'] | Schemas['SuccessResponse']>(editId ? `/projects/${editId}` : '/projects', {
     method: editId ? 'PUT' : 'POST',
     body: JSON.stringify(data),
   });
@@ -306,7 +306,7 @@ export function deleteCamp(id: number | string, opts?: { tenantId?: string }) {
   // marketplace directory rows carry tenant_id), append ?tenantId= so the
   // backend resolveScope queryOverride scopes the delete correctly.
   const query = opts?.tenantId ? `?tenantId=${encodeURIComponent(opts.tenantId)}` : '';
-  return apiFetch<Schemas['SuccessResponse']>(`/camps/${id}${query}`, { method: 'DELETE' });
+  return apiFetch<Schemas['SuccessResponse']>(`/projects/${id}${query}`, { method: 'DELETE' });
 }
 
 // ─── Products (Room Types) ────────────────────────────────────────────

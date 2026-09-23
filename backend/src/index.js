@@ -27,6 +27,7 @@ import adminStorefrontRoutes from './api/admin-storefront.js';
 import adminAiRoutes from './api/admin-ai.js';
 import adminPayoutsRoutes from './api/admin-payouts.js';
 import campsRoutes, { productsRoutes, roomsRoutes, ratePlansRoutes } from './api/camps';
+import { registerCampsAlias } from './api/camps-alias';
 import projectLinksRoutes from './api/project-links.js';
 import projectItemsRoutes from './api/project-items.js';
 import ordersRoutes, { availabilityRoutes } from './api/orders';
@@ -623,20 +624,21 @@ app.use('/api/me', meScope);
 app.use('/api/me/*', tenantAwareLimiter());
 app.route('/api/me', meRoutes);
 
-// ── Catalog routers (Phase 4 T1): camps / products / rooms / rateplans.
-// Mixed visibility: GET is public (marketplace browsing, price preview),
-// mutations are admin-scoped. Camps GET also serves the cross-tenant
-// marketplace listing when the host has no tenant context.
+// ── Catalog routers (Phase 4 T1): projects catalog (campsRoutes) / products
+// / rooms / rateplans. Mixed visibility: GET is public (marketplace browsing,
+// price preview), mutations are admin-scoped. Projects GET also serves the
+// cross-tenant marketplace listing when the host has no tenant context.
 const catalogPublicScope = resolveScope({ public: true });
 const catalogAdminScope = resolveScope();
 const catalogScope = async (c, next) =>
   c.req.method === 'GET'
     ? catalogPublicScope(c, next)
     : catalogAdminScope(c, next);
-app.use('/api/camps', catalogScope);
-app.use('/api/camps/*', catalogScope);
-app.use('/api/camps/*', tenantAwareLimiter());
-app.route('/api/camps', campsRoutes);
+// Phase 3 rename: /api/camps is a sunset alias (deletion 2026-10-23) — see
+// src/api/camps-alias.js. The canonical /api/projects mount lives with the
+// other /api/projects/* mounts below (after meal-plans) so those longer
+// prefixes win Hono registration order.
+registerCampsAlias(app, { scope: catalogScope, limiter: tenantAwareLimiter });
 
 const productsPublicScope = resolveScope({ public: true });
 const productsAdminScope = resolveScope();
@@ -792,6 +794,36 @@ app.route('/api/pos-tables', posTablesRoutes);
 const mealPlansPublicScope = resolveScope({ public: true });
 app.use('/api/projects/:id/meal-plans', mealPlansPublicScope);
 app.route('/api/projects', mealPlanRoutes);
+
+// ── Phase 3 rename: canonical projects catalog ────────────────────────
+// campsRoutes (GET/POST/PUT/DELETE + 405 catch-all) served at /api/projects
+// with request/response shapes byte-identical to the /api/camps sunset alias.
+// Registered AFTER the specific /api/projects/* sub-mounts (links, items,
+// meta, tags, meal-plans) so those longer prefixes win Hono registration
+// order. KEEP THIS MOUNT LAST among /api/projects mounts: a bare
+// /api/projects/* wildcard would otherwise overwrite e.g. the admin-only
+// project-links scope with the public GET branch (user:null), so the guard
+// below confines scope+limiter to the bare collection and single-segment
+// /:id paths while sibling routers keep their own scope+limiter.
+const PROJECTS_NON_CATALOG_SEGMENTS = new Set(['links', 'items']);
+const isProjectsCatalogPath = (path) => {
+  const segs = path.slice('/api/projects'.length).split('/').filter(Boolean);
+  return segs.length === 0 ||
+    (segs.length === 1 && !PROJECTS_NON_CATALOG_SEGMENTS.has(segs[0]));
+};
+const projectsCatalogScope = async (c, next) => {
+  if (!isProjectsCatalogPath(c.req.path)) return next();
+  return catalogScope(c, next);
+};
+const projectsCatalogLimiter = tenantAwareLimiter();
+const projectsCatalogLimiterGuard = async (c, next) => {
+  if (!isProjectsCatalogPath(c.req.path)) return next();
+  return projectsCatalogLimiter(c, next);
+};
+app.use('/api/projects', catalogScope);
+app.use('/api/projects/*', projectsCatalogScope);
+app.use('/api/projects/*', projectsCatalogLimiterGuard);
+app.route('/api/projects', campsRoutes);
 
 // ── Business OS Pillars (2026-08-26 Expansion) ──────────────────────────────
 // Financial Management — double-entry accounting, invoicing, payments, tax

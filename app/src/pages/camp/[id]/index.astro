@@ -29,7 +29,7 @@ if (!forbidden) {
     const [tenantRes, productsRes, projectsRes] = await Promise.all([
       ssrFetch(`/tenants/${id}`),
       ssrFetch(`/products`, { headers: { 'x-tenant-id': String(id) } }),
-      ssrFetch(`/camps`, { headers: { 'x-tenant-id': String(id) } }),
+      ssrFetch(`/projects`, { headers: { 'x-tenant-id': String(id) } }),
     ]);
     if (tenantRes.ok) tenant = (await tenantRes.json()) as Record<string, unknown>;
     if (productsRes.ok) roomTypes = await productsRes.json() as Record<string, unknown>[];

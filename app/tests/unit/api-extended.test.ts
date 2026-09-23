@@ -429,50 +429,50 @@ describe('camp endpoints', () => {
   beforeEach(() => { localStorage.clear(); mockFetch([{ id: 1, name: 'Camp A' }]); });
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('getCamps sends GET /camps', async () => {
+  it('getCamps sends GET /projects', async () => {
     const data = await getCamps();
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/camps'), expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/projects'), expect.any(Object));
   });
 
-  it('getCamp sends GET /camps/5', async () => {
+  it('getCamp sends GET /projects/5', async () => {
     await getCamp(5);
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/camps/5'), expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/projects/5'), expect.any(Object));
   });
 
-  it('saveCamp with editId sends PUT /camps/5', async () => {
+  it('saveCamp with editId sends PUT /projects/5', async () => {
     await saveCamp({ name: 'Updated' }, 5);
     const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('PUT');
-    expect(url).toContain('/camps/5');
+    expect(url).toContain('/projects/5');
   });
 
-  it('saveCamp without editId sends POST /camps', async () => {
+  it('saveCamp without editId sends POST /projects', async () => {
     await saveCamp({ name: 'New Camp' });
     const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('POST');
-    expect(url).toContain('/camps');
+    expect(url).toContain('/projects');
   });
 
-  it('deleteCamp sends DELETE /camps/3', async () => {
+  it('deleteCamp sends DELETE /projects/3', async () => {
     await deleteCamp(3);
     const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
-    expect(url).toContain('/camps/3');
+    expect(url).toContain('/projects/3');
   });
 
   it('deleteCamp appends ?tenantId= when the owning tenant is provided', async () => {
     await deleteCamp(3, { tenantId: 'tenant-alpha' });
     const [url, opts = {} as RequestInit] = vi.mocked(fetch).mock.calls[0];
     expect(opts.method).toBe('DELETE');
-    expect(url).toContain('/camps/3?tenantId=tenant-alpha');
+    expect(url).toContain('/projects/3?tenantId=tenant-alpha');
     // The tenant id must stay readable as a single query param (URI-encoded).
-    expect(url).not.toContain('/camps/3?tenantId=tenant-alpha&');
+    expect(url).not.toContain('/projects/3?tenantId=tenant-alpha&');
   });
 
   it('deleteCamp URI-encodes the tenant id in the query override', async () => {
     await deleteCamp(9, { tenantId: 'my tenant/ä' });
     const [url] = vi.mocked(fetch).mock.calls[0];
-    expect(url).toContain('/camps/9?tenantId=my%20tenant%2F%C3%A4');
+    expect(url).toContain('/projects/9?tenantId=my%20tenant%2F%C3%A4');
   });
 });
 

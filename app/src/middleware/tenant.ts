@@ -182,7 +182,7 @@ export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<
         tenant = matched;
         const headers = { 'x-tenant-id': tenantId };
         const [campsRes, productsRes] = await Promise.all([
-          apiFetch(`/camps`, { headers }),
+          apiFetch(`/projects`, { headers }),
           apiFetch(`/products`, { headers }),
         ]);
         if (campsRes.ok) camps = await campsRes.json() as TenantData[];
