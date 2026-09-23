@@ -617,6 +617,82 @@ const orderDetailSchema = z
   })
   .openapi('OrderDetail');
 
+// POST /api/orders/:id/record-payment (P35 Admin Cash Desk v1) — offline
+// payment recording. Split legs must sum to amount ±0.01; overpayment → 400;
+// full payment flips payment_status='paid'. Every record writes audit_log.
+//
+// T8 wire contract: the doc uses camelCase keys (no-snake suite). The handler
+// schema (api/orders.js recordPaymentSchema) is snake_case + toSnake(), which
+// accepts BOTH cases on the wire — same split as OrderCreateRequest (camel,
+// here) vs orderPostSchema (snake, handler-side).
+const recordPaymentRequestSchema = z
+  .object({
+    id: z.string().min(1).max(64).optional(),
+    amount: z.number().positive(),
+    method: z.enum(['cash', 'card', 'split']),
+    amountCash: z.number().min(0).optional(),
+    amountCard: z.number().min(0).optional(),
+    approvedBy: z.string().max(128).optional(),
+    reference: z.string().max(128).optional(),
+    notes: z.string().max(2000).optional(),
+  })
+  .openapi('RecordPaymentRequest');
+
+const recordPaymentResponseSchema = z
+  .object({
+    success: z.boolean(),
+    deduplicated: z.boolean().optional(),
+    payment: z
+      .object({
+        id: z.string(),
+        tenantId: z.string(),
+        orderId: z.string(),
+        amount: z.number(),
+        method: z.string(),
+        amountCash: z.number(),
+        amountCard: z.number(),
+        receivedBy: z.string(),
+        approvedBy: z.string().nullable(),
+        reference: z.string().nullable(),
+        notes: z.string().nullable(),
+        recordedAt: z.string(),
+      })
+      .optional(),
+    order: z
+      .object({
+        id: z.string(),
+        totalAmount: z.number(),
+        amountPaid: z.number(),
+        balance: z.number(),
+        paymentStatus: z.string(),
+      })
+      .optional(),
+  })
+  .openapi('RecordPaymentResponse');
+
+// GET /api/orders/:id/payments (Admin Cash Desk v1 read side) — lists the
+// order's payment_records rows oldest-first as a BARE ARRAY (same house
+// shape as GET /:id/items in api/orders.js). Wire is camelCase end-to-end
+// via the jsonResponse choke point (no-snake suite).
+const orderPaymentSchema = z
+  .object({
+    id: z.string(),
+    tenantId: z.string(),
+    orderId: z.string(),
+    amount: z.number(),
+    method: z.string(),
+    amountCash: z.number(),
+    amountCard: z.number(),
+    receivedBy: z.string(),
+    approvedBy: z.string().nullable(),
+    reference: z.string().nullable(),
+    notes: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .openapi('OrderPayment');
+
+const orderPaymentListSchema = z.array(orderPaymentSchema).openapi('OrderPaymentList');
+
 // ── Availability ─────────────────────────────────────────────────────────────────
 const availabilityResponseSchema = z
   .union([
@@ -996,6 +1072,33 @@ export const marketplaceRoutes = [
       ...errorResponses({
         409: { description: 'Illegal kitchen transition', content: { 'application/json': { schema: errorEnvelopeSchema } } },
       }),
+    },
+  }),
+  createRoute({
+    method: 'post',
+    path: '/api/orders/{id}/record-payment',
+    tags: ['orders'],
+    summary: 'Record an offline cash-desk payment (cash|card|split; 400 on overpayment or split-leg mismatch; full payment flips payment_status to paid)',
+    request: {
+      params: z.object({ id: z.string() }),
+      body: { content: { 'application/json': { schema: recordPaymentRequestSchema } } },
+    },
+    responses: {
+      200: { description: 'Payment recorded', content: { 'application/json': { schema: recordPaymentResponseSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/api/orders/{id}/payments',
+    tags: ['orders'],
+    summary: 'List the payment records applied to one order, oldest first (tenant scoped; 404 for missing or foreign-tenant orders)',
+    request: {
+      params: z.object({ id: z.string() }),
+    },
+    responses: {
+      200: { description: 'Order payment records (bare array)', content: { 'application/json': { schema: orderPaymentListSchema } } },
+      ...errorResponses(),
     },
   }),
   createRoute({

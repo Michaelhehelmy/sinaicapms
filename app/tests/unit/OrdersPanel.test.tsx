@@ -8,6 +8,8 @@ const mockUseRoomsQuery = vi.fn();
 const mockUseUpdateOrderStatusMutation = vi.fn();
 const mockUseDeleteOrderMutation = vi.fn();
 const mockUseOrderDetailQuery = vi.fn();
+const mockUseRecordPaymentMutation = vi.fn();
+const mockUseOrderPaymentsQuery = vi.fn();
 
 vi.mock('@/hooks/useQueryHooks', () => ({
   useOrdersQuery: (...args: unknown[]) => mockUseOrdersQuery(...args),
@@ -16,6 +18,8 @@ vi.mock('@/hooks/useQueryHooks', () => ({
   useUpdateOrderStatusMutation: (...args: unknown[]) => mockUseUpdateOrderStatusMutation(...args),
   useDeleteOrderMutation: (...args: unknown[]) => mockUseDeleteOrderMutation(...args),
   useOrderDetailQuery: (...args: unknown[]) => mockUseOrderDetailQuery(...args),
+  useRecordPaymentMutation: (...args: unknown[]) => mockUseRecordPaymentMutation(...args),
+  useOrderPaymentsQuery: (...args: unknown[]) => mockUseOrderPaymentsQuery(...args),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -139,6 +143,8 @@ const defaultHooks = {
   useUpdateOrderStatusMutation: { mutate: vi.fn((_args: unknown, opts?: { onSuccess?: () => void }) => { opts?.onSuccess?.(); }), isPending: false },
   useDeleteOrderMutation: { mutate: vi.fn((_args: unknown, opts?: { onSuccess?: () => void }) => { opts?.onSuccess?.(); }), isPending: false },
   useOrderDetailQuery: { data: null, isLoading: false, error: null, isFetching: false },
+  useRecordPaymentMutation: { mutate: vi.fn(), isPending: false, error: null },
+  useOrderPaymentsQuery: { data: [], isLoading: false, error: null },
 };
 
 function setupMocks(overrides: Partial<typeof defaultHooks> = {}) {
@@ -149,6 +155,8 @@ function setupMocks(overrides: Partial<typeof defaultHooks> = {}) {
   mockUseUpdateOrderStatusMutation.mockReturnValue(merged.useUpdateOrderStatusMutation);
   mockUseDeleteOrderMutation.mockReturnValue(merged.useDeleteOrderMutation);
   mockUseOrderDetailQuery.mockReturnValue(merged.useOrderDetailQuery);
+  mockUseRecordPaymentMutation.mockReturnValue(merged.useRecordPaymentMutation);
+  mockUseOrderPaymentsQuery.mockReturnValue(merged.useOrderPaymentsQuery);
 }
 
 describe('OrdersPanel', () => {
@@ -335,5 +343,14 @@ describe('OrdersPanel', () => {
     });
     render(<OrdersPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Test Camp' } as never]} />);
     expect(screen.getByText('Updating...')).toBeInTheDocument();
+  });
+
+  it('record payment button in the detail modal opens the record-payment form', () => {
+    setupMocks();
+    render(<OrdersPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Test Camp' } as never]} />);
+    fireEvent.click(screen.getAllByText('View')[0]);
+    fireEvent.click(screen.getByTestId('record-payment-btn'));
+    expect(screen.getByTestId('record-payment-form')).toBeInTheDocument();
+    expect(screen.getByTestId('record-payment-balance')).toBeInTheDocument();
   });
 });

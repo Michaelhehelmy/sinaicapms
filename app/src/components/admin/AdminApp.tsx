@@ -62,6 +62,7 @@ const CampsPanel = React.lazy(() => import('./CampsPanel'));
 const RoomsPanel = React.lazy(() => import('./RoomsPanel'));
 const ProjectItemsPanel = React.lazy(() => import('./ProjectItemsPanel'));
 const OrdersPanel = React.lazy(() => import('./OrdersPanel'));
+const CashDeskPanel = React.lazy(() => import('./CashDeskPanel'));
 const SettingsPanel = React.lazy(() => import('./SettingsPanel'));
 const PasswordPanel = React.lazy(() => import('./PasswordPanel'));
 const RatePlansPanel = React.lazy(() => import('./RatePlansPanel'));
@@ -127,6 +128,7 @@ const TENANT_NAV: NavItem[] = [
   { id: 'rooms', label: 'Rooms', icon: IconRooms, requires: 'project' },
   { id: 'rateplans', label: 'Rate Plans', icon: IconRatePlans, requires: 'product' },
   { id: 'reservations', label: 'Orders', icon: IconOrders, requires: 'room' },
+  { id: 'cashdesk', label: 'Cash Desk', icon: IconFinancials, requires: 'room' },
   { id: 'inbox', label: 'Inbox', icon: IconInbox },
   { id: 'calendar', label: 'Booking Calendar', icon: IconCalendar, requires: 'room' },
   { id: 'meals', label: 'Meals', icon: IconMeals, requires: 'project' },
@@ -396,6 +398,8 @@ function AdminAppInner() {
         return <RatePlansPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       case 'reservations':
         return <OrdersPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
+      case 'cashdesk':
+        return <CashDeskPanel campIds={activeCampIds} camps={activeCamps} onNavigateToTab={switchTab} />;
       case 'inbox':
         return (
           <InboxPanel

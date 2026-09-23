@@ -61,6 +61,23 @@ export const orderStatusSchema = z.object({
   status: z.string().min(1, 'Status is required'),
 }).strip();
 
+// P35 (Admin Cash Desk v1): POST /orders/:id/record-payment — offline payment
+// recording. Method enum mirrors the canonical POS enum exactly
+// (routes/pos/index.js:24 — cash|card|split; bank_transfer/paymob belong to
+// other domains per p35-recon §2). Split legs must sum to `amount` ±0.01
+// (same tolerance as the POS split check). `id` is an optional client
+// idempotency key — a repeat POST with the same id returns the stored row.
+export const recordPaymentSchema = z.object({
+  id: z.string().min(1).max(64).optional(),
+  amount: z.number().positive('Amount must be greater than 0'),
+  method: z.enum(['cash', 'card', 'split']),
+  amount_cash: z.number().min(0).optional(),
+  amount_card: z.number().min(0).optional(),
+  approved_by: z.string().max(128).optional(),
+  reference: z.string().max(128).optional(),
+  notes: z.string().max(2000).optional(),
+}).strip();
+
 // T5a: Fire-and-forget SSE broadcast to the tenant's Broadcaster Durable
 // Object. Best-effort only — an error here must NEVER fail the order-create
 // response. Deferred onto a microtask (this handler has no ctx.waitUntil) and
@@ -1148,6 +1165,193 @@ ordersRoutes.get('/:id/split-details', async (c) => {
     });
   } catch (e) {
     return errorResponse('Failed to get split details');
+  }
+});
+
+// ─── GET /orders/:id/payments (Admin Cash Desk v1 read side) ───
+// Lists the payment_records rows for one order, oldest first. Tenant-scoped:
+// the order must belong to the caller's tenant (404 otherwise). Same mount
+// gate as POST /:id/record-payment (index.js ordersAdminScope = resolveScope,
+// admin realm — auth itself rides the mount, only tenant context is checked
+// inside the router, same as tip/split/split-details).
+//
+// Shape: BARE ARRAY (house convention — same as sibling GET /:id/items above,
+// NOT { payments } or { data }). Keys arrive snake_case from D1 and leave
+// camelCase via the jsonResponse choke point (utils/response.js).
+ordersRoutes.get('/:id/payments', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const order = await c.env.DB.prepare(
+      'SELECT id FROM orders WHERE tenant_id = ? AND id = ?'
+    ).bind(tenantId, orderId).first();
+    if (!order) return errorResponse('Order not found', 404);
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM payment_records WHERE tenant_id = ? AND order_id = ? ORDER BY created_at ASC, id ASC'
+    ).bind(tenantId, orderId).all();
+    return jsonResponse(results ?? []);
+  } catch (e) {
+    return errorResponse('Failed to fetch order payments');
+  }
+});
+
+// ─── POST /orders/:id/record-payment (P35 Admin Cash Desk v1) ───
+// Offline payment recording. Admin-only via the house mount gate
+// (index.js: ordersAdminScope = resolveScope(), admin realm — same gate as
+// PATCH /:id/tip and /:id/split, which likewise only check tenant context
+// inside the router). NEVER touches Paymob (payments.js / paymob-webhook.js
+// / services/paymob.js are read-only references for this task).
+//
+// Semantics (p35-recon §§1-3):
+// - Order must exist in the caller's tenant (404 otherwise).
+// - amount > 0 (zod); overpayment (paid_so_far + amount > total) → 400.
+//   There is no balance column anywhere — balance is derived total − paid.
+// - Partial payment leaves payment_status untouched (recon: no 'partial'
+//   state exists; Paid/Unpaid/Partial are frontend filter labels only).
+// - Full payment (new paid total within a penny of total) flips
+//   payment_status='paid' AND sets amount_paid (unlike the admin status flip,
+//   which leaves amount_paid stale). order_state_id / room lifecycle are NOT
+//   touched — no folio, no state machine.
+// - Split = cash+card legs in one call; legs must sum to amount ±0.01 (POS
+//   tolerance). Single-method payments store the full amount in their own
+//   leg (receipts render legs uniformly).
+// - EVERY record writes an audit_log row via logAudit() (best-effort).
+ordersRoutes.post('/:id/record-payment', async (c) => {
+  try {
+    const tenantId = getScope(c).tenantId;
+    if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
+    const orderId = c.req.param('id');
+    const parsed = recordPaymentSchema.safeParse(toSnake(await c.req.json()));
+    if (!parsed.success) {
+      return validationError(parsed);
+    }
+    const { id: idempotencyKey, amount, method } = parsed.data;
+    let { amount_cash: amountCash, amount_card: amountCard } = parsed.data;
+
+    // Resolve split legs (POS convention: full amount in its own leg).
+    if (method === 'split') {
+      if (typeof amountCash !== 'number' || typeof amountCard !== 'number') {
+        return errorResponse('Split payment requires amount_cash and amount_card', 400);
+      }
+      const legsSum = Math.round((amountCash + amountCard) * 100) / 100;
+      const amountRounded = Math.round(amount * 100) / 100;
+      if (Math.abs(legsSum - amountRounded) > 0.01) {
+        return errorResponse(
+          `Split payment sum ($${legsSum.toFixed(2)}) does not match amount ($${amountRounded.toFixed(2)})`,
+          400
+        );
+      }
+    } else if (method === 'card') {
+      amountCash = 0;
+      amountCard = amount;
+    } else {
+      amountCash = amount;
+      amountCard = 0;
+    }
+
+    // Tenant-scoped existence check (same partition gate as tip/split).
+    const order = await c.env.DB.prepare(
+      'SELECT id, total_amount, amount_paid, payment_status FROM orders WHERE tenant_id = ? AND id = ?'
+    ).bind(tenantId, orderId).first();
+    if (!order) return errorResponse('Order not found', 404);
+
+    const total = Number(order.total_amount) || 0;
+    const paidSoFar = Number(order.amount_paid) || 0;
+
+    // Overpayment guard (no such guard exists on POST/PUT today — recon §1.4).
+    // Penny epsilon so float dust can't false-trip an exact-total payment.
+    if (paidSoFar + amount > total + 0.01) {
+      return errorResponse(
+        `Overpayment rejected: paid ${paidSoFar.toFixed(2)} + ${amount.toFixed(2)} exceeds order total ${total.toFixed(2)}`,
+        400
+      );
+    }
+
+    // Idempotency: a repeat POST with the same client key returns the stored
+    // row instead of double-inserting (POS dedup precedent).
+    if (idempotencyKey) {
+      const existing = await c.env.DB.prepare(
+        'SELECT * FROM payment_records WHERE tenant_id = ? AND id = ?'
+      ).bind(tenantId, idempotencyKey).first();
+      if (existing) {
+        return jsonResponse({ success: true, deduplicated: true, payment: existing });
+      }
+    }
+
+    const receivedBy = getScope(c).user?.id || 'system';
+    const recordedAt = new Date().toISOString();
+    const paymentId = idempotencyKey || 'pay_' + crypto.randomUUID().slice(0, 12);
+    const { approved_by: approvedBy, reference, notes } = parsed.data;
+
+    await c.env.DB.prepare(
+      `INSERT INTO payment_records
+         (id, tenant_id, order_id, amount, method, amount_cash, amount_card,
+          received_by, approved_by, reference, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      paymentId, tenantId, orderId, amount, method, amountCash, amountCard,
+      receivedBy, approvedBy || null, reference || null, notes || null
+    ).run();
+
+    const newPaid = Math.round((paidSoFar + amount) * 100) / 100;
+    const isFull = newPaid + 0.01 >= total;
+    const newStatus = isFull ? 'paid' : (order.payment_status || 'pending');
+
+    await c.env.DB.prepare(
+      "UPDATE orders SET amount_paid = ?, payment_status = ?, payment_method = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
+    ).bind(newPaid, newStatus, method, tenantId, orderId).run();
+
+    // Best-effort audit trail — logAudit swallows its own errors, so a failed
+    // audit row can never break the payment response (same shape as the
+    // kitchen-status precedent above).
+    await logAudit(c.env.DB, {
+      tenantId,
+      userId: receivedBy,
+      action: 'create',
+      entityType: 'order',
+      entityId: orderId,
+      oldValues: { amount_paid: paidSoFar, payment_status: order.payment_status || null },
+      newValues: {
+        amount_paid: newPaid,
+        payment_status: newStatus,
+        payment_id: paymentId,
+        method,
+        amount,
+        amount_cash: amountCash,
+        amount_card: amountCard,
+        received_by: receivedBy,
+        approved_by: approvedBy || null,
+        recorded_at: recordedAt,
+      },
+    });
+
+    return jsonResponse({
+      success: true,
+      payment: {
+        id: paymentId,
+        tenant_id: tenantId,
+        order_id: orderId,
+        amount,
+        method,
+        amount_cash: amountCash,
+        amount_card: amountCard,
+        received_by: receivedBy,
+        approved_by: approvedBy || null,
+        reference: reference || null,
+        notes: notes || null,
+        recorded_at: recordedAt,
+      },
+      order: {
+        id: orderId,
+        total_amount: total,
+        amount_paid: newPaid,
+        balance: Math.round((total - newPaid) * 100) / 100,
+        payment_status: newStatus,
+      },
+    });
+  } catch (e) {
+    return errorResponse('Failed to record payment');
   }
 });
 

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Order, Camp } from '@/hooks/useAdminData';
+import RecordPaymentModal from './RecordPaymentModal';
 
 interface OrdersPanelProps {
   campIds: string[];
@@ -63,6 +64,8 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
   const [showStateChange, setShowStateChange] = useState<Order | null>(null);
   const [newState, setNewState] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
+  // Phase 3.5 Cash Desk: record-payment entry point from the detail modal.
+  const [paymentTarget, setPaymentTarget] = useState<Order | null>(null);
 
   // Real order detail (fetched from GET /orders/:id) — list rows only carry
   // a subset of the customer/payment fields, so the modal must fetch full detail.
@@ -297,8 +300,26 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
                 <strong>Notes:</strong> {detail.notes}
               </div>
             )}
+            <div>
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="record-payment-btn"
+                onClick={() => setPaymentTarget(detail)}
+              >
+                Record payment
+              </Button>
+            </div>
           </div>
         </FormModal>
+      )}
+
+      {paymentTarget && (
+        <RecordPaymentModal
+          order={paymentTarget}
+          open
+          onClose={() => setPaymentTarget(null)}
+        />
       )}
 
       {showStateChange && (

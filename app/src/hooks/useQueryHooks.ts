@@ -23,7 +23,7 @@
  *   ['tenants']          — super admin tenants list
  *   ['projects', 'items'] — project child-inventory items (project_items)
  */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/Toast';
 import * as api from '@/lib/api';
 import type {
@@ -710,6 +710,66 @@ export function useUpdateOrderStatusMutation() {
       showToast('Order state updated', 'success');
     },
     onError: (err) => toastError('Failed to update order state', err),
+  });
+}
+
+/**
+ * Phase 3.5 Cash Desk — payment records for one order (P35 contract).
+ * Enabled only when an order id is provided.
+ */
+export function useOrderPaymentsQuery(orderId: string | number | null) {
+  const toastError = useErrorToast();
+  return useQuery<import('@/lib/cashdesk').PaymentRecord[]>({
+    queryKey: [...queryKeys.orders(), 'payments', String(orderId)] as const,
+    queryFn: () => api.getOrderPayments(orderId as string | number),
+    enabled: !!orderId,
+    throwOnError: (err) => {
+      toastError('Failed to load payment records', err);
+      return false;
+    },
+  });
+}
+
+/**
+ * Phase 3.5 Cash Desk — payment records for a set of orders, one query per
+ * order sharing the single-order key so detail views stay in sync.
+ * Returns the per-order query results in input order (data may be undefined
+ * while loading). Pass an empty array to run zero queries.
+ */
+export function useCashDeskPayments(orderIds: (string | number)[]) {
+  return useQueries({
+    queries: orderIds.map((id) => ({
+      queryKey: [...queryKeys.orders(), 'payments', String(id)] as const,
+      queryFn: () => api.getOrderPayments(id),
+      enabled: orderIds.length > 0,
+      retry: 1,
+      staleTime: 30_000,
+    })),
+  });
+}
+
+/**
+ * Phase 3.5 Cash Desk — record a payment against a booking order.
+ * Contract: POST /api/orders/:id/record-payment (backend P35-B).
+ * On success the orders cache (lists + detail) and that order's payment
+ * records are invalidated so balances refresh everywhere.
+ */
+export function useRecordPaymentMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string | number; input: import('@/lib/cashdesk').RecordPaymentInput }) =>
+      api.recordPayment(id, input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders() });
+      queryClient.invalidateQueries({
+        queryKey: [...queryKeys.orders(), 'payments', String(variables.id)],
+      });
+      showToast('Payment recorded', 'success');
+    },
+    onError: (err) => toastError('Failed to record payment', err),
   });
 }
 

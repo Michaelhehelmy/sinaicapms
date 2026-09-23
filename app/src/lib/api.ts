@@ -399,6 +399,49 @@ export function updateOrderStatus(id: number | string, status: string) {
   });
 }
 
+// ─── Cash Desk — Phase 3.5 record-payment (P35 contract, backend P35-B) ──
+// POST /api/orders/:id/record-payment validates the same-tenant order,
+// amount > 0, and rejects overpayment with 400; a full payment flips
+// payment_status='paid' (+ amount_paid) and writes an audit_log row.
+// Types live in ./cashdesk (no OpenAPI spec for this endpoint yet — the
+// backend lands in parallel, so these are hand-written from the contract).
+export type {
+  CashPaymentMethod,
+  PaymentRecord,
+  RecordPaymentInput,
+  RecordPaymentResponse,
+} from './cashdesk';
+
+/** Record a cash/card/split payment against a booking order (no folio required). */
+export function recordPayment(
+  id: number | string,
+  input: import('./cashdesk').RecordPaymentInput,
+) {
+  return apiFetch<import('./cashdesk').RecordPaymentResponse>(
+    `/orders/${id}/record-payment`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+/**
+ * List the payment records applied to one order (oldest first).
+ * Tenant scoping rides the x-tenant-id header apiFetch already sends.
+ * Defensive unwrap: the endpoint may return a bare array or a { data } envelope.
+ */
+export async function getOrderPayments(
+  id: number | string,
+): Promise<import('./cashdesk').PaymentRecord[]> {
+  const data = await apiFetch<unknown>(`/orders/${id}/payments`);
+  if (Array.isArray(data)) return data as import('./cashdesk').PaymentRecord[];
+  if (data && Array.isArray((data as { data?: unknown }).data)) {
+    return (data as { data: import('./cashdesk').PaymentRecord[] }).data;
+  }
+  return [];
+}
+
 export function deleteOrder(id: number | string) {
   return apiFetch<Schemas['SuccessResponse']>(`/orders/${id}`, { method: 'DELETE' });
 }

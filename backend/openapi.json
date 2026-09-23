@@ -1323,6 +1323,216 @@
           "status"
         ]
       },
+      "RecordPaymentResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "deduplicated": {
+            "type": "boolean"
+          },
+          "payment": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tenantId": {
+                "type": "string"
+              },
+              "orderId": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number"
+              },
+              "method": {
+                "type": "string"
+              },
+              "amountCash": {
+                "type": "number"
+              },
+              "amountCard": {
+                "type": "number"
+              },
+              "receivedBy": {
+                "type": "string"
+              },
+              "approvedBy": {
+                "type": "string",
+                "nullable": true
+              },
+              "reference": {
+                "type": "string",
+                "nullable": true
+              },
+              "notes": {
+                "type": "string",
+                "nullable": true
+              },
+              "recordedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "tenantId",
+              "orderId",
+              "amount",
+              "method",
+              "amountCash",
+              "amountCard",
+              "receivedBy",
+              "approvedBy",
+              "reference",
+              "notes",
+              "recordedAt"
+            ]
+          },
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "totalAmount": {
+                "type": "number"
+              },
+              "amountPaid": {
+                "type": "number"
+              },
+              "balance": {
+                "type": "number"
+              },
+              "paymentStatus": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "totalAmount",
+              "amountPaid",
+              "balance",
+              "paymentStatus"
+            ]
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "RecordPaymentRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "card",
+              "split"
+            ]
+          },
+          "amountCash": {
+            "type": "number",
+            "minimum": 0
+          },
+          "amountCard": {
+            "type": "number",
+            "minimum": 0
+          },
+          "approvedBy": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "amount",
+          "method"
+        ]
+      },
+      "OrderPayment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "method": {
+            "type": "string"
+          },
+          "amountCash": {
+            "type": "number"
+          },
+          "amountCard": {
+            "type": "number"
+          },
+          "receivedBy": {
+            "type": "string"
+          },
+          "approvedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "orderId",
+          "amount",
+          "method",
+          "amountCash",
+          "amountCard",
+          "receivedBy",
+          "approvedBy",
+          "reference",
+          "notes",
+          "createdAt"
+        ]
+      },
+      "OrderPaymentList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/OrderPayment"
+        }
+      },
       "BulkDeleteResponse": {
         "type": "object",
         "properties": {
@@ -7992,6 +8202,155 @@
           },
           "409": {
             "description": "Illegal kitchen transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/record-payment": {
+      "post": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Record an offline cash-desk payment (cash|card|split; 400 on overpayment or split-leg mismatch; full payment flips payment_status to paid)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordPaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordPaymentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/orders/{id}/payments": {
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "List the payment records applied to one order, oldest first (tenant scoped; 404 for missing or foreign-tenant orders)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order payment records (bare array)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPaymentList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
