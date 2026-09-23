@@ -1,0 +1,2685 @@
+[
+  {
+    "results": [
+      {
+        "type": "index",
+        "name": "idx_accounts_tenant",
+        "sql": "CREATE INDEX idx_accounts_tenant ON accounts(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_admins_auto_login",
+        "sql": "CREATE INDEX idx_admins_auto_login ON admins(auto_login_token)"
+      },
+      {
+        "type": "index",
+        "name": "idx_admins_email",
+        "sql": "CREATE INDEX idx_admins_email ON admins(email)"
+      },
+      {
+        "type": "index",
+        "name": "idx_admins_role",
+        "sql": "CREATE INDEX idx_admins_role ON admins(role)"
+      },
+      {
+        "type": "index",
+        "name": "idx_admins_tenant",
+        "sql": "CREATE INDEX idx_admins_tenant ON admins(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_applicants_job",
+        "sql": "CREATE INDEX idx_applicants_job ON applicants(job_post_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_applicants_tenant",
+        "sql": "CREATE INDEX idx_applicants_tenant ON applicants(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_audit_log_created",
+        "sql": "CREATE INDEX idx_audit_log_created ON audit_log(created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_audit_log_entity",
+        "sql": "CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_audit_log_tenant",
+        "sql": "CREATE INDEX idx_audit_log_tenant ON audit_log(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_automation_logs_rule",
+        "sql": "CREATE INDEX idx_automation_logs_rule ON automation_logs(rule_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_automation_logs_tenant",
+        "sql": "CREATE INDEX idx_automation_logs_tenant ON automation_logs(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_automation_rules_active",
+        "sql": "CREATE INDEX idx_automation_rules_active ON automation_rules(is_active)"
+      },
+      {
+        "type": "index",
+        "name": "idx_automation_rules_tenant",
+        "sql": "CREATE INDEX idx_automation_rules_tenant ON automation_rules(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_blog_categories_tenant",
+        "sql": "CREATE INDEX idx_blog_categories_tenant ON blog_categories(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_blog_posts_published",
+        "sql": "CREATE INDEX idx_blog_posts_published ON blog_posts(is_published)"
+      },
+      {
+        "type": "index",
+        "name": "idx_blog_posts_slug",
+        "sql": "CREATE INDEX idx_blog_posts_slug ON blog_posts(tenant_id, slug)"
+      },
+      {
+        "type": "index",
+        "name": "idx_blog_posts_tenant",
+        "sql": "CREATE INDEX idx_blog_posts_tenant ON blog_posts(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_bom_lines_bom",
+        "sql": "CREATE INDEX idx_bom_lines_bom ON bom_lines(bom_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_boms_tenant",
+        "sql": "CREATE INDEX idx_boms_tenant ON boms(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_cart_items_cart",
+        "sql": "CREATE INDEX idx_cart_items_cart ON cart_items(cart_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_carts_project",
+        "sql": "CREATE INDEX idx_carts_project ON carts(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_carts_project_nn",
+        "sql": "CREATE INDEX idx_carts_project_nn ON carts(project_id) WHERE project_id IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_carts_session",
+        "sql": "CREATE INDEX idx_carts_session ON carts(session_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_carts_tenant",
+        "sql": "CREATE INDEX idx_carts_tenant ON carts(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_categories_tenant_id",
+        "sql": "CREATE INDEX idx_categories_tenant_id ON categories(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_contacts_email",
+        "sql": "CREATE INDEX idx_contacts_email ON contacts(email)"
+      },
+      {
+        "type": "index",
+        "name": "idx_contacts_tenant",
+        "sql": "CREATE INDEX idx_contacts_tenant ON contacts(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_crm_leads_contact",
+        "sql": "CREATE INDEX idx_crm_leads_contact ON crm_leads(contact_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_crm_leads_status",
+        "sql": "CREATE INDEX idx_crm_leads_status ON crm_leads(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_crm_leads_tenant",
+        "sql": "CREATE INDEX idx_crm_leads_tenant ON crm_leads(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_crm_tasks_assignee",
+        "sql": "CREATE INDEX idx_crm_tasks_assignee ON crm_tasks(assignee_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_crm_tasks_status",
+        "sql": "CREATE INDEX idx_crm_tasks_status ON crm_tasks(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_crm_tasks_tenant",
+        "sql": "CREATE INDEX idx_crm_tasks_tenant ON crm_tasks(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_customers_email",
+        "sql": "CREATE INDEX idx_customers_email ON pos_customers(email)"
+      },
+      {
+        "type": "index",
+        "name": "idx_customers_number",
+        "sql": "CREATE INDEX idx_customers_number ON pos_customers(customer_number)"
+      },
+      {
+        "type": "index",
+        "name": "idx_customers_organization",
+        "sql": "CREATE INDEX idx_customers_organization ON pos_customers(organization_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_customers_phone",
+        "sql": "CREATE INDEX idx_customers_phone ON pos_customers(phone)"
+      },
+      {
+        "type": "index",
+        "name": "idx_customers_tenant",
+        "sql": "CREATE INDEX idx_customers_tenant ON customers(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_customers_tenant_email",
+        "sql": "CREATE INDEX idx_customers_tenant_email ON customers(tenant_id, email)"
+      },
+      {
+        "type": "index",
+        "name": "idx_customers_tenant_phone",
+        "sql": "CREATE INDEX idx_customers_tenant_phone ON customers(tenant_id, phone)"
+      },
+      {
+        "type": "index",
+        "name": "idx_employees_status",
+        "sql": "CREATE INDEX idx_employees_status ON employees(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_employees_tenant",
+        "sql": "CREATE INDEX idx_employees_tenant ON employees(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_entry_lines_account",
+        "sql": "CREATE INDEX idx_entry_lines_account ON entry_lines(account_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_entry_lines_entry",
+        "sql": "CREATE INDEX idx_entry_lines_entry ON entry_lines(entry_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_feedback_created",
+        "sql": "CREATE INDEX idx_feedback_created ON feedback(created_at DESC)"
+      },
+      {
+        "type": "index",
+        "name": "idx_feedback_status",
+        "sql": "CREATE INDEX idx_feedback_status ON feedback(status, created_at DESC)"
+      },
+      {
+        "type": "index",
+        "name": "idx_feedback_tenant",
+        "sql": "CREATE INDEX idx_feedback_tenant ON feedback(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inbox_date",
+        "sql": "CREATE INDEX idx_inbox_date ON inbox(created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inbox_reads_tenant",
+        "sql": "CREATE INDEX idx_inbox_reads_tenant ON inbox_reads(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inbox_severity",
+        "sql": "CREATE INDEX idx_inbox_severity ON inbox(severity)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inbox_tenant",
+        "sql": "CREATE INDEX idx_inbox_tenant ON inbox(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inv_adj_date",
+        "sql": "CREATE INDEX idx_inv_adj_date ON inventory_adjustments(created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inv_adj_product",
+        "sql": "CREATE INDEX idx_inv_adj_product ON inventory_adjustments(product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inv_adj_tenant",
+        "sql": "CREATE INDEX idx_inv_adj_tenant ON inventory_adjustments(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_inventory_adjustments_project",
+        "sql": "CREATE INDEX idx_inventory_adjustments_project ON inventory_adjustments(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_invoice_lines_invoice",
+        "sql": "CREATE INDEX idx_invoice_lines_invoice ON invoice_lines(invoice_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_invoices_status",
+        "sql": "CREATE INDEX idx_invoices_status ON invoices(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_invoices_tenant",
+        "sql": "CREATE INDEX idx_invoices_tenant ON invoices(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_job_posts_tenant",
+        "sql": "CREATE INDEX idx_job_posts_tenant ON job_posts(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_journal_entries_date",
+        "sql": "CREATE INDEX idx_journal_entries_date ON journal_entries(date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_journal_entries_tenant",
+        "sql": "CREATE INDEX idx_journal_entries_tenant ON journal_entries(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_journals_tenant",
+        "sql": "CREATE INDEX idx_journals_tenant ON journals(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_knowledge_articles_tenant",
+        "sql": "CREATE INDEX idx_knowledge_articles_tenant ON knowledge_articles(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leads_created_at",
+        "sql": "CREATE INDEX idx_leads_created_at ON leads(created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leads_status",
+        "sql": "CREATE INDEX idx_leads_status ON leads(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leads_tenant",
+        "sql": "CREATE INDEX idx_leads_tenant ON leads(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leads_tenant_id",
+        "sql": "CREATE INDEX idx_leads_tenant_id ON leads(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leave_balances_employee",
+        "sql": "CREATE INDEX idx_leave_balances_employee ON leave_balances(employee_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leave_balances_tenant_year",
+        "sql": "CREATE INDEX idx_leave_balances_tenant_year\n  ON leave_balances(tenant_id, year)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leave_requests_employee",
+        "sql": "CREATE INDEX idx_leave_requests_employee ON leave_requests(employee_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leave_requests_status",
+        "sql": "CREATE INDEX idx_leave_requests_status ON leave_requests(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_leave_requests_tenant",
+        "sql": "CREATE INDEX idx_leave_requests_tenant ON leave_requests(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_manufacturing_orders_status",
+        "sql": "CREATE INDEX idx_manufacturing_orders_status ON manufacturing_orders(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_manufacturing_orders_tenant",
+        "sql": "CREATE INDEX idx_manufacturing_orders_tenant ON manufacturing_orders(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_marketplace_payments_order",
+        "sql": "CREATE INDEX idx_marketplace_payments_order ON marketplace_payments(order_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_marketplace_payments_payout",
+        "sql": "CREATE INDEX idx_marketplace_payments_payout ON marketplace_payments(payout_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_marketplace_payments_status",
+        "sql": "CREATE INDEX idx_marketplace_payments_status ON marketplace_payments(payment_status, captured_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_marketplace_payments_tenant",
+        "sql": "CREATE INDEX idx_marketplace_payments_tenant ON marketplace_payments(tenant_id, payment_status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_marketplace_payouts_status_created",
+        "sql": "CREATE INDEX idx_marketplace_payouts_status_created ON marketplace_payouts(status, created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_marketplace_payouts_tenant_status",
+        "sql": "CREATE INDEX idx_marketplace_payouts_tenant_status ON marketplace_payouts(tenant_id, status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_categories_project",
+        "sql": "CREATE INDEX idx_meal_categories_project ON meal_categories(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_categories_tenant",
+        "sql": "CREATE INDEX idx_meal_categories_tenant ON meal_categories(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_camp",
+        "sql": "CREATE INDEX idx_meal_schedules_camp ON meal_schedules(camp_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_camp_date",
+        "sql": "CREATE INDEX idx_meal_schedules_camp_date ON meal_schedules(camp_id, date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_date",
+        "sql": "CREATE INDEX idx_meal_schedules_date ON meal_schedules(date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_meal",
+        "sql": "CREATE INDEX idx_meal_schedules_meal ON meal_schedules(meal_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_project",
+        "sql": "CREATE INDEX idx_meal_schedules_project ON meal_schedules(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_tenant",
+        "sql": "CREATE INDEX idx_meal_schedules_tenant ON meal_schedules(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_tenant_camp_date",
+        "sql": "CREATE INDEX idx_meal_schedules_tenant_camp_date ON meal_schedules(tenant_id, camp_id, date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meal_schedules_tenant_date",
+        "sql": "CREATE INDEX idx_meal_schedules_tenant_date ON meal_schedules(tenant_id, date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meals_category",
+        "sql": "CREATE INDEX idx_meals_category ON meals(meal_category_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meals_project",
+        "sql": "CREATE INDEX idx_meals_project ON meals(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_meals_tenant",
+        "sql": "CREATE INDEX idx_meals_tenant ON meals(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_mkt_cat_slug",
+        "sql": "CREATE INDEX idx_mkt_cat_slug ON marketplace_categories(slug)"
+      },
+      {
+        "type": "index",
+        "name": "idx_mkt_reviews_approved",
+        "sql": "CREATE INDEX idx_mkt_reviews_approved ON marketplace_reviews(is_approved)"
+      },
+      {
+        "type": "index",
+        "name": "idx_mkt_reviews_project",
+        "sql": "CREATE INDEX idx_mkt_reviews_project ON marketplace_reviews(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_mkt_reviews_tenant",
+        "sql": "CREATE INDEX idx_mkt_reviews_tenant ON marketplace_reviews(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_opportunities_stage",
+        "sql": "CREATE INDEX idx_opportunities_stage ON opportunities(stage)"
+      },
+      {
+        "type": "index",
+        "name": "idx_opportunities_tenant",
+        "sql": "CREATE INDEX idx_opportunities_tenant ON opportunities(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_order_discounts_order",
+        "sql": "CREATE INDEX idx_order_discounts_order  ON order_discounts(order_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_order_discounts_tenant",
+        "sql": "CREATE INDEX idx_order_discounts_tenant ON order_discounts(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_order_items_order",
+        "sql": "CREATE INDEX idx_order_items_order ON order_items(order_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_order_items_project",
+        "sql": "CREATE INDEX idx_order_items_project ON order_items(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_order_items_split",
+        "sql": "CREATE INDEX idx_order_items_split ON order_items(split_group)"
+      },
+      {
+        "type": "index",
+        "name": "idx_order_items_type",
+        "sql": "CREATE INDEX idx_order_items_type ON order_items(type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_camp",
+        "sql": "CREATE INDEX idx_orders_camp ON orders(camp_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_cashier",
+        "sql": "CREATE INDEX idx_orders_cashier ON pos_transactions(cashier_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_created",
+        "sql": "CREATE INDEX idx_orders_created ON orders(created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_customer",
+        "sql": "CREATE INDEX idx_orders_customer ON pos_transactions(customer_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_date",
+        "sql": "CREATE INDEX idx_orders_date ON pos_transactions(created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_dates",
+        "sql": "CREATE INDEX idx_orders_dates ON orders(check_in_date, check_out_date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_number",
+        "sql": "CREATE INDEX idx_orders_number ON pos_transactions(order_number)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_organization_store",
+        "sql": "CREATE INDEX idx_orders_organization_store ON pos_transactions(organization_id, store_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_payment_status",
+        "sql": "CREATE INDEX idx_orders_payment_status ON orders(payment_status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_project",
+        "sql": "CREATE INDEX idx_orders_project ON orders(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_project_nn",
+        "sql": "CREATE INDEX idx_orders_project_nn ON orders(project_id) WHERE project_id IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_reference",
+        "sql": "CREATE INDEX idx_orders_reference ON orders(reference)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_room",
+        "sql": "CREATE INDEX idx_orders_room ON orders(room_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_state",
+        "sql": "CREATE INDEX idx_orders_state ON orders(order_state_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_status",
+        "sql": "CREATE INDEX idx_orders_status ON pos_transactions(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_tenant",
+        "sql": "CREATE INDEX idx_orders_tenant ON orders(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_tenant_date",
+        "sql": "CREATE INDEX idx_orders_tenant_date ON orders(tenant_id, created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_tenant_room_dates",
+        "sql": "CREATE INDEX idx_orders_tenant_room_dates ON orders(tenant_id, room_id, check_in_date, check_out_date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_orders_tenant_state",
+        "sql": "CREATE INDEX idx_orders_tenant_state ON orders(tenant_id, order_state_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pages_slug",
+        "sql": "CREATE INDEX idx_pages_slug ON pages(tenant_id, slug)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pages_tenant",
+        "sql": "CREATE INDEX idx_pages_tenant ON pages(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_payment_records_order",
+        "sql": "CREATE INDEX idx_payment_records_order ON payment_records(order_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_payment_records_tenant",
+        "sql": "CREATE INDEX idx_payment_records_tenant ON payment_records(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_payments_invoice",
+        "sql": "CREATE INDEX idx_payments_invoice ON payments(invoice_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_payments_tenant",
+        "sql": "CREATE INDEX idx_payments_tenant ON payments(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_payroll_lines_run",
+        "sql": "CREATE INDEX idx_payroll_lines_run ON payroll_lines(payroll_run_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_payroll_runs_tenant",
+        "sql": "CREATE INDEX idx_payroll_runs_tenant ON payroll_runs(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_plans_new_camp",
+        "sql": "CREATE INDEX idx_plans_new_camp ON plans_new(camp_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_plans_new_tenant",
+        "sql": "CREATE INDEX idx_plans_new_tenant ON plans_new(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_customers_tenant",
+        "sql": "CREATE INDEX idx_pos_customers_tenant ON pos_customers(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_active",
+        "sql": "CREATE INDEX idx_pos_products_active ON pos_products(is_active, deleted_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_active_tenant",
+        "sql": "CREATE INDEX idx_pos_products_active_tenant ON pos_products(is_active, tenant_id, type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_barcode",
+        "sql": "CREATE INDEX idx_pos_products_barcode ON pos_products(barcode)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_camp",
+        "sql": "CREATE INDEX idx_pos_products_camp ON pos_products(camp_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_category",
+        "sql": "CREATE INDEX idx_pos_products_category ON pos_products(category_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_deleted",
+        "sql": "CREATE INDEX idx_pos_products_deleted ON pos_products(deleted_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_org",
+        "sql": "CREATE INDEX idx_pos_products_org ON pos_products(organization_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_project",
+        "sql": "CREATE INDEX idx_pos_products_project ON pos_products(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_stock",
+        "sql": "CREATE INDEX idx_pos_products_stock ON pos_products(stock_quantity, min_stock_level)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_tenant",
+        "sql": "CREATE INDEX idx_pos_products_tenant ON pos_products(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_tenant_type",
+        "sql": "CREATE INDEX idx_pos_products_tenant_type ON pos_products(tenant_id, type, is_active)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_products_type",
+        "sql": "CREATE INDEX idx_pos_products_type ON pos_products(type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_shifts_dates",
+        "sql": "CREATE INDEX idx_pos_shifts_dates ON pos_shifts(opening_time, closing_time)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_shifts_staff",
+        "sql": "CREATE INDEX idx_pos_shifts_staff ON pos_shifts(cashier_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_shifts_tenant",
+        "sql": "CREATE INDEX idx_pos_shifts_tenant ON pos_shifts(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_stores_organization",
+        "sql": "CREATE INDEX idx_pos_stores_organization\n  ON pos_stores(organization_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_stores_project",
+        "sql": "CREATE INDEX idx_pos_stores_project ON pos_stores(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_stores_project_nn",
+        "sql": "CREATE INDEX idx_pos_stores_project_nn ON pos_stores(project_id) WHERE project_id IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tables_project",
+        "sql": "CREATE INDEX idx_pos_tables_project ON pos_tables(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tables_section",
+        "sql": "CREATE INDEX idx_pos_tables_section ON pos_tables(section)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tables_status",
+        "sql": "CREATE INDEX idx_pos_tables_status ON pos_tables(tenant_id, status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tables_tenant",
+        "sql": "CREATE INDEX idx_pos_tables_tenant ON pos_tables(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transaction_items_project",
+        "sql": "CREATE INDEX idx_pos_transaction_items_project ON pos_transaction_items(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transaction_items_transaction",
+        "sql": "CREATE INDEX idx_pos_transaction_items_transaction ON pos_transaction_items(transaction_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transactions_cashier",
+        "sql": "CREATE INDEX idx_pos_transactions_cashier ON pos_transactions(cashier_id, created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transactions_customer",
+        "sql": "CREATE INDEX idx_pos_transactions_customer ON pos_transactions(customer_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transactions_idempotency",
+        "sql": "CREATE UNIQUE INDEX idx_pos_transactions_idempotency\n  ON pos_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transactions_project",
+        "sql": "CREATE INDEX idx_pos_transactions_project ON pos_transactions(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transactions_project_nn",
+        "sql": "CREATE INDEX idx_pos_transactions_project_nn ON pos_transactions(project_id) WHERE project_id IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_transactions_tenant_date",
+        "sql": "CREATE INDEX idx_pos_transactions_tenant_date ON pos_transactions(tenant_id, created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_items_product",
+        "sql": "CREATE INDEX idx_pos_tx_items_product ON pos_transaction_items(product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_items_tenant",
+        "sql": "CREATE INDEX idx_pos_tx_items_tenant ON pos_transaction_items(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_items_tx",
+        "sql": "CREATE INDEX idx_pos_tx_items_tx ON pos_transaction_items(transaction_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_kitchen",
+        "sql": "CREATE INDEX idx_pos_tx_kitchen ON pos_transactions(kitchen_status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_staff",
+        "sql": "CREATE INDEX idx_pos_tx_staff ON pos_transactions(cashier_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_status",
+        "sql": "CREATE INDEX idx_pos_tx_status ON pos_transactions(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_tenant_date",
+        "sql": "CREATE INDEX idx_pos_tx_tenant_date ON pos_transactions(tenant_id, created_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_tx_type",
+        "sql": "CREATE INDEX idx_pos_tx_type ON pos_transactions(order_type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_email",
+        "sql": "CREATE INDEX idx_pos_users_email ON pos_users(email)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_email_tenant",
+        "sql": "CREATE INDEX idx_pos_users_email_tenant\n    ON pos_users(email, tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_email_username",
+        "sql": "CREATE INDEX idx_pos_users_email_username ON pos_users(email, username, tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_org",
+        "sql": "CREATE INDEX idx_pos_users_org ON pos_users(organization_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_password_reset_token",
+        "sql": "CREATE INDEX idx_pos_users_password_reset_token ON pos_users(password_reset_token)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_project",
+        "sql": "CREATE INDEX idx_pos_users_project ON pos_users(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_project_nn",
+        "sql": "CREATE INDEX idx_pos_users_project_nn ON pos_users(project_id) WHERE project_id IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_role",
+        "sql": "CREATE INDEX idx_pos_users_role ON pos_users(role)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_status",
+        "sql": "CREATE INDEX idx_pos_users_status ON pos_users(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_tenant",
+        "sql": "CREATE INDEX idx_pos_users_tenant\n    ON pos_users(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_tenant_role",
+        "sql": "CREATE INDEX idx_pos_users_tenant_role ON pos_users(tenant_id, role, deleted_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_pos_users_username",
+        "sql": "CREATE INDEX idx_pos_users_username ON pos_users(username)"
+      },
+      {
+        "type": "index",
+        "name": "idx_predictions_tenant",
+        "sql": "CREATE INDEX idx_predictions_tenant ON predictions(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_predictions_type",
+        "sql": "CREATE INDEX idx_predictions_type ON predictions(model_type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_price_overrides_product_date",
+        "sql": "CREATE INDEX idx_price_overrides_product_date\n    ON price_overrides(product_id, date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_price_rules_tenant",
+        "sql": "CREATE INDEX idx_price_rules_tenant ON price_rules(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_product_camps_camp",
+        "sql": "CREATE INDEX idx_product_camps_camp ON product_camps(camp_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_product_camps_product",
+        "sql": "CREATE INDEX idx_product_camps_product ON product_camps(product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_products_tenant",
+        "sql": "CREATE INDEX idx_products_tenant ON products(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_project_items_project",
+        "sql": "CREATE INDEX idx_project_items_project ON project_items(project_id, item_type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_project_items_tenant",
+        "sql": "CREATE INDEX idx_project_items_tenant ON project_items(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_project_links_a",
+        "sql": "CREATE INDEX idx_project_links_a ON project_links(project_id_a)"
+      },
+      {
+        "type": "index",
+        "name": "idx_project_links_b",
+        "sql": "CREATE INDEX idx_project_links_b ON project_links(project_id_b)"
+      },
+      {
+        "type": "index",
+        "name": "idx_project_links_tenant",
+        "sql": "CREATE INDEX idx_project_links_tenant ON project_links(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_project_meta_key",
+        "sql": "CREATE INDEX idx_project_meta_key ON project_meta(project_id, meta_key)"
+      },
+      {
+        "type": "index",
+        "name": "idx_project_meta_project",
+        "sql": "CREATE INDEX idx_project_meta_project ON project_meta(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_projects_deleted",
+        "sql": "CREATE INDEX idx_projects_deleted ON projects(deleted_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_projects_meal_plan_category",
+        "sql": "CREATE INDEX idx_projects_meal_plan_category ON projects(meal_plan_category_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_projects_slug",
+        "sql": "CREATE INDEX idx_projects_slug ON projects(slug)"
+      },
+      {
+        "type": "index",
+        "name": "idx_projects_tenant",
+        "sql": "CREATE INDEX idx_projects_tenant ON projects(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_projects_tenant_deleted",
+        "sql": "CREATE INDEX idx_projects_tenant_deleted ON projects(tenant_id, deleted_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_projects_tenant_type_status",
+        "sql": "CREATE INDEX idx_projects_tenant_type_status ON projects(tenant_id, project_type, status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_projects_type",
+        "sql": "CREATE INDEX idx_projects_type ON projects(project_type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_promotions_active",
+        "sql": "CREATE INDEX idx_promotions_active ON promotions(tenant_id, is_active)"
+      },
+      {
+        "type": "index",
+        "name": "idx_promotions_dates",
+        "sql": "CREATE INDEX idx_promotions_dates ON promotions(start_date, end_date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_promotions_day",
+        "sql": "CREATE INDEX idx_promotions_day ON promotions(day_of_week)"
+      },
+      {
+        "type": "index",
+        "name": "idx_promotions_project",
+        "sql": "CREATE INDEX idx_promotions_project ON promotions(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_promotions_project_nn",
+        "sql": "CREATE INDEX idx_promotions_project_nn ON promotions(project_id) WHERE project_id IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_promotions_tenant",
+        "sql": "CREATE INDEX idx_promotions_tenant ON promotions(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_purchase_order_lines_po",
+        "sql": "CREATE INDEX idx_purchase_order_lines_po ON purchase_order_lines(po_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_purchase_orders_status",
+        "sql": "CREATE INDEX idx_purchase_orders_status ON purchase_orders(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_purchase_orders_tenant",
+        "sql": "CREATE INDEX idx_purchase_orders_tenant ON purchase_orders(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rate_plans_new_camp",
+        "sql": "CREATE INDEX idx_rate_plans_new_camp ON rate_plans_new(camp_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rate_plans_new_product",
+        "sql": "CREATE INDEX idx_rate_plans_new_product ON rate_plans_new(product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rate_plans_new_project",
+        "sql": "CREATE INDEX idx_rate_plans_new_project ON rate_plans_new(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rate_plans_new_tenant",
+        "sql": "CREATE INDEX idx_rate_plans_new_tenant ON rate_plans_new(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_recipe_ingredient",
+        "sql": "CREATE INDEX idx_recipe_ingredient\n    ON pos_recipe_ingredients(ingredient_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_recipe_product",
+        "sql": "CREATE INDEX idx_recipe_product\n    ON pos_recipe_ingredients(product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_recipe_tenant_product",
+        "sql": "CREATE INDEX idx_recipe_tenant_product\n  ON pos_recipe_ingredients(tenant_id, product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_capacity",
+        "sql": "CREATE INDEX idx_rooms_capacity ON rooms_new(max_guests)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_floor",
+        "sql": "CREATE INDEX idx_rooms_floor ON rooms_new(floor)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_new_camp",
+        "sql": "CREATE INDEX idx_rooms_new_camp ON rooms_new(camp_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_new_product",
+        "sql": "CREATE INDEX idx_rooms_new_product ON rooms_new(product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_new_project",
+        "sql": "CREATE INDEX idx_rooms_new_project ON rooms_new(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_new_room_status",
+        "sql": "CREATE INDEX idx_rooms_new_room_status ON rooms_new(room_status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_new_status",
+        "sql": "CREATE INDEX idx_rooms_new_status ON rooms_new(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_rooms_new_tenant_id",
+        "sql": "CREATE INDEX idx_rooms_new_tenant_id ON rooms_new(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_sb_item",
+        "sql": "CREATE INDEX idx_sb_item ON service_bookings(service_item_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_sb_scheduled",
+        "sql": "CREATE INDEX idx_sb_scheduled ON service_bookings(scheduled_date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_sb_status",
+        "sql": "CREATE INDEX idx_sb_status ON service_bookings(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_sb_tenant",
+        "sql": "CREATE INDEX idx_sb_tenant ON service_bookings(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_sd_tenant",
+        "sql": "CREATE INDEX idx_sd_tenant ON service_definitions(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_bookings_date",
+        "sql": "CREATE INDEX idx_service_bookings_date ON service_bookings(scheduled_date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_bookings_item",
+        "sql": "CREATE INDEX idx_service_bookings_item ON service_bookings(service_item_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_bookings_status",
+        "sql": "CREATE INDEX idx_service_bookings_status ON service_bookings(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_bookings_tenant",
+        "sql": "CREATE INDEX idx_service_bookings_tenant ON service_bookings(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_defs_slug",
+        "sql": "CREATE INDEX idx_service_defs_slug ON service_definitions(slug)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_defs_tenant",
+        "sql": "CREATE INDEX idx_service_defs_tenant ON service_definitions(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_items_def",
+        "sql": "CREATE INDEX idx_service_items_def ON service_items(service_definition_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_items_project",
+        "sql": "CREATE INDEX idx_service_items_project ON service_items(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_items_status",
+        "sql": "CREATE INDEX idx_service_items_status ON service_items(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_service_items_tenant",
+        "sql": "CREATE INDEX idx_service_items_tenant ON service_items(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_shifts_status",
+        "sql": "CREATE INDEX idx_shifts_status ON pos_shifts(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_shifts_tenant_cashier",
+        "sql": "CREATE INDEX idx_shifts_tenant_cashier ON pos_shifts(tenant_id, cashier_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_shifts_tenant_cashier_status",
+        "sql": "CREATE INDEX idx_shifts_tenant_cashier_status\n  ON pos_shifts(tenant_id, cashier_id, status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_stock_quant_product",
+        "sql": "CREATE INDEX idx_stock_quant_product ON stock_quant(product_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_stock_quant_tenant",
+        "sql": "CREATE INDEX idx_stock_quant_tenant ON stock_quant(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_stock_quant_warehouse",
+        "sql": "CREATE INDEX idx_stock_quant_warehouse ON stock_quant(warehouse_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_stock_transfers_status",
+        "sql": "CREATE INDEX idx_stock_transfers_status ON stock_transfers(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_stock_transfers_tenant",
+        "sql": "CREATE INDEX idx_stock_transfers_tenant ON stock_transfers(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_storefront_order_items_order",
+        "sql": "CREATE INDEX idx_storefront_order_items_order ON storefront_order_items(order_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_storefront_orders_project",
+        "sql": "CREATE INDEX idx_storefront_orders_project ON storefront_orders(project_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_storefront_orders_project_nn",
+        "sql": "CREATE INDEX idx_storefront_orders_project_nn ON storefront_orders(project_id) WHERE project_id IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_storefront_orders_session",
+        "sql": "CREATE INDEX idx_storefront_orders_session ON storefront_orders(session_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_storefront_orders_tenant",
+        "sql": "CREATE INDEX idx_storefront_orders_tenant ON storefront_orders(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_svc_avail_date",
+        "sql": "CREATE INDEX idx_svc_avail_date ON service_availability(available_date)"
+      },
+      {
+        "type": "index",
+        "name": "idx_svc_avail_item",
+        "sql": "CREATE INDEX idx_svc_avail_item ON service_availability(service_item_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_svc_bookings_worker",
+        "sql": "CREATE INDEX idx_svc_bookings_worker ON service_bookings(assigned_worker_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_svc_reviews_item",
+        "sql": "CREATE INDEX idx_svc_reviews_item ON service_reviews(service_item_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_svc_reviews_rating",
+        "sql": "CREATE INDEX idx_svc_reviews_rating ON service_reviews(rating)"
+      },
+      {
+        "type": "index",
+        "name": "idx_svc_reviews_tenant",
+        "sql": "CREATE INDEX idx_svc_reviews_tenant ON service_reviews(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tags_tenant",
+        "sql": "CREATE INDEX idx_tags_tenant ON tags(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tax_rates_tenant",
+        "sql": "CREATE INDEX idx_tax_rates_tenant ON tax_rates(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenant_meta_key",
+        "sql": "CREATE INDEX idx_tenant_meta_key ON tenant_meta(tenant_id, meta_key)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenant_meta_tenant",
+        "sql": "CREATE INDEX idx_tenant_meta_tenant ON tenant_meta(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenant_org_mapping_org",
+        "sql": "CREATE INDEX idx_tenant_org_mapping_org\n  ON tenant_org_mapping(organization_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenant_sub_plan",
+        "sql": "CREATE INDEX idx_tenant_sub_plan ON tenant_subscriptions(plan_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenant_sub_status",
+        "sql": "CREATE INDEX idx_tenant_sub_status ON tenant_subscriptions(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenant_sub_tenant",
+        "sql": "CREATE INDEX idx_tenant_sub_tenant ON tenant_subscriptions(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenants_business_type",
+        "sql": "CREATE INDEX idx_tenants_business_type ON tenants(business_type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenants_deleted",
+        "sql": "CREATE INDEX idx_tenants_deleted ON tenants(deleted_at)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenants_domain",
+        "sql": "CREATE INDEX idx_tenants_domain ON tenants(custom_domain)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenants_onboarding",
+        "sql": "CREATE INDEX idx_tenants_onboarding ON tenants(onboarding_status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenants_onboarding_token",
+        "sql": "CREATE INDEX idx_tenants_onboarding_token ON tenants(onboarding_token) WHERE onboarding_token IS NOT NULL"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenants_subdomain",
+        "sql": "CREATE INDEX idx_tenants_subdomain ON tenants(subdomain)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tenants_type",
+        "sql": "CREATE INDEX idx_tenants_type ON tenants(type)"
+      },
+      {
+        "type": "index",
+        "name": "idx_ticket_comments_ticket",
+        "sql": "CREATE INDEX idx_ticket_comments_ticket ON ticket_comments(ticket_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tickets_status",
+        "sql": "CREATE INDEX idx_tickets_status ON tickets(status)"
+      },
+      {
+        "type": "index",
+        "name": "idx_tickets_tenant",
+        "sql": "CREATE INDEX idx_tickets_tenant ON tickets(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_time_entries_task",
+        "sql": "CREATE INDEX idx_time_entries_task ON time_entries(task_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_users_email",
+        "sql": "CREATE INDEX idx_users_email ON pos_users(email)"
+      },
+      {
+        "type": "index",
+        "name": "idx_users_organization_store",
+        "sql": "CREATE INDEX idx_users_organization_store ON pos_users(organization_id, store_id)"
+      },
+      {
+        "type": "index",
+        "name": "idx_users_role",
+        "sql": "CREATE INDEX idx_users_role ON pos_users(role)"
+      },
+      {
+        "type": "index",
+        "name": "idx_warehouses_tenant",
+        "sql": "CREATE INDEX idx_warehouses_tenant ON warehouses(tenant_id)"
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_accounts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_accounts_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_admins_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_admins_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_applicants_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_audit_log_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_automation_logs_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_automation_rules_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_blog_categories_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_blog_categories_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_blog_posts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_blog_posts_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_bom_lines_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_boms_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_cart_items_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_cart_items_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_carts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_categories_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_category_lang_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_contacts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_crm_leads_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_crm_tasks_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_customers_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_d1_migrations_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_employees_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_employees_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_entry_lines_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_exchange_rates_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_exchange_rates_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_feedback_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_inbox_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_inbox_reads_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_inventory_adjustments_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_invoice_lines_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_invoices_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_job_posts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_journal_entries_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_journals_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_knowledge_articles_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_languages_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_leads_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_leave_balances_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_leave_balances_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_leave_requests_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_leave_types_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_leave_types_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_manufacturing_orders_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_marketplace_categories_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_marketplace_categories_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_marketplace_payments_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_marketplace_payouts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_marketplace_project_categories_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_marketplace_reviews_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_meal_categories_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_meal_categories_lang_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_meal_lang_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_meal_schedules_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_meals_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_opportunities_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_order_discounts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_order_items_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_order_state_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_order_state_lang_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_orders_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_orders_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pages_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pages_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_payment_records_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_payments_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_payroll_lines_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_payroll_runs_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_plans_new_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_customers_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_customers_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_organizations_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_products_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_products_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_products_3",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_recipe_ingredients_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_shifts_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_stores_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_tables_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_transaction_items_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_transactions_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_transactions_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_users_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_pos_users_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_predictions_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_price_overrides_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_price_rules_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_product_camps_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_products_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_project_items_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_project_links_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_project_tags_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_projects_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_projects_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_promotions_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_purchase_order_lines_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_purchase_orders_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_rate_plans_new_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_rooms_new_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_service_availability_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_service_bookings_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_service_definitions_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_service_definitions_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_service_items_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_service_reviews_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_stock_quant_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_stock_quant_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_stock_transfers_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_storefront_order_items_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_storefront_orders_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_storefront_orders_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_subscription_plans_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_subscription_plans_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tags_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tags_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tax_rates_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tenant_org_mapping_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tenant_org_mapping_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tenant_subscriptions_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tenant_subscriptions_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tenants_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tenants_2",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tenants_3",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_ticket_comments_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_tickets_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_time_entries_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_warehouses_1",
+        "sql": null
+      },
+      {
+        "type": "index",
+        "name": "sqlite_autoindex_warehouses_2",
+        "sql": null
+      },
+      {
+        "type": "table",
+        "name": "_cf_METADATA",
+        "sql": "CREATE TABLE _cf_METADATA (\n        key INTEGER PRIMARY KEY,\n        value BLOB\n      )"
+      },
+      {
+        "type": "table",
+        "name": "accounts",
+        "sql": "CREATE TABLE accounts (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  code TEXT NOT NULL,\n  name TEXT NOT NULL,\n  type TEXT NOT NULL CHECK(type IN ('asset', 'liability', 'equity', 'revenue', 'expense')),\n  parent_id TEXT REFERENCES accounts(id),\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(tenant_id, code)\n)"
+      },
+      {
+        "type": "table",
+        "name": "admins",
+        "sql": "CREATE TABLE admins (\n    id TEXT PRIMARY KEY,\n    tenant_id TEXT REFERENCES tenants(id) ON DELETE SET NULL,\n    email TEXT NOT NULL UNIQUE,\n    password_hash TEXT NOT NULL,\n    role TEXT NOT NULL CHECK(role IN ('super_admin', 'admin')),\n    first_name TEXT,\n    last_name TEXT,\n    is_active INTEGER DEFAULT 1,\n    last_login TEXT,\n    created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n    updated_at TEXT\n, auto_login_token TEXT, auto_login_expires_at DATETIME)"
+      },
+      {
+        "type": "table",
+        "name": "applicants",
+        "sql": "CREATE TABLE applicants (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  job_post_id TEXT NOT NULL REFERENCES job_posts(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  email TEXT NOT NULL,\n  phone TEXT,\n  resume_url TEXT,\n  status TEXT DEFAULT 'applied' CHECK(status IN ('applied', 'screening', 'interview', 'offered', 'hired', 'rejected')),\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "audit_log",
+        "sql": "CREATE TABLE \"audit_log\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL,\n  user_id TEXT NOT NULL,\n  action TEXT NOT NULL CHECK(action IN ('create', 'update', 'delete')),\n  entity_type TEXT NOT NULL CHECK(entity_type IN ('tenant', 'project', 'admin', 'order', 'pos_table')),\n  entity_id TEXT NOT NULL,\n  old_values TEXT,\n  new_values TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "automation_logs",
+        "sql": "CREATE TABLE automation_logs (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  rule_id TEXT REFERENCES automation_rules(id),\n  trigger_event TEXT,\n  executed_action TEXT,\n  result TEXT DEFAULT 'success',\n  error TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "automation_rules",
+        "sql": "CREATE TABLE automation_rules (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  trigger_event TEXT NOT NULL,\n  condition_json TEXT,\n  action_json TEXT,\n  is_active INTEGER DEFAULT 1,\n  last_triggered_at TEXT,\n  trigger_count INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "blog_categories",
+        "sql": "CREATE TABLE blog_categories (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  slug TEXT NOT NULL,\n  created_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(tenant_id, slug)\n)"
+      },
+      {
+        "type": "table",
+        "name": "blog_posts",
+        "sql": "CREATE TABLE blog_posts (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  slug TEXT NOT NULL,\n  title TEXT NOT NULL,\n  content TEXT NOT NULL,\n  excerpt TEXT,\n  category TEXT,\n  tags TEXT,\n  author_id TEXT,\n  is_published INTEGER DEFAULT 0,\n  published_at TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(tenant_id, slug)\n)"
+      },
+      {
+        "type": "table",
+        "name": "bom_lines",
+        "sql": "CREATE TABLE bom_lines (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  bom_id TEXT NOT NULL REFERENCES boms(id) ON DELETE CASCADE,\n  component_id TEXT NOT NULL,\n  quantity REAL NOT NULL,\n  unit TEXT DEFAULT 'each',\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "boms",
+        "sql": "CREATE TABLE boms (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  product_id TEXT NOT NULL,\n  name TEXT NOT NULL,\n  version INTEGER DEFAULT 1,\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "cart_items",
+        "sql": "CREATE TABLE cart_items (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  cart_id TEXT NOT NULL REFERENCES carts(id) ON DELETE CASCADE,\n  product_id TEXT NOT NULL,\n  quantity INTEGER NOT NULL DEFAULT 1,\n  unit_price REAL NOT NULL,\n  total_price REAL NOT NULL,\n  created_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(cart_id, product_id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "carts",
+        "sql": "CREATE TABLE carts (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  user_id TEXT,\n  session_id TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now'))\n, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL)"
+      },
+      {
+        "type": "table",
+        "name": "categories",
+        "sql": "CREATE TABLE categories (\n    id TEXT PRIMARY KEY,\n    parent_id TEXT REFERENCES categories(id) ON DELETE CASCADE,\n    active INTEGER DEFAULT 1,\n    position INTEGER DEFAULT 0,\n    created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n    updated_at TEXT\n, tenant_id TEXT)"
+      },
+      {
+        "type": "table",
+        "name": "category_lang",
+        "sql": "CREATE TABLE category_lang (\n    category_id TEXT REFERENCES categories(id) ON DELETE CASCADE,\n    lang TEXT NOT NULL REFERENCES languages(code) ON DELETE CASCADE,\n    name TEXT NOT NULL,\n    description TEXT,\n    link_rewrite TEXT,\n    meta_title TEXT,\n    meta_description TEXT,\n    meta_keywords TEXT,\n    PRIMARY KEY (category_id, lang)\n)"
+      },
+      {
+        "type": "table",
+        "name": "contacts",
+        "sql": "CREATE TABLE contacts (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  type TEXT NOT NULL DEFAULT 'individual' CHECK(type IN ('individual', 'company')),\n  name TEXT NOT NULL,\n  email TEXT,\n  phone TEXT,\n  address TEXT,\n  industry TEXT,\n  is_customer INTEGER DEFAULT 0,\n  is_vendor INTEGER DEFAULT 0,\n  is_lead INTEGER DEFAULT 0,\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "crm_leads",
+        "sql": "CREATE TABLE crm_leads (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  contact_id TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,\n  status TEXT DEFAULT 'new' CHECK(status IN ('new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost')),\n  source TEXT,\n  assigned_to TEXT,\n  value REAL,\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "crm_tasks",
+        "sql": "CREATE TABLE crm_tasks (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  project_id TEXT,\n  title TEXT NOT NULL,\n  description TEXT,\n  status TEXT DEFAULT 'todo' CHECK(status IN ('todo', 'in_progress', 'done', 'blocked')),\n  priority TEXT DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high', 'urgent')),\n  assignee_id TEXT,\n  due_date TEXT,\n  completed_at TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "customers",
+        "sql": "CREATE TABLE customers (\n    id TEXT PRIMARY KEY,\n    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n    first_name TEXT,\n    last_name TEXT,\n    email TEXT,\n    phone TEXT,\n    created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n    updated_at TEXT\n)"
+      },
+      {
+        "type": "table",
+        "name": "d1_migrations",
+        "sql": "CREATE TABLE \"d1_migrations\"(\n\t\tid         INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\tname       TEXT UNIQUE,\n\t\tapplied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "employees",
+        "sql": "CREATE TABLE employees (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  first_name TEXT NOT NULL,\n  last_name TEXT NOT NULL,\n  email TEXT NOT NULL,\n  phone TEXT,\n  hire_date TEXT NOT NULL,\n  termination_date TEXT,\n  department TEXT,\n  position TEXT,\n  manager_id TEXT,\n  status TEXT DEFAULT 'active' CHECK(status IN ('active', 'terminated', 'on_leave')),\n  salary_type TEXT DEFAULT 'monthly' CHECK(salary_type IN ('hourly', 'monthly', 'annual')),\n  salary_amount REAL NOT NULL DEFAULT 0,\n  currency TEXT DEFAULT 'USD',\n  bank_account TEXT,\n  tax_id TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(tenant_id, email)\n)"
+      },
+      {
+        "type": "table",
+        "name": "entry_lines",
+        "sql": "CREATE TABLE entry_lines (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  entry_id TEXT NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,\n  account_id TEXT NOT NULL REFERENCES accounts(id),\n  debit REAL DEFAULT 0,\n  credit REAL DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "exchange_rates",
+        "sql": "CREATE TABLE exchange_rates (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  from_currency TEXT NOT NULL,\n  to_currency TEXT NOT NULL,\n  rate REAL NOT NULL,\n  date TEXT NOT NULL,\n  created_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(from_currency, to_currency, date)\n)"
+      },
+      {
+        "type": "table",
+        "name": "feedback",
+        "sql": "CREATE TABLE feedback (\n    id TEXT PRIMARY KEY,\n    tenant_id TEXT REFERENCES tenants(id) ON DELETE SET NULL,\n    author_type TEXT NOT NULL CHECK (author_type IN ('admin', 'pos', 'public')),\n    author_id TEXT,\n    author_name TEXT,\n    author_email TEXT,\n    role TEXT,\n    category TEXT NOT NULL CHECK (category IN ('bug', 'missing', 'flow')),\n    message TEXT NOT NULL,\n    personal_view TEXT,\n    page_url TEXT NOT NULL,\n    user_agent TEXT,\n    screenshot TEXT,\n    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved', 'archived')),\n    created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n    resolved_at TEXT,\n    resolved_by TEXT\n)"
+      },
+      {
+        "type": "table",
+        "name": "inbox",
+        "sql": "CREATE TABLE inbox (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT,\n  title TEXT NOT NULL,\n  message TEXT,\n  severity TEXT DEFAULT 'info',\n  is_read INTEGER DEFAULT 0,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "inbox_reads",
+        "sql": "CREATE TABLE inbox_reads (\n    tenant_id TEXT NOT NULL,\n    ref_type TEXT NOT NULL,\n    ref_id TEXT NOT NULL,\n    read_at TEXT DEFAULT CURRENT_TIMESTAMP,\n    PRIMARY KEY (tenant_id, ref_type, ref_id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "inventory_adjustments",
+        "sql": "CREATE TABLE \"inventory_adjustments\" (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL,\n  product_id TEXT NOT NULL,\n  adjustment INTEGER NOT NULL,\n  reason TEXT NOT NULL DEFAULT 'manual',\n  reference TEXT,\n  notes TEXT,\n  created_by TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "invoice_lines",
+        "sql": "CREATE TABLE invoice_lines (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,\n  product_id TEXT,\n  description TEXT NOT NULL,\n  quantity INTEGER DEFAULT 1,\n  unit_price REAL NOT NULL,\n  tax_rate REAL DEFAULT 0,\n  total_amount REAL NOT NULL,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "invoices",
+        "sql": "CREATE TABLE invoices (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  invoice_number TEXT NOT NULL,\n  type TEXT NOT NULL CHECK(type IN ('sales', 'purchase')),\n  contact_id TEXT,\n  issue_date TEXT NOT NULL,\n  due_date TEXT,\n  total_amount REAL NOT NULL DEFAULT 0,\n  paid_amount REAL DEFAULT 0,\n  status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'sent', 'paid', 'overdue', 'canceled')),\n  currency TEXT DEFAULT 'USD',\n  notes TEXT,\n  created_by TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "job_posts",
+        "sql": "CREATE TABLE job_posts (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  title TEXT NOT NULL,\n  description TEXT,\n  department TEXT,\n  location TEXT,\n  status TEXT DEFAULT 'open' CHECK(status IN ('open', 'closed', 'filled')),\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "journal_entries",
+        "sql": "CREATE TABLE journal_entries (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  journal_id TEXT NOT NULL REFERENCES journals(id),\n  date TEXT NOT NULL,\n  description TEXT,\n  reference TEXT,\n  created_by TEXT,\n  posted INTEGER DEFAULT 0,\n  posted_at TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "journals",
+        "sql": "CREATE TABLE journals (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  type TEXT NOT NULL CHECK(type IN ('sales', 'purchase', 'cash', 'bank', 'general')),\n  sequence_next INTEGER DEFAULT 1,\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "knowledge_articles",
+        "sql": "CREATE TABLE knowledge_articles (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  title TEXT NOT NULL,\n  content TEXT NOT NULL,\n  category TEXT,\n  tags TEXT,\n  is_published INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "languages",
+        "sql": "CREATE TABLE languages (\n    code TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    is_default INTEGER DEFAULT 0\n)"
+      },
+      {
+        "type": "table",
+        "name": "leads",
+        "sql": "CREATE TABLE leads (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL,\n  name TEXT NOT NULL,\n  email TEXT,\n  phone TEXT,\n  room_type_id TEXT,\n  check_in TEXT,\n  check_out TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP, subject TEXT, message TEXT, source TEXT DEFAULT 'contact', status TEXT DEFAULT 'new', is_read INTEGER DEFAULT 0, read_at TEXT,\n  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "type": "table",
+        "name": "leave_balances",
+        "sql": "CREATE TABLE leave_balances (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  employee_id TEXT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,\n  leave_type_id TEXT NOT NULL REFERENCES leave_types(id),\n  year INTEGER NOT NULL,\n  total_days REAL DEFAULT 0,\n  used_days REAL DEFAULT 0,\n  remaining_days REAL DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(employee_id, leave_type_id, year)\n)"
+      },
+      {
+        "type": "table",
+        "name": "leave_requests",
+        "sql": "CREATE TABLE leave_requests (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  employee_id TEXT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,\n  leave_type_id TEXT NOT NULL REFERENCES leave_types(id),\n  start_date TEXT NOT NULL,\n  end_date TEXT NOT NULL,\n  days REAL NOT NULL,\n  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'canceled')),\n  approved_by TEXT,\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "leave_types",
+        "sql": "CREATE TABLE leave_types (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  accrual_rate REAL DEFAULT 0,\n  is_paid INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(tenant_id, name)\n)"
+      },
+      {
+        "type": "table",
+        "name": "manufacturing_orders",
+        "sql": "CREATE TABLE manufacturing_orders (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  bom_id TEXT NOT NULL REFERENCES boms(id),\n  product_id TEXT NOT NULL,\n  quantity INTEGER NOT NULL,\n  status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'planned', 'in_production', 'completed', 'canceled')),\n  start_date TEXT,\n  end_date TEXT,\n  produced_quantity INTEGER DEFAULT 0,\n  created_by TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "marketplace_categories",
+        "sql": "CREATE TABLE marketplace_categories (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  name TEXT NOT NULL,\n  slug TEXT UNIQUE NOT NULL,\n  description TEXT,\n  icon TEXT,\n  sort_order INTEGER DEFAULT 0,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "marketplace_payments",
+        "sql": "CREATE TABLE marketplace_payments (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  order_reference TEXT NOT NULL,\n  channel TEXT NOT NULL DEFAULT 'marketplace' CHECK(channel IN ('marketplace','pos')),\n  gross_amount REAL NOT NULL DEFAULT 0,\n  marketplace_fee REAL NOT NULL DEFAULT 0,\n  net_amount REAL NOT NULL DEFAULT 0,\n  currency TEXT NOT NULL DEFAULT 'EGP',\n  paymob_transaction_id TEXT,\n  paymob_intention_id TEXT,\n  payment_status TEXT NOT NULL DEFAULT 'captured' CHECK(payment_status IN ('captured','settled','refunded','failed')),\n  captured_at TEXT DEFAULT (datetime('now')),\n  settled_at TEXT,\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n, payout_id TEXT REFERENCES marketplace_payouts(id))"
+      },
+      {
+        "type": "table",
+        "name": "marketplace_payouts",
+        "sql": "CREATE TABLE \"marketplace_payouts\" (\n  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  amount REAL NOT NULL CHECK (amount >= 0),\n  currency TEXT NOT NULL DEFAULT 'EGP',\n  method TEXT NOT NULL DEFAULT 'bank_transfer' CHECK (method IN ('bank_transfer','cash','paymob','other')),\n  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','failed','cancelled')),\n  reference TEXT,\n  notes TEXT,\n  created_by TEXT,\n  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),\n  paid_at TEXT,\n  cancelled_at TEXT\n)"
+      },
+      {
+        "type": "table",
+        "name": "marketplace_project_categories",
+        "sql": "CREATE TABLE marketplace_project_categories (\n  project_id TEXT NOT NULL,\n  category_id TEXT NOT NULL,\n  PRIMARY KEY (project_id, category_id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "marketplace_reviews",
+        "sql": "CREATE TABLE marketplace_reviews (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  project_id TEXT NOT NULL,\n  tenant_id TEXT NOT NULL,\n  reviewer_name TEXT,\n  rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),\n  comment TEXT,\n  is_approved INTEGER DEFAULT 0,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "meal_categories",
+        "sql": "CREATE TABLE \"meal_categories\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  position INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n  updated_at TEXT,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "meal_categories_lang",
+        "sql": "CREATE TABLE meal_categories_lang (\n    meal_category_id TEXT REFERENCES meal_categories(id) ON DELETE CASCADE,\n    lang TEXT NOT NULL REFERENCES languages(code) ON DELETE CASCADE,\n    name TEXT NOT NULL,\n    PRIMARY KEY (meal_category_id, lang)\n)"
+      },
+      {
+        "type": "table",
+        "name": "meal_lang",
+        "sql": "CREATE TABLE meal_lang (\n    meal_id TEXT REFERENCES meals(id) ON DELETE CASCADE,\n    lang TEXT NOT NULL REFERENCES languages(code) ON DELETE CASCADE,\n    name TEXT NOT NULL,\n    description TEXT,\n    PRIMARY KEY (meal_id, lang)\n)"
+      },
+      {
+        "type": "table",
+        "name": "meal_schedules",
+        "sql": "CREATE TABLE \"meal_schedules\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL,\n  camp_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n  date TEXT NOT NULL,\n  meal_id TEXT NOT NULL,\n  package_type TEXT NOT NULL DEFAULT 'all',\n  max_servings INTEGER DEFAULT 100,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL,\n  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,\n  FOREIGN KEY (meal_id) REFERENCES \"meals\"(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "type": "table",
+        "name": "meals",
+        "sql": "CREATE TABLE \"meals\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  meal_category_id TEXT NOT NULL REFERENCES \"meal_categories\"(id) ON DELETE CASCADE,\n  price REAL NOT NULL DEFAULT 0,\n  image_url TEXT,\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n  updated_at TEXT,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "opportunities",
+        "sql": "CREATE TABLE opportunities (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  lead_id TEXT REFERENCES crm_leads(id),\n  name TEXT NOT NULL,\n  stage TEXT DEFAULT 'qualification' CHECK(stage IN ('qualification', 'proposal', 'negotiation', 'closed_won', 'closed_lost')),\n  amount REAL DEFAULT 0,\n  probability INTEGER DEFAULT 0,\n  expected_close_date TEXT,\n  assigned_to TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "order_discounts",
+        "sql": "CREATE TABLE order_discounts (\n  id                  TEXT PRIMARY KEY,\n  tenant_id           TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  order_id            TEXT NOT NULL REFERENCES pos_transactions(id) ON DELETE CASCADE,\n  transaction_item_id TEXT REFERENCES pos_transaction_items(id) ON DELETE CASCADE,\n  promotion_id        TEXT NOT NULL,\n  promotion_name      TEXT NOT NULL,\n  discount_type       TEXT NOT NULL CHECK (discount_type IN ('percentage','fixed','bogo')),\n  discount_value      REAL NOT NULL,\n  discount_amount     REAL NOT NULL,\n  created_at          DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "order_items",
+        "sql": "CREATE TABLE \"order_items\" (\n  id TEXT PRIMARY KEY,\n  order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,\n  type TEXT NOT NULL DEFAULT 'room_night',\n  reference_id TEXT,\n  name TEXT NOT NULL,\n  quantity INTEGER NOT NULL DEFAULT 1,\n  unit_price REAL NOT NULL DEFAULT 0,\n  total_price REAL NOT NULL DEFAULT 0,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  split_group INTEGER DEFAULT 1,\n  course_number INTEGER DEFAULT 0,\n  course_status TEXT DEFAULT 'pending' CHECK(course_status IN ('pending', 'served', 'completed')),\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "order_state",
+        "sql": "CREATE TABLE order_state (\n    id TEXT PRIMARY KEY,\n    color TEXT,\n    logable INTEGER DEFAULT 0,\n    shipped INTEGER DEFAULT 0,\n    invoice INTEGER DEFAULT 0,\n    paid INTEGER DEFAULT 0,\n    deleted INTEGER DEFAULT 0,\n    position INTEGER DEFAULT 0\n)"
+      },
+      {
+        "type": "table",
+        "name": "order_state_lang",
+        "sql": "CREATE TABLE order_state_lang (\n    order_state_id TEXT REFERENCES order_state(id) ON DELETE CASCADE,\n    lang TEXT NOT NULL REFERENCES languages(code) ON DELETE CASCADE,\n    name TEXT NOT NULL,\n    template TEXT,\n    PRIMARY KEY (order_state_id, lang)\n)"
+      },
+      {
+        "type": "table",
+        "name": "orders",
+        "sql": "CREATE TABLE \"orders\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL,\n  camp_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n  room_id TEXT NOT NULL REFERENCES rooms_new(id) ON DELETE RESTRICT,\n  customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL,\n  order_state_id TEXT NOT NULL REFERENCES order_state(id) ON DELETE RESTRICT,\n  check_in_date TEXT NOT NULL,\n  check_out_date TEXT NOT NULL,\n  number_of_people INTEGER DEFAULT 1,\n  total_amount REAL NOT NULL DEFAULT 0,\n  amount_paid REAL DEFAULT 0,\n  payment_method TEXT,\n  payment_status TEXT DEFAULT 'pending',\n  reference TEXT UNIQUE NOT NULL,\n  invoice_date TEXT,\n  notes TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME,\n  table_id TEXT REFERENCES pos_tables(id) ON DELETE SET NULL,\n  kitchen_status TEXT DEFAULT 'pending' CHECK(kitchen_status IN ('pending', 'confirmed', 'preparing', 'ready', 'served', 'canceled')),\n  early_checkin INTEGER DEFAULT 0,\n  late_checkout INTEGER DEFAULT 0,\n  requested_checkin_time TEXT,\n  requested_checkout_time TEXT,\n  adult_count INTEGER DEFAULT 1,\n  child_count INTEGER DEFAULT 0,\n  extra_guest_charge REAL DEFAULT 0,\n  split_count INTEGER DEFAULT 1,\n  tip_amount REAL DEFAULT 0,\n  tip_method TEXT,\n  payment_intent_id TEXT,\n  paymob_transaction_id TEXT,\n  paymob_paid_at TEXT,\n  verified_by TEXT\n, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL)"
+      },
+      {
+        "type": "table",
+        "name": "pages",
+        "sql": "CREATE TABLE pages (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  slug TEXT NOT NULL,\n  title TEXT NOT NULL,\n  content TEXT,\n  meta_title TEXT,\n  meta_description TEXT,\n  is_published INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(tenant_id, slug)\n)"
+      },
+      {
+        "type": "table",
+        "name": "payment_records",
+        "sql": "CREATE TABLE payment_records (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL,\n  order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,\n  amount REAL NOT NULL CHECK (amount > 0),\n  method TEXT NOT NULL CHECK (method IN ('cash', 'card', 'split')),\n  \n  \n  \n  amount_cash REAL NOT NULL DEFAULT 0 CHECK (amount_cash >= 0),\n  amount_card REAL NOT NULL DEFAULT 0 CHECK (amount_card >= 0),\n  \n  \n  \n  received_by TEXT NOT NULL,\n  approved_by TEXT,\n  reference TEXT,\n  notes TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  \n  \n  \n  CHECK (ABS((amount_cash + amount_card) - amount) <= 0.01)\n)"
+      },
+      {
+        "type": "table",
+        "name": "payments",
+        "sql": "CREATE TABLE payments (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  invoice_id TEXT REFERENCES invoices(id),\n  amount REAL NOT NULL,\n  payment_date TEXT NOT NULL,\n  method TEXT NOT NULL CHECK(method IN ('cash', 'card', 'bank_transfer', 'stripe', 'other')),\n  reference TEXT,\n  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed')),\n  created_by TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "payroll_lines",
+        "sql": "CREATE TABLE payroll_lines (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  payroll_run_id TEXT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,\n  employee_id TEXT NOT NULL REFERENCES employees(id),\n  gross_pay REAL NOT NULL DEFAULT 0,\n  deductions REAL DEFAULT 0,\n  net_pay REAL NOT NULL DEFAULT 0,\n  bank_account TEXT,\n  status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'paid')),\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "payroll_runs",
+        "sql": "CREATE TABLE payroll_runs (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  period_start TEXT NOT NULL,\n  period_end TEXT NOT NULL,\n  run_date TEXT NOT NULL,\n  status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'processing', 'completed', 'posted')),\n  total_gross REAL DEFAULT 0,\n  total_deductions REAL DEFAULT 0,\n  total_net REAL DEFAULT 0,\n  created_by TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "plans_new",
+        "sql": "CREATE TABLE \"plans_new\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT,\n  camp_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  description TEXT,\n  date TEXT,\n  time TEXT,\n  capacity INTEGER,\n  status TEXT DEFAULT 'planned',\n  category TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME,\n  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "type": "table",
+        "name": "platform_settings",
+        "sql": "CREATE TABLE platform_settings (\n  id INTEGER PRIMARY KEY CHECK (id = 1),  \n  feature_flags TEXT DEFAULT '{}',\n  email_templates TEXT DEFAULT '{}',\n  defaults TEXT DEFAULT '{}',\n  branding TEXT DEFAULT '{}',\n  updated_at TEXT DEFAULT (datetime('now')),\n  updated_by TEXT\n, payment TEXT DEFAULT '{}')"
+      },
+      {
+        "type": "table",
+        "name": "pos_customers",
+        "sql": "CREATE TABLE \"pos_customers\" (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    organization_id INTEGER NOT NULL,\n    tenant_id TEXT NOT NULL DEFAULT 'acaciacamp',\n    customer_number TEXT UNIQUE,\n    first_name TEXT NOT NULL,\n    last_name TEXT NOT NULL,\n    email TEXT UNIQUE,\n    phone TEXT,\n    date_of_birth DATE,\n    gender TEXT,\n    address TEXT,\n    city TEXT,\n    state TEXT,\n    postal_code TEXT,\n    country TEXT DEFAULT 'VN',\n    customer_group TEXT DEFAULT 'regular',\n    loyalty_points INTEGER DEFAULT 0,\n    total_spent DECIMAL(12,2) DEFAULT 0,\n    total_orders INTEGER DEFAULT 0,\n    average_order_value DECIMAL(10,2) DEFAULT 0,\n    last_order_date DATE,\n    acquisition_source TEXT,\n    preferences JSON DEFAULT '{}',\n    notes TEXT,\n    is_vip BOOLEAN DEFAULT FALSE,\n    is_active BOOLEAN DEFAULT TRUE,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    \n    name TEXT GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED,\n    FOREIGN KEY (organization_id) REFERENCES pos_organizations(id),\n    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_organizations",
+        "sql": "CREATE TABLE pos_organizations (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    slug TEXT UNIQUE NOT NULL,\n    description TEXT,\n    logo_url TEXT,\n    website TEXT,\n    phone TEXT,\n    email TEXT,\n    address TEXT,\n    city TEXT,\n    state TEXT,\n    country TEXT DEFAULT 'VN',\n    postal_code TEXT,\n    timezone TEXT DEFAULT 'Asia/Ho_Chi_Minh',\n    currency TEXT DEFAULT 'VND',\n    tax_rate REAL DEFAULT 0.1,\n    business_type TEXT DEFAULT 'retail',\n    license_number TEXT,\n    pos_settings JSON DEFAULT '{}',\n    is_active BOOLEAN DEFAULT TRUE,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_products",
+        "sql": "CREATE TABLE \"pos_products\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL DEFAULT 'acaciacamp',\n  organization_id INTEGER NOT NULL DEFAULT 1,\n  category_id INTEGER,\n  brand_id INTEGER,\n  supplier_id INTEGER,\n  sku TEXT UNIQUE NOT NULL,\n  barcode TEXT UNIQUE,\n  name TEXT NOT NULL,\n  description TEXT,\n  short_description TEXT,\n  images JSON DEFAULT '[]',\n  cost_price DECIMAL(10,2) NOT NULL DEFAULT 0.0,\n  selling_price DECIMAL(10,2) NOT NULL DEFAULT 0.0,\n  compare_price DECIMAL(10,2),\n  profit_margin REAL GENERATED ALWAYS AS (\n    CASE\n      WHEN selling_price > 0 THEN ((selling_price - cost_price) / selling_price) * 100\n      ELSE 0\n    END\n  ) STORED,\n  weight REAL,\n  dimensions JSON DEFAULT '{}',\n  unit TEXT DEFAULT 'pcs',\n  min_stock_level INTEGER DEFAULT 10,\n  max_stock_level INTEGER DEFAULT 1000,\n  reorder_point INTEGER DEFAULT 20,\n  is_trackable BOOLEAN DEFAULT TRUE,\n  is_serialized BOOLEAN DEFAULT FALSE,\n  is_active BOOLEAN DEFAULT TRUE,\n  is_featured BOOLEAN DEFAULT FALSE,\n  tags JSON DEFAULT '[]',\n  attributes JSON DEFAULT '{}',\n  seo_title TEXT,\n  seo_description TEXT,\n  type TEXT CHECK(type IN ('room','menu','buffet','retail')) DEFAULT 'retail',\n  deleted_at DATETIME,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  stock_quantity INTEGER DEFAULT 0,\n  image_url TEXT,\n  tax_rate DECIMAL(5,2) DEFAULT 0.0,\n  camp_id TEXT,\n  capacity INTEGER DEFAULT 1,\n  variant_of TEXT,\n  variant_attributes TEXT DEFAULT '{}',\n  supplier_name TEXT,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_recipe_ingredients",
+        "sql": "CREATE TABLE \"pos_recipe_ingredients\" (\n    id TEXT PRIMARY KEY,\n    tenant_id TEXT NOT NULL,\n    product_id TEXT NOT NULL,\n    ingredient_id TEXT NOT NULL,\n    quantity REAL NOT NULL,\n    unit TEXT,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    FOREIGN KEY (product_id) REFERENCES pos_products(id),\n    FOREIGN KEY (ingredient_id) REFERENCES pos_products(id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_shifts",
+        "sql": "CREATE TABLE pos_shifts (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL,\n  cashier_id TEXT NOT NULL,\n  status TEXT NOT NULL DEFAULT 'open', \n  opening_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  closing_time DATETIME,\n  opening_cash REAL NOT NULL DEFAULT 0.0,\n  expected_closing_cash REAL NOT NULL DEFAULT 0.0,\n  actual_closing_cash REAL,\n  notes TEXT,\n  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_stores",
+        "sql": "CREATE TABLE pos_stores (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    organization_id INTEGER NOT NULL,\n    name TEXT NOT NULL,\n    code TEXT UNIQUE NOT NULL,\n    description TEXT,\n    phone TEXT,\n    email TEXT,\n    address TEXT NOT NULL,\n    city TEXT NOT NULL,\n    state TEXT,\n    postal_code TEXT,\n    latitude REAL,\n    longitude REAL,\n    manager_id INTEGER,\n    opening_hours JSON DEFAULT '{}',\n    pos_settings JSON DEFAULT '{}',\n    is_active BOOLEAN DEFAULT TRUE,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n    FOREIGN KEY (organization_id) REFERENCES pos_organizations(id),\n    FOREIGN KEY (manager_id) REFERENCES pos_users(id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_tables",
+        "sql": "CREATE TABLE \"pos_tables\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  capacity INTEGER DEFAULT 2,\n  status TEXT DEFAULT 'available' CHECK(status IN ('available', 'occupied', 'reserved', 'cleaning')),\n  section TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  reservation_name TEXT,\n  reservation_time TEXT,\n  reservation_date TEXT,\n  party_size INTEGER DEFAULT 0,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_transaction_items",
+        "sql": "CREATE TABLE \"pos_transaction_items\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL DEFAULT 'tenant_1',\n  order_id TEXT NOT NULL,\n  transaction_id TEXT,\n  product_id TEXT NOT NULL,\n  variant_id INTEGER,\n  quantity INTEGER NOT NULL,\n  unit_price DECIMAL(10,2) NOT NULL DEFAULT 0.0,\n  subtotal DECIMAL(12,2) NOT NULL DEFAULT 0.0,\n  tax_amount DECIMAL(10,2) DEFAULT 0.0,\n  discount_amount DECIMAL(10,2) DEFAULT 0.0,\n  total_amount DECIMAL(12,2) NOT NULL DEFAULT 0.0,\n  notes TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL,\n  FOREIGN KEY (order_id) REFERENCES pos_transactions(id),\n  FOREIGN KEY (product_id) REFERENCES \"pos_products\"(id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_transactions",
+        "sql": "CREATE TABLE \"pos_transactions\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL DEFAULT 'tenant_1',\n  organization_id INTEGER NOT NULL DEFAULT 1,\n  store_id INTEGER NOT NULL DEFAULT 1,\n  order_number TEXT UNIQUE NOT NULL,\n  transaction_number TEXT,\n  customer_id INTEGER,\n  cashier_id TEXT NOT NULL,\n  order_type TEXT DEFAULT 'sale',\n  status TEXT DEFAULT 'pending',\n  subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,\n  discount_amount DECIMAL(10,2) DEFAULT 0,\n  discount_type TEXT,\n  discount_reason TEXT,\n  tax_amount DECIMAL(10,2) DEFAULT 0,\n  tax_rate REAL DEFAULT 0.1,\n  total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,\n  paid_amount DECIMAL(12,2) DEFAULT 0,\n  change_amount DECIMAL(10,2) DEFAULT 0,\n  payment_method TEXT,\n  points_earned INTEGER DEFAULT 0,\n  points_redeemed INTEGER DEFAULT 0,\n  payment_status TEXT DEFAULT 'pending',\n  order_status TEXT DEFAULT 'completed',\n  notes TEXT,\n  receipt_url TEXT,\n  void_reason TEXT,\n  voided_by TEXT,\n  voided_at DATETIME,\n  refunded_amount DECIMAL(12,2) DEFAULT 0,\n  refunded_at DATETIME,\n  refunded_by TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  amount_cash REAL DEFAULT 0.0,\n  amount_card REAL DEFAULT 0.0,\n  idempotency_key TEXT,\n  table_id TEXT REFERENCES pos_tables(id) ON DELETE SET NULL,\n  kitchen_status TEXT DEFAULT 'confirmed' CHECK(kitchen_status IN ('pending', 'confirmed', 'preparing', 'ready', 'served', 'canceled')), project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n  FOREIGN KEY (organization_id) REFERENCES pos_organizations(id),\n  FOREIGN KEY (store_id) REFERENCES pos_stores(id),\n  FOREIGN KEY (customer_id) REFERENCES pos_customers(id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "pos_users",
+        "sql": "CREATE TABLE pos_users (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    organization_id INTEGER NOT NULL,\n    store_id INTEGER,\n    username TEXT UNIQUE NOT NULL,\n    email TEXT UNIQUE NOT NULL,\n    password_hash TEXT NOT NULL,\n    first_name TEXT NOT NULL,\n    last_name TEXT NOT NULL,\n    phone TEXT,\n    avatar_url TEXT,\n    role TEXT NOT NULL DEFAULT 'cashier',\n    permissions JSON DEFAULT '[]',\n    employee_id TEXT,\n    department TEXT,\n    hire_date DATE,\n    salary DECIMAL(10,2),\n    commission_rate REAL DEFAULT 0.0,\n    is_active BOOLEAN DEFAULT TRUE,\n    is_verified BOOLEAN DEFAULT FALSE,\n    last_login_at DATETIME,\n    password_reset_token TEXT,\n    password_reset_expires DATETIME,\n    two_factor_secret TEXT,\n    two_factor_enabled BOOLEAN DEFAULT FALSE,\n    login_attempts INTEGER DEFAULT 0,\n    locked_until DATETIME,\n    pos_settings JSON DEFAULT '{}',\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, name TEXT GENERATED ALWAYS AS (first_name || ' ' || last_name) STORED, tenant_id TEXT, deleted_at DATETIME, last_login DATETIME, status TEXT DEFAULT 'active', camp_id TEXT, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n    FOREIGN KEY (organization_id) REFERENCES pos_organizations(id),\n    FOREIGN KEY (store_id) REFERENCES pos_stores(id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "predictions",
+        "sql": "CREATE TABLE predictions (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  model_type TEXT NOT NULL,\n  target_id TEXT,\n  predicted_value TEXT,\n  input_features TEXT,\n  confidence REAL DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "price_overrides",
+        "sql": "CREATE TABLE price_overrides (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    product_id INTEGER NOT NULL,\n    date TEXT NOT NULL,\n    price INTEGER NOT NULL,\n    created_at TEXT DEFAULT (datetime('now')),\n    updated_at TEXT DEFAULT (datetime('now')),\n    UNIQUE(product_id, date)\n)"
+      },
+      {
+        "type": "table",
+        "name": "price_rules",
+        "sql": "CREATE TABLE price_rules (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  product_id TEXT,\n  rule_type TEXT NOT NULL CHECK(rule_type IN ('dynamic', 'time_based', 'demand_based', 'competitor')),\n  min_price REAL,\n  max_price REAL,\n  adjustment_percent REAL DEFAULT 0,\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "product_camps",
+        "sql": "CREATE TABLE product_camps (\n  product_id TEXT NOT NULL,\n  camp_id TEXT NOT NULL,\n  PRIMARY KEY (product_id, camp_id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "products",
+        "sql": "CREATE TABLE products (\n    id TEXT PRIMARY KEY,\n    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n    category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,\n    sku TEXT,\n    base_price REAL NOT NULL DEFAULT 0,\n    capacity INTEGER DEFAULT 2,\n    image_url TEXT,\n    is_active INTEGER DEFAULT 1,\n    created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n    updated_at TEXT\n)"
+      },
+      {
+        "type": "table",
+        "name": "project_items",
+        "sql": "CREATE TABLE project_items (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  item_type TEXT NOT NULL DEFAULT 'product',\n  name TEXT NOT NULL,\n  description TEXT,\n  base_price REAL DEFAULT 0,\n  quantity INTEGER DEFAULT 1,\n  meta_data TEXT,\n  status TEXT NOT NULL DEFAULT 'active',\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "project_links",
+        "sql": "CREATE TABLE project_links (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  project_id_a TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  project_id_b TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  link_type TEXT NOT NULL DEFAULT 'connection',\n  meta_data TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  created_by TEXT\n)"
+      },
+      {
+        "type": "table",
+        "name": "project_meta",
+        "sql": "CREATE TABLE \"project_meta\" (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  meta_key TEXT NOT NULL,\n  meta_value TEXT NOT NULL,\n  sort_order INTEGER DEFAULT 0\n)"
+      },
+      {
+        "type": "table",
+        "name": "project_tags",
+        "sql": "CREATE TABLE \"project_tags\" (\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,\n  PRIMARY KEY (project_id, tag_id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "projects",
+        "sql": "CREATE TABLE projects (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id),\n  name TEXT NOT NULL,\n  slug TEXT NOT NULL,\n  project_type TEXT NOT NULL DEFAULT 'camp',\n  status TEXT DEFAULT 'active',\n  location TEXT,\n  latitude DECIMAL(10, 8),\n  longitude DECIMAL(11, 8),\n  start_date TEXT,\n  end_date TEXT,\n  capacity INTEGER,\n  description TEXT,\n  gallery_images TEXT,\n  meta_version INTEGER DEFAULT 1,\n  deleted_at DATETIME,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME, min_stay INTEGER DEFAULT 1, max_stay INTEGER, meal_plan_category_id TEXT,\n  UNIQUE(tenant_id, slug)\n)"
+      },
+      {
+        "type": "table",
+        "name": "promotions",
+        "sql": "CREATE TABLE promotions (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  type TEXT NOT NULL CHECK (type IN ('percentage','fixed','bogo')),\n  value REAL DEFAULT 0,\n  applies_to TEXT DEFAULT 'all',\n  applies_to_id TEXT,\n  min_purchase REAL DEFAULT 0,\n  day_of_week INTEGER, \n  start_date TEXT,     \n  end_date TEXT,       \n  is_active INTEGER DEFAULT 1,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL)"
+      },
+      {
+        "type": "table",
+        "name": "purchase_order_lines",
+        "sql": "CREATE TABLE purchase_order_lines (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  po_id TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,\n  product_id TEXT NOT NULL,\n  quantity INTEGER NOT NULL,\n  unit_price REAL NOT NULL,\n  total_price REAL NOT NULL,\n  received_quantity INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "purchase_orders",
+        "sql": "CREATE TABLE purchase_orders (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  po_number TEXT NOT NULL,\n  vendor_id TEXT,\n  order_date TEXT NOT NULL,\n  expected_delivery TEXT,\n  status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'sent', 'received', 'canceled')),\n  total_amount REAL DEFAULT 0,\n  created_by TEXT,\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "rate_plans_new",
+        "sql": "CREATE TABLE \"rate_plans_new\" (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  product_id TEXT NOT NULL REFERENCES \"pos_products\"(id) ON DELETE CASCADE,\n  camp_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  season TEXT DEFAULT 'all',\n  start_date TEXT,\n  end_date TEXT,\n  price_per_night REAL NOT NULL,\n  min_stay INTEGER DEFAULT 1,\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n  updated_at TEXT,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "rooms_new",
+        "sql": "CREATE TABLE \"rooms_new\" (\n  id TEXT PRIMARY KEY,\n  camp_id TEXT REFERENCES projects(id) ON DELETE SET NULL,\n  product_id TEXT NOT NULL REFERENCES \"pos_products\"(id) ON DELETE RESTRICT,\n  name TEXT NOT NULL,\n  status TEXT DEFAULT 'available',\n  bed_type TEXT DEFAULT 'single',\n  max_guests INTEGER DEFAULT 2,\n  base_price REAL DEFAULT 0,\n  floor TEXT,\n  notes TEXT,\n  is_active INTEGER DEFAULT 1,\n  tenant_id TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME,\n  room_status TEXT DEFAULT 'available',\n  cleaning_status TEXT DEFAULT 'clean' CHECK(cleaning_status IN ('dirty', 'in_progress', 'clean', 'inspected')),\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL\n)"
+      },
+      {
+        "type": "table",
+        "name": "service_availability",
+        "sql": "CREATE TABLE service_availability (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL,\n  service_item_id TEXT NOT NULL,\n  worker_id TEXT,\n  available_date TEXT NOT NULL,          \n  available_from TEXT NOT NULL,          \n  available_to TEXT NOT NULL,            \n  is_available INTEGER DEFAULT 1,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "service_bookings",
+        "sql": "CREATE TABLE service_bookings (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  service_item_id TEXT NOT NULL REFERENCES service_items(id) ON DELETE CASCADE,\n  customer_name TEXT,\n  customer_phone TEXT,\n  scheduled_date DATETIME,\n  status TEXT NOT NULL DEFAULT 'pending',\n  notes TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n, assigned_worker_id TEXT)"
+      },
+      {
+        "type": "table",
+        "name": "service_definitions",
+        "sql": "CREATE TABLE service_definitions (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  slug TEXT NOT NULL,\n  name TEXT NOT NULL,\n  description TEXT,\n  fields_schema JSON NOT NULL DEFAULT ('[]'),\n  is_active INTEGER NOT NULL DEFAULT 1,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  UNIQUE(tenant_id, slug)\n)"
+      },
+      {
+        "type": "table",
+        "name": "service_items",
+        "sql": "CREATE TABLE \"service_items\" (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  service_definition_id TEXT NOT NULL REFERENCES service_definitions(id) ON DELETE CASCADE,\n  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE SET NULL,\n  name TEXT NOT NULL,\n  description TEXT,\n  base_price REAL DEFAULT 0,\n  meta_data JSON DEFAULT ('{}'),\n  status TEXT NOT NULL DEFAULT 'active',\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  price_tier TEXT DEFAULT 'standard' CHECK(price_tier IN ('standard', 'premium', 'luxury')),\n  price_premium REAL DEFAULT 0\n)"
+      },
+      {
+        "type": "table",
+        "name": "service_reviews",
+        "sql": "CREATE TABLE service_reviews (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL,\n  service_item_id TEXT NOT NULL,\n  booking_id TEXT,\n  customer_name TEXT,\n  rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),\n  comment TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "sqlite_sequence",
+        "sql": "CREATE TABLE sqlite_sequence(name,seq)"
+      },
+      {
+        "type": "table",
+        "name": "stock_quant",
+        "sql": "CREATE TABLE stock_quant (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  product_id TEXT NOT NULL,\n  warehouse_id TEXT NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,\n  quantity INTEGER DEFAULT 0,\n  reserved INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(product_id, warehouse_id)\n)"
+      },
+      {
+        "type": "table",
+        "name": "stock_transfers",
+        "sql": "CREATE TABLE stock_transfers (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  from_warehouse_id TEXT NOT NULL REFERENCES warehouses(id),\n  to_warehouse_id TEXT NOT NULL REFERENCES warehouses(id),\n  product_id TEXT NOT NULL,\n  quantity INTEGER NOT NULL,\n  status TEXT DEFAULT 'draft' CHECK(status IN ('draft', 'confirmed', 'in_transit', 'completed', 'canceled')),\n  created_by TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "storefront_order_items",
+        "sql": "CREATE TABLE storefront_order_items (\n    id TEXT PRIMARY KEY,\n    order_id TEXT NOT NULL REFERENCES storefront_orders(id) ON DELETE CASCADE,\n    product_id TEXT REFERENCES products(id) ON DELETE SET NULL,\n    product_name TEXT NOT NULL,\n    quantity INTEGER DEFAULT 1,\n    unit_price REAL DEFAULT 0,\n    total_price REAL DEFAULT 0,\n    created_at TEXT DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "storefront_orders",
+        "sql": "CREATE TABLE storefront_orders (\n    id TEXT PRIMARY KEY,\n    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n    customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL,\n    reference TEXT UNIQUE NOT NULL,\n    session_id TEXT,\n    total_amount REAL DEFAULT 0,\n    currency TEXT DEFAULT 'EGP',\n    status TEXT DEFAULT 'pending',\n    payment_status TEXT DEFAULT 'pending',\n    notes TEXT,\n    created_at TEXT DEFAULT CURRENT_TIMESTAMP,\n    updated_at TEXT\n, payment_intent_id TEXT, paymob_transaction_id TEXT, paymob_paid_at TEXT, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL)"
+      },
+      {
+        "type": "table",
+        "name": "subscription_plans",
+        "sql": "CREATE TABLE subscription_plans (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  name TEXT NOT NULL,\n  slug TEXT UNIQUE NOT NULL,\n  description TEXT,\n  price_monthly REAL NOT NULL DEFAULT 0,\n  price_yearly REAL NOT NULL DEFAULT 0,\n  max_rooms INTEGER DEFAULT 10,\n  max_orders_monthly INTEGER DEFAULT 1000,\n  max_pos_users INTEGER DEFAULT 5,\n  max_storage_mb INTEGER DEFAULT 500,\n  features TEXT DEFAULT '[]',     \n  is_active INTEGER DEFAULT 1,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n)"
+      },
+      {
+        "type": "table",
+        "name": "tags",
+        "sql": "CREATE TABLE tags (\n  id TEXT PRIMARY KEY,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  slug TEXT NOT NULL,\n  UNIQUE(tenant_id, slug)\n)"
+      },
+      {
+        "type": "table",
+        "name": "tax_rates",
+        "sql": "CREATE TABLE tax_rates (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  rate REAL NOT NULL,\n  jurisdiction TEXT,\n  is_default INTEGER DEFAULT 0,\n  valid_from TEXT,\n  valid_to TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "tenant_meta",
+        "sql": "CREATE TABLE tenant_meta (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  meta_key TEXT NOT NULL,\n  meta_value TEXT NOT NULL,\n  sort_order INTEGER DEFAULT 0\n)"
+      },
+      {
+        "type": "table",
+        "name": "tenant_org_mapping",
+        "sql": "CREATE TABLE tenant_org_mapping (\n  id            INTEGER PRIMARY KEY AUTOINCREMENT,\n  tenant_id     TEXT    NOT NULL UNIQUE,\n  organization_id INTEGER NOT NULL UNIQUE,\n  created_at    TEXT    DEFAULT (datetime('now')),\n  FOREIGN KEY (tenant_id)     REFERENCES tenants(id)           ON DELETE CASCADE,\n  FOREIGN KEY (organization_id) REFERENCES pos_organizations(id) ON DELETE CASCADE\n)"
+      },
+      {
+        "type": "table",
+        "name": "tenant_subscriptions",
+        "sql": "CREATE TABLE tenant_subscriptions (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL UNIQUE,\n  plan_id TEXT NOT NULL,\n  status TEXT NOT NULL DEFAULT 'active'\n    CHECK(status IN ('active', 'past_due', 'canceled', 'trialing')),\n  billing_cycle TEXT DEFAULT 'monthly' CHECK(billing_cycle IN ('monthly', 'yearly')),\n  current_period_start DATETIME,\n  current_period_end DATETIME,\n  stripe_customer_id TEXT,\n  stripe_subscription_id TEXT,\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP\n, trial_ends_at TEXT, bookings_used INTEGER DEFAULT 0, bookings_limit INTEGER DEFAULT 100, total_paid REAL DEFAULT 0)"
+      },
+      {
+        "type": "table",
+        "name": "tenants",
+        "sql": "CREATE TABLE tenants (\n  id TEXT PRIMARY KEY,\n  subdomain TEXT UNIQUE,\n  custom_domain TEXT UNIQUE,\n  name TEXT NOT NULL,\n  logo_url TEXT,\n  primary_color TEXT DEFAULT '#4a7c4f',\n  footer_text TEXT,\n  status TEXT DEFAULT 'active',\n  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n, favicon_url TEXT, location TEXT, whatsapp_number TEXT, phone TEXT, email TEXT, description TEXT, hero_image_url TEXT, gallery_images TEXT, about_text TEXT, faq_items TEXT, reviews TEXT, map_embed_url TEXT, activities TEXT, capacity INTEGER DEFAULT 50, admin_passphrase TEXT DEFAULT 'sinaiadmin', hacker_passphrase TEXT DEFAULT 'hackeradmin', menu_config TEXT, currency TEXT DEFAULT 'USD', type TEXT NOT NULL DEFAULT 'camp' CHECK (type IN ('camp','supermarket','transportation','other')), business_type TEXT NOT NULL DEFAULT 'camp', latitude DECIMAL(10, 8), longitude DECIMAL(11, 8), deleted_at DATETIME, meta_version INTEGER DEFAULT 1, updated_at DATETIME, onboarding_token TEXT, onboarding_status TEXT DEFAULT 'completed')"
+      },
+      {
+        "type": "table",
+        "name": "ticket_comments",
+        "sql": "CREATE TABLE ticket_comments (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,\n  user_id TEXT NOT NULL,\n  content TEXT NOT NULL,\n  internal INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "tickets",
+        "sql": "CREATE TABLE tickets (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  contact_id TEXT REFERENCES contacts(id),\n  subject TEXT NOT NULL,\n  description TEXT,\n  status TEXT DEFAULT 'new' CHECK(status IN ('new', 'open', 'pending', 'resolved', 'closed')),\n  priority TEXT DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high', 'critical')),\n  assigned_to TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "time_entries",
+        "sql": "CREATE TABLE time_entries (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  task_id TEXT NOT NULL REFERENCES crm_tasks(id) ON DELETE CASCADE,\n  user_id TEXT NOT NULL,\n  hours REAL NOT NULL,\n  date TEXT NOT NULL,\n  description TEXT,\n  created_at TEXT DEFAULT (datetime('now'))\n)"
+      },
+      {
+        "type": "table",
+        "name": "warehouses",
+        "sql": "CREATE TABLE warehouses (\n  id TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),\n  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,\n  name TEXT NOT NULL,\n  location TEXT,\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT (datetime('now')),\n  UNIQUE(tenant_id, name)\n)"
+      },
+      {
+        "type": "trigger",
+        "name": "trg_orders_updated_at",
+        "sql": "CREATE TRIGGER trg_orders_updated_at\n  AFTER UPDATE ON orders\n  FOR EACH ROW\n  WHEN NEW.updated_at IS NULL OR NEW.updated_at = OLD.updated_at\nBEGIN\n  UPDATE orders SET updated_at = datetime('now') WHERE id = NEW.id;\nEND"
+      },
+      {
+        "type": "trigger",
+        "name": "trg_plans_new_updated_at",
+        "sql": "CREATE TRIGGER trg_plans_new_updated_at\n  AFTER UPDATE ON plans_new\n  FOR EACH ROW\n  WHEN NEW.updated_at IS NULL OR NEW.updated_at = OLD.updated_at\nBEGIN\n  UPDATE plans_new SET updated_at = datetime('now') WHERE id = NEW.id;\nEND"
+      },
+      {
+        "type": "trigger",
+        "name": "trg_projects_updated_at",
+        "sql": "CREATE TRIGGER trg_projects_updated_at\n  AFTER UPDATE ON projects\n  FOR EACH ROW\n  WHEN NEW.updated_at IS NULL OR NEW.updated_at = OLD.updated_at\nBEGIN\n  UPDATE projects SET updated_at = datetime('now') WHERE id = NEW.id;\nEND"
+      },
+      {
+        "type": "trigger",
+        "name": "trg_rooms_new_updated_at",
+        "sql": "CREATE TRIGGER trg_rooms_new_updated_at\n  AFTER UPDATE ON rooms_new\n  FOR EACH ROW\n  WHEN NEW.updated_at IS NULL OR NEW.updated_at = OLD.updated_at\nBEGIN\n  UPDATE rooms_new SET updated_at = datetime('now') WHERE id = NEW.id;\nEND"
+      },
+      {
+        "type": "trigger",
+        "name": "trg_tenants_updated_at",
+        "sql": "CREATE TRIGGER trg_tenants_updated_at\nAFTER UPDATE ON tenants\nFOR EACH ROW\nWHEN NEW.updated_at IS NULL OR NEW.updated_at = OLD.updated_at\nBEGIN\n  UPDATE tenants SET updated_at = datetime('now') WHERE id = NEW.id;\nEND"
+      },
+      {
+        "type": "trigger",
+        "name": "update_products_timestamp",
+        "sql": "CREATE TRIGGER update_products_timestamp\n    AFTER UPDATE ON pos_products\n    BEGIN\n        UPDATE pos_products SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;\n    END"
+      },
+      {
+        "type": "trigger",
+        "name": "update_users_timestamp",
+        "sql": "CREATE TRIGGER update_users_timestamp \n    AFTER UPDATE ON pos_users\n    BEGIN\n        UPDATE pos_users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;\n    END"
+      },
+      {
+        "type": "view",
+        "name": "v_tenant_org",
+        "sql": "CREATE VIEW v_tenant_org AS\nSELECT tenant_id, organization_id\nFROM   tenant_org_mapping"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "duration": 3
+    }
+  }
+]
