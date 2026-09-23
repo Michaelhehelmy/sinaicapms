@@ -1,0 +1,34 @@
+-- Migration 0103: Phase-0 carts.project_id (nullable, schema-only).
+--
+-- WHAT: adds a nullable `project_id TEXT REFERENCES projects(id) ON DELETE SET NULL`
+-- column to carts plus a matching lookup index. Zero behavior change: nullable,
+-- no backfill, no NOT NULL, no data touched.
+--
+-- Recon ground truth: /tmp/opencode/p0-recon.md §2 rows 17–18 + §3 (0103 section).
+-- carts EXISTS — "MISSING carts" is NOT a finding (CREATE TABLE IF NOT EXISTS carts
+-- 0082_ecommerce_cms.sql:1, cols id / tenant_id NOT NULL → tenants(id) CASCADE /
+-- user_id / session_id / created_at / updated_at; zero ALTERs in ledger). Sibling
+-- cart_items EXISTS (0082:10-19, UNIQUE(cart_id, product_id); zero ALTERs).
+--
+-- SCOPE DECISION (recon default: carts only): line-level scope on cart_items is a
+-- P0-D modeling decision and is INTENTIONALLY deferred — this file touches carts
+-- only. If P0-D later wants line-level scope, it lands in a new migration
+-- (`ALTER TABLE cart_items ADD COLUMN project_id ...` + index), not here.
+--
+-- IDEMPOTENCY: SQLite/D1 has no `ADD COLUMN IF NOT EXISTS`, so the ADD COLUMN is
+-- intentionally bare — same established pattern as 0087_order_payment_paymob.sql /
+-- 0098_storefront_paymob.sql (plain ALTER, applied once by the ledger). The companion
+-- index uses `CREATE INDEX IF NOT EXISTS` (mirrors 0082_ecommerce_cms.sql:38-39
+-- idx_carts_tenant / idx_carts_session on this same table, plus 0094/0096).
+--
+-- FK PRECISION: inline `REFERENCES projects(id) ON DELETE SET NULL` follows the
+-- project ADD COLUMN precedent (0069_restaurant_tables.sql:46,54;
+-- 0090_marketplace_payouts.sql:34) and is recorded as the logical scope link; full
+-- FK enforcement/backfill is deferred to Phase 1 (cf. camp_id FK rebuilds 0066/0091).
+--
+-- ROLLBACK SAFETY (hard rule 7): ADD COLUMN is forward-only. Rollback = a NEW
+-- migration with `ALTER TABLE carts DROP COLUMN project_id` (SQLite 3.35+);
+-- optionally `DROP INDEX IF EXISTS idx_carts_project` for hygiene.
+
+ALTER TABLE carts ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_carts_project ON carts(project_id);

@@ -1,0 +1,32 @@
+-- Migration 0102: Phase-0 order_items.project_id (nullable, schema-only).
+--
+-- WHAT: adds a nullable `project_id TEXT REFERENCES projects(id) ON DELETE SET NULL`
+-- column to order_items plus a matching lookup index. Zero behavior change:
+-- nullable, no backfill, no NOT NULL, no data touched.
+--
+-- Recon ground truth: /tmp/opencode/p0-recon.md §2 row 4 + §3 (0102 section).
+-- order_items EXISTS (base CREATE 0067:34-44: id / order_id NOT NULL → orders(id)
+-- CASCADE / type DEFAULT 'room_night' / reference_id / name NOT NULL / quantity /
+-- unit_price / total_price / created_at; + split_group 0069:48; + course_number /
+-- course_status 0075:67-68; index idx_order_items_order(order_id) 0067:46). It has
+-- NO project_id and NO camp_id (inherits scope via order_id → orders). Dedicated
+-- file because booking-line-item scoping has its own backfill/index considerations
+-- for Phase 1 (parent orders.project_id, added in 0100, is the join source).
+--
+-- IDEMPOTENCY: SQLite/D1 has no `ADD COLUMN IF NOT EXISTS`, so the ADD COLUMN is
+-- intentionally bare — same established pattern as 0087_order_payment_paymob.sql /
+-- 0098_storefront_paymob.sql (plain ALTER, applied once by the ledger). The companion
+-- index uses `CREATE INDEX IF NOT EXISTS` (mirrors 0094_index_gaps.sql and
+-- 0096_storefront_orders.sql).
+--
+-- FK PRECISION: inline `REFERENCES projects(id) ON DELETE SET NULL` follows the
+-- project ADD COLUMN precedent (0069_restaurant_tables.sql:46,54;
+-- 0090_marketplace_payouts.sql:34) and is recorded as the logical scope link; full
+-- FK enforcement/backfill is deferred to Phase 1 (cf. camp_id FK rebuilds 0066/0091).
+--
+-- ROLLBACK SAFETY (hard rule 7): ADD COLUMN is forward-only. Rollback = a NEW
+-- migration with `ALTER TABLE order_items DROP COLUMN project_id` (SQLite 3.35+);
+-- optionally `DROP INDEX IF EXISTS idx_order_items_project` for hygiene.
+
+ALTER TABLE order_items ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_order_items_project ON order_items(project_id);

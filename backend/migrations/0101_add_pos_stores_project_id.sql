@@ -1,0 +1,33 @@
+-- Migration 0101: Phase-0 pos_stores.project_id (nullable, schema-only).
+--
+-- WHAT: adds a nullable `project_id TEXT REFERENCES projects(id) ON DELETE SET NULL`
+-- column to pos_stores plus a matching lookup index. Zero behavior change:
+-- nullable, no backfill, no NOT NULL, no data touched.
+--
+-- Recon ground truth: /tmp/opencode/p0-recon.md §2 row 10 + §3 (0101 section).
+-- pos_stores EXISTS (CREATE 0010:38-60) with columns id / organization_id NOT NULL /
+-- name / code UNIQUE / description / phone / email / address NOT NULL / city NOT NULL /
+-- state / postal_code / latitude / longitude / manager_id / opening_hours / pos_settings /
+-- is_active / created_at / updated_at, FKs → pos_organizations(id), pos_users(id).
+-- It has NEITHER tenant_id NOR camp_id NOR project_id, and zero ALTERs in the ledger
+-- (grep `ALTER TABLE pos_stores` = no hits). Dedicated single-table file because
+-- stores are the org-scoped root whose nullability/index choice P0-D may treat
+-- differently from the 0100 core set.
+--
+-- IDEMPOTENCY: SQLite/D1 has no `ADD COLUMN IF NOT EXISTS`, so the ADD COLUMN is
+-- intentionally bare — same established pattern as 0087_order_payment_paymob.sql /
+-- 0098_storefront_paymob.sql (plain ALTER, applied once by the ledger). The companion
+-- index uses `CREATE INDEX IF NOT EXISTS` (mirrors 0094_index_gaps.sql, which added
+-- idx_pos_stores_organization on this same table, and 0096_storefront_orders.sql).
+--
+-- FK PRECISION: inline `REFERENCES projects(id) ON DELETE SET NULL` follows the
+-- project ADD COLUMN precedent (0069_restaurant_tables.sql:46,54;
+-- 0090_marketplace_payouts.sql:34) and is recorded as the logical scope link; full
+-- FK enforcement/backfill is deferred to Phase 1 (cf. camp_id FK rebuilds 0066/0091).
+--
+-- ROLLBACK SAFETY (hard rule 7): ADD COLUMN is forward-only. Rollback = a NEW
+-- migration with `ALTER TABLE pos_stores DROP COLUMN project_id` (SQLite 3.35+);
+-- optionally `DROP INDEX IF EXISTS idx_pos_stores_project` for hygiene.
+
+ALTER TABLE pos_stores ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_pos_stores_project ON pos_stores(project_id);
