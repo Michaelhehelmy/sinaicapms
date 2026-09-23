@@ -7,7 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../src/middleware/requireAuth.js', () => ({
-  requireAuth: () => async () => ({ user: { id: 'super-admin-1' } }),
+  requireAuth: () => async () => ({ user: { userId: 'super-admin-1', sub: 'super-admin-1' } }),
 }));
 
 import { adminSettingsRoutes } from '../../src/api/admin-settings.js';

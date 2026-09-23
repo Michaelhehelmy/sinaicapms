@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ordersRoutes from '../src/api/orders.js';
 import { mountRouter } from './helpers/routerHarness.js';
 
-const ADMIN = { id: 'admin_1', role: 'admin' };
+const ADMIN = { userId: 'admin_1', sub: 'admin_1', role: 'admin' };
 let app;
 
 beforeEach(() => {

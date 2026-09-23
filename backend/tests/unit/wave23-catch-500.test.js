@@ -27,7 +27,7 @@ import { mountRouter } from '../helpers/routerHarness.js';
 // The admin-settings gate is instantiated at module load from requireAuth();
 // mock it so every request passes auth and DB failure drives the 500 paths.
 vi.mock('../../src/middleware/requireAuth.js', () => ({
-  requireAuth: () => async () => ({ user: { id: 'super-admin-1', role: 'super_admin' } }),
+  requireAuth: () => async () => ({ user: { userId: 'super-admin-1', sub: 'super-admin-1', role: 'super_admin' } }),
 }));
 
 /** A DB whose every call rejects — every route below hits its catch block. */

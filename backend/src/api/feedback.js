@@ -180,7 +180,7 @@ feedbackRoutes.patch('/:id', async (c) => {
          resolved_at = CASE WHEN ? = 'resolved' THEN datetime('now') ELSE resolved_at END,
          resolved_by = CASE WHEN ? = 'resolved' THEN ? ELSE resolved_by END
        WHERE id = ?`
-    ).bind(status, status, status, auth.user?.id || 'system', feedbackId).run();
+    ).bind(status, status, status, auth.user?.userId || auth.user?.sub || 'system', feedbackId).run();
 
     if ((result?.meta?.changes ?? 0) === 0) {
       return errorResponse('Feedback not found', 404);

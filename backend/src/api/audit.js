@@ -176,7 +176,7 @@ auditRoutes.post('/', async (c) => {
 
     const id = await logAudit(c.env.DB, {
       tenantId,
-      userId: parsed.data.user_id || scope.user.id || 'system',
+      userId: parsed.data.user_id || scope.user.userId || scope.user.sub || 'system',
       action: parsed.data.action,
       entityType: parsed.data.entity_type,
       entityId: parsed.data.entity_id,

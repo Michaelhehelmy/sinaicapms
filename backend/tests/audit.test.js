@@ -15,7 +15,7 @@ function mockDb({ auditRows = [], total = 0 } = {}) {
   };
 }
 
-const superAdmin = { id: 'adm1', role: 'super_admin', email: 'root@x.com' };
+const superAdmin = { userId: 'adm1', sub: 'adm1', role: 'super_admin', email: 'root@x.com' };
 
 async function buildApp({ user = superAdmin, tenantId = 'tee1' } = {}) {
   return mountRouter(auditRoutes, { basePath: '/api/audit', user, tenantId });
@@ -149,7 +149,7 @@ describe('auditRoutes POST /', () => {
   });
 
   it('returns 403 when non-super_admin audits another tenant', async () => {
-    const tenantAdmin = { id: 'adm2', role: 'admin', email: 'a@b.com' };
+    const tenantAdmin = { userId: 'adm2', sub: 'adm2', role: 'admin', email: 'a@b.com' };
     env.DB = mockDb();
     const res = await post('/api/audit', {
       action: 'create', entity_type: 'tenant', entity_id: 'e1', tenant_id: 'OTHER',

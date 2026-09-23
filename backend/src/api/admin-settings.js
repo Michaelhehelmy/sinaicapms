@@ -195,7 +195,7 @@ adminSettingsRoutes.put('/', async (c) => {
       JSON.stringify(currentSettings.defaults),
       JSON.stringify(currentSettings.branding),
       JSON.stringify(currentSettings.payment),
-      auth.user?.id || 'system',
+      auth.user?.userId || auth.user?.sub || 'system',
     ).run();
 
     // Mask payment secrets before returning
@@ -262,7 +262,7 @@ adminSettingsRoutes.put('/feature-flags/:id', async (c) => {
 
     await c.env.DB.prepare(
       `UPDATE platform_settings SET feature_flags = ?, updated_at = datetime('now'), updated_by = ? WHERE id = 1`
-    ).bind(JSON.stringify(flags), auth.user?.id || 'system').run();
+    ).bind(JSON.stringify(flags), auth.user?.userId || auth.user?.sub || 'system').run();
 
     return jsonResponse({ success: true, id: flagId, enabled });
   } catch (e) {

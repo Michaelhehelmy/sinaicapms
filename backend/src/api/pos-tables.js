@@ -151,7 +151,7 @@ posTablesRoutes.post('/', async (c) => {
 
     auditTableChange(c.env.DB, {
       tenantId,
-      userId: getScope(c).user?.id || 'system',
+      userId: getScope(c).user?.userId || getScope(c).user?.sub || 'system',
       action: 'create',
       entityId: tid,
       newValues: { name, capacity: capacity ?? 2, status: status ?? 'available', section: section || null },
@@ -198,7 +198,7 @@ posTablesRoutes.put('/:id', async (c) => {
 
     auditTableChange(c.env.DB, {
       tenantId,
-      userId: getScope(c).user?.id || 'system',
+      userId: getScope(c).user?.userId || getScope(c).user?.sub || 'system',
       action: 'update',
       entityId: tableId,
       newValues: { ...(name !== undefined && { name }), ...(capacity !== undefined && { capacity }), ...(status !== undefined && { status }), ...(section !== undefined && { section }) },
@@ -237,7 +237,7 @@ posTablesRoutes.patch('/:id/status', async (c) => {
 
     auditTableChange(c.env.DB, {
       tenantId,
-      userId: getScope(c).user?.id || 'system',
+      userId: getScope(c).user?.userId || getScope(c).user?.sub || 'system',
       action: 'update',
       entityId: tableId,
       oldValues: undefined, // prior status not loaded — single-statement fast path
@@ -268,7 +268,7 @@ posTablesRoutes.delete('/:id', async (c) => {
 
     auditTableChange(c.env.DB, {
       tenantId,
-      userId: getScope(c).user?.id || 'system',
+      userId: getScope(c).user?.userId || getScope(c).user?.sub || 'system',
       action: 'delete',
       entityId: tableId,
     });

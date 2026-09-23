@@ -107,7 +107,7 @@ function makeStepDb(steps) {
 // ─── pos-tables router ─────────────────────────────────────────
 
 describe('pos-tables routes (/api/pos-tables)', () => {
-  const adminUser = { id: 'u_admin', role: 'admin' };
+  const adminUser = { userId: 'u_admin', sub: 'u_admin', role: 'admin' };
 
   function makeApp(user = adminUser) {
     return mountRouter(posTablesRoutes, {
@@ -204,7 +204,7 @@ describe('pos-tables routes (/api/pos-tables)', () => {
 
     it('rejects managers and cashiers with 403 (admin-only mutations)', async () => {
       for (const role of ['manager', 'cashier']) {
-        const app = makeApp({ id: 'u_x', role });
+        const app = makeApp({ userId: 'u_x', sub: 'u_x', role });
         const res = await app.request(
           '/api/pos-tables',
           { method: 'POST', body: JSON.stringify({ name: 'T1' }) },
@@ -376,7 +376,7 @@ describe('pos-tables routes (/api/pos-tables)', () => {
 
 describe('orders kitchen-status endpoint', () => {
   function makeKitchenApp() {
-    return mountRouter(ordersRoutes, { tenantId: TENANT, user: { id: 'u_admin', role: 'admin' }, basePath: '/api/orders' });
+    return mountRouter(ordersRoutes, { tenantId: TENANT, user: { userId: 'u_admin', sub: 'u_admin', role: 'admin' }, basePath: '/api/orders' });
   }
 
   function kitchenDb(currentStatus, { auditFails = false } = {}) {

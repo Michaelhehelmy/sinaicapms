@@ -601,7 +601,7 @@ ordersRoutes.patch('/:id/kitchen-status', async (c) => {
     // audit row can never break the transition response.
     await logAudit(c.env.DB, {
       tenantId,
-      userId: getScope(c).user?.id || 'system',
+      userId: getScope(c).user?.userId || getScope(c).user?.sub || 'system',
       action: 'update',
       entityType: 'order',
       entityId: ordId,
@@ -1279,7 +1279,7 @@ ordersRoutes.post('/:id/record-payment', async (c) => {
       }
     }
 
-    const receivedBy = getScope(c).user?.id || 'system';
+    const receivedBy = getScope(c).user?.userId || getScope(c).user?.sub || 'system';
     const recordedAt = new Date().toISOString();
     const paymentId = idempotencyKey || 'pay_' + crypto.randomUUID().slice(0, 12);
     const { approved_by: approvedBy, reference, notes } = parsed.data;
