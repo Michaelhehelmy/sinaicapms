@@ -1,0 +1,27 @@
+# Staging squash smoke — 2026-09-23 (STAGE-2 PASS)
+
+## Backup
+- `npx wrangler d1 export campmaster-db-staging --remote --env staging --output /tmp/staging-pre-squash.sql`
+- Size: 118488 bytes (non-empty verified before any write).
+
+## Pre-rewrite ledger
+- 109 rows: 0001_init.sql … 0110_create_payment_records.sql (see /tmp/staging-ledger-pre.json).
+
+## Rewrite (d1_migrations ONLY — no table touched, no data written)
+- `DELETE FROM d1_migrations WHERE name LIKE '00%'` → changes: 99 (legacy 0001–0099 removed; 0100–0110 kept).
+- `INSERT INTO d1_migrations (name, applied_at)` × 14 baseline rows (0001_core.sql … 0014_seed.sql) → changes: 14.
+- Post ledger: 24 rows. `migrations list` → "No migrations to apply!". `migrations apply` → no-op "No migrations to apply!".
+
+## Non-recursion proof
+- With legacy/ holding 99 files, `migrations list` pre-rewrite showed ONLY the 14 baseline files pending — wrangler scans backend/migrations/*.sql top-level only.
+
+## Smoke (pre vs post, byte-compared)
+- GET /api/tenants/public → 200 pre + post, bodies IDENTICAL (diff exit 0).
+- GET /api/meals?tenant_id=acacia → 200 pre + post, bodies IDENTICAL.
+- GET /admin → 200 pre + post.
+- Data intact: tenants=3, projects=3 (matches Phase-0 gate expectation).
+
+## Credentialed checks
+- SKIPPED-with-reason: no staging admin/POS creds in repo/env/scope (P35 precedent — will not brute-force). Covered by: empty schema diff (Stage-1c) + byte-identical API responses + intact row counts.
+
+## Verdict: SMOKE PASS
