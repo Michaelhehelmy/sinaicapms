@@ -67,7 +67,10 @@ describe('handleMealSchedulesRoute', () => {
           bind: vi.fn(() => ({
             first: vi.fn().mockImplementation(() => {
               callIdx++;
-              return Promise.resolve({ id: callIdx === 1 ? 'meal_1' : 'camp_1' });
+              // P2: the meal must live in the schedule's project (camp_id IS the
+              // project id), so the meal row carries project_id 'camp_1'.
+              if (callIdx === 1) return Promise.resolve({ id: 'meal_1', project_id: 'camp_1' });
+              return Promise.resolve({ id: 'camp_1' });
             }),
             run: vi.fn().mockResolvedValue({}),
           })),
@@ -170,7 +173,9 @@ describe('handleMealSchedulesRoute', () => {
           bind: vi.fn(() => ({
             first: vi.fn().mockImplementation(() => {
               callIdx++;
-              return Promise.resolve({ id: 'x' });
+              // P2 coherence: meal project must equal the camp id 'c1'.
+              if (callIdx === 1) return Promise.resolve({ id: 'm1', project_id: 'c1' });
+              return Promise.resolve({ id: 'c1' });
             }),
             run: vi.fn().mockRejectedValue(new Error('DB fail')),
           })),

@@ -252,20 +252,29 @@ describe('campPutSchema', () => {
 
 describe('mealPostSchema', () => {
   it('accepts valid input', () => {
-    const result = mealPostSchema.safeParse({ name: 'Breakfast', price: 25 });
+    // P2: project_id is required on meal writes.
+    const result = mealPostSchema.safeParse({ name: 'Breakfast', price: 25, project_id: 'p1' });
     expect(result.success).toBe(true);
   });
 
   it('rejects missing name', () => {
-    const result = mealPostSchema.safeParse({ price: 25 });
+    const result = mealPostSchema.safeParse({ price: 25, project_id: 'p1' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].code).toBe('invalid_type');
     }
   });
 
+  it('rejects missing project_id', () => {
+    const result = mealPostSchema.safeParse({ name: 'Breakfast', price: 25 });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.path.join('.'))).toContain('project_id');
+    }
+  });
+
   it('rejects price = -5', () => {
-    const result = mealPostSchema.safeParse({ name: 'Lunch', price: -5 });
+    const result = mealPostSchema.safeParse({ name: 'Lunch', price: -5, project_id: 'p1' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe('Price must be non-negative');
@@ -273,12 +282,12 @@ describe('mealPostSchema', () => {
   });
 
   it('accepts price = 0', () => {
-    const result = mealPostSchema.safeParse({ name: 'Free Snack', price: 0 });
+    const result = mealPostSchema.safeParse({ name: 'Free Snack', price: 0, project_id: 'p1' });
     expect(result.success).toBe(true);
   });
 
   it('strips unknown fields', () => {
-    const result = mealPostSchema.safeParse({ name: 'Dinner', price: 50, hack: true });
+    const result = mealPostSchema.safeParse({ name: 'Dinner', price: 50, project_id: 'p1', hack: true });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.hack).toBeUndefined();
@@ -287,18 +296,23 @@ describe('mealPostSchema', () => {
 });
 
 describe('mealPutSchema', () => {
-  it('accepts empty object (all optional)', () => {
+  it('requires project_id (same-project ownership assertion)', () => {
     const result = mealPutSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts price update with project_id', () => {
+    const result = mealPutSchema.safeParse({ price: 30, project_id: 'p1' });
     expect(result.success).toBe(true);
   });
 
   it('rejects name = empty string', () => {
-    const result = mealPutSchema.safeParse({ name: '' });
+    const result = mealPutSchema.safeParse({ name: '', project_id: 'p1' });
     expect(result.success).toBe(false);
   });
 
   it('rejects price = -1', () => {
-    const result = mealPutSchema.safeParse({ price: -1 });
+    const result = mealPutSchema.safeParse({ price: -1, project_id: 'p1' });
     expect(result.success).toBe(false);
   });
 });

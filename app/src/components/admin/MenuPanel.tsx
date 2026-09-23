@@ -62,9 +62,14 @@ const statusOptions = [
 
 export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
   const queryClient = useQueryClient();
-  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery();
+  // P2 project scoping: same current-project contract as MealsPanel — consume
+  // the AdminApp selector via campIds ([activeCamp.id]); fresh login with no
+  // explicit selection defaults to camps[0] (tenant default project). NEVER
+  // "all". No second selector is created here; the topbar camp-switcher owns it.
+  const activeProjectId = campIds[0] ?? camps[0]?.id;
+  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery(activeProjectId);
   const meals = mealsData ?? [];
-  const { data: catsData, isLoading: loadingCats } = useMealCategoriesQuery();
+  const { data: catsData, isLoading: loadingCats } = useMealCategoriesQuery(activeProjectId);
   const mealCategories = catsData ?? [];
   // Phase 6: refresh = invalidate the ['admin', ...] concern in the TanStack cache.
   const refreshMeals = useCallback(
@@ -165,7 +170,10 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     }
     setBulkSaving(true);
     try {
-      const res = await bulkCreateMeals(items);
+      // P2: tag the bulk items with the current project (per-item projectId
+      // wins inside bulkCreateMeals; items built here carry none, so the
+      // panel default applies to all of them).
+      const res = await bulkCreateMeals(items, activeProjectId);
       showToast(`${res.count} meal${res.count === 1 ? '' : 's'} created.`, 'success');
       setShowBulkForm(false);
       refreshMeals();
@@ -175,7 +183,7 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     } finally {
       setBulkSaving(false);
     }
-  }, [bulkRows, showToast, refreshMeals, refreshCats]);
+  }, [bulkRows, showToast, refreshMeals, refreshCats, activeProjectId]);
 
   const handleSaveMeal = useCallback(async () => {
     if (!mealForm.name.trim()) {
@@ -188,14 +196,17 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     }
     setSaving(true);
     try {
-      await api.saveMeal({
+      // P2: tag creates with the current project; edits omit it (no moves).
+      const mealPayload: api.MealWriteInput = {
         name: mealForm.name.trim(),
         mealCategoryId: mealForm.mealCategoryId,
         price: parseFloat(mealForm.price) || 0,
         description: mealForm.description.trim() || undefined,
         imageUrl: mealForm.imageUrl.trim() || undefined,
         isActive: mealForm.isActive,
-      }, editMealId ?? undefined);
+      };
+      if (!editMealId && activeProjectId) mealPayload.projectId = activeProjectId;
+      await api.saveMeal(mealPayload, editMealId ?? undefined);
       showToast(editMealId ? 'Meal updated.' : 'Meal created.', 'success');
       setShowMealForm(false);
       setEditMealId(null);
@@ -206,7 +217,7 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [mealForm, editMealId, showToast, refreshMeals]);
+  }, [mealForm, editMealId, showToast, refreshMeals, activeProjectId]);
 
   const handleSaveCat = useCallback(async () => {
     if (!catName.trim()) {
@@ -215,8 +226,14 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     }
     setSaving(true);
     try {
+      // P2: same create-tagging rule as meals above.
+      const catPayload: api.MealCategoryWriteInput = {
+        name: catName.trim(),
+        position: parseInt(catPosition) || 0,
+      };
+      if (!editCatId && activeProjectId) catPayload.projectId = activeProjectId;
       await api.saveMealCategory(
-        { name: catName.trim(), position: parseInt(catPosition) || 0 },
+        catPayload,
         editCatId ?? undefined,
       );
       showToast(editCatId ? 'Category updated.' : 'Category created.', 'success');
@@ -230,7 +247,7 @@ export default function MenuPanel({ campIds, camps }: MenuPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [catName, editCatId, showToast, refreshCats]);
+  }, [catName, catPosition, editCatId, showToast, refreshCats, activeProjectId]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;

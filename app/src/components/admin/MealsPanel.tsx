@@ -46,9 +46,17 @@ const mealStatusOptions = [
 
 export default function MealsPanel({ campIds, camps }: MealsPanelProps) {
   const queryClient = useQueryClient();
-  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery();
+  // P2 project scoping: consume the AdminApp current-project selector
+  // (selectedCampId/activeCamp + camp-switcher). campIds is ALWAYS
+  // [activeCamp.id] from AdminApp, so campIds[0] is the current project.
+  // Fresh login with no explicit selection falls back to camps[0] — the
+  // tenant default project (defaultCampId precedent). NEVER "all": an
+  // undefined projectId (tenant-wide read) only happens when the tenant has
+  // no projects at all, in which case nav-gating keeps this panel unmounted.
+  const activeProjectId = campIds[0] ?? camps[0]?.id;
+  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery(activeProjectId);
   const meals = mealsData ?? [];
-  const { data: catsData, isLoading: loadingCats } = useMealCategoriesQuery();
+  const { data: catsData, isLoading: loadingCats } = useMealCategoriesQuery(activeProjectId);
   const mealCategories = catsData ?? [];
   // Phase 6: refresh = invalidate the ['admin', ...] concern in the TanStack cache.
   const refreshMeals = useCallback(
@@ -112,14 +120,19 @@ export default function MealsPanel({ campIds, camps }: MealsPanelProps) {
     }
     setSaving(true);
     try {
-      await api.saveMeal({
+      // P2: tag creates with the current project (P2-B requires project_id on
+      // POST). Edits omit it — project moves are a P2-B decision, and sending
+      // it on PUT could turn an edit into an accidental cross-project move.
+      const mealPayload: api.MealWriteInput = {
         name: mealForm.name.trim(),
         mealCategoryId: mealForm.mealCategoryId,
         price: parseFloat(mealForm.price) || 0,
         description: mealForm.description.trim() || undefined,
         imageUrl: mealForm.imageUrl.trim() || undefined,
         isActive: mealForm.isActive,
-      }, editMealId ?? undefined);
+      };
+      if (!editMealId && activeProjectId) mealPayload.projectId = activeProjectId;
+      await api.saveMeal(mealPayload, editMealId ?? undefined);
       showToast(editMealId ? 'Meal updated.' : 'Meal created.', 'success');
       setShowMealForm(false);
       setEditMealId(null);
@@ -130,7 +143,7 @@ export default function MealsPanel({ campIds, camps }: MealsPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [mealForm, editMealId, showToast, refreshMeals]);
+  }, [mealForm, editMealId, showToast, refreshMeals, activeProjectId]);
 
   const handleSaveCat = useCallback(async () => {
     if (!catName.trim()) {
@@ -139,8 +152,11 @@ export default function MealsPanel({ campIds, camps }: MealsPanelProps) {
     }
     setSaving(true);
     try {
+      // P2: same create-tagging rule as meals above.
+      const catPayload: api.MealCategoryWriteInput = { name: catName.trim() };
+      if (!editCatId && activeProjectId) catPayload.projectId = activeProjectId;
       await api.saveMealCategory(
-        { name: catName.trim() },
+        catPayload,
         editCatId ?? undefined,
       );
       showToast(editCatId ? 'Category updated.' : 'Category created.', 'success');
@@ -153,7 +169,7 @@ export default function MealsPanel({ campIds, camps }: MealsPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [catName, editCatId, showToast, refreshCats]);
+  }, [catName, editCatId, showToast, refreshCats, activeProjectId]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;

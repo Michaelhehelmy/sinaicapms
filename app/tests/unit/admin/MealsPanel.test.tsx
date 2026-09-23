@@ -331,7 +331,8 @@ describe('MealsPanel', () => {
     fireEvent.click(screen.getByTestId('modal-submit'));
 
     await waitFor(() => {
-      expect(mockSaveMealCategory).toHaveBeenCalledWith({ name: 'Beverages' }, undefined);
+      // P2-C: creates carry the current project (campIds ['c1'] in this suite).
+      expect(mockSaveMealCategory).toHaveBeenCalledWith({ name: 'Beverages', projectId: 'c1' }, undefined);
       expect(mockShowToast).toHaveBeenCalledWith('Category created.', 'success');
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'mealCategories'] });

@@ -123,6 +123,10 @@ export interface Meal {
   imageUrl: string | null;
   isActive: number;
   categoryName?: string;
+  // P2 project scoping (additive): echoed by the backend once P2-B lands;
+  // absent on legacy rows — always read tolerantly.
+  projectId?: string;
+  projectName?: string;
 }
 
 export interface Category {
@@ -138,6 +142,9 @@ export interface MealCategory {
   id: string;
   name: string;
   position: number;
+  // P2 project scoping (additive) — see Meal above.
+  projectId?: string;
+  projectName?: string;
 }
 
 export interface MealSchedule {
@@ -151,5 +158,9 @@ export interface MealSchedule {
   packageType: string;
   maxServings: number;
   createdAt: string;
+  // P2 project scoping (additive) — see Meal above. `campId` stays the legacy
+  // key until P2 decides the camp_id removal; prefer `projectId` when present.
+  projectId?: string;
+  projectName?: string;
 }
 

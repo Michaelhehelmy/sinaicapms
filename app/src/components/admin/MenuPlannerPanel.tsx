@@ -77,9 +77,19 @@ const packageTypeOptions = [
 
 export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelProps) {
   const queryClient = useQueryClient();
-  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery();
+  // P2 project scoping: the current project is campIds[0] (AdminApp passes
+  // [activeCamp.id]), falling back to camps[0] on a fresh login with no
+  // explicit selection (tenant default project — NEVER "all"). The id doubles
+  // as the legacy campId until P2 decides the camp_id removal.
+  const activeCampId = (campIds.length > 0 ? campIds[0] : camps[0]?.id) ?? '';
+  const { data: mealsData, isLoading: loadingMeals } = useMealsQuery(activeCampId || undefined);
   const meals = mealsData ?? [];
-  const { data: schedulesData, isLoading: loadingSchedules } = useMealSchedulesQuery();
+  // Server-side narrowing via ?projectId (recon contract; P2-B lands it in
+  // parallel). The client-side filter below stays as a tolerant fallback so
+  // the panel is correctly scoped even before the backend update.
+  const { data: schedulesData, isLoading: loadingSchedules } = useMealSchedulesQuery(
+    activeCampId ? { projectId: activeCampId } : undefined,
+  );
   const schedules = schedulesData ?? [];
   // Phase 6: refresh = invalidate the ['admin', ...] concern in the TanStack cache.
   const refreshSchedules = useCallback(
@@ -94,9 +104,6 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
   const [form, setForm] = useState<ScheduleForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  // Single-camp admin (B3): meal schedules always belong to the tenant's one camp.
-  const activeCampId = campIds.length > 0 ? campIds[0] : '';
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -131,7 +138,14 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
     const weekDates = new Set(weekDays.map((d) => formatDateISO(d)));
     return schedules.filter((s) => {
       if (!weekDates.has(s.date)) return false;
-      if (activeCampId && s.campId !== activeCampId) return false;
+      // Tolerant scope check: prefer the new projectId echo when the backend
+      // sends it, fall back to the legacy campId. Either matching keeps the
+      // row — the panel renders merged-then-scoped identically before/after
+      // P2-B, and legacy rows without projectId filter exactly as before.
+      if (activeCampId) {
+        const scopeId = s.projectId ?? s.campId;
+        if (scopeId !== activeCampId) return false;
+      }
       return true;
     });
   }, [schedules, weekDays, activeCampId]);
@@ -172,8 +186,13 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
     }
     setSaving(true);
     try {
+      // P2: keep sending the legacy campId (still required today) and tag the
+      // new projectId with the same current-project value. Until P2-B accepts
+      // project_id the extra key is stripped server-side — a safe no-op.
+      const scheduleProjectId = form.campId || activeCampId || undefined;
       await createMealSchedule({
         campId: form.campId || activeCampId,
+        ...(scheduleProjectId ? { projectId: scheduleProjectId } : {}),
         date: modalDate,
         mealId: form.mealId,
         // T8-C: MealScheduleCreateRequest.packageType is a closed union
@@ -287,8 +306,8 @@ export default function MenuPlannerPanel({ campIds, camps }: MenuPlannerPanelPro
                           {s.packageType.replace(/_/g, ' ')}
                         </Badge>
                       </div>
-                      {s.campName && (
-                        <div className="text-xs text-gray-500 mt-0.5">{s.campName}</div>
+                      {(s.projectName ?? s.campName) && (
+                        <div className="text-xs text-gray-500 mt-0.5">{s.projectName ?? s.campName}</div>
                       )}
                       {confirmDeleteId === s.id ? (
                         <div className="flex items-center gap-1 mt-1.5">

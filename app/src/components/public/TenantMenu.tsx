@@ -16,16 +16,32 @@ interface MealItem {
   imageUrl?: string;
   isActive: number;
   categoryName?: string;
+  // P2 project scoping (additive, all optional): echoed by the backend once
+  // P2-B lands. Legacy rows carry none of these — every read below tolerates
+  // their absence and renders legacy rows identically to before.
+  projectId?: string;
+  projectName?: string;
+  /** Alternative nested echo shape (tolerated alongside the flat fields). */
+  project?: { id?: string; name?: string } | null;
 }
 
 interface MealCategoryItem {
   id: string;
   name: string;
   position: number;
+  // P2: tolerated, unused for grouping — the public menu always merges all
+  // projects and groups by category only.
+  projectId?: string;
 }
 
 interface CartItem extends MealItem {
   qty: number;
+}
+
+/** Minimal project metadata for resolving per-meal labels (sibling-map variant). */
+export interface MenuProjectMeta {
+  id: string;
+  name: string;
 }
 
 interface Props {
@@ -34,6 +50,8 @@ interface Props {
   tenantName: string;
   primaryColor?: string;
   whatsappNumber?: string;
+  /** Optional project map (P2-B sibling-map variant) for `from X` labels. */
+  projects?: MenuProjectMeta[];
 }
 
 const DEFAULT_CURRENCY = 'EGP';
@@ -99,7 +117,28 @@ function loadCart(): CartItem[] {
   } catch { return []; }
 }
 
-export default function TenantMenu({ meals, mealCategories, tenantName, primaryColor, whatsappNumber }: Props) {
+/**
+ * Resolve the per-meal project display name (P2 merged menu).
+ * Order: flat `projectName` echo → `projects` sibling-map lookup by
+ * `projectId` → nested `project.name`. Returns undefined when nothing
+ * resolvable is present (legacy rows, or id-only rows with no map) — callers
+ * render no label in that case, so legacy responses look exactly as before.
+ */
+export function mealProjectName(
+  meal: Pick<MealItem, 'projectId' | 'projectName' | 'project'>,
+  projects?: MenuProjectMeta[],
+): string | undefined {
+  if (meal.projectName) return meal.projectName;
+  if (meal.projectId && projects) {
+    const match = projects.find((p) => p.id === meal.projectId);
+    if (match?.name) return match.name;
+  }
+  const nested = meal.project?.name;
+  if (typeof nested === 'string' && nested) return nested;
+  return undefined;
+}
+
+export default function TenantMenu({ meals, mealCategories, tenantName, primaryColor, whatsappNumber, projects }: Props) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartItem[]>(loadCart);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -352,6 +391,10 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {cat.items.map((item) => {
                 const qty = getItemQty(item.id);
+                // P2 merged menu: every active meal renders regardless of
+                // project; the label only appears when a project name is
+                // resolvable (new-shape rows), never for legacy rows.
+                const projectLabel = mealProjectName(item, projects);
                 return (
                   <div
                     key={item.id}
@@ -367,6 +410,11 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
                           <h3 className="font-bold text-base" style={{ color: '#2d2d2d' }}>{item.name}</h3>
                           {item.description && (
                             <p className="text-xs mt-1 opacity-60 italic">{item.description}</p>
+                          )}
+                          {projectLabel && (
+                            <p data-testid={`meal-project-${item.id}`} className="text-[11px] mt-0.5 opacity-50">
+                              from {projectLabel}
+                            </p>
                           )}
                           <span className="font-bold text-base mt-1 inline-block" style={{ color: brandHex }}>
                             {formatPrice(item.price)}

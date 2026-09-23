@@ -926,7 +926,8 @@ describe('leadPutSchema', () => {
 
 describe('mealCategoryPostSchema', () => {
   it('accepts valid input', () => {
-    const result = mealCategoryPostSchema.safeParse({ name: 'Breakfast' });
+    // P2: project_id is required on category writes.
+    const result = mealCategoryPostSchema.safeParse({ name: 'Breakfast', project_id: 'p1' });
     expect(result.success).toBe(true);
   });
 
@@ -934,17 +935,26 @@ describe('mealCategoryPostSchema', () => {
     const result = mealCategoryPostSchema.safeParse({
       name: 'Lunch',
       position: 1,
+      project_id: 'p1',
     });
     expect(result.success).toBe(true);
   });
 
   it('rejects missing name', () => {
-    const result = mealCategoryPostSchema.safeParse({});
+    const result = mealCategoryPostSchema.safeParse({ project_id: 'p1' });
     expect(result.success).toBe(false);
   });
 
+  it('rejects missing project_id', () => {
+    const result = mealCategoryPostSchema.safeParse({ name: 'Breakfast' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((i) => i.path.join('.'))).toContain('project_id');
+    }
+  });
+
   it('rejects empty name', () => {
-    const result = mealCategoryPostSchema.safeParse({ name: '' });
+    const result = mealCategoryPostSchema.safeParse({ name: '', project_id: 'p1' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toBe('Meal category name is required');
@@ -952,7 +962,7 @@ describe('mealCategoryPostSchema', () => {
   });
 
   it('position is optional', () => {
-    const result = mealCategoryPostSchema.safeParse({ name: 'Dinner' });
+    const result = mealCategoryPostSchema.safeParse({ name: 'Dinner', project_id: 'p1' });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.position).toBeUndefined();
@@ -962,6 +972,7 @@ describe('mealCategoryPostSchema', () => {
   it('strips unknown fields', () => {
     const result = mealCategoryPostSchema.safeParse({
       name: 'Snacks',
+      project_id: 'p1',
       hack: true,
     });
     expect(result.success).toBe(true);
@@ -972,18 +983,18 @@ describe('mealCategoryPostSchema', () => {
 });
 
 describe('mealCategoryPutSchema', () => {
-  it('accepts empty object (all optional)', () => {
+  it('requires project_id (same-project ownership assertion)', () => {
     const result = mealCategoryPutSchema.safeParse({});
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   it('accepts name update', () => {
-    const result = mealCategoryPutSchema.safeParse({ name: 'Updated Category' });
+    const result = mealCategoryPutSchema.safeParse({ name: 'Updated Category', project_id: 'p1' });
     expect(result.success).toBe(true);
   });
 
   it('accepts position update', () => {
-    const result = mealCategoryPutSchema.safeParse({ position: 3 });
+    const result = mealCategoryPutSchema.safeParse({ position: 3, project_id: 'p1' });
     expect(result.success).toBe(true);
   });
 
@@ -991,6 +1002,7 @@ describe('mealCategoryPutSchema', () => {
     const result = mealCategoryPutSchema.safeParse({
       name: 'Desserts',
       position: 5,
+      project_id: 'p1',
     });
     expect(result.success).toBe(true);
   });
@@ -998,6 +1010,7 @@ describe('mealCategoryPutSchema', () => {
   it('strips unknown fields', () => {
     const result = mealCategoryPutSchema.safeParse({
       name: 'Category',
+      project_id: 'p1',
       evil: true,
     });
     expect(result.success).toBe(true);

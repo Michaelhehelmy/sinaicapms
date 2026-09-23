@@ -263,12 +263,22 @@ export function usePlansQuery() {
   });
 }
 
-/** Fetch all meals */
-export function useMealsQuery() {
+/**
+ * Fetch meals, optionally narrowed to one project (P2 frontend).
+ * Additive: omit `projectId` and the key + fetch are byte-identical to the
+ * legacy tenant-wide call, so every existing paramless caller is unaffected.
+ * Pass the AdminApp current project (`campIds[0] ?? camps[0]?.id`) — never
+ * "all": a fresh login with no explicit selection defaults to the tenant
+ * default project (defaultCampId precedent), and the base key
+ * `['admin', 'meals']` still invalidates every scoped variant (prefix match).
+ */
+export function useMealsQuery(projectId?: string) {
   const toastError = useErrorToast();
   return useQuery<Meal[]>({
-    queryKey: queryKeys.meals,
-    queryFn: () => api.getMeals() as Promise<Meal[]>,
+    queryKey: projectId ? [...queryKeys.meals, projectId] : queryKeys.meals,
+    // Unscoped = the exact legacy zero-arg call (some suites assert
+    // `getMeals` was called with no arguments).
+    queryFn: () => (projectId ? api.getMeals({ projectId }) : api.getMeals()) as Promise<Meal[]>,
     throwOnError: (err) => {
       toastError('Failed to load meals', err);
       return false;
@@ -276,12 +286,16 @@ export function useMealsQuery() {
   });
 }
 
-/** Fetch all meal categories */
-export function useMealCategoriesQuery() {
+/**
+ * Fetch meal categories, optionally narrowed to one project (P2 frontend).
+ * Same additive contract as {@link useMealsQuery}.
+ */
+export function useMealCategoriesQuery(projectId?: string) {
   const toastError = useErrorToast();
   return useQuery<MealCategory[]>({
-    queryKey: queryKeys.mealCategories,
-    queryFn: () => api.getMealCategories() as Promise<MealCategory[]>,
+    queryKey: projectId ? [...queryKeys.mealCategories, projectId] : queryKeys.mealCategories,
+    // Unscoped = the exact legacy zero-arg call (see useMealsQuery note).
+    queryFn: () => (projectId ? api.getMealCategories({ projectId }) : api.getMealCategories()) as Promise<MealCategory[]>,
     throwOnError: (err) => {
       toastError('Failed to load meal categories', err);
       return false;

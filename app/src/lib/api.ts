@@ -441,16 +441,40 @@ export function deleteCategory(id: number | string) {
   return apiFetch<Schemas['SuccessResponse']>(`/categories/${id}`, { method: 'DELETE' });
 }
 
-// ─── Meals ────────────────────────────────────────────────────────────
-export function getMeals() {
-  return apiFetch<Schemas['MealList']>('/meals');
+// ─── Meals (project scoping — P2 frontend, additive only) ─────────────
+// Backend `?projectId` read-narrowing lands in parallel (P2-B); the query
+// param name `projectId` is the recon contract. When omitted the backend
+// keeps its tenant-wide default, so existing paramless callers behave exactly
+// as before. Request bodies are camelCase on the wire (backend `toSnake`s
+// them); until P2-B accepts `project_id` its `.strip()` schemas silently drop
+// the extra key — a safe no-op, never an error.
+
+/** Optional project narrow for meal reads. Omit = tenant-wide (legacy). */
+export interface MealProjectScope {
+  projectId?: string;
+}
+
+/** A meal row as returned post-P2-B: legacy fields plus optional project echo. */
+export type MealWithProject = Schemas['Meal'] & {
+  projectId?: string;
+  projectName?: string;
+};
+
+/** Write payload: legacy fields plus optional project tag (required by P2-B on create). */
+export type MealWriteInput = (Schemas['MealCreateRequest'] | Schemas['MealUpdateRequest']) & {
+  projectId?: string;
+};
+
+export function getMeals(params?: MealProjectScope) {
+  const qs = params?.projectId ? `?projectId=${encodeURIComponent(params.projectId)}` : '';
+  return apiFetch<Schemas['MealList']>(`/meals${qs}`);
 }
 
 export function getMeal(id: number | string) {
   return apiFetch<Schemas['Meal']>(`/meals/${id}`);
 }
 
-export function saveMeal(data: Schemas['MealCreateRequest'] | Schemas['MealUpdateRequest'], editId?: number | string) {
+export function saveMeal(data: MealWriteInput, editId?: number | string) {
   return apiFetch<Schemas['IdResponse'] | Schemas['SuccessResponse']>(editId ? `/meals/${editId}` : '/meals', {
     method: editId ? 'PUT' : 'POST',
     body: JSON.stringify(data),
@@ -461,11 +485,19 @@ export function deleteMeal(id: number | string) {
   return apiFetch<Schemas['SuccessResponse']>(`/meals/${id}`, { method: 'DELETE' });
 }
 
-/** Bulk-create up to 200 menu items. */
-export function bulkCreateMeals(items: Schemas['MealCreateRequest'][]) {
+/**
+ * Bulk-create up to 200 menu items.
+ * Additive: optional `projectId` tags every item that does not already carry
+ * its own (per-item `projectId` on the item object always wins).
+ */
+export function bulkCreateMeals(
+  items: Array<Schemas['MealCreateRequest'] & { projectId?: string }>,
+  projectId?: string,
+) {
+  const scoped = projectId ? items.map((it) => ({ projectId, ...it })) : items;
   return apiFetch<BulkCreateResponse>('/meals/bulk', {
     method: 'POST',
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ items: scoped }),
   });
 }
 
@@ -475,7 +507,18 @@ export function getMealSchedules(params?: Record<string, string>) {
   return apiFetch<Schemas['MealScheduleList']>(`/meal-schedules${qs}`);
 }
 
-export function createMealSchedule(data: Schemas['MealScheduleCreateRequest']) {
+/** Schedule row post-P2-B: legacy fields plus optional project echo. */
+export type MealScheduleWithProject = Schemas['MealSchedule'] & {
+  projectId?: string;
+  projectName?: string;
+};
+
+/** Write payload: legacy `campId` (still required today) plus optional `projectId` (P2-B). */
+export type MealScheduleWriteInput = Schemas['MealScheduleCreateRequest'] & {
+  projectId?: string;
+};
+
+export function createMealSchedule(data: MealScheduleWriteInput) {
   return apiFetch<Schemas['IdResponse']>('/meal-schedules', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -486,12 +529,28 @@ export function deleteMealSchedule(id: string) {
   return apiFetch<Schemas['SuccessResponse']>(`/meal-schedules/${id}`, { method: 'DELETE' });
 }
 
-// ─── Meal Categories ──────────────────────────────────────────────────
-export function getMealCategories() {
-  return apiFetch<Schemas['MealCategoryList']>('/meal-categories');
+// ─── Meal Categories (project scoping — P2 frontend, additive only) ───
+// Same contract as meals above: optional `?projectId` narrows, omission keeps
+// the tenant-wide default; `projectId` on writes is a safe no-op until P2-B.
+
+/** A meal-category row post-P2-B: legacy fields plus optional project echo. */
+export type MealCategoryWithProject = Schemas['MealCategory'] & {
+  projectId?: string;
+  projectName?: string;
+};
+
+/** Write payload: legacy fields plus optional project tag (required by P2-B on create). */
+export type MealCategoryWriteInput =
+  (Schemas['MealCategoryCreateRequest'] | Schemas['MealCategoryUpdateRequest']) & {
+    projectId?: string;
+  };
+
+export function getMealCategories(params?: MealProjectScope) {
+  const qs = params?.projectId ? `?projectId=${encodeURIComponent(params.projectId)}` : '';
+  return apiFetch<Schemas['MealCategoryList']>(`/meal-categories${qs}`);
 }
 
-export function saveMealCategory(data: Schemas['MealCategoryCreateRequest'] | Schemas['MealCategoryUpdateRequest'], editId?: number | string) {
+export function saveMealCategory(data: MealCategoryWriteInput, editId?: number | string) {
   return apiFetch<Schemas['IdResponse'] | Schemas['SuccessResponse']>(editId ? `/meal-categories/${editId}` : '/meal-categories', {
     method: editId ? 'PUT' : 'POST',
     body: JSON.stringify(data),

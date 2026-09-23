@@ -70,16 +70,21 @@ describe('mealsRoutes', () => {
   });
 
   describe('POST /api/meals', () => {
+    // P2: project lookup (FROM projects) + optional category lookup
+    // (FROM meal_categories) are answered inline; everything else runs.
+    const p2Db = (runImpl = vi.fn().mockResolvedValue({})) => ({
+      prepare: vi.fn((sql) => {
+        if (sql.includes('FROM projects')) {
+          return { bind: vi.fn(() => ({ all: vi.fn().mockResolvedValue({ results: [{ id: 'p1', tenant_id: tenantId }] }) })) };
+        }
+        return { bind: vi.fn(() => ({ all: vi.fn().mockResolvedValue({ results: [] }), run: runImpl })) };
+      }),
+    });
+
     it('creates a meal', async () => {
-      const db = {
-        prepare: vi.fn(() => ({
-          bind: vi.fn(() => ({
-            run: vi.fn().mockResolvedValue({}),
-          })),
-        })),
-      };
+      const db = p2Db();
       env = { DB: db };
-      const res = await request('POST', 'http://localhost/api/meals', { name: 'Lunch', price: 25, description: 'Yummy' });
+      const res = await request('POST', 'http://localhost/api/meals', { name: 'Lunch', price: 25, description: 'Yummy', projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
@@ -95,21 +100,25 @@ describe('mealsRoutes', () => {
         })),
       };
       env = { DB: db };
-      const res = await request('POST', 'http://localhost/api/meals', { price: 25 });
+      const res = await request('POST', 'http://localhost/api/meals', { price: 25, projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
 
+    it('returns 400 with structured errors for missing projectId', async () => {
+      env = { DB: { prepare: vi.fn() } };
+      const res = await request('POST', 'http://localhost/api/meals', { name: 'Lunch', price: 25 });
+      const data = await res.json();
+      expect(res.status).toBe(400);
+      expect(data.errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'projectId' })])
+      );
+    });
+
     it('handles DB errors', async () => {
-      const db = {
-        prepare: vi.fn(() => ({
-          bind: vi.fn(() => ({
-            run: vi.fn().mockRejectedValue(new Error('DB fail')),
-          })),
-        })),
-      };
+      const db = p2Db(vi.fn().mockRejectedValue(new Error('DB fail')));
       env = { DB: db };
-      const res = await request('POST', 'http://localhost/api/meals', { name: 'Meal', price: 10 });
+      const res = await request('POST', 'http://localhost/api/meals', { name: 'Meal', price: 10, projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to create meal');
@@ -122,6 +131,14 @@ describe('mealsRoutes', () => {
       const db = {
         prepare: vi.fn((sql) => {
           sqls.push(sql);
+          // P2: project lookup resolves p1; no category rows for cat_1… but the
+          // second item references cat_1, so answer it in-project.
+          if (sql.includes('FROM projects')) {
+            return { bind: vi.fn(() => ({ all: vi.fn().mockResolvedValue({ results: [{ id: 'p1', tenant_id: tenantId }] }) })) };
+          }
+          if (sql.includes('FROM meal_categories')) {
+            return { bind: vi.fn(() => ({ all: vi.fn().mockResolvedValue({ results: [{ id: 'cat_1', tenant_id: tenantId, project_id: 'p1' }] }) })) };
+          }
           return { bind: vi.fn(() => ({})) };
         }),
         batch: vi.fn().mockResolvedValue([]),
@@ -129,8 +146,8 @@ describe('mealsRoutes', () => {
       env = { DB: db };
       const res = await request('POST', 'http://localhost/api/meals/bulk', {
         items: [
-          { name: 'Breakfast Set', price: 20 },
-          { name: 'Lunch Set', price: 30, mealCategoryId: 'cat_1' },
+          { name: 'Breakfast Set', price: 20, projectId: 'p1' },
+          { name: 'Lunch Set', price: 30, mealCategoryId: 'cat_1', projectId: 'p1' },
         ],
       });
       const data = await res.json();
@@ -154,19 +171,24 @@ describe('mealsRoutes', () => {
     it('returns 400 for an invalid item (missing name)', async () => {
       env = { DB: { prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })), batch: vi.fn() } };
       const res = await request('POST', 'http://localhost/api/meals/bulk', {
-        items: [{ name: '', price: 10 }],
+        items: [{ name: '', price: 10, projectId: 'p1' }],
       });
       expect(res.status).toBe(400);
     });
 
     it('handles DB errors during batch', async () => {
       const db = {
-        prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })),
+        prepare: vi.fn((sql) => {
+          if (sql.includes('FROM projects')) {
+            return { bind: vi.fn(() => ({ all: vi.fn().mockResolvedValue({ results: [{ id: 'p1', tenant_id: tenantId }] }) })) };
+          }
+          return { bind: vi.fn(() => ({})) };
+        }),
         batch: vi.fn().mockRejectedValue(new Error('DB fail')),
       };
       env = { DB: db };
       const res = await request('POST', 'http://localhost/api/meals/bulk', {
-        items: [{ name: 'Set', price: 20 }],
+        items: [{ name: 'Set', price: 20, projectId: 'p1' }],
       });
       const data = await res.json();
       expect(res.status).toBe(500);
@@ -175,79 +197,59 @@ describe('mealsRoutes', () => {
   });
 
   describe('PUT /api/meals/:id', () => {
-    it('updates a meal with name', async () => {
-      const db = {
-        prepare: vi.fn(() => ({
+    // P2: PUT requires projectId — ownership rows carry project_id 'p1'.
+    const putDb = (ownershipRows = [{ id: 'meal_1', project_id: 'p1' }], runImpl = vi.fn().mockResolvedValue({})) => ({
+      prepare: vi.fn((sql) => {
+        if (sql.includes('FROM projects')) {
+          return { bind: vi.fn(() => ({ all: vi.fn().mockResolvedValue({ results: [{ id: 'p1', tenant_id: tenantId }] }) })) };
+        }
+        return {
           bind: vi.fn(() => ({
-            all: vi.fn().mockImplementation(() => {
-              return Promise.resolve({ results: [{ id: 'meal_1' }] });
-            }),
-            run: vi.fn().mockResolvedValue({}),
+            all: vi.fn().mockImplementation(() => Promise.resolve({ results: ownershipRows })),
+            run: runImpl,
           })),
-        })),
-      };
+        };
+      }),
+    });
+
+    it('updates a meal with name', async () => {
+      const db = putDb();
       env = { DB: db };
-      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { name: 'Updated Meal', price: 30 });
+      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { name: 'Updated Meal', price: 30, projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
     });
 
     it('updates without name (skips meal_lang upsert)', async () => {
-      const db = {
-        prepare: vi.fn(() => ({
-          bind: vi.fn(() => ({
-            all: vi.fn().mockResolvedValue({ results: [{ id: 'meal_1' }] }),
-            run: vi.fn().mockResolvedValue({}),
-          })),
-        })),
-      };
+      const db = putDb();
       env = { DB: db };
-      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { price: 50 });
+      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { price: 50, projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
     });
 
     it('returns 404 when meal not found', async () => {
-      const db = {
-        prepare: vi.fn(() => ({
-          bind: vi.fn(() => ({
-            all: vi.fn().mockResolvedValue({ results: [] }),
-          })),
-        })),
-      };
+      const db = putDb([]);
       env = { DB: db };
-      const res = await request('PUT', 'http://localhost/api/meals/meal_999', { name: 'X' });
+      const res = await request('PUT', 'http://localhost/api/meals/meal_999', { name: 'X', projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(404);
     });
 
     it('returns 400 for invalid input', async () => {
-      const db = {
-        prepare: vi.fn(() => ({
-          bind: vi.fn(() => ({
-            all: vi.fn().mockResolvedValue({ results: [{ id: 'meal_1' }] }),
-          })),
-        })),
-      };
+      const db = putDb();
       env = { DB: db };
-      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { price: -5 });
+      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { price: -5, projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(400);
     });
 
     it('handles DB errors', async () => {
-      const db = {
-        prepare: vi.fn(() => ({
-          bind: vi.fn(() => ({
-            all: vi.fn().mockResolvedValue({ results: [{ id: 'meal_1' }] }),
-            run: vi.fn().mockRejectedValue(new Error('DB fail')),
-          })),
-        })),
-      };
+      const db = putDb([{ id: 'meal_1', project_id: 'p1' }], vi.fn().mockRejectedValue(new Error('DB fail')));
       env = { DB: db };
-      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { name: 'X' });
+      const res = await request('PUT', 'http://localhost/api/meals/meal_1', { name: 'X', projectId: 'p1' });
       const data = await res.json();
       expect(res.status).toBe(500);
       expect(data.error).toContain('Failed to update meal');

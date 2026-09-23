@@ -344,10 +344,13 @@ describe('MenuPanel', () => {
     fireEvent.click(screen.getByTestId('modal-submit'));
 
     await waitFor(() => {
+      // P2-C: bulk creates pass the current project (campIds ['c1']) as the
+      // second arg; per-item tagging lands in the api layer (covered in
+      // meals-api-project-scope.test.ts).
       expect(mockBulkCreateMeals).toHaveBeenCalledWith([
         { name: 'Falafel Wrap', mealCategoryId: undefined, price: 12, description: undefined },
         { name: 'Bedouin Tea', mealCategoryId: undefined, price: 4, description: undefined },
-      ]);
+      ], 'c1');
       expect(mockShowToast).toHaveBeenCalledWith('2 meals created.', 'success');
     });
     expect(screen.queryByTestId('bulk-meal-rows')).not.toBeInTheDocument();
