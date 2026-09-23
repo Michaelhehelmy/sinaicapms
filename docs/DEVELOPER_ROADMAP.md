@@ -30,3 +30,7 @@ Status of the production-readiness backlog, as of the **T9–T18** batch plus th
 ## Known pre-existing type errors (baseline, not regressions)
 
 `BookPage.astro` (`apiBase` prop) and `MenuPage.astro` (meal/mealCategory types) have LSP errors that predate this backlog batch (part of the known 153-error baseline). They do not block `astro build` or the test suites.
+
+## Wave 7 test-hygiene note (2026-09-22, staging walkthrough)
+
+The POS feedback success-modal Done button needs `force: true` in Playwright: the POS shell overlay intercepts normal clicks in a hydration race. Human taps work; production unaffected. If POS modal tests flake on click timeouts, prefer force-click or `state: attached` + wait before asserting.

@@ -310,7 +310,8 @@ export function TenantImportPanel() {
           </div>
           <p data-testid="import-schema-hint" className="text-xs text-gray-500">
             The template has no identity block (tenant admins import into their own tenant).
-            See docs/tenant-import.md for field reference.
+            Rooms need a camp first — create one via the Camps panel (the project block is
+            ignored in existing-tenant mode). See docs/tenant-import.md for field reference.
           </p>
 
           <div>

@@ -60,6 +60,10 @@ strings (send the JSON-encoded string).
 `name`, `location`, `capacity`, `status` (`active|inactive|planning|completed`). Sets/updates the
 tenant's default project for camp scoping.
 
+> Rooms require a camp to exist first: the tenant needs exactly one project, and the
+> `project` block is ignored in existing-tenant mode — create a camp via the Camps
+> panel before importing rooms, or room rows fail with 404.
+
 ### `products` *(≤ 200)*
 `id?`, **`name`**, `sku?`, `basePrice?`, `capacity?`, `description?`, `shortDescription?`,
 `imageUrl?`, `categoryId?`, `isActive?` (0/1), `type?` (`room|menu|buffet|retail`), `campId?`.
