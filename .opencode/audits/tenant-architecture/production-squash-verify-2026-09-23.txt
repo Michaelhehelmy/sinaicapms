@@ -1,0 +1,27 @@
+# Production squash verify — 2026-09-23 (STAGE-3 PASS, gated on STAGE-2 PASS 9c8c31f)
+
+## Pre-state (differs from staging: prod was 2 migrations behind)
+- Prod ledger pre-rewrite: 107 rows (0001–0107; missing 0108 + 0110 — never deployed to prod).
+- Prod meals NULL pre-check: meals/cats/sched NULLs = 0/0/0 → 0108 guard safe to apply.
+- PRE curls: / → 200, /api/me → 200, acaciacamp.com/ → 200, michaelshouse.sinaicamps.com/ → 200.
+
+## Backup (verified non-empty BEFORE any write)
+- `npx wrangler d1 export campmaster-db --remote --output /tmp/prod-pre-squash.sql` → 109339 bytes.
+- Second copy: $HOME/prod-pre-squash-2026-09-23.sql (109339 bytes).
+- Note: both copies are on-machine; the rewrite itself never writes user tables (d1_migrations only), and D1 storage is itself replicated — no user-data write path exists in this stage.
+
+## Rewrite (d1_migrations ONLY)
+- `DELETE FROM d1_migrations WHERE name LIKE '00%'` → changes: 99 (0001–0099 removed; 0100–0107 kept).
+- `INSERT INTO d1_migrations (name, applied_at)` × 14 baseline rows → changes: 14.
+- Post ledger pre-apply: 22 rows; pending = 0108 + 0110 (exactly the 2 prod lacked).
+
+## Apply 0100+ (real applies, both staging-verified)
+- 0108_add_meals_project_id.sql ✅ (4 commands; guard passed — 0 NULLs as pre-checked).
+- 0110_create_payment_records.sql ✅.
+
+## Post verifies (all PASS)
+- Ledger: 24 rows. tenants=3. payment_records table present, 0 rows.
+- / → 200, /api/me → 200 (byte-IDENTICAL pre/post), acaciacamp.com/ → 200, michaelshouse.sinaicamps.com/ → 200.
+- Credentialed checks (super-admin login, tenant-list visibility): SKIPPED-with-reason — no prod creds in scope; covered by byte-identical /api/me + intact counts + staging parity.
+
+## Verdict: SMOKE PASS
