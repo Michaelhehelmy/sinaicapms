@@ -120,14 +120,27 @@ router.post('/', async (c) => {
     const payoutId = crypto.randomUUID().replace(/-/g, '');
     const now = new Date().toISOString();
 
-    await db.prepare(`
-      INSERT INTO marketplace_payouts (id, tenant_id, amount, currency, method, status, reference, notes, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-    `).bind(payoutId, tenantId, totalAmount, currency, method, reference ?? null, notes ?? null, createdBy, now).run();
+    // Atomic create (F-001): the header INSERT plus every payout_id link
+    // commit in ONE D1 batch. Each link UPDATE carries a defensive WHERE
+    // (payout_id IS NULL + captured) so two concurrent creates racing the
+    // same rows cannot double-link — the loser sees 0 changed rows → 409.
+    // NOTE: a D1 batch commits atomically, so when a link UPDATE reports 0
+    // changes the header row is ALREADY committed; no reversal is attempted
+    // (the 409 tells the caller the rows now belong to another payout).
+    const statements = [
+      db.prepare(`
+        INSERT INTO marketplace_payouts (id, tenant_id, amount, currency, method, status, reference, notes, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+      `).bind(payoutId, tenantId, totalAmount, currency, method, reference ?? null, notes ?? null, createdBy, now),
+      ...paymentIds.map((pid) =>
+        db.prepare("UPDATE marketplace_payments SET payout_id = ? WHERE id = ? AND payout_id IS NULL AND payment_status = 'captured'").bind(payoutId, pid)
+      ),
+    ];
+    const createResults = await db.batch(statements);
 
-    await Promise.all(paymentIds.map(pid =>
-      db.prepare('UPDATE marketplace_payments SET payout_id = ? WHERE id = ?').bind(payoutId, pid).run()
-    ));
+    if (createResults.slice(1).some((r) => (r?.meta?.changes ?? 0) !== 1)) {
+      return errorResponse('Payment already linked to another payout', 409);
+    }
 
     const payout = {
       id: payoutId, tenant_id: tenantId, amount: totalAmount, currency,
@@ -224,6 +237,16 @@ router.post('/:id/pay', async (c) => {
 
     const now = new Date().toISOString();
     const { results: items } = await db.prepare('SELECT * FROM marketplace_payments WHERE payout_id = ?').bind(id).all();
+
+    // Overlap guard (F-001): refuse to settle rows that no longer belong to
+    // this payout (re-linked elsewhere, or already settled) instead of
+    // settling whatever the batch was given.
+    const stray = (items || []).filter(
+      (p) => (p.payout_id != null && String(p.payout_id) !== String(id)) || p.payment_status === 'settled'
+    );
+    if (stray.length > 0) {
+      return errorResponse('Payout items no longer belong to this payout', 409);
+    }
 
     // Single atomic batch: the guarded payout UPDATE is the concurrency lock
     // (AND status='pending' → changes 0 when a concurrent pay/cancel already
