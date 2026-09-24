@@ -49,6 +49,20 @@ const setupSchema = z.object({
   activities: z.string().optional(),
 }).strip();
 
+// ── U-004: onboarding bearer-token TTL ───────────────────────────────────
+// Tokens carry a 7-day expiry (onboarding_token_expires_at, migration 0114).
+// A NULL expiry is treated as VALID (legacy rows the backfill could not see),
+// so no live token is bricked; a past expiry is gone (410). Completion burns
+// BOTH columns to NULL (single-use); re-use of a completed token is 410.
+const ONBOARDING_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ONBOARDING_EXPIRED_MESSAGE = 'Onboarding link expired. Contact support.';
+const ONBOARDING_COMPLETED_MESSAGE = 'Onboarding already completed.';
+
+function isOnboardingTokenExpired(tenant) {
+  if (!tenant?.onboarding_token_expires_at) return false;
+  return new Date(tenant.onboarding_token_expires_at).getTime() < Date.now();
+}
+
 const onboardingRoutes = new Hono();
 
 // ── POST /api/public/signup ─────────────────────────────────────────────
@@ -86,6 +100,8 @@ onboardingRoutes.post('/public/signup', async (c) => {
     const tid = 'tenant_' + crypto.randomUUID().slice(0, 12);
     const adminId = 'adm_' + crypto.randomUUID().slice(0, 12);
     const onboardingToken = crypto.randomUUID();
+    // U-004: stamp the 7-day TTL at generation.
+    const onboardingTokenExpiresAt = new Date(Date.now() + ONBOARDING_TOKEN_TTL_MS).toISOString();
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Provision tenant + admin + POS org/store + mapping in ONE atomic batch.
@@ -100,9 +116,9 @@ onboardingRoutes.post('/public/signup', async (c) => {
       env.DB.prepare(
         `INSERT INTO tenants (
           id, subdomain, name, type, email, status,
-          onboarding_token, onboarding_status, primary_color, capacity, currency, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'pending_setup', ?, 'pending_setup', '#4a7c4f', 50, 'EGP', datetime('now'), datetime('now'))`
-      ).bind(tid, subdomain, name, business_type || 'camp', email, onboardingToken),
+          onboarding_token, onboarding_token_expires_at, onboarding_status, primary_color, capacity, currency, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'pending_setup', ?, ?, 'pending_setup', '#4a7c4f', 50, 'EGP', datetime('now'), datetime('now'))`
+      ).bind(tid, subdomain, name, business_type || 'camp', email, onboardingToken, onboardingTokenExpiresAt),
       // 2. Admin account — T6 (P0.2): starts INACTIVE. Login queries already
       //    gate `is_active = 1` (auth.js), so the account cannot be used until
       //    the onboarding wizard completes (setup flow flips it active).
@@ -151,6 +167,7 @@ onboardingRoutes.get('/onboarding/status/:token', async (c) => {
   try {
     const { results } = await env.DB.prepare(
       `SELECT id, name, subdomain, email, status, onboarding_status,
+              onboarding_token_expires_at,
               location, phone, description, primary_color, capacity, currency
        FROM tenants WHERE onboarding_token = ?`
     ).bind(token).all();
@@ -160,6 +177,10 @@ onboardingRoutes.get('/onboarding/status/:token', async (c) => {
     }
 
     const tenant = results[0];
+    // U-004: expired links are gone (410), not invalid (404).
+    if (isOnboardingTokenExpired(tenant)) {
+      return errorResponse(ONBOARDING_EXPIRED_MESSAGE, 410);
+    }
     return jsonResponse({
       tenant_id: tenant.id,
       name: tenant.name,
@@ -196,7 +217,7 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
 
     // Verify token
     const { results } = await env.DB.prepare(
-      'SELECT id, onboarding_status FROM tenants WHERE onboarding_token = ?'
+      'SELECT id, onboarding_status, onboarding_token_expires_at FROM tenants WHERE onboarding_token = ?'
     ).bind(token).all();
 
     if (results.length === 0) {
@@ -204,8 +225,12 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
     }
 
     const tenant = results[0];
+    // U-004: re-use after completion is gone (410), not a bad request (400).
     if (tenant.onboarding_status === 'completed') {
-      return errorResponse('Onboarding already completed', 400);
+      return errorResponse(ONBOARDING_COMPLETED_MESSAGE, 410);
+    }
+    if (isOnboardingTokenExpired(tenant)) {
+      return errorResponse(ONBOARDING_EXPIRED_MESSAGE, 410);
     }
 
     // Build dynamic update
@@ -228,8 +253,10 @@ onboardingRoutes.post('/onboarding/setup', async (c) => {
 
     // Mark onboarding complete — T1 (P0.1): the onboarding token is cleared
     // once consumed so it can never be reused or echoed after use.
+    // U-004: burn BOTH the token and its expiry (single-use); any re-use of
+    // a completed token answers 410 via the completed-check above.
     await env.DB.prepare(
-      `UPDATE tenants SET onboarding_status = 'completed', status = 'active', onboarding_token = NULL, updated_at = datetime('now') WHERE id = ?`
+      `UPDATE tenants SET onboarding_status = 'completed', status = 'active', onboarding_token = NULL, onboarding_token_expires_at = NULL, updated_at = datetime('now') WHERE id = ?`
     ).bind(tenant.id).run();
 
     // T6 (P0.2): activate the tenant's admin only after the wizard completes.
@@ -278,11 +305,16 @@ onboardingRoutes.post('/onboarding/tenant', async (c) => {
     }
 
     const { results } = await env.DB.prepare(
-      'SELECT id FROM tenants WHERE onboarding_token = ?'
+      'SELECT id, onboarding_token_expires_at FROM tenants WHERE onboarding_token = ?'
     ).bind(token).all();
 
     if (results.length === 0) {
       return errorResponse('Invalid onboarding link', 404);
+    }
+
+    // U-004: expired links are gone (410), not invalid (404).
+    if (isOnboardingTokenExpired(results[0])) {
+      return errorResponse(ONBOARDING_EXPIRED_MESSAGE, 410);
     }
 
     const tenantId = results[0].id;

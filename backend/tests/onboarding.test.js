@@ -357,7 +357,7 @@ describe('onboardingRoutes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns 400 when onboarding already completed', async () => {
+    it('returns 410 when onboarding already completed (U-004: re-use is gone, not bad-request)', async () => {
       const db = {
         prepare: vi.fn(() => ({
           bind: vi.fn().mockReturnThis(),
@@ -366,7 +366,9 @@ describe('onboardingRoutes', () => {
       };
       env.DB = db;
       const res = await request('POST', '/api/onboarding/setup', { token: 'tok123' });
-      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(res.status).toBe(410);
+      expect(data.error).toBe('Onboarding already completed.');
     });
 
     it('returns 400 for missing token', async () => {
@@ -443,6 +445,73 @@ describe('onboardingRoutes', () => {
       env.DB = { prepare: vi.fn(() => { throw new Error('DB fail'); }) };
       const res = await request('POST', '/api/onboarding/tenant', { token: 'tok123' });
       expect(res.status).toBe(500);
+    });
+  });
+
+  // ─── U-004 token expiry + single-use burn ───────────────────────
+  describe('U-004 onboarding token expiry + single-use burn', () => {
+    it('fresh token (future expiry) → 200', async () => {
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockResolvedValue({
+            results: [{
+              id: 't1', name: 'Acacia', subdomain: 'acacia', email: 'a@b.com',
+              status: 'pending_setup', onboarding_status: 'pending_setup',
+              onboarding_token_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              location: 'Sinai', phone: '123', description: 'A camp',
+              primary_color: '#4a7c4f', capacity: 50, currency: 'EGP',
+            }],
+          }),
+        })),
+      };
+      env.DB = db;
+      const res = await request('GET', '/api/onboarding/status/fresh-token');
+      const data = await res.json();
+      expect(res.status).toBe(200);
+      expect(data.setupComplete).toBe(false);
+    });
+
+    it('past-expiry token → 410 "Onboarding link expired. Contact support."', async () => {
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockResolvedValue({
+            results: [{
+              id: 't1', name: 'Acacia', subdomain: 'acacia', email: 'a@b.com',
+              status: 'pending_setup', onboarding_status: 'pending_setup',
+              onboarding_token_expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+              location: null, phone: null, description: null,
+              primary_color: '#4a7c4f', capacity: 50, currency: 'EGP',
+            }],
+          }),
+        })),
+      };
+      env.DB = db;
+      const res = await request('GET', '/api/onboarding/status/stale-token');
+      const data = await res.json();
+      expect(res.status).toBe(410);
+      expect(data.error).toBe('Onboarding link expired. Contact support.');
+    });
+
+    it('post-completion re-use → 410 "Onboarding already completed."', async () => {
+      const db = {
+        prepare: vi.fn(() => ({
+          bind: vi.fn().mockReturnThis(),
+          all: vi.fn().mockResolvedValue({
+            results: [{
+              id: 't1',
+              onboarding_status: 'completed',
+              onboarding_token_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            }],
+          }),
+        })),
+      };
+      env.DB = db;
+      const res = await request('POST', '/api/onboarding/setup', { token: 'used-token' });
+      const data = await res.json();
+      expect(res.status).toBe(410);
+      expect(data.error).toBe('Onboarding already completed.');
     });
   });
 });
