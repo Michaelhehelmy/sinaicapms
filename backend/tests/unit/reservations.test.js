@@ -131,7 +131,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
       .on(/from price_overrides/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and email/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and phone/i, () => ({ results: [] }))
-      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }));
+      .on(/insert into customers/i, () => ({ results: [{ id: 'cust_1' }], meta: { changes: 1 } }));
     db.batch = vi.fn(async () => [{ meta: { changes: 0 } }]); // lost race
 
     const app = mount('t1');
@@ -151,7 +151,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
       .on(/from price_overrides/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and email/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and phone/i, () => ({ results: [] }))
-      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }));
+      .on(/insert into customers/i, () => ({ results: [{ id: 'cust_1' }], meta: { changes: 1 } }));
 
     const app = mount('t1');
     // env deliberately omits PM_SECRET_KEY / PM_BASE_URL -> fallback path.
@@ -180,7 +180,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
       .on(/from price_overrides/i, () => ({ results: [] }))
       .on(/from pos_products\s+where id in/i, () => ({ results: [{ id: 'meal_1', name: 'Half-board', selling_price: '300' }] }))
       .on(/from tenant_org_mapping/i, () => ({ results: [] }))
-      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }));
+      .on(/insert into customers/i, () => ({ results: [{ id: 'cust_1' }], meta: { changes: 1 } }));
 
     const app = mount('t1');
     // No PM keys -> WhatsApp fallback envelope carrying effectiveTotal.
@@ -222,7 +222,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
       .on(/from price_overrides/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and email/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and phone/i, () => ({ results: [] }))
-      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }))
+      .on(/insert into customers/i, () => ({ results: [{ id: 'cust_1' }], meta: { changes: 1 } }))
       .on(/update orders set payment_intent_id/i, () => ({ meta: { changes: 1 } }));
 
     const app = mount('t1');
@@ -255,7 +255,7 @@ describe('POST /api/public/reservations — U-001 runtime store resolution', () 
       .on(/from pos_stores/i, () => ({ results: [{ id: 42 }] }))
       .on(/from customers where tenant_id = \? and email/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and phone/i, () => ({ results: [] }))
-      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }));
+      .on(/insert into customers/i, () => ({ results: [{ id: 'cust_1' }], meta: { changes: 1 } }));
 
     const app = mount('t1');
     // No PM keys -> WhatsApp fallback envelope; the mirror runs before Paymob.
@@ -295,7 +295,7 @@ describe('POST /api/public/reservations — idempotency', () => {
       .on(/from price_overrides/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and email/i, () => ({ results: [] }))
       .on(/from customers where tenant_id = \? and phone/i, () => ({ results: [] }))
-      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }))
+      .on(/insert into customers/i, () => ({ results: [{ id: 'cust_1' }], meta: { changes: 1 } }))
       .on(/from orders[\s\S]*reference/i, referenceSelect);
     if (batchResult !== null) db.batch = vi.fn(async () => [batchResult]);
     return db;

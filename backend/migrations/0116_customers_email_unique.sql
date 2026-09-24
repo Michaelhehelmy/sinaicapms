@@ -1,0 +1,35 @@
+-- Migration 0116: partial UNIQUE index on customers (tenant_id, email) (audit U-002, LOW).
+--
+-- WHAT: CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_tenant_email_unique
+-- ON customers(tenant_id, email) WHERE email IS NOT NULL AND email != ''.
+-- No table rebuild: the customers DDL is unchanged; only a new index is added.
+-- The pre-existing non-unique idx_customers_tenant_email / idx_customers_tenant_phone
+-- are left untouched (never drop unless requested).
+--
+-- WHY (U-002, LOW, CONFIRMED — .opencode/audits/full-audit-2026-09-24/02-u-probe.md):
+-- findOrCreateCustomer in backend/src/api/reservations.js was SELECT-then-INSERT
+-- across separate round-trips with no DB guard, so concurrent POSTs with the same
+-- new email both missed and both INSERTed duplicate customer rows. The companion
+-- code change converts the email path to a single-statement INSERT ... ON
+-- CONFLICT DO UPDATE ... RETURNING id, and this index is its arbiter (the
+-- ON CONFLICT target repeats this WHERE predicate verbatim so SQLite infers the
+-- partial index).
+--
+-- PRE-EXISTING DUPE CENSUS (local D1, 2026-09-24, read-only — no merge in this
+-- commit): 0 duplicate (tenant_id, email) groups; 0 duplicate (tenant_id, phone)
+-- groups; 20 rows total (19 NULL email / 19 NULL phone / 0 empty-string). The
+-- CREATE succeeds with zero conflicts. Merging pre-existing dupes (if any appear
+-- on other environments) is DEFERRED to a follow-up — this migration is
+-- fail-closed: conflicting rows abort the apply loudly instead of being merged.
+--
+-- PHONE DELIBERATELY NOT UNIQUE: phone numbers are shared (family desks, fake
+-- 012... numbers) and must never abort a booking; the phone path keeps the
+-- legacy SELECT-then-UPDATE/INSERT. Pre-existing phone dupes: 0 here, so nothing
+-- to merge today either.
+--
+-- ROLLBACK SAFETY (hard rule 7): forward-only — no down-migration. Rollback =
+-- restore-from-backup ("locker") procedure, or DROP INDEX IF EXISTS
+-- idx_customers_tenant_email_unique (index-only change; safe to drop).
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_tenant_email_unique
+  ON customers(tenant_id, email) WHERE email IS NOT NULL AND email != '';

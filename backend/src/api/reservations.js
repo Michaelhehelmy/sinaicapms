@@ -106,7 +106,7 @@ function buildDuplicateResponse({ orderId, reference, totalAmount, currency, pay
   };
 }
 
-async function findOrCreateCustomer(env, tenantId, guestName, guestEmail, guestPhone) {
+export async function findOrCreateCustomer(env, tenantId, guestName, guestEmail, guestPhone) {
   if (!guestName) return null;
 
   let firstName = guestName;
@@ -117,28 +117,39 @@ async function findOrCreateCustomer(env, tenantId, guestName, guestEmail, guestP
     lastName = guestName.substring(spaceIdx + 1);
   }
 
-  if (guestEmail) {
-    const { results: existing } = await env.DB.prepare(
-      'SELECT id FROM customers WHERE tenant_id = ? AND email = ?'
-    ).bind(tenantId, guestEmail).all();
-    if (existing.length > 0) {
-      const custId = existing[0].id;
-      await env.DB.prepare(
-        "UPDATE customers SET first_name = COALESCE(NULLIF(?,''), first_name), last_name = COALESCE(NULLIF(?,''), last_name), phone = COALESCE(NULLIF(?,''), phone) WHERE id = ?"
-      ).bind(firstName, lastName, guestPhone, custId).run();
-      return custId;
-    }
+  const email = guestEmail || null;
+  const phone = guestPhone || null;
+
+  if (email) {
+    // U-002: atomic email upsert converging concurrent same-email requests.
+    // Arbiter is the partial UNIQUE (tenant_id, email) WHERE email IS NOT NULL
+    // AND email != '' (migration 0116); the ON CONFLICT WHERE repeats that
+    // predicate verbatim so SQLite infers the partial index. Non-empty incoming
+    // fields win, prior values are kept otherwise (same merge as before).
+    const row = await env.DB.prepare(
+      `INSERT INTO customers (id, tenant_id, first_name, last_name, email, phone, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(tenant_id, email) WHERE email IS NOT NULL AND email != ''
+       DO UPDATE SET first_name = COALESCE(NULLIF(excluded.first_name, ''), customers.first_name),
+                     last_name = COALESCE(NULLIF(excluded.last_name, ''), customers.last_name),
+                     phone = COALESCE(NULLIF(excluded.phone, ''), customers.phone),
+                     updated_at = datetime('now')
+       RETURNING id`
+    ).bind('cust_' + crypto.randomUUID().slice(0, 12), tenantId, firstName, lastName, email, phone).first();
+    return row ? row.id : null;
   }
 
-  if (guestPhone) {
+  if (phone) {
+    // Phone has no UNIQUE guard (shared/fake numbers must never abort a
+    // booking) — the legacy SELECT-then-UPDATE/INSERT is kept for this path.
     const { results: existing } = await env.DB.prepare(
       'SELECT id FROM customers WHERE tenant_id = ? AND phone = ?'
-    ).bind(tenantId, guestPhone).all();
+    ).bind(tenantId, phone).all();
     if (existing.length > 0) {
       const custId = existing[0].id;
       await env.DB.prepare(
         "UPDATE customers SET first_name = COALESCE(NULLIF(?,''), first_name), last_name = COALESCE(NULLIF(?,''), last_name), email = COALESCE(NULLIF(?,''), email) WHERE id = ?"
-      ).bind(firstName, lastName, guestEmail, custId).run();
+      ).bind(firstName, lastName, email, custId).run();
       return custId;
     }
   }
@@ -146,7 +157,7 @@ async function findOrCreateCustomer(env, tenantId, guestName, guestEmail, guestP
   const cid = 'cust_' + crypto.randomUUID().slice(0, 12);
   await env.DB.prepare(
     "INSERT INTO customers (id, tenant_id, first_name, last_name, email, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
-  ).bind(cid, tenantId, firstName, lastName, guestEmail || null, guestPhone || null).run();
+  ).bind(cid, tenantId, firstName, lastName, email, phone).run();
   return cid;
 }
 
