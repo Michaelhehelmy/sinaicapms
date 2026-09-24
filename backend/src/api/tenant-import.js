@@ -311,8 +311,10 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
 
       roomStmts.push(
         env.DB.prepare(
-          `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, created_at, updated_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+          // 0115: tenant_id is NOT NULL + FK — bind the import tenant (equals
+          // c3.tenant_id by the WHERE clause below, so the guard is unchanged).
+          `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, tenant_id, created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
            FROM projects c3
            WHERE c3.id = ? AND c3.tenant_id = ? AND c3.deleted_at IS NULL
              AND EXISTS (SELECT 1 FROM pos_products p WHERE p.id = ? AND p.tenant_id = c3.tenant_id)`
@@ -322,6 +324,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
           room.base_price !== undefined ? room.base_price : null,
           room.floor !== undefined ? String(room.floor) : null,
           room.notes || null, room.is_active !== undefined ? room.is_active : 1,
+          tenantId,
           campId, tenantId, productId
         )
       );

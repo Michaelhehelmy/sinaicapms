@@ -778,13 +778,15 @@ roomsRoutes.post('/', async (c) => {
     await ensureProductInProductsTable(c.env.DB, tenantId, product_id);
     // 0053: the INSERT only selects a row when the camp AND the product belong
     // to this tenant, so a foreign camp_id/product_id can never be stored.
+    // 0115: tenant_id is NOT NULL + FK — bind the scope tenant (equals
+    // c3.tenant_id by the WHERE clause below, so the guard is unchanged).
     const insertResult = await c.env.DB.prepare(
-      `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+      `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, tenant_id, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
        FROM projects c3
        WHERE c3.id = ? AND c3.tenant_id = ? AND c3.deleted_at IS NULL
          AND EXISTS (SELECT 1 FROM pos_products p WHERE p.id = ? AND p.tenant_id = c3.tenant_id)`
-    ).bind(rid, camp_id, product_id, name, status || 'available', bed_type || null, finalMaxGuests, base_price !== undefined ? base_price : null, floor || null, notes || null, is_active !== undefined ? is_active : 1, camp_id, tenantId, product_id).run();
+    ).bind(rid, camp_id, product_id, name, status || 'available', bed_type || null, finalMaxGuests, base_price !== undefined ? base_price : null, floor || null, notes || null, is_active !== undefined ? is_active : 1, tenantId, camp_id, tenantId, product_id).run();
     if (insertResult?.meta?.changes === 0) {
       return errorResponse('Camp or product not found for this tenant', 404);
     }
