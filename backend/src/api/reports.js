@@ -164,7 +164,7 @@ reportsRoutes.get('/top-products', async (c) => {
               COUNT(DISTINCT o.id) as order_count
        FROM pos_transaction_items oi
        JOIN pos_products p ON p.id = oi.product_id AND p.tenant_id = oi.tenant_id
-       JOIN pos_transactions o ON o.id = oi.transaction_id AND o.tenant_id = oi.tenant_id
+        JOIN pos_transactions o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id
        WHERE oi.tenant_id = ?
          AND o.created_at >= ?
          AND o.status != 'voided'
@@ -262,7 +262,7 @@ reportsRoutes.get('/revenue-breakdown', async (c) => {
       `SELECT p.type, SUM(ti.quantity * ti.unit_price) as revenue, COUNT(DISTINCT o.id) as order_count
        FROM pos_transaction_items ti
        JOIN pos_products p ON p.id = ti.product_id AND p.tenant_id = ti.tenant_id
-       JOIN pos_transactions o ON o.id = ti.transaction_id AND o.tenant_id = ti.tenant_id
+        JOIN pos_transactions o ON o.id = ti.order_id AND o.tenant_id = ti.tenant_id
        WHERE ti.tenant_id = ? AND o.created_at >= ? AND o.status != 'voided'
        GROUP BY p.type ORDER BY revenue DESC`
     ).bind(tenantId, cutoffStr).all();
