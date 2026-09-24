@@ -828,6 +828,16 @@ ordersRoutes.post('/', async (c) => {
 
       const productMap = new Map(products.map(p => [p.id, p]));
 
+      // U-001: resolve the mirror transaction's store at runtime (same shape
+      // as routes/pos/index.js:619-629 and api/reservations.js). The literal
+      // store_id 1 was the pre-0051 seed store and fails the store_id FK on a
+      // fresh DB. Lookup-only: with no store the mirror is skipped (never a
+      // hardcoded store id) while the order itself still succeeds.
+      const { results: mirrorStores } = await c.env.DB.prepare(
+        'SELECT id FROM pos_stores WHERE organization_id = ? LIMIT 1'
+      ).bind(organizationId).all();
+      const mirrorStoreId = mirrorStores.length > 0 ? mirrorStores[0].id : null;
+
       const itemStmts = [];
       const posStmts = [];
       let mealPlanTotal = 0;
@@ -847,7 +857,7 @@ ordersRoutes.post('/', async (c) => {
           product.name, mp.quantity, unitPrice, lineTotal
         ));
 
-        if (organizationId) {
+        if (organizationId && mirrorStoreId != null) {
           const posOrderId = 'pot_' + crypto.randomUUID().slice(0, 12);
           posStmts.push(c.env.DB.prepare(
             `INSERT INTO pos_transactions
@@ -855,9 +865,9 @@ ordersRoutes.post('/', async (c) => {
               status, subtotal, tax_amount, tax_rate, total_amount,
               paid_amount, payment_method, payment_status, notes,
               kitchen_status, created_at, updated_at)
-             VALUES (?, ?, ?, 1, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'))`
+             VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'))`
           ).bind(
-            posOrderId, tenantId, organizationId,
+            posOrderId, tenantId, organizationId, mirrorStoreId,
             'MP-' + reference, 'system', lineTotal, lineTotal,
             `Meal plan for booking ${reference}: ${product.name}`
           ));

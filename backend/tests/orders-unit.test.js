@@ -857,6 +857,7 @@ describe('handleOrdersRoute', () => {
     // 0 room query (all) · 1 overlap query (all) · 2 stay limits (all)
     // 3 customer insert (run) · 4 guarded orders INSERT (batch)
     // 5 tenant_org_mapping (all) · 6 pos_products (all)
+    // 7 pos_stores mirror lookup (all, U-001 runtime store resolution)
     function makeMealPlanDb(mock) {
       const { db } = makeDbMock();
       const fn = chainMock([
@@ -867,6 +868,7 @@ describe('handleOrdersRoute', () => {
         (ch) => {},
         (ch) => { ch.all.mockResolvedValue({ results: [{ organization_id: mock.org }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: mock.products }); },
+        (ch) => { ch.all.mockResolvedValue({ results: mock.store ?? [{ id: 9 }] }); },
       ]);
       db.prepare.mockImplementation(fn);
       return { db };

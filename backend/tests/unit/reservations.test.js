@@ -237,6 +237,51 @@ describe('GET /api/public/reservations (public reservation)', () => {
   });
 });
 
+describe('POST /api/public/reservations — U-001 runtime store resolution', () => {
+  it('binds the tenant org real store (not literal 1) on a fresh-DB-shaped store list', async () => {
+    // Fresh-DB shape: store id 1 does not exist; the tenant org's real store
+    // is id 42. The POS-mirror INSERT must carry 42 (runtime lookup) and the
+    // booking must return 200 — the old `VALUES (?, ?, ?, 1, …)` literal
+    // would fail the store_id FK here.
+    const db = makeRoutingDb()
+      .on(/r\.max_guests[\s\S]*join projects camp/i, () => ({ results: [{ id: 'room_1', max_guests: 4, camp_id: 'camp_1' }] }))
+      .on(/from orders[\s\S]*order_state_id != 'cancelled'/i, () => ({ results: [] }))
+      .on(/select r\.product_id[\s\S]*join projects c/i, () => ({ results: [{ product_id: 'room_prod' }] }))
+      .on(/from pos_products where id = \? and tenant_id/i, () => ({ results: [{ base_price: '100' }] }))
+      .on(/from rate_plans_new/i, () => ({ results: [] }))
+      .on(/from price_overrides/i, () => ({ results: [] }))
+      .on(/from pos_products\s+where id in/i, () => ({ results: [{ id: 'meal_1', name: 'Half-board', selling_price: '300' }] }))
+      .on(/from tenant_org_mapping/i, () => ({ results: [{ organization_id: 7 }] }))
+      .on(/from pos_stores/i, () => ({ results: [{ id: 42 }] }))
+      .on(/from customers where tenant_id = \? and email/i, () => ({ results: [] }))
+      .on(/from customers where tenant_id = \? and phone/i, () => ({ results: [] }))
+      .on(/insert into customers/i, () => ({ meta: { changes: 1 } }));
+
+    const app = mount('t1');
+    // No PM keys -> WhatsApp fallback envelope; the mirror runs before Paymob.
+    const res = await post(app, makeEnv(db), validReservationBody({
+      items: [{ product_id: 'meal_1', quantity: 1 }],
+    }));
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data.duplicate).toBe(false);
+
+    // The org-store lookup ran for organization 7.
+    const lookups = db.statements.filter(s => /from pos_stores/i.test(s.sql));
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0].boundBinds).toEqual([7]);
+
+    // Exactly one mirror INSERT, parameterized store_id bound to 42.
+    const mirrors = db.statements.filter(s => /insert into pos_transactions/i.test(s.sql));
+    expect(mirrors).toHaveLength(1);
+    expect(mirrors[0].sql).toMatch(/VALUES \(\?, \?, \?, \?,/);
+    expect(mirrors[0].sql).not.toMatch(/VALUES \(\?, \?, \?, 1,/);
+    // binds: (id, tenant_id, organization_id, store_id @ index 3, order_number, …).
+    expect(mirrors[0].boundBinds[2]).toBe(7);
+    expect(mirrors[0].boundBinds[3]).toBe(42);
+  });
+});
+
 describe('POST /api/public/reservations — idempotency', () => {
   /** Full routing DB pre-populated with the price/overlap/customer stubs needed
    *  to reach the guarded INSERT for the happy-path / lost-race branches. */

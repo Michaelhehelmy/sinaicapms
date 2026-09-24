@@ -391,6 +391,20 @@ reservationsRoutes.post('/', async (c) => {
       ).bind(tenantId).all();
       const organizationId = orgMapping.length > 0 ? orgMapping[0].organization_id : null;
 
+      // U-001: resolve the mirror transaction's store at runtime. Store id 1
+      // was the pre-0051 seed store; on a fresh DB it does not exist and a
+      // mirror INSERT against it fails the store_id FK — so look up the
+      // tenant org's real store (same shape as routes/pos/index.js:619-629).
+      // Lookup-only: when the org has no store at all the mirror is skipped
+      // (never a hardcoded store id) while the booking itself still succeeds.
+      let storeId = null;
+      if (organizationId != null) {
+        const { results: orgStores } = await c.env.DB.prepare(
+          'SELECT id FROM pos_stores WHERE organization_id = ? LIMIT 1'
+        ).bind(organizationId).all();
+        storeId = orgStores.length > 0 ? orgStores[0].id : null;
+      }
+
       const itemStmts = [];
       const posStmts = [];
 
@@ -409,16 +423,16 @@ reservationsRoutes.post('/', async (c) => {
           product.name, mp.quantity, unitPrice, lineTotal
         ));
 
-        if (organizationId) {
+        if (organizationId != null && storeId != null) {
           posStmts.push(c.env.DB.prepare(
             `INSERT INTO pos_transactions
                (id, tenant_id, organization_id, store_id, order_number, cashier_id,
                 status, subtotal, tax_amount, tax_rate, total_amount,
                 paid_amount, payment_method, payment_status, notes,
                 kitchen_status, created_at, updated_at)
-             VALUES (?, ?, ?, 1, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'))`
+             VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'))`
           ).bind(
-            'pot_' + crypto.randomUUID().slice(0, 12), tenantId, organizationId,
+            'pot_' + crypto.randomUUID().slice(0, 12), tenantId, organizationId, storeId,
             'MP-' + reference, 'system', lineTotal, lineTotal,
             `Meal plan for booking ${reference}: ${product.name}`
           ));
