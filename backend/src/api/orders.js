@@ -1284,7 +1284,10 @@ ordersRoutes.post('/:id/record-payment', async (c) => {
     const paymentId = idempotencyKey || 'pay_' + crypto.randomUUID().slice(0, 12);
     const { approved_by: approvedBy, reference, notes } = parsed.data;
 
-    await c.env.DB.prepare(
+    // F-002: ledger INSERT + order UPDATE commit atomically via one DB.batch
+    // (D1 batch = single atomic unit; a crash between the two writes can no
+    // longer leave a ledger row without the totals flip). Bind order verbatim.
+    const insertPaymentStmt = c.env.DB.prepare(
       `INSERT INTO payment_records
          (id, tenant_id, order_id, amount, method, amount_cash, amount_card,
           received_by, approved_by, reference, notes)
@@ -1292,15 +1295,17 @@ ordersRoutes.post('/:id/record-payment', async (c) => {
     ).bind(
       paymentId, tenantId, orderId, amount, method, amountCash, amountCard,
       receivedBy, approvedBy || null, reference || null, notes || null
-    ).run();
+    );
 
     const newPaid = Math.round((paidSoFar + amount) * 100) / 100;
     const isFull = newPaid + 0.01 >= total;
     const newStatus = isFull ? 'paid' : (order.payment_status || 'pending');
 
-    await c.env.DB.prepare(
+    const updateOrderStmt = c.env.DB.prepare(
       "UPDATE orders SET amount_paid = ?, payment_status = ?, payment_method = ?, updated_at = datetime('now') WHERE tenant_id = ? AND id = ?"
-    ).bind(newPaid, newStatus, method, tenantId, orderId).run();
+    ).bind(newPaid, newStatus, method, tenantId, orderId);
+
+    await c.env.DB.batch([insertPaymentStmt, updateOrderStmt]);
 
     // Best-effort audit trail — logAudit swallows its own errors, so a failed
     // audit row can never break the payment response (same shape as the
