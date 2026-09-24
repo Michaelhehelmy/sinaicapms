@@ -1183,11 +1183,13 @@ describe('handleOrdersRoute', () => {
       // (seed states are pending/confirmed/checked_in/checked_out/cancelled),
       // so the payment-sync path is exercised via pending → confirmed
       // (order_state seed gives confirmed paid=1).
+      // F-004 (Option B): the flip is allowed only when the order is already
+      // settled, and the settled path performs NO payment write (record-payment
+      // owns payment state) — so 3 prepares, not 4.
       const { db } = makeDbMock();
       const fn = chainMock([
-        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending' }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending', total_amount: 400, amount_paid: 400 }); },
         (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 1 }); },
-        (ch) => { ch.run.mockResolvedValue({ success: true }); },
         (ch) => { ch.run.mockResolvedValue({ success: true }); },
       ]);
       db.prepare.mockImplementation(fn);
@@ -1195,7 +1197,72 @@ describe('handleOrdersRoute', () => {
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       const body = await res.json();
       expect(body.success).toBe(true);
-      expect(db.prepare).toHaveBeenCalledTimes(4);
+      expect(db.prepare).toHaveBeenCalledTimes(3);
+    });
+
+    it('F-004: rejects flip to a paid state when amount is unsettled (0 of 400 → 400, order unchanged)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending', total_amount: 400, amount_paid: 0 }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 1 }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'confirmed' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain('record payment first');
+      // Rejected BEFORE the batch: the lifecycle flip never lands.
+      expect(db.batch).not.toHaveBeenCalled();
+      expect(db.prepare.mock.calls.some(([sql]) => sql.includes('UPDATE orders SET order_state_id'))).toBe(false);
+    });
+
+    it('F-004: allows flip to a paid state when fully settled (400 of 400 → 200)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending', total_amount: 400, amount_paid: 400 }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 1 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'confirmed' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(db.batch).toHaveBeenCalledTimes(1);
+      // Settled path performs NO payment write — record-payment owns it.
+      expect(db.prepare.mock.calls.some(([sql]) => sql.includes("payment_status = 'paid'"))).toBe(false);
+    });
+
+    it('F-004: cancel-unpaid still succeeds (paid=0 state bypasses the settled check → 200)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending', total_amount: 400, amount_paid: 0 }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'cancelled', paid: 0 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'cancelled' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+    });
+
+    it('F-004: within-a-penny counts as settled (399.995 of 400 → 200)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue({ id: 'o1', order_state_id: 'pending', total_amount: 400, amount_paid: 399.995 }); },
+        (ch) => { ch.first.mockResolvedValue({ id: 'confirmed', paid: 1 }); },
+        (ch) => { ch.run.mockResolvedValue({ success: true }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/o1/status', { status: 'confirmed' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
     });
 
     it('H6: allows the legal pending → cancelled transition', async () => {

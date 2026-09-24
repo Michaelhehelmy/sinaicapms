@@ -473,9 +473,11 @@ ordersRoutes.patch('/:id/status', async (c) => {
     }
     const { status } = parsed.data;
 
-    // S-H2 style: tenant-scoped existence check (loads current state + room)
+    // S-H2 style: tenant-scoped existence check (loads current state + room
+    // + payment totals — F-004 needs amount_paid/total_amount in scope for
+    // the settled check below).
     const existing = await c.env.DB.prepare(
-      "SELECT id, order_state_id, room_id FROM orders WHERE tenant_id = ? AND id = ?"
+      "SELECT id, order_state_id, room_id, total_amount, amount_paid FROM orders WHERE tenant_id = ? AND id = ?"
     ).bind(tenantId, ordId).first();
     if (!existing) return errorResponse('Order not found', 404);
 
@@ -494,6 +496,27 @@ ordersRoutes.patch('/:id/status', async (c) => {
         `Illegal status transition: '${currentStatus ?? 'unknown'}' → '${status}'`,
         409
       );
+    }
+
+    // F-004 (Option B): a status flip to a paid state NEVER fabricates payment.
+    // The order must already be settled via POST /record-payment (the sole
+    // writer of amount_paid + payment_status, atomically). This check runs
+    // BEFORE the batch so a rejected flip leaves the order fully unchanged.
+    // Penny epsilon mirrors record-payment's full-payment rule
+    // (`newPaid + 0.01 >= total`). Option A (warn-and-proceed override) was
+    // rejected: git history + comments + tests show no legitimate
+    // admin-override-at-$0 use case — the only comment naming this path calls
+    // the amount "stale", and the H6 test exercised the flip with an
+    // amount-less mock, never asserting $0-paid as desired behavior. When
+    // settled, NO write is needed here: a settled order already reads
+    // payment_status='paid' from record-payment, so the flip stays a pure
+    // lifecycle transition (the old UPDATE is removed, not kept — it also
+    // lacked the tenant predicate).
+    if (state.paid) {
+      const settled = (existing.amount_paid ?? 0) + 0.01 >= (existing.total_amount ?? 0);
+      if (!settled) {
+        return errorResponse('Cannot mark order paid — record payment first via /record-payment', 400);
+      }
     }
 
     // 0067: order transition and its room side-effect commit atomically via
@@ -529,10 +552,6 @@ ordersRoutes.patch('/:id/status', async (c) => {
     }
 
     await c.env.DB.batch(stmts);
-
-    if (state.paid) {
-      await c.env.DB.prepare("UPDATE orders SET payment_status = 'paid' WHERE id = ?").bind(ordId).run();
-    }
 
     return jsonResponse({ success: true, id: ordId, status });
   } catch (e) {
