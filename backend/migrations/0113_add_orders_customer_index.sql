@@ -1,0 +1,24 @@
+-- Migration 0113: index orders(customer_id) (P1b — additive-only).
+--
+-- WHAT: a single CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON
+-- orders(customer_id). The booking-orders table has NO index on customer_id on
+-- either DB (verified exhaustively in recon), so customer-scoped order lookups
+-- fall back to full scans.
+--
+-- Recon ground truth: /tmp/opencode/s-recon.md §3a (no index on
+-- orders(customer_id) under ANY name on either DB; 0002_orders.sql defines
+-- zero customer indexes on orders) + §3b (the LOOKALIKE name
+-- idx_orders_customer sits on pos_transactions(customer_id) — present on
+-- staging, absent locally — and MUST be left untouched).
+--
+-- NAME: a FRESH name (idx_orders_customer_id) is deliberate — reusing
+-- idx_orders_customer would silently no-op on staging (name taken by the
+-- pos_transactions index) while creating on local, forking the two envs.
+-- idx_orders_customer ON pos_transactions is NOT touched by this file.
+--
+-- ROLLBACK SAFETY (hard rule 7): additive-only migration. Rollback = DROP
+-- INDEX IF EXISTS idx_orders_customer_id. No table is altered, rebuilt, or
+-- backfilled, so committed state of every other object is unchanged by this
+-- file.
+
+CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
