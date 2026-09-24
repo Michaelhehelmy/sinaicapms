@@ -14,10 +14,11 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { resolveMigration } from './helpers/migration-path.js';
 
 const migrationsDir = join(import.meta.dirname, '../migrations');
 const execMigration = (db, file) =>
-  db.exec(readFileSync(join(migrationsDir, file), 'utf8'));
+  db.exec(readFileSync(resolveMigration(migrationsDir, file), 'utf8'));
 
 function buildPre0059Db() {
   const db = new Database(':memory:');

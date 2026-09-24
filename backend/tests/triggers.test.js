@@ -2,6 +2,9 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { resolveMigration } from './helpers/migration-path.js';
+
+const migrationsDir = join(import.meta.dirname, '../migrations');
 
 function createTestDb() {
   const db = new Database(':memory:');
@@ -43,7 +46,7 @@ function createTestDb() {
   `);
 
   const triggerSql = readFileSync(
-    join(import.meta.dirname, '../migrations/0021_room_types_to_pos_products.sql'),
+    resolveMigration(migrationsDir, '0021_room_types_to_pos_products.sql'),
     'utf8'
   );
   db.exec(triggerSql);

@@ -5,9 +5,11 @@ import { join } from 'path';
 import priceOverridesRoutes from '../src/api/priceOverrides.js';
 import ordersRoutes from '../src/api/orders.js';
 import { mountRouter } from './helpers/routerHarness.js';
+import { resolveMigration } from './helpers/migration-path.js';
 
+const migrationsDir = join(import.meta.dirname, '../migrations');
 const MIGRATION_SQL = readFileSync(
-  join(import.meta.dirname, '../migrations/0048_price_overrides.sql'),
+  resolveMigration(migrationsDir, '0048_price_overrides.sql'),
   'utf8'
 );
 
