@@ -145,7 +145,11 @@ describe('Money guards — POST /shifts/close double-close', () => {
   it('rejects the second of two concurrent shift closes with a 409 envelope', async () => {
     let guardedCloseHits = 0;
     const db = makeRoutingDb()
-      .on(/SELECT is_active FROM pos_users/, [{ is_active: 1 }])
+      // Phase 4b: posAuth SELECT now also resolves project scope
+      // (is_active + project_id + store→project subselect) — route on the
+      // table, not the legacy exact column list. Row shape unchanged here
+      // (no project fields → NULL scope → legacy behavior).
+      .on(/FROM pos_users/, [{ is_active: 1 }])
       .on(/SELECT id, opening_cash, opening_time FROM pos_shifts/, [{ id: 's1', opening_cash: 100, opening_time: '2026-09-06 08:00:00' }])
       .on(/FROM pos_transactions/, [{ total_cash: 50 }])
       .on(/UPDATE pos_shifts/, () => {

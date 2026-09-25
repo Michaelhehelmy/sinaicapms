@@ -1362,12 +1362,15 @@ describe('POS Routes', () => {
       // Compensation batch contains: add-backs for p1 AND i1, delete items, delete order
       const compStatements = db.batch.mock.calls[1][0];
       expect(compStatements.length).toBe(4);
-      // Add-backs must be index-aligned with allDeductions: p1 (self) then i1
+      // Add-backs must be index-aligned with allDeductions: p1 (self) then i1.
+      // Phase 4b: the add-back carries the tenant guard (was id-only) plus
+      // the project predicate when scoped — this token resolves NULL scope
+      // (mock auth row has no store_project), so binds are (deduct, id, tenant).
       const addBackBinds = db.prepare.mock.calls
         .map((call, idx) => ({ sql: String(call[0]), idx }))
         .filter(({ sql }) => sql.includes('stock_quantity = stock_quantity + ?'))
         .map(({ idx }) => db.prepare.mock.results[idx].value.bind.mock.calls[0]);
-      expect(addBackBinds).toEqual([[2, 'p1'], [2, 'i1']]);
+      expect(addBackBinds).toEqual([[2, 'p1', '1'], [2, 'i1', '1']]);
       // Verify the compensation prepare calls include stock add-back and order cleanup
       const allSqls = db.prepare.mock.calls.map(([sql]) => String(sql));
       expect(allSqls.some((sql) => sql.includes('stock_quantity = stock_quantity + ?'))).toBe(true);

@@ -38,6 +38,21 @@ const posRefreshSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required').optional(),
 }).strip();
 
+// ─── Phase 4b: pos_products project predicate family ────────
+// Every pos_products read/write/deduction carries the project predicate when
+// the request scope resolves a project (tenant+project family). Resolution
+// happens once per request in posAuth (claim → store→project → home-project);
+// NULL (legacy/NULL-store tokens) keeps tenant-only SQL byte-identical until
+// 4c mints the projectId claim and errors NULL-store logins (handoff noted
+// in the 4b commit body). Dynamic fragments (never interpolated values) so
+// legacy call sequences, SQL text, and binds are untouched when unresolved.
+function projectClause(projectId, alias = '') {
+  return projectId ? `AND ${alias}project_id = ?` : '';
+}
+function projectBinds(projectId) {
+  return projectId ? [projectId] : [];
+}
+
 // Shared by login + refresh: resolve organization_id → tenant_id via the
 // mapping table (fallback to String(organization_id) keeps legacy behavior).
 async function resolveOrgTenantId(env, organizationId) {
@@ -87,14 +102,25 @@ async function posAuth(c, next) {
   if (decoded.type === 'refresh') {
     return errorResponse('Invalid POS session', 401);
   }
-  // Database check: verify cashier is still active and not deleted
+  // Database check: verify cashier is still active and not deleted.
+  // Phase 4b: the same round-trip resolves the cashier's project scope —
+  // the cashier store's project (subselect on the token storeId, the store
+  // the sale books to) plus the cashier home project (pos_users.project_id,
+  // backfilled by 0105). Precedence: explicit 4c claim → store→project →
+  // home-project → NULL (legacy tenant-wide; 4c closes this path). Zero new
+  // prepare calls — the predicate sites below stay call-order stable.
   const { results: userCheck } = await c.env.DB.prepare(
-    "SELECT is_active FROM pos_users WHERE id = ? AND deleted_at IS NULL"
-  ).bind(decoded.userId).all();
+    `SELECT is_active, project_id,
+            (SELECT project_id FROM pos_stores WHERE id = ?) AS store_project
+     FROM pos_users WHERE id = ? AND deleted_at IS NULL`
+  ).bind(decoded.storeId ?? null, decoded.userId).all();
   if (userCheck.length === 0 || !userCheck[0].is_active) {
     return errorResponse('Session revoked or account deactivated', 401);
   }
-  c.set('posUser', decoded);
+  const scopeRow = userCheck[0];
+  const projectId = decoded.projectId ?? decoded.project_id
+    ?? scopeRow.store_project ?? scopeRow.project_id ?? null;
+  c.set('posUser', { ...decoded, projectId });
   await next();
 }
 
@@ -301,15 +327,18 @@ pos.get('/products', async (c) => {
   // T14 (M2): products are read on the tenant dimension everywhere else
   // (storefront, barcode, writes in camps.js) — POS must agree. `posUser`
   // carries the tenant id resolved from tenant_org_mapping at login/refresh.
+  // Phase 4b: + project predicate when posAuth resolved one (NULL keeps the
+  // legacy tenant-wide list for pre-4c tokens).
   const tenantId = c.get('posUser').tenantId;
+  const listProjectId = c.get('posUser').projectId ?? null;
   try {
     const { results } = await env.DB.prepare(
       `SELECT id, sku, name, description, selling_price, cost_price, category_id,
               type, image_url, is_active, stock_quantity
        FROM pos_products
-       WHERE tenant_id = ? AND deleted_at IS NULL AND is_active = 1
+       WHERE tenant_id = ? ${projectClause(listProjectId)} AND deleted_at IS NULL AND is_active = 1
        ORDER BY name`
-    ).bind(tenantId).all();
+    ).bind(tenantId, ...projectBinds(listProjectId)).all();
     return jsonResponse(results);
   } catch (e) {
     return errorResponse('Failed to fetch products', 500);
@@ -328,6 +357,9 @@ pos.post('/orders', async (c) => {
     const posUser = c.get('posUser');
     const tenantId = posUser.tenantId;
     const organizationId = posUser.organizationId;
+    // Phase 4b: project scope resolved once in posAuth (claim → store→project
+    // → home-project; NULL = legacy tenant-only until 4c).
+    const projectId = posUser.projectId ?? null;
     const { items, paymentMethod, notes, amountCash, amountCard, tipAmount } = parsed.data;
     const idempotencyKeyRaw = typeof parsed.data.idempotencyKey === 'string' ? parsed.data.idempotencyKey.trim() : '';
     const idempotencyKey = idempotencyKeyRaw.length > 0 && idempotencyKeyRaw.length <= 64 ? idempotencyKeyRaw : null;
@@ -349,9 +381,9 @@ pos.post('/orders', async (c) => {
       const { results: existingItems } = await env.DB.prepare(
         `SELECT ti.*, p.name AS product_name, p.sku
          FROM pos_transaction_items ti
-         LEFT JOIN pos_products p ON p.id = ti.product_id
+         LEFT JOIN pos_products p ON p.id = ti.product_id ${projectClause(projectId, 'p.')}
          WHERE ti.order_id = ? AND ti.tenant_id = ?`
-      ).bind(found.id, tenantId).all();
+      ).bind(...projectBinds(projectId), found.id, tenantId).all();
 
       return jsonResponse({
         success: true,
@@ -396,8 +428,8 @@ pos.post('/orders', async (c) => {
     const placeholders = productIds.map(() => '?').join(',');
     const { results: productRows } = await env.DB.prepare(
       `SELECT id, selling_price, name, category_id FROM pos_products
-       WHERE id IN (${placeholders}) AND tenant_id = ?`
-    ).bind(...productIds, tenantId).all();
+       WHERE id IN (${placeholders}) AND tenant_id = ? ${projectClause(projectId)}`
+    ).bind(...productIds, tenantId, ...projectBinds(projectId)).all();
     const productMap = new Map(productRows.map((p) => [p.id, p]));
 
     const itemRows = [];
@@ -586,8 +618,8 @@ pos.post('/orders', async (c) => {
         const ingPlaceholders = ingredientIds.map(() => '?').join(',');
         const { results: stockRows } = await env.DB.prepare(
           `SELECT id, name, stock_quantity FROM pos_products
-           WHERE id IN (${ingPlaceholders}) AND tenant_id = ?`
-        ).bind(...ingredientIds, tenantId).all();
+           WHERE id IN (${ingPlaceholders}) AND tenant_id = ? ${projectClause(projectId)}`
+        ).bind(...ingredientIds, tenantId, ...projectBinds(projectId)).all();
         const stockMap = new Map(stockRows.map((s) => [s.id, s]));
 
         for (const [ingredientId, required] of requiredByIngredient) {
@@ -644,8 +676,8 @@ pos.post('/orders', async (c) => {
       statements.push(
         env.DB.prepare(
           `UPDATE pos_products SET stock_quantity = stock_quantity - ?
-           WHERE id = ? AND tenant_id = ? AND stock_quantity >= ?`
-        ).bind(deduction.deduct, deduction.id, tenantId, deduction.deduct)
+           WHERE id = ? AND tenant_id = ? ${projectClause(projectId)} AND stock_quantity >= ?`
+        ).bind(deduction.deduct, deduction.id, tenantId, ...projectBinds(projectId), deduction.deduct)
       );
     }
 
@@ -737,9 +769,12 @@ pos.post('/orders', async (c) => {
         for (let i = 0; i < deductionIndexes.length; i++) {
           if (i !== shortedIdx && (batchResults[deductionIndexes[i]]?.meta?.changes ?? 0) > 0) {
             compensate.push(
+              // Phase 4b: the add-back carries the same tenant+project guard
+              // as the deduction (previously id-only — a cross-tenant add-back
+              // was possible when a race fired on a foreign row).
               env.DB.prepare(
-                `UPDATE pos_products SET stock_quantity = stock_quantity + ? WHERE id = ?`
-              ).bind(allDeductions[i].deduct, allDeductions[i].id)
+                `UPDATE pos_products SET stock_quantity = stock_quantity + ? WHERE id = ? AND tenant_id = ? ${projectClause(projectId)}`
+              ).bind(allDeductions[i].deduct, allDeductions[i].id, tenantId, ...projectBinds(projectId))
             );
           }
         }
@@ -769,8 +804,8 @@ pos.post('/orders', async (c) => {
         const stockPlaceholders = soldIds.map(() => '?').join(',');
         const { results: stockRows } = await env.DB.prepare(
           `SELECT id, name, stock_quantity, min_stock_level FROM pos_products
-           WHERE id IN (${stockPlaceholders}) AND tenant_id = ?`
-        ).bind(...soldIds, tenantId).all();
+           WHERE id IN (${stockPlaceholders}) AND tenant_id = ? ${projectClause(projectId)}`
+        ).bind(...soldIds, tenantId, ...projectBinds(projectId)).all();
 
         const alertStmts = [];
         for (const product of stockRows) {
@@ -885,12 +920,15 @@ pos.get('/orders/:id', async (c) => {
       return errorResponse('Order not found', 404);
     }
 
+    // Phase 4b: the product-name JOIN carries the project predicate so a
+    // cross-project product never leaks its name into another project's order.
+    const detailProjectId = posUser.projectId ?? null;
     const { results: items } = await env.DB.prepare(
       `SELECT ti.*, p.name AS product_name, p.sku
        FROM pos_transaction_items ti
-       LEFT JOIN pos_products p ON p.id = ti.product_id
+       LEFT JOIN pos_products p ON p.id = ti.product_id ${projectClause(detailProjectId, 'p.')}
        WHERE ti.order_id = ? AND ti.tenant_id = ?`
-    ).bind(orderId, tenantId).all();
+    ).bind(...projectBinds(detailProjectId), orderId, tenantId).all();
 
     return jsonResponse({ ...orders[0], items });
   } catch (e) {
@@ -984,11 +1022,14 @@ pos.get('/dashboard', async (c) => {
            WHERE tenant_id = ? AND date(created_at) = ?`
         ).bind(tenantId, today).all();
 
+    // Phase 4b: the dashboard product count is project-scoped like the
+    // /products list (NULL keeps the legacy tenant-wide count).
+    const dashProjectId = posUser.projectId ?? null;
     const { results: productCountRows } = await env.DB.prepare(
       `SELECT COUNT(*) AS count
        FROM pos_products
-       WHERE tenant_id = ? AND deleted_at IS NULL AND is_active = 1`
-    ).bind(posUser.tenantId).all();
+       WHERE tenant_id = ? ${projectClause(dashProjectId)} AND deleted_at IS NULL AND is_active = 1`
+    ).bind(posUser.tenantId, ...projectBinds(dashProjectId)).all();
 
     const { results: recentOrders } = await env.DB.prepare(
       `SELECT t.id, t.order_number, t.total_amount, t.payment_method, t.status, t.created_at
