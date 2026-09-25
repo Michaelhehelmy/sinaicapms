@@ -1,6 +1,6 @@
 import { jsonResponse, cachedJsonResponse, errorResponse, toSnake } from '../utils/response';
 import { validationError } from '../utils/errors';
-import { getScope } from '../middleware/resolveScope.js';
+import { getScope, ensureTenantOrg } from '../middleware/resolveScope.js';
 import { slugify } from '../utils/slug';
 import { loadProjectMeta } from './meta';
 import { Hono } from 'hono';
@@ -324,6 +324,28 @@ campsRoutes.post('/', async (c) => {
         await upsertNotesMeta(c.env.DB, cid, notes);
       } catch (_) { /* notes are best-effort */ }
     }
+    // Phase 4a (Option Y): every project owns one default pos_store. Resolve
+    // the tenant's POS org (provisioning it when the tenant has none) and
+    // insert the project-bound store. Best-effort — a store failure must not
+    // fail the project create (migration 0118 heals gaps on next apply).
+    try {
+      let organizationId = null;
+      try {
+        const { results: mapping } = await c.env.DB.prepare(
+          'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
+        ).bind(tenantId).all();
+        if (mapping.length > 0) organizationId = mapping[0].organization_id;
+      } catch (_) { /* mapping lookup failure falls through to provisioning */ }
+      if (organizationId === null || organizationId === undefined) {
+        organizationId = await ensureTenantOrg(c.env, tenantId);
+      }
+      if (organizationId !== null && organizationId !== undefined) {
+        await c.env.DB.prepare(
+          `INSERT OR IGNORE INTO pos_stores (organization_id, name, code, address, city, project_id, created_at, updated_at)
+           VALUES (?, ?, ?, 'N/A', 'N/A', ?, datetime('now'), datetime('now'))`
+        ).bind(organizationId, name + ' Store', 'ST_' + cid, cid).run();
+      }
+    } catch (_) { /* store provisioning is best-effort */ }
     return jsonResponse({ id: cid, success: true });
   } catch (e) {
     return errorResponse('Failed to create camp');
