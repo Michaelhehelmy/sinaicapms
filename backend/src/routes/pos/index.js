@@ -53,6 +53,20 @@ function projectBinds(projectId) {
   return projectId ? [projectId] : [];
 }
 
+// ─── Phase 4e: pos_shifts store predicate family ────────────
+// Shifts belong to one project store (Option Y, 0119 adds the nullable
+// store_id + backfill from the cashier store): every shift read/guard and
+// the close till-math carries the cashier's store when the token binds one
+// (4c guarantees storeId post-login; NULL = legacy tenant+cashier behavior,
+// SQL text byte-identical so legacy call sequences and step mocks hold).
+// Dynamic fragments (never interpolated values).
+function storeClause(storeId, alias = '') {
+  return storeId != null ? `AND ${alias}store_id = ?` : '';
+}
+function storeBinds(storeId) {
+  return storeId != null ? [storeId] : [];
+}
+
 // Shared by login + refresh: resolve organization_id → tenant_id via the
 // mapping table (fallback to String(organization_id) keeps legacy behavior).
 async function resolveOrgTenantId(env, organizationId) {
@@ -1113,13 +1127,16 @@ pos.get('/shifts/active', async (c) => {
   const posUser = c.get('posUser');
   const tenantId = posUser.tenantId;
   const cashierId = String(posUser.userId);
+  // Phase 4e: same-store scope — a shift on another project store is not
+  // this terminal's shift (NULL storeId = legacy tenant+cashier behavior).
+  const storeId = posUser.storeId ?? null;
   try {
     const { results } = await env.DB.prepare(
       `SELECT id, status, opening_time, opening_cash, expected_closing_cash, notes
        FROM pos_shifts
-       WHERE tenant_id = ? AND cashier_id = ? AND status = 'open'
+       WHERE tenant_id = ? AND cashier_id = ? ${storeClause(storeId)} AND status = 'open'
        ORDER BY opening_time DESC LIMIT 1`
-    ).bind(tenantId, cashierId).all();
+    ).bind(tenantId, cashierId, ...storeBinds(storeId)).all();
 
     if (results.length === 0) {
       return jsonResponse({ active: false });
@@ -1136,6 +1153,9 @@ pos.post('/shifts/open', async (c) => {
   const posUser = c.get('posUser');
   const tenantId = posUser.tenantId;
   const cashierId = String(posUser.userId);
+  // Phase 4e: the shift is bound to the cashier's project store at open;
+  // the guard is same-store so two project stores run simultaneous shifts.
+  const storeId = posUser.storeId ?? null;
   try {
     const body = await c.req.json();
     const openingCash = parseFloat(body.openingCash) || 0;
@@ -1145,17 +1165,17 @@ pos.post('/shifts/open', async (c) => {
 
     // Block if active shift already exists
     const { results: existing } = await env.DB.prepare(
-      `SELECT id FROM pos_shifts WHERE tenant_id = ? AND cashier_id = ? AND status = 'open'`
-    ).bind(tenantId, cashierId).all();
+      `SELECT id FROM pos_shifts WHERE tenant_id = ? AND cashier_id = ? ${storeClause(storeId)} AND status = 'open'`
+    ).bind(tenantId, cashierId, ...storeBinds(storeId)).all();
     if (existing.length > 0) {
       return errorResponse('An active shift already exists. Close it before opening a new one.', 400);
     }
 
     const shiftId = 'sh_' + crypto.randomUUID().slice(0, 12);
     await env.DB.prepare(
-      `INSERT INTO pos_shifts (id, tenant_id, cashier_id, status, opening_time, opening_cash, notes)
-       VALUES (?, ?, ?, 'open', datetime('now'), ?, ?)`
-    ).bind(shiftId, tenantId, cashierId, openingCash, body.notes || null).run();
+      `INSERT INTO pos_shifts (id, tenant_id, cashier_id, store_id, status, opening_time, opening_cash, notes)
+       VALUES (?, ?, ?, ?, 'open', datetime('now'), ?, ?)`
+    ).bind(shiftId, tenantId, cashierId, storeId, openingCash, body.notes || null).run();
 
     return jsonResponse({
       success: true,
@@ -1172,6 +1192,9 @@ pos.post('/shifts/close', async (c) => {
   const posUser = c.get('posUser');
   const tenantId = posUser.tenantId;
   const cashierId = String(posUser.userId);
+  // Phase 4e: same-store scope — close finds this terminal's shift and the
+  // till-math sums only this store's sales, so Camp/Rest totals never cross.
+  const storeId = posUser.storeId ?? null;
   try {
     const body = await c.req.json();
     const actualClosingCash = parseFloat(body.actualClosingCash);
@@ -1182,9 +1205,9 @@ pos.post('/shifts/close', async (c) => {
     // Find the active shift
     const { results: shifts } = await env.DB.prepare(
       `SELECT id, opening_cash, opening_time FROM pos_shifts
-       WHERE tenant_id = ? AND cashier_id = ? AND status = 'open'
+       WHERE tenant_id = ? AND cashier_id = ? ${storeClause(storeId)} AND status = 'open'
        ORDER BY opening_time DESC LIMIT 1`
-    ).bind(tenantId, cashierId).all();
+    ).bind(tenantId, cashierId, ...storeBinds(storeId)).all();
     if (shifts.length === 0) {
       return errorResponse('No active shift found', 400);
     }
@@ -1194,15 +1217,17 @@ pos.post('/shifts/close', async (c) => {
     const { results: cashRows } = await env.DB.prepare(
       `SELECT COALESCE(SUM(amount_cash), 0) AS total_cash
        FROM pos_transactions
-       WHERE tenant_id = ? AND cashier_id = ? AND created_at >= ?
+       WHERE tenant_id = ? AND cashier_id = ? ${storeClause(storeId)} AND created_at >= ?
          AND status != 'voided'`
-    ).bind(tenantId, cashierId, shift.opening_time).all();
+    ).bind(tenantId, cashierId, ...storeBinds(storeId), shift.opening_time).all();
     const totalCashSales = parseFloat(cashRows[0]?.total_cash) || 0;
     const expectedClosingCash = shift.opening_cash + totalCashSales;
     const discrepancy = Math.round((actualClosingCash - expectedClosingCash) * 100) / 100;
 
     // Guarded status flip: AND status='open' makes concurrent close requests
     // race-safe — the loser's UPDATE hits 0 rows → 409 instead of double-close.
+    // (Phase 4e: same-store is enforced at the SELECT gate above; the flip
+    // stays id-guarded so the race safety is untouched.)
     const closeResult = await env.DB.prepare(
       `UPDATE pos_shifts
        SET status = 'closed', closing_time = datetime('now'),
