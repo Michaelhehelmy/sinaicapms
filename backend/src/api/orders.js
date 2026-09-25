@@ -843,8 +843,11 @@ ordersRoutes.post('/', async (c) => {
       // THIS tenant's organization, and require every requested id to resolve.
       // Any foreign/unknown id → 400 with no writes.
       const placeholders = uniqueIds.map(() => '?').join(',');
+      // Phase 4f: the product's own project rides along so each single-product
+      // mirror header below is stamped with its line's project (never NULL for
+      // tagged products; NULL only for legacy untagged product rows).
       const { results: products } = await c.env.DB.prepare(
-        `SELECT id, name, selling_price FROM pos_products
+        `SELECT id, name, selling_price, project_id FROM pos_products
          WHERE id IN (${placeholders}) AND organization_id = ?`
       ).bind(...uniqueIds, organizationId).all();
       if (products.length !== uniqueIds.length) {
@@ -887,17 +890,29 @@ ordersRoutes.post('/', async (c) => {
 
         if (organizationId && mirrorStoreId != null) {
           const posOrderId = 'pot_' + crypto.randomUUID().slice(0, 12);
+          // Phase 4f: stamp the line product's project — each mirror header
+          // covers exactly one product, so it is single-project by
+          // construction (D3 NULL headers are for multi-line payments; the
+          // order-level span across projects lives in the tagged order_items
+          // lines, not here). Appended LAST; legacy binds untouched.
+          // 4f FIX (pre-existing prod bug, caught by the 4f gate test): the
+          // statement listed 10 `?` placeholders but bound only 9 — paid_amount
+          // received the note string and notes was unbound, so EVERY meal-plan
+          // booking threw at this batch (order + order_items already written,
+          // client saw 500). paid_amount = lineTotal restores the fully-paid
+          // mirror intent (payment_status 'completed').
           posStmts.push(c.env.DB.prepare(
             `INSERT INTO pos_transactions
              (id, tenant_id, organization_id, store_id, order_number, cashier_id,
               status, subtotal, tax_amount, tax_rate, total_amount,
               paid_amount, payment_method, payment_status, notes,
-              kitchen_status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'))`
+              kitchen_status, created_at, updated_at, project_id)
+             VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'), ?)`
           ).bind(
             posOrderId, tenantId, organizationId, mirrorStoreId,
-            'MP-' + reference, 'system', lineTotal, lineTotal,
-            `Meal plan for booking ${reference}: ${product.name}`
+            'MP-' + reference, 'system', lineTotal, lineTotal, lineTotal,
+            `Meal plan for booking ${reference}: ${product.name}`,
+            product.project_id ?? null
           ));
         }
       }

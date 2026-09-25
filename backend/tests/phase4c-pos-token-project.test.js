@@ -66,7 +66,7 @@ function buildDb() {
       tax_rate REAL, total_amount REAL, paid_amount REAL, payment_method TEXT,
       payment_status TEXT, notes TEXT, amount_cash REAL, amount_card REAL,
       idempotency_key TEXT, table_id TEXT, kitchen_status TEXT, tip_amount REAL,
-      created_at TEXT, updated_at TEXT
+      created_at TEXT, updated_at TEXT, project_id TEXT
     );
     CREATE TABLE pos_transaction_items (
       id TEXT PRIMARY KEY, tenant_id TEXT, order_id TEXT, product_id TEXT,

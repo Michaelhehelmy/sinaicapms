@@ -391,8 +391,11 @@ reservationsRoutes.post('/', async (c) => {
     if (mealPlanList.length > 0) {
       const productIds = mealPlanList.map(mp => mp.product_id);
       const placeholders = productIds.map(() => '?').join(',');
+      // Phase 4f: the product's own project rides along so each single-product
+      // mirror header below is stamped with its line's project (same contract
+      // as the orders.js mirror; NULL only for legacy untagged product rows).
       const { results: products } = await c.env.DB.prepare(
-        `SELECT id, name, selling_price FROM pos_products
+        `SELECT id, name, selling_price, project_id FROM pos_products
          WHERE id IN (${placeholders}) AND tenant_id = ? AND is_active = 1`
       ).bind(...productIds, tenantId).all();
       const productMap = new Map(products.map(p => [p.id, p]));
@@ -435,17 +438,25 @@ reservationsRoutes.post('/', async (c) => {
         ));
 
         if (organizationId != null && storeId != null) {
+          // Phase 4f: stamp the line product's project — each mirror header
+          // covers exactly one product (single-project by construction).
+          // Appended LAST; legacy binds untouched.
+          // 4f FIX (same pre-existing prod bug as the orders.js mirror): 10
+          // placeholders but only 9 binds — paid_amount never received its
+          // lineTotal and notes was unbound, so every meal-plan reservation
+          // threw here (order already written, client saw 500). Restored.
           posStmts.push(c.env.DB.prepare(
             `INSERT INTO pos_transactions
                (id, tenant_id, organization_id, store_id, order_number, cashier_id,
                 status, subtotal, tax_amount, tax_rate, total_amount,
                 paid_amount, payment_method, payment_status, notes,
-                kitchen_status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'))`
+                kitchen_status, created_at, updated_at, project_id)
+             VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, 0, 0, ?, ?, 'booking', 'completed', ?, 'confirmed', datetime('now'), datetime('now'), ?)`
           ).bind(
             'pot_' + crypto.randomUUID().slice(0, 12), tenantId, organizationId, storeId,
-            'MP-' + reference, 'system', lineTotal, lineTotal,
-            `Meal plan for booking ${reference}: ${product.name}`
+            'MP-' + reference, 'system', lineTotal, lineTotal, lineTotal,
+            `Meal plan for booking ${reference}: ${product.name}`,
+            product.project_id ?? null
           ));
         }
       }

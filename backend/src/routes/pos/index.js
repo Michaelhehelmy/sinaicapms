@@ -752,6 +752,13 @@ pos.post('/orders', async (c) => {
       );
     }
 
+    // ── Phase 4f: the sale header carries the request's resolved project
+    // (claim → store→project → home → default; NULL = legacy tenant-wide
+    // token, possibly a multi-project D3 payment — documented NULL reasons
+    // live in phase4f-transactions-project.test.js GATE 3). Appended LAST so
+    // legacy positional binds (org @2, store @3) are untouched. The scoped
+    // sale is single-project by construction (the bulk product read above
+    // carries the project predicate — cross-project ⇒ 400 before this point).
     statements.push(
       env.DB.prepare(
         `INSERT INTO pos_transactions
@@ -759,8 +766,8 @@ pos.post('/orders', async (c) => {
            status, subtotal, tax_amount, tax_rate, total_amount,
            paid_amount, payment_method, payment_status, notes,
             amount_cash, amount_card, idempotency_key, table_id, kitchen_status,
-            tip_amount, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))`
+            tip_amount, created_at, updated_at, project_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'), ?)`
       ).bind(
         orderId, tenantId, organizationId, storeId, orderNumber,
         String(posUser.userId),
@@ -770,7 +777,8 @@ pos.post('/orders', async (c) => {
         finalAmountCash, finalAmountCard,
         idempotencyKey || null,
         tableId,
-        tipAmount || 0
+        tipAmount || 0,
+        projectId
       )
     );
 
