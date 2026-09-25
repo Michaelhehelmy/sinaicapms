@@ -1,5 +1,41 @@
 # P4 Staging Walkthrough — POS Isolation (live)
 
+> ## RETRY 2026-09-25 — verdict: BLOCKED at STEP 4 (spec `.opencode/agents/tmp/2026-09-24-p4-retry.md`)
+>
+> - Steps 1–3 PASS with exact numbers (below). STEP 4 sell-3-cash FAILS: `POST /api/pos/orders`
+>   → `500 {"success":false,"error":"Failed to create order"}` (reproduced ×2). Live `wrangler tail`
+>   on `campmaster-backend-staging` captured the worker-side cause verbatim:
+>   `[POS CREATE ORDER ERROR] D1_ERROR: table pos_transactions has no column named tip_amount: SQLITE_ERROR`.
+> - Root cause: `backend/src/routes/pos/index.js` sale INSERT lists `tip_amount`, but NO migration ever
+>   added that column to `pos_transactions` (`tip_amount` exists only on the `orders` booking table —
+>   `0002_orders.sql:38`, `legacy/0075` alters `orders`). The LOCAL dev D1
+>   (`miniflare-D1DatabaseObject/*.sqlite`) also lacks it (40 cols, no `tip_amount`), so EVERY POS sale
+>   on this tree is broken — staging now, prod on next deploy. No source/deploy touched per spec (STOP).
+> - State left clean: shift `sh_0c4df529-c18` closed (expected 100 / actual 100 / discrepancy 0);
+>   P4TEST stock still 10; today `pos_transactions` for tenant = 0. Steps 5–8 NOT RUN.
+> - Remediation: migration adding `tip_amount` to `pos_transactions` (or drop it from the INSERT) +
+>   a unit test pinning the sale INSERT column shape vs the real schema + `./deploy.sh --staging`,
+>   then re-run this spec.
+>
+> ### Retry gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | `GET /pos` | 200 · 664 ms |
+> | Login → shell | ok (`Test POS`), 0 page errors |
+> | `pos-project-name` elements | 1, text `Acacia Main Camp`; body contains `Acacia Main Camp` = true |
+> | D1 ledger head | `0119_pos_shifts_store_id.sql` (Phase 4 deployed) |
+> | `pos_shifts` scope column | present (`store_id INTEGER`, 11 cols) |
+> | Token `projectId` claim | `camp_fdcd2ef9-855` (storeId 2, tenantId `acaciacamp`) |
+> | STEP 2 open shift | `sh_0c4df529-c18`, opening 100; D1: exactly 1 open, store_id 2, cashier 7 |
+> | STEP 3 pre-sale stock | P4TEST `p4test_B9278A0D8A36` == **10** exact; same-name rows across projects: 1 (single-project tenant) |
+> | STEP 4 sale attempts | 2 × `500 Failed to create order`; post-sale stock **10** (unchanged); today txns **0** |
+> | Cleanup close | expected 100 / actual 100 / discrepancy **0** (in-budget; first close curl landed despite a tool-side error, retry got `No active shift found` — consistent) |
+> | Mutations performed | open 1, successful sales 0 (2 failed, zero writes), close 1; D1 otherwise SELECT-only |
+> | Screenshots | `p4-r2-01-login.png` (logged-in shell WITH project name) |
+>
+> ### Prior run (2026-09-25, spec `2026-09-24-p4-walkthrough.md`) — BLOCKED at STEP 1, staging stale — kept below.
+
 - Date: 2026-09-25
 - Spec: `.opencode/agents/tmp/2026-09-24-p4-walkthrough.md` (steps 1–10, in order, stop at first failure)
 - Target: `https://acacia.staging.sinaicamps.com` — tenant `acaciacamp` ("Acacia Camp")
