@@ -1,0 +1,35 @@
+-- Migration 0120: add tip_amount to pos_transactions (tip drift fix, 2026-09-24).
+--
+-- WHAT: adds a nullable `tip_amount REAL DEFAULT 0` column to pos_transactions.
+-- Single additive statement; no backfill (existing rows read as NULL → callers
+-- already coalesce `tipAmount || 0`), no index (tips are aggregated, never a
+-- lookup key), no other table touched.
+--
+-- WHY: Wave 2.4 (commit 68f8a40, 2026-09-18) added `tip_amount` to the POS sale
+-- INSERT in backend/src/routes/pos/index.js AND removed the
+-- "TODO: Add tip_amount column" marker, but no migration ever added the column
+-- to pos_transactions (`tip_amount` exists only on the `orders` booking table —
+-- 0002_orders.sql:38, legacy 0075). Every POS sale since then fails at the D1
+-- layer with `table pos_transactions has no column named tip_amount`
+-- (proven on staging 2026-09-25: POST /api/pos/orders → 500 ×2, ledger head
+-- 0119, 40 cols, tip_amount absent on staging AND prod).
+--
+-- IDEMPOTENCY: SQLite/D1 has no `ADD COLUMN IF NOT EXISTS`; the bare ALTER
+-- below follows the project's established additive-migration pattern (mirrors
+-- 0100_add_project_id_nullable.sql) and applies once via the d1_migrations
+-- ledger. No KV writes (free-plan 1,000 writes/day quota).
+--
+-- ROLLBACK SAFETY (hard rule 7): forward-only, no down-migration. Rollback =
+-- restore-from-backup, or (SQLite 3.35+) a follow-up migration with
+-- `ALTER TABLE pos_transactions DROP COLUMN tip_amount`.
+--
+-- TOUCH DISCIPLINE: this file touches pos_transactions ONLY. It does NOT touch
+-- the sale INSERT (kept as-is per spec), pos_users (GENERATED name →
+-- first_name/last_name ONLY; organization_id INTEGER NOT NULL), or any other
+-- table.
+--
+-- VERIFY (post-apply, read-only):
+-- SELECT name FROM pragma_table_info('pos_transactions') WHERE name = 'tip_amount';
+-- -- expect exactly one row: tip_amount | REAL | 0 | 0 | 0 |
+
+ALTER TABLE pos_transactions ADD COLUMN tip_amount REAL DEFAULT 0;
