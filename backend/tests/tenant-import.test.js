@@ -503,16 +503,20 @@ describe('POST /api/tenants/import', () => {
   });
 
   describe('auth harness', () => {
-    it('returns 401 when no tenant scope is resolved', async () => {
+    it('returns 403 when no tenant scope is resolved', async () => {
       // Valid admin token WITHOUT a tenantId claim and no tenant hint: the
-      // middleware passes (roles allow-list + is_active probe) but the
-      // handler's existing-tenant branch resolves no scope → 401.
+      // P0 NULL-tenant top guard (requireAuth) rejects it at the middleware
+      // (403 scopeDenied, zero DB) — such tokens are never minted post-fix
+      // (auth.js Option A) and 0117 deactivates the orphan rows. Previously
+      // the middleware passed it through and the handler's existing-tenant
+      // branch resolved no scope → 401; the denial now happens earlier with
+      // the semantically correct code (authenticated but forbidden).
       app = mountRouterAuthenticated(tenantImportRoutes, {
         basePath: '/api/tenants/import',
         scopeOptions: IMPORT_SCOPE_OPTIONS,
       });
       const res = await post({}, { token: noTenantAdminToken, tenantHint: false });
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(403);
     });
 
     it('returns 401 for a bare request with no Bearer token', async () => {

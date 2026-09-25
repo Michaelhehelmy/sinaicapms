@@ -147,6 +147,21 @@ export function requireAuth(options = {}) {
     const decoded = await verifyToken(token, env.JWT_SECRET);
     if (!decoded) return deny(options, 'invalidToken');
 
+    // ── 1b. NULL-tenant hard guard (audit P0) ─────────────────
+    // Post-fix no non-super_admin token is ever minted with a null tenantId
+    // claim: login/refresh bind role='admin' tokens to their own tenant_id
+    // (auth.js Option A) and migration 0117 deactivates orphan role='admin'
+    // NULL rows. A null/undefined/empty tenantId claim on any other role is
+    // rejected HERE — before type/realm/role checks, with zero DB
+    // round-trips — so it can never reach a handler even on
+    // requireTenant:false gates (whose downstream scopeTenant would 403 it
+    // anyway). super_admin stays exempt (cross-tenant administration is the
+    // job; stream-token mint still 400s a tenantless super_admin so no
+    // legitimate null-tenantId SSE use exists).
+    if (decoded.role !== 'super_admin' && !decoded.tenantId) {
+      return deny(options, 'scopeDenied');
+    }
+
     // ── 1.5 Token-type allow-list (auditfix-m2) ────────────────
     // Auth realm access gates only ever accept `access` tokens. A `type`
     // claim that is NOT allow-listed (e.g. a `refresh` refresh token) is
@@ -178,14 +193,16 @@ export function requireAuth(options = {}) {
     }
 
     // ── 5. Tenant scope (super-admin bypass preserved) ────────
-    // 'equals'  — claim must match ctx.tenantId (payments, meal-schedules,
-    //             catch-all).
-    // 'lenient' — legacy SSE predicate: an admin with NO tenantId claim is
-    //             not denied (byte-compat with /api/stream/orders).
+    // Strict 'equals': the claim must match ctx.tenantId (payments,
+    // meal-schedules, catch-all, SSE stream). The legacy 'lenient' SSE
+    // predicate (a missing tenantId claim was not denied) is REMOVED (audit
+    // P0) — it let NULL-tenant admin tokens pass scope on query-token routes.
+    // Post-fix every legitimately minted token carries a concrete tenantId
+    // (stream-token mint 400s without one), so strict equality admits all
+    // legitimate SSE use and denies the rest. The `scopeMode` option is
+    // ignored (kept accepted for call-site byte-compat).
     if (requireTenant && decoded.role !== 'super_admin') {
-      const mismatch = options.scopeMode === 'lenient'
-        ? !!decoded.tenantId && decoded.tenantId !== ctx.tenantId
-        : decoded.tenantId !== ctx.tenantId;
+      const mismatch = decoded.tenantId !== ctx.tenantId;
       if (mismatch) return deny(options, 'scopeDenied');
     }
 

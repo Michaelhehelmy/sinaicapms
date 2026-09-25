@@ -168,10 +168,13 @@ describe('handleAuthRoute', () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.user.tenantId).toBe('t1');
-      // The admin lookup must be tenant-scoped (tenant_id = ? OR tenant_id IS NULL),
-      // never the bare super-admin (tenant_id IS NULL) path.
+      // P0: the admin lookup is EXACT-tenant scoped (Option A branch 1),
+      // never the bare super-admin (tenant_id IS NULL) path and never the
+      // old `(tenant_id = ? OR tenant_id IS NULL)` arm that let NULL-tenant
+      // orphans impersonate any tenant.
       const adminQuery = db.prepare.mock.calls[1][0];
-      expect(adminQuery).toContain('(tenant_id = ? OR tenant_id IS NULL)');
+      expect(adminQuery).toContain('email = ? AND tenant_id = ?');
+      expect(adminQuery).not.toContain('OR tenant_id IS NULL');
     });
 
     it('resolves tenant ID from subdomain', async () => {

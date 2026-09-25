@@ -1,0 +1,43 @@
+-- Migration 0117: revoke orphan NULL-tenant admins (audit P0, CRITICAL).
+--
+-- WHAT: deactivates every active admin row with tenant_id IS NULL whose role
+-- is NOT super_admin:
+--   UPDATE admins SET is_active = 0
+--   WHERE tenant_id IS NULL AND role = 'admin' AND is_active = 1;
+--
+-- WHY (P0 NULL-tenant admin impersonation, 2026-09-24): the pre-fix login
+-- matched `WHERE email = ? AND (tenant_id = ? OR tenant_id IS NULL)`, so any
+-- stranded active orphan (tenant_id IS NULL, role='admin') could authenticate
+-- against ANY requested tenant and receive a JWT scoped to that tenant
+-- (token claim `admin.tenant_id || tenantId`). The companion code fix
+-- (backend/src/api/auth.js Option A two-branch login + super_admin-only
+-- token scoping, backend/src/middleware/requireAuth.js NULL-tenant top
+-- guard) closes the path going forward; this migration revokes the existing
+-- orphan rows so no stranded credential can be used even via stale tokens
+-- (refresh re-checks is_active on every call).
+--
+-- SCOPE: role='admin' ONLY. The super_admin seed row(s) (tenant_id IS NULL,
+-- role='super_admin') are untouched — they are the legitimate no-tenant
+-- principals. Tenanted rows (tenant_id IS NOT NULL) are untouched.
+-- Inactive orphans (is_active=0) are untouched (already revoked).
+--
+-- ATTRIBUTION (local D1 census 2026-09-24, read-only): 15 active orphan rows,
+-- all role='admin', all e2e-crud-admin-*@test.com created 2026-09-05…09-10 by
+-- tests/e2e/specs/admin/super-admin-crud.spec.ts (tenant-less form posts, no
+-- cleanup) — NOT tenant-delete detaches (the app cascade in
+-- backend/src/api/admin.js buildTenantCascadeStmts deletes tenant admins in
+-- the same DB.batch transaction, so SET NULL never fires on that path).
+-- Staging census (read-only, same day): 0 orphan rows (only the super_admin
+-- seed) — nothing to revoke there; the UPDATE matches 0 rows.
+--
+-- IDEMPOTENT + FAIL-CLOSED: single UPDATE with no DDL; re-running matches 0
+-- rows. No backfill needed (no data to preserve — these rows must stay dead).
+--
+-- ROLLBACK SAFETY (hard rule 7): forward-only — no down-migration. Rollback =
+-- restore-from-backup ("locker") procedure, or per-row
+-- UPDATE admins SET is_active = 1 WHERE id = ? (row identities are listed in
+-- the audit report .opencode/audits/full-audit-2026-09-24/03-u-011-followup.md).
+--
+-- NO KV WRITES (free-plan 1,000 writes/day quota).
+
+UPDATE admins SET is_active = 0 WHERE tenant_id IS NULL AND role = 'admin' AND is_active = 1;

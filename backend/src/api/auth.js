@@ -133,15 +133,25 @@ export async function handleAuthRoute(request, env) {
         }
       }
 
-      // Look up admin in the admins table
-      // Super admins (tenant_id IS NULL) can login without a tenantId
-      const admin = targetTenant
-        ? await env.DB.prepare(
-            "SELECT id, email, password_hash, role, tenant_id, first_name, last_name, is_active FROM admins WHERE email = ? AND (tenant_id = ? OR tenant_id IS NULL) AND is_active = 1"
-          ).bind(email, tenantId).first()
-        : await env.DB.prepare(
-            "SELECT id, email, password_hash, role, tenant_id, first_name, last_name, is_active FROM admins WHERE email = ? AND tenant_id IS NULL AND is_active = 1"
-          ).bind(email).first();
+      // Look up admin in the admins table (audit P0, Option A two-branch).
+      // Branch 1 (preferred): EXACT-tenant match — the row must belong to the
+      // requested tenant. A NULL-tenant row can never satisfy `tenant_id = ?`,
+      // so stranded orphan admins (tenant_id IS NULL, role='admin') can no
+      // longer ride an OR-NULL arm into a foreign tenant.
+      // Branch 2: super_admin NULL-tenant fallback — ignores the requested
+      // tenant (super admins administer all tenants) and is explicitly gated
+      // to role='super_admin'. With no requested tenant only branch 2 runs.
+      const ADMIN_SELECT = "SELECT id, email, password_hash, role, tenant_id, first_name, last_name, is_active FROM admins WHERE email = ? AND tenant_id = ? AND is_active = 1";
+      const SUPERADMIN_NULL_SELECT = "SELECT id, email, password_hash, role, tenant_id, first_name, last_name, is_active FROM admins WHERE email = ? AND tenant_id IS NULL AND role = 'super_admin' AND is_active = 1";
+      let admin = null;
+      if (targetTenant) {
+        admin = await env.DB.prepare(ADMIN_SELECT).bind(email, tenantId).first();
+        if (!admin) {
+          admin = await env.DB.prepare(SUPERADMIN_NULL_SELECT).bind(email).first();
+        }
+      } else {
+        admin = await env.DB.prepare(SUPERADMIN_NULL_SELECT).bind(email).first();
+      }
 
       if (!admin) return errorResponse('Invalid email or password', 401);
 
@@ -156,15 +166,18 @@ export async function handleAuthRoute(request, env) {
         "UPDATE admins SET last_login = datetime('now') WHERE id = ?"
       ).bind(admin.id).run();
 
-      // Generate JWT token
+      // Generate JWT token (audit P0: a tenant admin's claim is bound to its
+      // OWN tenant_id — never the requested tenantId. Only super_admin rides
+      // the requested scope (or null when no tenant was requested).
+      const tokenTenantId = admin.role === 'super_admin' ? (tenantId || null) : admin.tenant_id;
       const token = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || tenantId, email: admin.email, role: admin.role, userType: 'platform' },
+        { sub: admin.id, userId: admin.id, tenantId: tokenTenantId, email: admin.email, role: admin.role, userType: 'platform' },
         secret,
         'access'
       );
 
       const refreshToken = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || tenantId, userType: 'platform' },
+        { sub: admin.id, userId: admin.id, tenantId: tokenTenantId, userType: 'platform' },
         secret,
         'refresh'
       );
@@ -180,7 +193,7 @@ export async function handleAuthRoute(request, env) {
           name: displayName,
           email: admin.email,
           role: admin.role,
-          tenantId: admin.tenant_id || tenantId
+          tenantId: tokenTenantId
         }
       });
     } catch (e) {
@@ -215,15 +228,18 @@ export async function handleAuthRoute(request, env) {
       if (!admin) return errorResponse('Invalid or expired refresh token', 401);
       if (admin.is_active === 0) return errorResponse('Account deactivated', 401);
 
-      // Issue new access + refresh tokens
+      // Issue new access + refresh tokens (audit P0: same binding as login —
+      // tenant admins re-issue their OWN tenant_id, ignoring any spoofed
+      // decoded.tenantId carried by the presented refresh token).
+      const refreshTenantId = admin.role === 'super_admin' ? (decoded.tenantId || null) : admin.tenant_id;
       const token = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || decoded.tenantId, email: admin.email, role: admin.role, userType: 'platform' },
+        { sub: admin.id, userId: admin.id, tenantId: refreshTenantId, email: admin.email, role: admin.role, userType: 'platform' },
         secret,
         'access'
       );
 
       const newRefreshToken = await generateToken(
-        { sub: admin.id, userId: admin.id, tenantId: admin.tenant_id || decoded.tenantId, userType: 'platform' },
+        { sub: admin.id, userId: admin.id, tenantId: refreshTenantId, userType: 'platform' },
         secret,
         'refresh'
       );
@@ -239,7 +255,7 @@ export async function handleAuthRoute(request, env) {
           name: displayName,
           email: admin.email,
           role: admin.role,
-          tenantId: admin.tenant_id || decoded.tenantId
+          tenantId: refreshTenantId
         }
       });
     } catch (e) {
