@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { session } from '@/lib/session';
+import { getCamps } from '@/lib/api';
 import { posKeys, usePosActiveShift } from '@/hooks/usePosQueries';
 import { posUrl } from '@/lib/posUrl';
 import { push, replace, onNavigation } from '@/lib/navigation';
@@ -43,6 +44,18 @@ const POS_NAV: ShellNavItem[] = [
   { id: 'shift', label: 'Shift', icon: IconShift },
 ];
 
+/**
+ * Phase 4d — shell header shows the active project name (design §6.3).
+ * Resolution: picker/implicit-recorded `activeProjectName` → raw
+ * `activeProjectId`/`projectId` fallback (directory outage or pre-4d
+ * session) → nothing (never block the terminal on a missing label).
+ */
+export function posProjectLabel(user: PosUser): string | null {
+  if (user.activeProjectName) return user.activeProjectName;
+  const id = user.activeProjectId ?? user.projectId ?? null;
+  return id ? `Project ${id}` : null;
+}
+
 function Sidebar({
   view,
   onNavigate,
@@ -54,6 +67,7 @@ function Sidebar({
   onLogout: () => void;
   user: PosUser;
 }) {
+  const projectLabel = posProjectLabel(user);
   return (
     <AppSidebar
       sidebarTestId="pos-sidebar"
@@ -63,6 +77,11 @@ function Sidebar({
         <div className="px-5 py-5 border-b border-white/10">
           <div className="font-display text-lg font-bold tracking-tight">SinaiCamps</div>
           <div className="text-xs text-sidebar-text/60 mt-0.5">POS Terminal</div>
+          {projectLabel && (
+            <div className="text-xs text-sidebar-text/80 mt-1 truncate" data-testid="pos-project-name">
+              {projectLabel}
+            </div>
+          )}
         </div>
       }
       groups={[{ items: POS_NAV }]}
@@ -158,6 +177,32 @@ function POSAppShell() {
   const shiftProbe = usePosActiveShift(Boolean(user && token));
   const probeShift = shiftProbe.data?.active ? (shiftProbe.data.shift as Shift) : null;
   const activeShift = openedShift ?? probeShift;
+
+  // Phase 4d: backfill the shell project name for sessions that predate
+  // the picker (or logged in while the directory was unreachable). One
+  // public directory read, silent on failure — the header falls back to
+  // the raw project id and the terminal never blocks on a label.
+  useEffect(() => {
+    const id = user?.activeProjectId ?? user?.projectId ?? null;
+    if (!user || !token || user.activeProjectName || !id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = (await getCamps()) as Array<{ id: string; name: string }>;
+        const match = Array.isArray(list) ? list.find((p) => p.id === id) : null;
+        if (!match || cancelled) return;
+        const enriched: PosUser = { ...user, activeProjectId: id, activeProjectName: match.name };
+        session.setUser('pos', enriched);
+        setUser(enriched);
+      } catch {
+        /* directory unreachable — id fallback stays */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   // Persist cart to localStorage so it survives page refreshes within a session.
   useEffect(() => {

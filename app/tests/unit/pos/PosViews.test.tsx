@@ -22,6 +22,9 @@ vi.mock('@/components/ui/Toast', () => ({
 
 vi.mock('@/lib/api', () => ({
   posLogin: vi.fn(),
+  // Phase 4d: LoginView resolves the tenant project directory post-login.
+  // Default [] keeps the legacy implicit path for tests that never log in.
+  getCamps: vi.fn(async () => []),
   posGetDashboard: vi.fn(),
   posGetProducts: vi.fn(),
   posGetOrders: vi.fn(),

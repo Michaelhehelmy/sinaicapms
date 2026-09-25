@@ -13,6 +13,12 @@ export type PosUser = {
   role: string;
   organizationId?: number | string;
   storeId?: number | string | unknown;
+  /** Phase 4c: project bound to the cashier's store (null when unbound). */
+  projectId?: string | null;
+  /** Phase 4d: cashier-confirmed active project (picker or implicit). */
+  activeProjectId?: string | null;
+  /** Phase 4d: display name for the active project (shell header). */
+  activeProjectName?: string | null;
   /** Org-level tax rate from the login response; undefined → fall back to 0.1 */
   taxRate?: number | null;
 };
