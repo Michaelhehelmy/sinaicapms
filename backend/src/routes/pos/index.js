@@ -84,6 +84,19 @@ async function getOrgTaxRate(env, organizationId) {
   return null;
 }
 
+// ─── Phase 4c: store→project binding (Option Y, design §6.5) ─────
+// The store record is authoritative; the token claim is a cached copy.
+// Returns the bound project_id or null (NULL store / no row / NULL
+// binding). Throws on DB errors — callers decide fail-closed vs fallback.
+async function resolveStoreProjectId(env, storeId) {
+  if (storeId == null) return null;
+  const { results } = await env.DB.prepare(
+    'SELECT project_id FROM pos_stores WHERE id = ?'
+  ).bind(storeId).all();
+  if (results.length === 0) return null;
+  return results[0].project_id ?? null;
+}
+
 // ─── POS Auth Middleware ────────────────────────────────────
 async function posAuth(c, next) {
   const authHeader = c.req.header('Authorization');
@@ -107,19 +120,40 @@ async function posAuth(c, next) {
   // the cashier store's project (subselect on the token storeId, the store
   // the sale books to) plus the cashier home project (pos_users.project_id,
   // backfilled by 0105). Precedence: explicit 4c claim → store→project →
-  // home-project → NULL (legacy tenant-wide; 4c closes this path). Zero new
-  // prepare calls — the predicate sites below stay call-order stable.
+  // home-project → tenant default → NULL (legacy tenant-wide; mock rows
+  // without the default_project key keep the 4b NULL). Phase 4c: the
+  // tenant-default fallback (oldest live project, 0118 tie-break) rides in
+  // the SAME round-trip as a scalar subselect so legacy call-order/step
+  // mocks stay stable. Zero new prepare calls — the predicate sites below
+  // stay call-order stable.
   const { results: userCheck } = await c.env.DB.prepare(
     `SELECT is_active, project_id,
-            (SELECT project_id FROM pos_stores WHERE id = ?) AS store_project
+            (SELECT project_id FROM pos_stores WHERE id = ?) AS store_project,
+            (SELECT id FROM projects
+             WHERE tenant_id = ? AND deleted_at IS NULL
+             ORDER BY created_at ASC, id ASC LIMIT 1) AS default_project
      FROM pos_users WHERE id = ? AND deleted_at IS NULL`
-  ).bind(decoded.storeId ?? null, decoded.userId).all();
+  ).bind(decoded.storeId ?? null, decoded.tenantId ?? null, decoded.userId).all();
   if (userCheck.length === 0 || !userCheck[0].is_active) {
     return errorResponse('Session revoked or account deactivated', 401);
   }
   const scopeRow = userCheck[0];
-  const projectId = decoded.projectId ?? decoded.project_id
-    ?? scopeRow.store_project ?? scopeRow.project_id ?? null;
+  // Phase 4c (design §6.5): the store record is authoritative, the claim a
+  // cached copy. Agreed/absent claims resolve record-first; a legacy token
+  // with neither falls back to the tenant default project (never silent
+  // tenant-wide NULL when a default exists). Claim-vs-record disagreement
+  // fails WRITES closed; reads degrade to the record's project, never the
+  // claim's.
+  const claimProjectId = decoded.projectId ?? decoded.project_id ?? null;
+  const recordProjectId = scopeRow.store_project ?? scopeRow.project_id ?? null;
+  let projectId = recordProjectId ?? claimProjectId ?? scopeRow.default_project ?? null;
+  if (claimProjectId && recordProjectId && claimProjectId !== recordProjectId) {
+    const method = c.req.method;
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+      return errorResponse('Forbidden: project scope mismatch', 403);
+    }
+    projectId = recordProjectId;
+  }
   c.set('posUser', { ...decoded, projectId });
   await next();
 }
@@ -166,6 +200,17 @@ export async function handlePosLoginRequest(request, env) {
     // instead of a client-side hardcoded rate.
     const taxRate = await getOrgTaxRate(env, user.organization_id);
 
+    // Phase 4c (Option Y, design §6.3): the token carries the project bound
+    // to the cashier's store in BOTH access and refresh claims. NULL-store
+    // cashiers are locked out until an admin assigns a store — the silent
+    // first-store inherit is REMOVED. A store with no project binding mints
+    // a null claim; per-request scope still bounds via home-project →
+    // tenant default in posAuth (record authoritative, never a wrong store).
+    if (user.store_id == null) {
+      return errorResponse('Account has no store assignment — contact your admin', 403);
+    }
+    const projectId = await resolveStoreProjectId(env, user.store_id);
+
     // Token contract v2 + legacy tag both emitted; access TTL honours
     // POS_ACCESS_TTL_SECONDS when configured (env passed as 4th arg).
     const claims = {
@@ -174,6 +219,7 @@ export async function handlePosLoginRequest(request, env) {
       tenantId,
       organizationId: user.organization_id,
       storeId: user.store_id,
+      projectId,
       role: user.role,
       posType: 'pos',
       userType: 'org',
@@ -198,6 +244,7 @@ export async function handlePosLoginRequest(request, env) {
         role: user.role,
         organizationId: user.organization_id,
         storeId: user.store_id,
+        projectId,
         taxRate,
       },
     });
@@ -282,6 +329,14 @@ pos.post('/auth/refresh', async (c) => {
     const tenantId = await resolveOrgTenantId(env, user.organization_id);
     const taxRate = await getOrgTaxRate(env, user.organization_id);
 
+    // Phase 4c: re-resolve BOTH dimensions from the database — the stale
+    // claim is never trusted alone. Changed bindings re-issue corrected
+    // claims; removed bindings (NULL store) fail closed like login.
+    if (user.store_id == null) {
+      return errorResponse('Account has no store assignment — contact your admin', 403);
+    }
+    const projectId = await resolveStoreProjectId(env, user.store_id);
+
     // Token contract v2 + legacy tag both emitted; access TTL honours
     // POS_ACCESS_TTL_SECONDS when configured (env passed as 4th arg).
     const claims = {
@@ -290,6 +345,7 @@ pos.post('/auth/refresh', async (c) => {
       tenantId,
       organizationId: user.organization_id,
       storeId: user.store_id,
+      projectId,
       role: user.role,
       posType: 'pos',
       userType: 'org',
@@ -310,6 +366,7 @@ pos.post('/auth/refresh', async (c) => {
         role: user.role,
         organizationId: user.organization_id,
         storeId: user.store_id,
+        projectId,
         taxRate,
       },
     });

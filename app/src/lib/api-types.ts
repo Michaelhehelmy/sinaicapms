@@ -9811,6 +9811,7 @@ export interface components {
             role: string;
             organizationId?: number | string;
             storeId?: number | string | unknown;
+            projectId?: string | null;
         };
         PosLoginResponse: {
             success: boolean;

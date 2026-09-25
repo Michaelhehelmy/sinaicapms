@@ -24,7 +24,10 @@
  *  - admin/manager are hard-scoped by requireAuth ('equals' check) to their
  *    own tenant — a mismatched claim yields requireAuth's 403.
  *  - POS tokens in dualRealm mode: tenantId is resolved from the token's
- *    organization_id via tenant_org_mapping (same as posAuth middleware).
+ *    organization_id via tenant_org_mapping (same as posAuth middleware);
+ *    projectId is resolved claim → store-record → home-project with a
+ *    tenant-default-project legacy fallback (Phase 4c, design §6.3/§6.5),
+ *    and a claim-vs-record disagreement fails writes closed.
  */
 import { getTenant } from './tenant';
 import { requireAuth } from './requireAuth.js';
@@ -133,11 +136,15 @@ export function resolveScope(options = {}) {
       // Check activity (both admin and POS users)
       const isPos = decoded.posType === 'pos' || decoded.userType === 'org';
       let isActive = false;
+      // Phase 4c: the probe also carries the cashier home project
+      // (pos_users.project_id) — one arm of the project resolution below.
+      let posHomeProjectId = null;
       if (isPos) {
         const { results } = await c.env.DB.prepare(
-          'SELECT is_active FROM pos_users WHERE id = ? AND deleted_at IS NULL'
+          'SELECT is_active, project_id FROM pos_users WHERE id = ? AND deleted_at IS NULL'
         ).bind(decoded.userId || decoded.sub).all();
         isActive = results.length > 0 && !!results[0].is_active;
+        posHomeProjectId = results.length > 0 ? (results[0].project_id ?? null) : null;
       } else {
         const { results } = await c.env.DB.prepare(
           'SELECT is_active FROM admins WHERE id = ?'
@@ -150,6 +157,7 @@ export function resolveScope(options = {}) {
 
       // Resolve tenant: admin uses header/query, POS uses org mapping
       let tenantId;
+      let projectId = null;
       if (isPos) {
         // POS: resolve organization_id → tenant_id via mapping
         const organizationId = decoded.organizationId || decoded.orgId;
@@ -160,6 +168,38 @@ export function resolveScope(options = {}) {
           tenantId = results.length > 0 ? results[0].tenant_id : String(organizationId);
         } else {
           tenantId = null;
+        }
+        // Phase 4c (Option Y, design §6.3/§6.5): surface the project the
+        // same way posAuth does — the claim is a cached copy, the store
+        // record is authoritative, legacy tokens fall back to the tenant
+        // default project (oldest live project, 0118 tie-break). A
+        // claim-vs-record disagreement fails WRITES closed; reads degrade
+        // to the record's project, never the claim's.
+        const claimProjectId = decoded.projectId ?? decoded.project_id ?? null;
+        let recordProjectId = posHomeProjectId;
+        const posStoreId = decoded.storeId ?? decoded.store_id;
+        if (posStoreId != null) {
+          const { results: storeRows } = await c.env.DB.prepare(
+            'SELECT project_id FROM pos_stores WHERE id = ?'
+          ).bind(posStoreId).all();
+          const storeProjectId = storeRows.length > 0 ? (storeRows[0].project_id ?? null) : null;
+          recordProjectId = storeProjectId ?? posHomeProjectId;
+        }
+        projectId = recordProjectId ?? claimProjectId ?? null;
+        if (!projectId && tenantId) {
+          const { results: defaultRows } = await c.env.DB.prepare(
+            `SELECT id FROM projects
+             WHERE tenant_id = ? AND deleted_at IS NULL
+             ORDER BY created_at ASC, id ASC LIMIT 1`
+          ).bind(tenantId).all();
+          projectId = defaultRows.length > 0 ? defaultRows[0].id : null;
+        }
+        if (claimProjectId && recordProjectId && claimProjectId !== recordProjectId) {
+          const method = c.req.method;
+          if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+            return errorResponse('Forbidden: project scope mismatch', 403);
+          }
+          projectId = recordProjectId;
         }
       } else {
         // Admin: resolve from header/query, then require tenant context
@@ -182,7 +222,7 @@ export function resolveScope(options = {}) {
       }
 
       c.set('user', decoded);
-      c.set('scope', { tenantId, user: decoded });
+      c.set('scope', { tenantId, user: decoded, projectId });
       await next();
     });
   }

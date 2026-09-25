@@ -3609,6 +3609,10 @@
                 "nullable": true
               }
             ]
+          },
+          "projectId": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [

@@ -2867,6 +2867,9 @@ const posLoginUserSchema = z
     role: z.string(),
     organizationId: z.union([z.number(), z.string()]).optional(),
     storeId: z.union([z.number(), z.string()]).nullable().optional(),
+    // Phase 4c: project bound to the cashier's store (null when the store
+    // carries no binding); mirrors the pos_token projectId claim.
+    projectId: z.string().nullable().optional(),
   })
   .openapi('PosLoginUser');
 

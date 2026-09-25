@@ -6,7 +6,7 @@
  * D1-compatible shim (prepare/bind/all/first/run + batch with meta.changes).
  * `verifyToken` is stubbed per test (same idiom as pos-unit.test.js) so each
  * token shape exercises one resolution arm: store→project (no claim),
- * explicit 4c-style claim, or legacy NULL (tenant-wide passthrough).
+ * explicit 4c-style claim, or legacy NULL (tenant-default fallback since 4c).
  *
  * GATE TEST 1 (numeric): seed product X in the Camp project (stock 10), sell
  * 3 via the Camp store ⇒ Camp stock is EXACTLY 7 and the Restaurant row is
@@ -44,6 +44,7 @@ function buildDb() {
   sqlite.exec(`
     CREATE TABLE pos_organizations (id INTEGER PRIMARY KEY, tax_rate REAL);
     CREATE TABLE pos_stores (id INTEGER PRIMARY KEY, organization_id INTEGER NOT NULL, project_id TEXT);
+    CREATE TABLE projects (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, created_at TEXT, deleted_at TEXT);
     CREATE TABLE pos_users (
       id TEXT PRIMARY KEY, organization_id INTEGER NOT NULL,
       store_id INTEGER, project_id TEXT, is_active INTEGER DEFAULT 1, deleted_at TEXT
@@ -78,6 +79,9 @@ function buildDb() {
       severity TEXT, is_read INTEGER, created_at TEXT
     );
     INSERT INTO pos_organizations (id, tax_rate) VALUES (1, 0.1);
+    INSERT INTO projects (id, tenant_id, created_at, deleted_at) VALUES
+      ('camp1', 't1', '2026-01-01 00:00:00', NULL),
+      ('rest1', 't1', '2026-02-01 00:00:00', NULL);
     INSERT INTO pos_stores (id, organization_id, project_id) VALUES (1, 1, 'camp1'), (2, 1, 'rest1');
     INSERT INTO pos_users (id, organization_id, store_id, project_id, is_active, deleted_at) VALUES
       ('cash_camp', 1, 1, NULL, 1, NULL),
@@ -309,8 +313,8 @@ describe('Phase 4b — pos_products project scoping (GATE 1 numeric)', () => {
     expect(addBack.params).toEqual([5, 'ing1', TENANT, CAMP]);
   });
 
-  it('legacy NULL-store/NULL-project token keeps tenant-wide reads with no project predicate (4c closes this)', async () => {
-    const { db, sqlLog } = setup();
+  it('legacy NULL-store/NULL-project token validates with default-project scope (4c fallback closes tenant-wide)', async () => {
+    const { db, bindLog } = setup();
     verifyToken.mockResolvedValue({
       userId: 'cash_legacy',
       posType: 'pos',
@@ -322,9 +326,11 @@ describe('Phase 4b — pos_products project scoping (GATE 1 numeric)', () => {
     const res = await getProducts(db);
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body.map((p) => p.id).sort()).toEqual(['prod_camp', 'prod_rest']);
-    const productSqls = sqlLog.filter((s) => s.includes('FROM pos_products'));
-    expect(productSqls.length).toBeGreaterThan(0);
-    expect(productSqls.every((s) => !s.includes('project_id'))).toBe(true);
+    // No claim, no store, no home ⇒ tenant default project (oldest live =
+    // camp1), NOT the tenant-wide list.
+    expect(body.map((p) => p.id)).toEqual(['prod_camp']);
+    const readBind = bindLog.find((b) => b.sql.includes('FROM pos_products'));
+    expect(readBind.sql).toContain('project_id = ?');
+    expect(readBind.params).toEqual([TENANT, CAMP]);
   });
 });
