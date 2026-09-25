@@ -1,5 +1,40 @@
 # P4 Staging Walkthrough — POS Isolation (live)
 
+> ## ATTEMPT 3 2026-09-25 — verdict: BLOCKED at STEP 4 (spec `.opencode/agents/tmp/2026-09-24-p4-attempt3.md`)
+>
+> - Premise ("post-0120 redeploy, 0120 live") FALSIFIED read-only at STEP 1: staging
+>   `campmaster-db-staging` ledger head is still **`0119_pos_shifts_store_id.sql`** (33 rows),
+>   `pos_transactions` PRAGMA has **no `tip_amount`** — 0120 never applied (no `--staging`
+>   deploy since `ef8b776`). Steps 1–3 PASS with exact numbers (below); STEP 4 sell-3-cash
+>   FAILS again: `POST /api/pos/orders` → **`500 {"success":false,"error":"Failed to create order"}`
+>   (×2, second with explicit `idempotencyKey`)** — the same deterministic D1 failure proven in
+>   the retry (sale INSERT lists `tip_amount`, column absent). STOP honored, steps 5–8 NOT RUN,
+>   no source/deploy touched.
+> - State left clean: shift `sh_ff9d4db1-b97` closed (expected 100 / actual 100 /
+>   discrepancy 0); P4TEST stock still 10; today `pos_transactions` for tenant = 0; open
+>   shifts = 0. D1 otherwise SELECT-only.
+> - Remediation (unchanged): `./deploy.sh --staging` (applies 0120), then re-run this spec —
+>   STEP 4 gate is stock 10→7 exact + txn `project_id` = `camp_fdcd2ef9-855`.
+>
+> ### Attempt-3 gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | `GET /pos` | 200 · 925 ms nav (`domcontentloaded`) · curl 7.05 s / 8297 B |
+> | Login → shell | ok (`Test POS`), 0 page errors |
+> | `pos-project-name` elements | 1, text `Acacia Main Camp`; body contains = true |
+> | D1 ledger head | `0119_pos_shifts_store_id.sql` (33 rows — 0120 ABSENT) |
+> | `pos_transactions.tip_amount` PRAGMA | ABSENT (0 rows) |
+> | Token `projectId` claim | `camp_fdcd2ef9-855` (storeId 2, tenantId `acaciacamp`, userId 7, access + refresh) |
+> | STEP 2 open shift | `sh_ff9d4db1-b97`, opening 100; D1: exactly 1 open, store_id 2, cashier 7 |
+> | STEP 3 pre-sale stock | P4TEST id `p4test_B9278A0D8A36` (name `P4 Test Item`, sku `P4TEST`, org 1, project `camp_fdcd2ef9-855`, price 5, type `retail`) == **10** exact; same-name rows across projects: 1 |
+> | STEP 4 sale attempts | 2 × `500 Failed to create order`; post-sale stock **10** (unchanged); today txns **0** |
+> | Cleanup close | expected 100 / actual 100 / discrepancy **0**; open shifts after = 0 |
+> | Mutations performed | open 1, successful sales 0 (2 failed, zero writes), close 1; D1 otherwise SELECT-only |
+> | Screenshots | `p4-r3-01-login.png` (logged-in shell WITH project name) |
+>
+> ### Prior runs kept below (retry BLOCKED at STEP 4 on the same drift; first run BLOCKED at STEP 1, staging stale).
+
 > ## RETRY 2026-09-25 — verdict: BLOCKED at STEP 4 (spec `.opencode/agents/tmp/2026-09-24-p4-retry.md`)
 >
 > - Steps 1–3 PASS with exact numbers (below). STEP 4 sell-3-cash FAILS: `POST /api/pos/orders`
