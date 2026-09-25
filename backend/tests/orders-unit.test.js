@@ -636,7 +636,9 @@ describe('handleOrdersRoute', () => {
         (ch) => { ch.all.mockResolvedValue({ results: [{ max_guests: 4, base_price: 100 }] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); },
         (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // 0067: project stay limits
-        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'cust1' }] }); },
+        // U-002 follow-up (test-only): the email path is now a single
+        // INSERT ... ON CONFLICT ... RETURNING served via .first().
+        (ch) => { ch.first.mockResolvedValue({ id: 'cust1' }); },
         (ch) => { ch.run.mockResolvedValue({}); },
         (ch) => { ch.run.mockResolvedValue({}); },
       ]);
