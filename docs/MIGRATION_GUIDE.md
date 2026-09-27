@@ -2,7 +2,7 @@
 
 ## 1. What migrations are
 
-Cloudflare D1 (SQLite) schema lives as numbered `.sql` files in `backend/migrations/`. **Current head: `0099_normalize_marketplace_payouts_ids.sql`** (99 migrations total; `SCHEMA_DIRECTION_PLAN.md` in the same dir is a planning note, not a migration).
+Cloudflare D1 (SQLite) schema lives as numbered `.sql` files in `backend/migrations/`. **Current head: `0123_storefront_order_items_fk_pos_products.sql`** (37 files total: `0001`–`0014` + `0100`–`0123` minus reserved-absent `0109`, filesystem-verified; `SCHEMA_DIRECTION_PLAN.md` in the same dir is a planning note, not a migration). The pre-squash `0001`–`0099` lineage is archived in `backend/migrations/legacy/` (+ README) — archaeology only, wrangler scans the top level and ignores it.
 
 Migrations are applied in filename order. Never edit an applied migration — create a new numbered file.
 
@@ -10,7 +10,7 @@ Migrations are applied in filename order. Never edit an applied migration — cr
 
 Use the **`db-migration` skill** (`.opencode/skills/database/db-migration/SKILL.md`) — it encodes this flow:
 
-1. Create `backend/migrations/0100_<slug>.sql` with the next number.
+1. Create `backend/migrations/0124_<slug>.sql` with the next number (head is `0123`; never reuse reserved-absent `0109`).
 2. Style: `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ... ADD COLUMN` (SQLite) — prefer additive, idempotent DDL.
 3. Apply locally: `npx wrangler d1 migrations apply <DB_NAME> --local --config backend/wrangler.toml` (check the DB name in `backend/wrangler.toml` `[[d1_databases]]`).
 4. Apply remotely: `./deploy.sh` applies migrations during deploy; or `npx wrangler d1 migrations apply <DB_NAME> --remote --config backend/wrangler.toml`.
@@ -34,17 +34,18 @@ Cloudflare's free plan allows **1,000 KV writes/day**. A KV write per API reques
 
 | File | Change |
 | --- | --- |
-| `0099_normalize_marketplace_payouts_ids.sql` | Normalize `marketplace_payouts` tenant_id/created_by to TEXT (A2) |
-| `0098_storefront_paymob.sql` | Storefront checkout Paymob columns |
-| `0097_feedback.sql` | Human-testing debug feedback reports |
-| earlier | `pos_users` generated name + `organization_id`, `pos_transactions` cashier refs |
+| `0123_storefront_order_items_fk_pos_products.sql` | Retarget `storefront_order_items.product_id` FK `products(id)` → `pos_products(id)` (checkout writes pos_products ids; single-table rebuild, 0111 idiom) |
+| `0122_add_storefront_order_items_project_id.sql` | Nullable `project_id` on `storefront_order_items` (unified-checkout line scoping) |
+| `0121_add_cart_items_project_id.sql` | Nullable `project_id` on `cart_items` (lines stamped server-side from `pos_products.project_id`) |
+| `0120_add_tip_amount_to_pos_transactions.sql` | `tip_amount REAL DEFAULT 0` on `pos_transactions` (INSERT already bound it — drift fix) |
+| earlier | `0100`–`0118` project-scoping series (+ `0111` SET NULL idiom); `pos_users` generated name + `organization_id`, `pos_transactions` cashier refs |
 
 ## 6. Verification
 
 After any migration:
 
 ```bash
-cd backend && npx vitest run          # 2225 tests / 84 files
-cd app && npx vitest run              # 3416 tests / 137 files
+cd backend && npx vitest run          # 2610 tests / 115 files
+cd app && npx vitest run              # 3561 tests / 149 files
 npx vitest run --config vitest.integration.config.ts   # root integration, 255 tests / 37 files
 ```
