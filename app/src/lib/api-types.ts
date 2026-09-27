@@ -2048,11 +2048,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List orders (paginated; optional status filter) */
+        /** List orders (paginated; optional status + projectType filters) */
         get: {
             parameters: {
                 query?: {
                     status?: string;
+                    projectType?: string;
                     page?: string;
                     pageSize?: string;
                 };
@@ -2533,6 +2534,158 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/orders/{id}/record-payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record an offline cash-desk payment (cash|card|split; 400 on overpayment or split-leg mismatch; full payment flips payment_status to paid) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RecordPaymentRequest"];
+                };
+            };
+            responses: {
+                /** @description Payment recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RecordPaymentResponse"];
+                    };
+                };
+                /** @description Bad request / validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders/{id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the payment records applied to one order, oldest first (tenant scoped; 404 for missing or foreign-tenant orders) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Order payment records (bare array) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrderPaymentList"];
+                    };
+                };
+                /** @description Bad request / validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/orders/bulk-delete": {
         parameters: {
             query?: never;
@@ -3011,6 +3164,83 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["BookingsReport"];
+                    };
+                };
+                /** @description Bad request / validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+                /** @description Internal server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/profit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Profit-by-project report (auth + tenant scoped; start/end or days; optional projectId narrow) */
+        get: {
+            parameters: {
+                query?: {
+                    start?: string;
+                    end?: string;
+                    days?: string;
+                    projectId?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Profit */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProfitReport"];
                     };
                 };
                 /** @description Bad request / validation error */
@@ -9277,6 +9507,57 @@ export interface components {
             id: string;
             status: string;
         };
+        RecordPaymentResponse: {
+            success: boolean;
+            deduplicated?: boolean;
+            payment?: {
+                id: string;
+                tenantId: string;
+                orderId: string;
+                amount: number;
+                method: string;
+                amountCash: number;
+                amountCard: number;
+                receivedBy: string;
+                approvedBy: string | null;
+                reference: string | null;
+                notes: string | null;
+                recordedAt: string;
+            };
+            order?: {
+                id: string;
+                totalAmount: number;
+                amountPaid: number;
+                balance: number;
+                paymentStatus: string;
+            };
+        };
+        RecordPaymentRequest: {
+            id?: string;
+            amount: number;
+            /** @enum {string} */
+            method: "cash" | "card" | "split";
+            amountCash?: number;
+            amountCard?: number;
+            approvedBy?: string;
+            reference?: string;
+            notes?: string;
+        };
+        OrderPayment: {
+            id: string;
+            tenantId: string;
+            orderId: string;
+            amount: number;
+            method: string;
+            amountCash: number;
+            amountCard: number;
+            receivedBy: string;
+            approvedBy: string | null;
+            reference: string | null;
+            notes: string | null;
+            createdAt: string;
+        };
+        OrderPaymentList: components["schemas"]["OrderPayment"][];
         BulkDeleteResponse: {
             success: boolean;
             deleted: string[];
@@ -9348,6 +9629,23 @@ export interface components {
                 count: number;
                 revenue: number;
             }[];
+        };
+        ProfitReport: {
+            start: string;
+            end: string;
+            byProject: {
+                projectId: string | null;
+                projectName: string;
+                projectType: string;
+                revenue: number;
+                lineCount: number;
+                orderCount: number;
+            }[];
+            total: {
+                totalRevenue: number;
+                totalLines: number;
+                totalOrders: number;
+            };
         };
         Meal: {
             id: string;

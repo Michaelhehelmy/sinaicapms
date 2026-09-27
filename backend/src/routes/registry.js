@@ -743,6 +743,27 @@ const bookingsReportSchema = z
   })
   .openapi('BookingsReport');
 
+// Phase 5 step 5f — per-project P&L split (additive; existing schemas untouched).
+const profitReportSchema = z
+  .object({
+    start: z.string(),
+    end: z.string(),
+    byProject: z.array(z.object({
+      projectId: z.string().nullable(),
+      projectName: z.string(),
+      projectType: z.string(),
+      revenue: z.number(),
+      lineCount: z.number(),
+      orderCount: z.number(),
+    })),
+    total: z.object({
+      totalRevenue: z.number(),
+      totalLines: z.number(),
+      totalOrders: z.number(),
+    }),
+  })
+  .openapi('ProfitReport');
+
 // ── Marketplace route definitions (30) ───────────────────────────────────────────
 
 export const marketplaceRoutes = [
@@ -1149,7 +1170,7 @@ export const marketplaceRoutes = [
     },
   }),
 
-  // Reports (3)
+  // Reports (4 — 5f adds profit; existing three untouched)
   createRoute({
     method: 'get',
     path: '/api/reports/occupancy',
@@ -1179,6 +1200,17 @@ export const marketplaceRoutes = [
     request: { query: z.object({ start: z.string().optional(), end: z.string().optional(), days: z.string().optional() }) },
     responses: {
       200: { description: 'Bookings', content: { 'application/json': { schema: bookingsReportSchema } } },
+      ...errorResponses(),
+    },
+  }),
+  createRoute({
+    method: 'get',
+    path: '/api/reports/profit',
+    tags: ['reports'],
+    summary: 'Profit-by-project report (auth + tenant scoped; start/end or days; optional projectId narrow)',
+    request: { query: z.object({ start: z.string().optional(), end: z.string().optional(), days: z.string().optional(), projectId: z.string().optional() }) },
+    responses: {
+      200: { description: 'Profit', content: { 'application/json': { schema: profitReportSchema } } },
       ...errorResponses(),
     },
   }),

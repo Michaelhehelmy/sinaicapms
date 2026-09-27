@@ -871,6 +871,22 @@ export function useBookingsReportQuery(opts?: { days?: number; start?: string; e
   });
 }
 
+/**
+ * Phase 5 step 5f — profit-by-project report (additive; existing hooks untouched).
+ * Same date-window contract as revenue/bookings plus an optional projectId narrow.
+ */
+export function useProfitReportQuery(opts?: { days?: number; start?: string; end?: string; projectId?: string }) {
+  const toastError = useErrorToast();
+  return useQuery({
+    queryKey: ['reports', 'profit', opts] as const,
+    queryFn: () => api.getProfitReport(opts),
+    throwOnError: (err) => {
+      toastError('Failed to load profit report', err);
+      return false;
+    },
+  });
+}
+
 // ─── Availability & Price Overrides ───────────────────────────────────
 
 /** Fetch availability for a date range (optional product filter) */

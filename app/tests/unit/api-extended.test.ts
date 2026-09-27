@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   apiFetch,
-  getOccupancyReport, getRevenueReport, getBookingsReport,
+  getOccupancyReport, getRevenueReport, getBookingsReport, getProfitReport,
   login, logout, getAuthMe, forgotPassword, resetPassword, changePassword, registerUser,
   getCamps, getCamp, saveCamp, deleteCamp,
   getProducts, saveProduct, deleteProduct,
@@ -103,6 +103,15 @@ describe('report endpoints', () => {
     getBookingsReport({ days: 7, start: '2025-01-01', end: '2025-01-07' });
     const [url] = vi.mocked(fetch).mock.calls[0];
     expect(url).toContain('/reports/bookings?days=7&start=2025-01-01&end=2025-01-07');
+  });
+
+  // 5f: profit report getter hits the per-project P&L endpoint.
+  it('getProfitReport with start/end/projectId', async () => {
+    getProfitReport({ start: '2026-01-01', end: '2026-01-31', projectId: 'proj_rest' });
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain('/reports/profit?');
+    expect(url).toContain('start=2026-01-01');
+    expect(url).toContain('projectId=proj_rest');
   });
 });
 

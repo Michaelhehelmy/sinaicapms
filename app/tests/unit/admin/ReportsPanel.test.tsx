@@ -8,12 +8,16 @@ const mockShowToast = vi.fn();
 let mockOccData: unknown = undefined;
 let mockRevData: unknown = undefined;
 let mockBookData: unknown = undefined;
+// 5f: profit mock (additive; defaults keep every existing tab byte-identical).
+let mockProfitData: unknown = undefined;
 let mockOccLoading = false;
 let mockRevLoading = false;
 let mockBookLoading = false;
+let mockProfitLoading = false;
 let mockOccError: Error | null = null;
 let mockRevError: Error | null = null;
 let mockBookError: Error | null = null;
+let mockProfitError: Error | null = null;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -32,6 +36,8 @@ vi.mock('@/hooks/useQueryHooks', () => {
     useOccupancyReportQuery: () => useQuery(mockOccData, mockOccLoading, mockOccError),
     useRevenueReportQuery: () => useQuery(mockRevData, mockRevLoading, mockRevError),
     useBookingsReportQuery: () => useQuery(mockBookData, mockBookLoading, mockBookError),
+    // 5f: profit hook mock (same hook-boundary idiom as the other three).
+    useProfitReportQuery: () => useQuery(mockProfitData, mockProfitLoading, mockProfitError),
   };
 });
 
@@ -86,12 +92,15 @@ describe('ReportsPanel', () => {
     mockOccData = undefined;
     mockRevData = undefined;
     mockBookData = undefined;
+    mockProfitData = undefined;
     mockOccLoading = false;
     mockRevLoading = false;
     mockBookLoading = false;
+    mockProfitLoading = false;
     mockOccError = null;
     mockRevError = null;
     mockBookError = null;
+    mockProfitError = null;
   });
 
   it('renders the reports panel with header', () => {
@@ -317,5 +326,70 @@ describe('ReportsPanel', () => {
     mockOccData = { totalRooms: 10, occupiedRooms: 5, occupancyRate: 0.5 };
     render(<ReportsPanel campIds={['c1']} camps={mockCamps} />);
     expect(screen.getByText('Occupancy Report')).toBeInTheDocument();
+  });
+});
+
+describe('ReportsPanel profit tab (5f)', () => {
+  // Shared Phase-5 vocabulary: one camp project + one restaurant project.
+  const profitFixture = {
+    byProject: [
+      { projectId: 'proj_camp', projectName: 'Accommodation', projectType: 'camp', revenue: 200, lineCount: 1, orderCount: 1 },
+      { projectId: 'proj_rest', projectName: 'Restaurant', projectType: 'restaurant', revenue: 50, lineCount: 1, orderCount: 1 },
+    ],
+    total: { totalRevenue: 250, totalLines: 2, totalOrders: 1 },
+  };
+
+  function renderProfit(data: unknown = profitFixture) {
+    mockProfitData = data;
+    render(<ReportsPanel campIds={['proj_camp', 'proj_rest']} camps={mockCamps} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'profit' } });
+  }
+
+  it('offers the Profit by Project option', () => {
+    render(<ReportsPanel campIds={['c1']} camps={mockCamps} />);
+    expect(screen.getByRole('option', { name: 'Profit by Project' })).toBeInTheDocument();
+  });
+
+  it('order total 250 ⇒ Camp 200 + Restaurant 50 + footer total 250', () => {
+    renderProfit();
+    // Heading (the option carries the same label, so query the heading role).
+    expect(screen.getByRole('heading', { name: 'Profit by Project' })).toBeInTheDocument();
+    expect(screen.getByText('Accommodation')).toBeInTheDocument();
+    expect(screen.getByText('Restaurant')).toBeInTheDocument();
+    expect(screen.getByText('$200.00')).toBeInTheDocument();
+    expect(screen.getByText('$50.00')).toBeInTheDocument();
+    // Footer total row carries the tenant aggregate (250).
+    expect(screen.getByTestId('profit-total')).toBeInTheDocument();
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$250.00');
+  });
+
+  it('footer SUM equals the tenant aggregate', () => {
+    renderProfit();
+    const rows = profitFixture.byProject.reduce((a, r) => a + r.revenue, 0);
+    expect(rows).toBe(250);
+    expect(profitFixture.total.totalRevenue).toBe(rows);
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$250.00');
+  });
+
+  it('shows empty state when no profit data', () => {
+    renderProfit({ byProject: [], total: { totalRevenue: 0, totalLines: 0, totalOrders: 0 } });
+    expect(screen.getByText('No profit data available.')).toBeInTheDocument();
+  });
+
+  it('shows error toast for profit errors', async () => {
+    mockProfitError = new Error('profit failed');
+    render(<ReportsPanel campIds={['c1']} camps={mockCamps} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'profit' } });
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('Error loading report: profit failed', 'error');
+    });
+  });
+
+  it('leaves the other tabs byte-identical (revenue still renders)', () => {
+    mockRevData = { details: [{ date: '2025-01-01', total: 500, count: 10 }] };
+    render(<ReportsPanel campIds={['c1']} camps={mockCamps} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'revenue' } });
+    expect(screen.getByText('Revenue Report')).toBeInTheDocument();
+    expect(screen.getByText('$500.00')).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Camp } from '@/hooks/useAdminData';
-import { useOccupancyReportQuery, useRevenueReportQuery, useBookingsReportQuery } from '@/hooks/useQueryHooks';
+import { useOccupancyReportQuery, useRevenueReportQuery, useBookingsReportQuery, useProfitReportQuery } from '@/hooks/useQueryHooks';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Input } from '@/components/ui/Input';
@@ -17,11 +17,13 @@ const reportTypeOptions = [
   { value: 'occupancy', label: 'Occupancy' },
   { value: 'revenue', label: 'Revenue' },
   { value: 'bookings', label: 'Bookings' },
+  // 5f: per-project P&L split (additive 4th type; existing three untouched).
+  { value: 'profit', label: 'Profit by Project' },
 ];
 
 export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
   const { showToast } = useToast();
-  const [reportType, setReportType] = useState<'occupancy' | 'revenue' | 'bookings'>('occupancy');
+  const [reportType, setReportType] = useState<'occupancy' | 'revenue' | 'bookings' | 'profit'>('occupancy');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   // Only fetch the active report type
@@ -32,18 +34,22 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
   const { data: occData, isLoading: occLoading, error: occError } = useOccupancyReportQuery();
   const { data: revData, isLoading: revLoading, error: revError } = useRevenueReportQuery(dateParams);
   const { data: bookData, isLoading: bookLoading, error: bookError } = useBookingsReportQuery(dateParams);
+  // 5f: profit hook (same date-window contract; unconditional like the other three).
+  const { data: profitData, isLoading: profitLoading, error: profitError } = useProfitReportQuery(dateParams);
 
-  const loading = reportType === 'occupancy' ? occLoading : reportType === 'revenue' ? revLoading : bookLoading;
+  const loading = reportType === 'occupancy' ? occLoading : reportType === 'revenue' ? revLoading : reportType === 'profit' ? profitLoading : bookLoading;
 
   useEffect(() => {
     if (reportType === 'occupancy' && occError) {
       showToast(`Error loading report: ${occError.message}`, 'error');
     } else if (reportType === 'revenue' && revError) {
       showToast(`Error loading report: ${revError.message}`, 'error');
+    } else if (reportType === 'profit' && profitError) {
+      showToast(`Error loading report: ${(profitError as Error).message}`, 'error');
     } else if (reportType === 'bookings' && bookError) {
       showToast(`Error loading report: ${bookError.message}`, 'error');
     }
-  }, [reportType, occError, revError, bookError, showToast]);
+  }, [reportType, occError, revError, profitError, bookError, showToast]);
 
   // Transform API data into panel-local display shapes
   const occupancy = React.useMemo(() => {
@@ -85,6 +91,54 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
     return Array.isArray(bookData) ? bookData : [];
   }, [bookData]);
 
+  // 5f: per-project P&L rows + tenant total (server-grouped; footer SUM == aggregate).
+  // Accepts camelCase wire (byProject/total) and snake_case (by_project/total).
+  const profit = React.useMemo(() => {
+    if (!profitData) return { rows: [], total: null as null | { revenue: number; lines: number; orders: number } };
+    const raw = profitData as unknown as {
+      byProject?: Array<{ projectId?: string | null; projectName?: string; projectType?: string; revenue?: number; lineCount?: number; orderCount?: number }>;
+      by_project?: Array<{ project_id?: string | null; project_name?: string; project_type?: string; revenue?: number; line_count?: number; order_count?: number }>;
+      total?: { totalRevenue?: number; totalLines?: number; totalOrders?: number; total_revenue?: number; total_lines?: number; total_orders?: number };
+    };
+    if (Array.isArray(raw)) {
+      return {
+        rows: (raw as Array<{ projectName?: string; project_name?: string; revenue?: number } & Record<string, unknown>>).map((row) => ({
+          projectId: (row.projectId ?? row.project_id ?? null) as string | null,
+          projectName: (row.projectName ?? row.project_name ?? 'Unassigned') as string,
+          projectType: (row.projectType ?? row.project_type ?? 'unassigned') as string,
+          revenue: (row.revenue ?? 0) as number,
+          lineCount: (row.lineCount ?? row.line_count ?? 0) as number,
+          orderCount: (row.orderCount ?? row.order_count ?? 0) as number,
+        })),
+        total: null,
+      };
+    }
+    const list = Array.isArray(raw.byProject) ? raw.byProject : Array.isArray(raw.by_project) ? raw.by_project.map((r) => ({
+      projectId: r.project_id ?? null,
+      projectName: r.project_name ?? 'Unassigned',
+      projectType: r.project_type ?? 'unassigned',
+      revenue: r.revenue ?? 0,
+      lineCount: r.line_count ?? 0,
+      orderCount: r.order_count ?? 0,
+    })) : [];
+    const t = raw.total;
+    return {
+      rows: list.map((row) => ({
+        projectId: (row.projectId ?? null) as string | null,
+        projectName: (row.projectName ?? 'Unassigned') as string,
+        projectType: (row.projectType ?? 'unassigned') as string,
+        revenue: (row.revenue ?? 0) as number,
+        lineCount: (row.lineCount ?? 0) as number,
+        orderCount: (row.orderCount ?? 0) as number,
+      })),
+      total: t ? {
+        revenue: (t.totalRevenue ?? t.total_revenue ?? 0) as number,
+        lines: (t.totalLines ?? t.total_lines ?? 0) as number,
+        orders: (t.totalOrders ?? t.total_orders ?? 0) as number,
+      } : null,
+    };
+  }, [profitData]);
+
   const occupancyRateColor = (rate: number) => {
     if (rate > 80) return 'text-green-600';
     if (rate > 50) return 'text-yellow-600';
@@ -100,7 +154,7 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
         <Select
           options={reportTypeOptions}
           value={reportType}
-          onChange={(e) => setReportType(e.target.value as 'occupancy' | 'revenue' | 'bookings')}
+          onChange={(e) => setReportType(e.target.value as 'occupancy' | 'revenue' | 'bookings' | 'profit')}
         />
         <div className="flex items-center gap-2">
           <Input
@@ -180,6 +234,46 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
                     </tr>
                   ))}
                 </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      ) : reportType === 'profit' ? (
+        <Card data-testid="admin-report-content" padding="none" className="p-4">
+          <h3 className="text-sm font-bold text-gray-700 mb-3">Profit by Project</h3>
+          {profit.rows.length === 0 ? (
+            <p className="text-sm text-gray-500">No profit data available.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Project</th>
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Revenue</th>
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Lines</th>
+                    <th className="text-left py-2 px-2 text-xs font-semibold text-gray-500 uppercase">Orders</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {profit.rows.map((row) => (
+                    <tr key={row.projectId ?? row.projectName} className="border-b border-gray-50">
+                      <td className="py-2 px-2 font-medium text-gray-800">{row.projectName}</td>
+                      <td className="py-2 px-2 text-green-600 font-medium">{formatCurrency(row.revenue)}</td>
+                      <td className="py-2 px-2 text-gray-600">{row.lineCount}</td>
+                      <td className="py-2 px-2 text-gray-600">{row.orderCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {profit.total && (
+                  <tfoot>
+                    <tr data-testid="profit-total" className="bg-gray-50 font-semibold">
+                      <td className="py-2 px-2 text-gray-800">Total</td>
+                      <td className="py-2 px-2 text-green-700">{formatCurrency(profit.total.revenue)}</td>
+                      <td className="py-2 px-2 text-gray-700">{profit.total.lines}</td>
+                      <td className="py-2 px-2 text-gray-700">{profit.total.orders}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}

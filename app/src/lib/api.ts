@@ -647,6 +647,17 @@ export function getBookingsReport(opts?: { days?: number; start?: string; end?: 
   return apiFetch<Schemas['BookingsReport']>(`/reports/bookings${qs}`);
 }
 
+// Phase 5 step 5f — per-project P&L split (additive; existing getters untouched).
+export function getProfitReport(opts?: { days?: number; start?: string; end?: string; projectId?: string }) {
+  const params = new URLSearchParams();
+  if (opts?.days) params.set('days', String(opts.days));
+  if (opts?.start) params.set('start', opts.start);
+  if (opts?.end) params.set('end', opts.end);
+  if (opts?.projectId) params.set('projectId', opts.projectId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<Schemas['ProfitReport']>(`/reports/profit${qs}`);
+}
+
 export function getMe() {
   return apiFetch<Schemas['Me']>('/me');
 }

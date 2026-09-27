@@ -376,9 +376,74 @@ reportsRoutes.get('/seasonal', async (c) => {
   }
 });
 
+// ── Profit by Project: per-project P&L split (Phase 5 step 5f) ──────────
+// Line-grain aggregation over order_items.project_id (stamped server-side
+// since 5b; backfilled 0105; NOT NULL 0106) with tenant scope via the parent
+// order join. NULL-project lines (legacy / FK-orphan on project delete) form
+// an explicit 'Unassigned' bucket so nothing is silently dropped (design
+// §7.2 shape 2 + shape 4 unassigned bucket). The tenant total is the SUM over
+// the same filtered lines, so footer-SUM == tenant aggregate by construction
+// (design §7.3 acceptance). Additive: existing endpoints above are untouched.
+reportsRoutes.get('/profit', async (c) => {
+  const env = c.env;
+  const tenantId = getScope(c).tenantId;
+  try {
+    let cutoffStr;
+    const startParam = c.req.query('start');
+    const endParam = c.req.query('end');
+    if (startParam) {
+      cutoffStr = startParam;
+    } else {
+      const days = parseInt(c.req.query('days') || '30');
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      cutoffStr = cutoffDate.toISOString().split('T')[0];
+    }
+    const endDate = endParam || new Date().toISOString().split('T')[0];
+    const projectId = c.req.query('projectId') || c.req.query('project_id');
+
+    const lineFilter = `o.tenant_id = ? AND o.created_at >= ? AND date(o.created_at) <= ? AND o.order_state_id != 'cancelled'`;
+    const narrow = projectId ? ` AND oi.project_id = ?` : ``;
+    const binds = projectId ? [tenantId, cutoffStr, endDate, projectId] : [tenantId, cutoffStr, endDate];
+
+    const { results: byProject } = await env.DB.prepare(
+      `SELECT oi.project_id as project_id,
+              COALESCE(p.name, 'Unassigned') as project_name,
+              COALESCE(p.project_type, 'unassigned') as project_type,
+              SUM(oi.total_price) as revenue,
+              COUNT(*) as line_count,
+              COUNT(DISTINCT oi.order_id) as order_count
+       FROM order_items oi
+       JOIN orders o ON o.id = oi.order_id
+       LEFT JOIN projects p ON p.id = oi.project_id
+       WHERE ${lineFilter}${narrow}
+       GROUP BY oi.project_id
+       ORDER BY revenue DESC`
+    ).bind(...binds).all();
+
+    const { results: totalRes } = await env.DB.prepare(
+      `SELECT COALESCE(SUM(oi.total_price), 0) as total_revenue,
+              COUNT(*) as total_lines,
+              COUNT(DISTINCT oi.order_id) as total_orders
+       FROM order_items oi
+       JOIN orders o ON o.id = oi.order_id
+       WHERE ${lineFilter}${narrow}`
+    ).bind(...binds).all();
+
+    return jsonResponse({
+      start: cutoffStr,
+      end: endDate,
+      by_project: byProject,
+      total: totalRes[0] || { total_revenue: 0, total_lines: 0, total_orders: 0 },
+    });
+  } catch (e) {
+    return errorResponse('Failed to generate profit report');
+  }
+});
+
 // Legacy fallthrough: unknown report types keep the exact dispatcher message.
 reportsRoutes.all('*', () =>
-  errorResponse('Report type not found. Available: occupancy, revenue, bookings, top-products, kitchen-performance, low-stock, revenue-breakdown, customer-metrics, seasonal', 404)
+  errorResponse('Report type not found. Available: occupancy, revenue, bookings, profit, top-products, kitchen-performance, low-stock, revenue-breakdown, customer-metrics, seasonal', 404)
 );
 
 export default reportsRoutes;

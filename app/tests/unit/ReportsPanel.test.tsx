@@ -13,6 +13,10 @@ let mockRevenueError: Error | null = null;
 let mockBookingsData: unknown = { byState: [{ state: 'confirmed', count: 5 }] };
 let mockBookingsLoading = false;
 let mockBookingsError: Error | null = null;
+// 5f: profit mock (additive; undefined default keeps existing tabs identical).
+let mockProfitData: unknown = undefined;
+let mockProfitLoading = false;
+let mockProfitError: Error | null = null;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -33,6 +37,12 @@ vi.mock('@/hooks/useQueryHooks', () => ({
     data: mockBookingsData,
     isLoading: mockBookingsLoading,
     error: mockBookingsError,
+  }),
+  // 5f: profit hook mock (same boundary idiom; existing three untouched).
+  useProfitReportQuery: (params?: Record<string, unknown>) => ({
+    data: mockProfitData,
+    isLoading: mockProfitLoading,
+    error: mockProfitError,
   }),
 }));
 
@@ -101,6 +111,9 @@ beforeEach(() => {
   mockBookingsData = { byState: [{ state: 'confirmed', count: 5 }] };
   mockBookingsLoading = false;
   mockBookingsError = null;
+  mockProfitData = undefined;
+  mockProfitLoading = false;
+  mockProfitError = null;
 });
 
 describe('ReportsPanel', () => {
