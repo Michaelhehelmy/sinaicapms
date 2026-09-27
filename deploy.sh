@@ -9,6 +9,9 @@
 #   ./deploy.sh --migrate    — migrations only (no deploy)
 #   ./deploy.sh --staging    — full deploy to staging environment
 #   ./deploy.sh --no-health  — skip health checks (emergency deploy)
+#   ./deploy.sh --preflight [--staging] [--live] — read-only preflight gate
+#     (backup freshness + parity + wrangler.toml id match + migration inventory
+#     via scripts/deploy-preflight.sh; never deploys, never writes remotely)
 #   ./deploy.sh --rollback <version-id> [--staging]  — pin Worker to a previous Version
 #     (Wave 1.3 rollback lever: re-points 100% traffic at an earlier immutable
 #     Worker Version — code+vars only; D1 schema is forward-only and untouched)
@@ -47,6 +50,25 @@ elif [ "$MODE" = "--rollback" ]; then
   else
     ROLLBACK_VERSION="${2:-}"
     [ "${3:-}" = "--staging" ] && DEPLOY_ENV="staging"
+  fi
+fi
+
+# --preflight: read-only gate, never deploys. Default deploy behavior is
+# unchanged when the flag is absent (PREFLIGHT_ONLY=false).
+# Forms: ./deploy.sh --preflight [--staging] [--live]
+PREFLIGHT_ONLY=false
+PREFLIGHT_EXTRA=()
+if [ "$MODE" = "--preflight" ]; then
+  PREFLIGHT_ONLY=true
+  MODE="full"
+  if [ "${2:-}" = "--staging" ]; then
+    DEPLOY_ENV="staging"
+    PREFLIGHT_EXTRA=("--staging")
+  else
+    PREFLIGHT_EXTRA=("--production")
+  fi
+  if [ "${3:-}" = "--live" ] || [ "${2:-}" = "--live" ]; then
+    PREFLIGHT_EXTRA+=("--live")
   fi
 fi
 
@@ -456,6 +478,13 @@ echo "=================================================="
 echo "Mode: $MODE"
 echo "Environment: $DEPLOY_ENV"
 echo "Health Checks: $([ "$SKIP_HEALTH" = true ] && echo "DISABLED" || echo "ENABLED")"
+
+# Preflight gate: read-only checks only, then exit before any network/auth/deploy.
+if [ "$PREFLIGHT_ONLY" = true ]; then
+  section "Preflight (read-only — no deploy)"
+  "$SCRIPT_DIR/scripts/deploy-preflight.sh" "${PREFLIGHT_EXTRA[@]}"
+  exit $?
+fi
 
 check_network
 resolve_urls
