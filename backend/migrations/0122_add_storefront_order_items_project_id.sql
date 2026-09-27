@@ -1,0 +1,54 @@
+-- Migration 0122: Phase-5 step 5c — storefront_order_items.project_id (nullable, schema-only).
+--
+-- WHAT: adds a nullable `project_id TEXT REFERENCES projects(id) ON DELETE SET NULL`
+-- column to storefront_order_items plus a matching lookup index. Zero behavior
+-- change: nullable, no backfill, no NOT NULL, no data touched. Writers stamp it
+-- server-side from the cart line's project (backend/src/api/storefront.js POST
+-- /checkout — ci.project_id authoritative per 5a, pos_products.project_id as
+-- the legacy-NULL fallback); legacy rows stay NULL.
+--
+-- NUMBERING: filesystem head was 0121_add_cart_items_project_id.sql (5a).
+-- 0109 is RESERVED-but-absent (0110:20-25 — destructive camp-column drops, must
+-- not be consumed by any other task), so 0122 is the next free slot. Verified
+-- at commit time: no 0109 file present, no 0122 file present before this one.
+--
+-- SCOPE: this file touches storefront_order_items ONLY.
+-- storefront_orders.project_id already exists since 0100 (nullable +
+-- idx_storefront_orders_project); the 5c checkout header INSERT is left
+-- untouched on purpose — a mixed-origin unified order (room + meal from
+-- different projects) has no single header project, and line-level scoping
+-- (5e filter, 5f profit split) reads the LINES, not the header. Rewriting the
+-- header into orders/ would balloon into booking semantics (room_id NOT NULL
+-- FK, order_state_id NOT NULL, check_in/out NOT NULL, guarded INSERT, customer
+-- upsert) + webhook paid-state transition + record-payment payment_records —
+-- all FORBIDDEN for 5c. No POS, no Paymob, no record-payment touched here.
+--
+-- IDEMPOTENCY: SQLite/D1 has no `ADD COLUMN IF NOT EXISTS`, so the ADD COLUMN
+-- below is intentionally bare — same established pattern as
+-- 0100_add_project_id_nullable.sql / 0103_add_carts_project_id.sql /
+-- 0121_add_cart_items_project_id.sql (plain ALTER, applied once by the
+-- d1_migrations ledger). The companion index uses `CREATE INDEX IF NOT EXISTS`
+-- (mirrors 0010_storefront.sql idx_storefront_order_items_order on this same
+-- table, plus 0100/0103/0121).
+--
+-- FK PRECISION: inline `REFERENCES projects(id) ON DELETE SET NULL` follows the
+-- project ADD COLUMN precedent (0069_restaurant_tables.sql:46,54;
+-- 0090_marketplace_payouts.sql:34; 0100; 0103; 0121) and is recorded as the
+-- logical scope link; full FK enforcement/backfill is deferred (mirrors how
+-- camp_id FKs arrived via later rebuilds, e.g. 0066/0091).
+--
+-- ROLLBACK SAFETY (hard rule 7): ADD COLUMN is forward-only. Rollback = a NEW
+-- migration with `ALTER TABLE storefront_order_items DROP COLUMN project_id`
+-- (SQLite 3.35+); optionally `DROP INDEX IF EXISTS idx_storefront_order_items_project`
+-- for hygiene.
+--
+-- VERIFY (post-apply, read-only):
+-- SELECT name FROM pragma_table_info('storefront_order_items') WHERE name = 'project_id';
+-- -- expect exactly one row: project_id | TEXT | 0 | 0 | 0 |
+-- SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_storefront_order_items_project';
+-- -- expect exactly one row.
+--
+-- No KV writes (free-plan 1,000 writes/day quota).
+
+ALTER TABLE storefront_order_items ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_storefront_order_items_project ON storefront_order_items(project_id);

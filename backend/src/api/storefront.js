@@ -298,8 +298,12 @@ router.post('/checkout', async (c) => {
   ).bind(sessionId, tenantId).first();
   if (!cart) return errorResponse('Cart not found', 404);
 
+  // 5c: unified checkout carries each line's project — ci.project_id is
+  // authoritative (5a stamps every add-to-cart server-side, never from the
+  // client); p.project_id heals legacy NULL cart rows. Never client-trusted.
   const itemsResult = await c.env.DB.prepare(
     `SELECT ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
+            ci.project_id, p.project_id AS product_project_id,
             COALESCE(p.name, ci.product_id) AS product_name
      FROM cart_items ci
      LEFT JOIN pos_products p ON p.id = ci.product_id
@@ -330,9 +334,20 @@ router.post('/checkout', async (c) => {
     statements.push(
       c.env.DB.prepare(
         `INSERT INTO storefront_order_items
-           (id, order_id, product_id, product_name, quantity, unit_price, total_price)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      ).bind(crypto.randomUUID(), orderId, item.product_id, item.product_name, item.quantity, item.unit_price, item.total_price)
+           (id, order_id, product_id, product_name, quantity, unit_price, total_price, project_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        crypto.randomUUID(), orderId, item.product_id, item.product_name, item.quantity, item.unit_price, item.total_price,
+        // 5c: each line carries its own project (mixed-origin unified order =
+        // ONE storefront_orders row + N tagged lines + ONE Paymob intention).
+        // ci.project_id first (5a-stamped), product fallback heals legacy NULL
+        // carts. NULL only when both are NULL (legacy untagged product).
+        // Never from the client. Header storefront_orders.project_id (0100)
+        // stays untouched: a mixed order has no single header project and
+        // line-level scoping (5e/5f) reads the LINES; rewriting into orders/
+        // would balloon into booking semantics + webhook/record-payment (forbidden).
+        item.project_id ?? item.product_project_id ?? null
+      )
     );
   }
 
