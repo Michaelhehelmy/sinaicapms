@@ -133,12 +133,12 @@ sinaicamps/
 
 | Layer | Technology |
 |-------|-----------|
-| **1. Frontend** | Astro 7.x + React 19.2.x + Tailwind CSS v4 (TypeScript); `sharpImageService()` image pipeline with `SafeImage.astro` |
+| **1. Frontend** | Astro 7.3.1 + React 19.2.x + Tailwind CSS v4 (TypeScript); `sharpImageService()` image pipeline with `SafeImage.astro` |
 | **2. API / Backend** | Hono on Cloudflare Workers (JavaScript); SSE via Durable Object `BROADCASTER` |
 | **3. Database** | Cloudflare D1 (SQLite) — `campmaster-db` (+ isolated `campmaster-db-staging`) |
 | **4. Cache / Rate Limiting** | Cloudflare KV (`RATE_LIMIT_KV`, `KV_CACHE`) + R2 (`MEDIA_BUCKET`) |
 | **Auth** | JWT (HS256) + bcrypt password hashing; POS uses a separate `pos_token` |
-| **Unit Tests** | Vitest (backend 2096 · frontend 3417 · integration 262) — UNVERIFIABLE, counts drift |
+| **Unit Tests** | Vitest (backend 2610 · frontend 3561 · integration 255) — UNVERIFIABLE, counts drift |
 | **E2E Tests** | Playwright (566 total — 552 gate passing · 14 env-skipped in CI mode) — UNVERIFIABLE, counts drift |
 | **Deployment** | Cloudflare Workers (frontend `campmaster-marketplace` + API `campmaster-backend`) via `deploy.sh` (`--staging` supported) |
 
@@ -220,13 +220,13 @@ npm run dev        # http://localhost:4321 (Astro default), proxies /api/* → :
 ### 3. Run Tests
 
 ```bash
-# Backend unit + POS integration tests (2096 tests / 81 files) — UNVERIFIABLE, counts drift
+# Backend unit + POS integration tests (2610 tests / 115 files) — UNVERIFIABLE, counts drift
 cd backend && npx vitest run
 
-# Frontend app unit tests (3417 tests / 132 files) — UNVERIFIABLE, counts drift
+# Frontend app unit tests (3561 tests / 149 files) — UNVERIFIABLE, counts drift
 cd app && npx vitest run
 
-# Root integration tests (169 tests / 10 files) — UNVERIFIABLE, counts drift
+# Root integration tests (255 tests / 37 files) — UNVERIFIABLE, counts drift
 npx vitest run
 
 # E2E tests (566 total — 552 gate passing · 14 env-skipped in CI mode; boots wrangler dev + astro dev) — UNVERIFIABLE
