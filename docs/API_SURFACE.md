@@ -2,114 +2,109 @@
 
 Complete mapping of all business-domain API endpoints, frontend functions, backend handlers, database tables, and React Query hooks.
 
+> Registry scope: `backend/src/routes/registry.js` is the 88-path OpenAPI *definition* subset (definition layer only — runtime dispatch is unchanged); this document covers the full runtime surface. Re-verified against the runtime routers (`backend/src/api/*`, mounts in `backend/src/index.js`), `app/src/lib/api.ts`, and `app/src/hooks/useQueryHooks.ts`. A `—` cell means the route is runtime-real but no client wrapper/hook was found — never invented.
+
 ---
 
 ## Camps / Projects
 
+Canonical mount is `/api/projects` (`campsRoutes`, index.js); `/api/camps` is a sunset alias (`registerCampsAlias`). There is no `camps` table — the table is `projects` (0001_core.sql); camp↔product links live in `product_camps` (0003_products.sql). No `/:id/products` sub-routes exist at runtime (dropped).
+
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/camps` | GET | `getCamps()` | `GET /api/camps` → `camps.js` | `camps` | `useCampsQuery()` | List all camps/projects for tenant |
-| `/camps/:id` | GET | `getCamp(id)` | `GET /api/camps/:id` | `camps` | `useCampQuery(id)` | Get single camp by ID |
-| `/camps` | POST | `createCamp(data)` | `POST /api/camps` | `camps` | `useCreateCampMutation()` | Create new camp/project |
-| `/camps/:id` | PUT | `updateCamp(id, data)` | `PUT /api/camps/:id` | `camps` | `useUpdateCampMutation()` | Update camp details |
-| `/camps/:id` | DELETE | `deleteCamp(id)` | `DELETE /api/camps/:id` | `camps` | `useDeleteCampMutation()` | Delete camp |
-| `/camps/:id/products` | GET | `getCampProducts(campId)` | `GET /api/camps/:id/products` | `products`, `product_camps_new` | `useCampProductsQuery(id)` | Get products (room types) for camp |
-| `/camps/:id/products` | POST | `addCampProduct(campId, data)` | `POST /api/camps/:id/products` | `product_camps_new` | `useAddCampProductMutation()` | Add product to camp |
-| `/camps/:id/products/:productId` | DELETE | `removeCampProduct(campId, productId)` | `DELETE /api/camps/:id/products/:productId` | `product_camps_new` | `useRemoveCampProductMutation()` | Remove product from camp |
+| `/projects` | GET | `getCamps()` | `GET /api/projects` → `camps.js` | `projects` | `useCampsQuery()` | List all camps/projects for tenant |
+| `/projects/:id` | GET | `getCamp(id)` | `GET /api/projects/:id` | `projects` | — | Get single camp by ID (no hook found) |
+| `/projects` | POST | `saveCamp(data)` | `POST /api/projects` | `projects` | `useSaveCampMutation()` | Create new camp/project |
+| `/projects/:id` | PUT | `saveCamp(data, editId)` | `PUT /api/projects/:id` | `projects` | `useSaveCampMutation()` | Update camp details |
+| `/projects/:id` | DELETE | `deleteCamp(id)` | `DELETE /api/projects/:id` | `projects` | `useDeleteCampMutation()` | Delete camp |
 
 ## Products (Room Types)
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/products` | GET | `getProducts()` | `GET /api/products` | `products`, `product_lang` | `useProductsQuery()` | List all products (room types) |
-| `/products/:id` | GET | `getProduct(id)` | `GET /api/products/:id` | `products`, `product_lang` | `useProductQuery(id)` | Get single product |
-| `/products` | POST | `createProduct(data)` | `POST /api/products` | `products`, `product_lang` | `useCreateProductMutation()` | Create new product |
-| `/products/:id` | PUT | `updateProduct(id, data)` | `PUT /api/products/:id` | `products`, `product_lang` | `useUpdateProductMutation()` | Update product |
+| `/products/:id` | GET | — | `GET /api/products/:id` | `products`, `product_lang` | — | Get single product (OpenAPI-registered; no client wrapper/hook found) |
+| `/products` | POST | `saveProduct(data)` | `POST /api/products` | `products`, `product_lang` | `useSaveProductMutation()` | Create new product |
+| `/products/bulk` | POST | `bulkCreateProducts(items)` | `POST /api/products/bulk` | `products` | — | Create multiple products at once (no hook found) |
+| `/products/:id` | PUT | `saveProduct(data, editId)` | `PUT /api/products/:id` | `products`, `product_lang` | `useSaveProductMutation()` | Update product |
 | `/products/:id` | DELETE | `deleteProduct(id)` | `DELETE /api/products/:id` | `products` | `useDeleteProductMutation()` | Delete product |
 
 ## Rooms
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/rooms` | GET | `getRooms(campId?)` | `GET /api/rooms` | `rooms_new`, `products` | `useRoomsQuery(campId?)` | List rooms (optionally filtered by camp) |
-| `/rooms/:id` | GET | `getRoom(id)` | `GET /api/rooms/:id` | `rooms_new` | `useRoomQuery(id)` | Get single room |
-| `/rooms` | POST | `createRoom(data)` | `POST /api/rooms` | `rooms_new` | `useCreateRoomMutation()` | Create new room |
-| `/rooms/:id` | PUT | `updateRoom(id, data)` | `PUT /api/rooms/:id` | `rooms_new` | `useUpdateRoomMutation()` | Update room |
+| `/rooms` | GET | `getRooms()` | `GET /api/rooms` | `rooms_new`, `products` | `useRoomsQuery()` | List rooms |
+| `/rooms` | POST | `saveRoom(data)` | `POST /api/rooms` | `rooms_new` | `useSaveRoomMutation()` | Create new room |
+| `/rooms/:id` | PUT | `saveRoom(data, editId)` | `PUT /api/rooms/:id` | `rooms_new` | `useSaveRoomMutation()` | Update room |
 | `/rooms/:id` | DELETE | `deleteRoom(id)` | `DELETE /api/rooms/:id` | `rooms_new` | `useDeleteRoomMutation()` | Delete room |
-| `/rooms/:id/status` | PATCH | `updateRoomStatus(id, status)` | `PATCH /api/rooms/:id/status` | `rooms_new` | `useUpdateRoomStatusMutation()` | Update room cleaning/status |
-| `/rooms/availability` | GET | `checkRoomAvailability(params)` | `GET /api/rooms/availability` | `rooms_new`, `orders` | `useRoomAvailabilityQuery(params)` | Check room availability for dates |
+| `/rooms/:id/status` | PATCH | — | `PATCH /api/rooms/:id/status` | `rooms_new` | — | Update room status (no client wrapper/hook found) |
+| `/rooms/available` | GET | — | `GET /api/rooms/available` | `rooms_new` | — | List available rooms (no client wrapper/hook found) |
+| `/rooms/:id/cleaning` | PATCH | — | `PATCH /api/rooms/:id/cleaning` | `rooms_new` | — | Update room cleaning state (no client wrapper/hook found) |
 
 ## Rate Plans
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/rate-plans` | GET | `getRatePlans(productId?)` | `GET /api/rate-plans` | `rate_plans_new` | `useRatePlansQuery(productId?)` | List rate plans (optionally by product) |
-| `/rate-plans/:id` | GET | `getRatePlan(id)` | `GET /api/rate-plans/:id` | `rate_plans_new` | `useRatePlanQuery(id)` | Get single rate plan |
-| `/rate-plans` | POST | `createRatePlan(data)` | `POST /api/rate-plans` | `rate_plans_new` | `useCreateRatePlanMutation()` | Create new rate plan |
-| `/rate-plans/:id` | PUT | `updateRatePlan(id, data)` | `PUT /api/rate-plans/:id` | `rate_plans_new` | `useUpdateRatePlanMutation()` | Update rate plan |
-| `/rate-plans/:id` | DELETE | `deleteRatePlan(id)` | `DELETE /api/rate-plans/:id` | `rate_plans_new` | `useDeleteRatePlanMutation()` | Delete rate plan |
+| `/rateplans` | GET | `getRatePlans()` | `GET /api/rateplans` | `rate_plans_new` | `useRatePlansQuery()` | List rate plans |
+| `/rateplans/:id` | GET | — | `GET /api/rateplans/:id` | `rate_plans_new` | — | Get single rate plan (no client wrapper/hook found) |
+| `/rateplans` | POST | `saveRatePlan(data)` | `POST /api/rateplans` | `rate_plans_new` | `useSaveRatePlanMutation()` | Create new rate plan |
+| `/rateplans/:id` | PUT | `saveRatePlan(data, editId)` | `PUT /api/rateplans/:id` | `rate_plans_new` | `useSaveRatePlanMutation()` | Update rate plan |
+| `/rateplans/:id` | DELETE | `deleteRatePlan(id)` | `DELETE /api/rateplans/:id` | `rate_plans_new` | `useDeleteRatePlanMutation()` | Delete rate plan |
 
 ## Orders / Reservations
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/orders` | GET | `getOrders(params?)` | `GET /api/orders` | `orders`, `rooms_new`, `customers`, `order_state` | `useOrdersQuery(params?)` | List all orders/reservations |
-| `/orders/:id` | GET | `getOrder(id)` | `GET /api/orders/:id` | `orders`, `rooms_new`, `customers`, `order_state` | `useOrderQuery(id)` | Get single order |
-| `/orders` | POST | `createOrder(data)` | `POST /api/orders` | `orders`, `customers` | `useCreateOrderMutation()` | Create new reservation |
-| `/orders/:id` | PUT | `updateOrder(id, data)` | `PUT /api/orders/:id` | `orders` | `useUpdateOrderMutation()` | Update order details |
+| `/orders/:id` | GET | `getOrder(id)` | `GET /api/orders/:id` | `orders`, `rooms_new`, `customers`, `order_state` | `useOrderDetailQuery(id)` | Get single order |
+| `/orders` | POST | `saveOrder(data)` | `POST /api/orders` | `orders`, `customers` | — | Create new reservation (no hook found) |
+| `/orders/:id` | PUT | `saveOrder(data, editId)` | `PUT /api/orders/:id` | `orders` | — | Update order details (no hook found) |
 | `/orders/:id` | DELETE | `deleteOrder(id)` | `DELETE /api/orders/:id` | `orders` | `useDeleteOrderMutation()` | Delete order |
 | `/orders/:id/status` | PATCH | `updateOrderStatus(id, status)` | `PATCH /api/orders/:id/status` | `orders`, `order_state` | `useUpdateOrderStatusMutation()` | Change order status |
-| `/orders/:id/payment` | PATCH | `updateOrderPayment(id, data)` | `PATCH /api/orders/:id/payment` | `orders` | `useUpdateOrderPaymentMutation()` | Record payment against order |
-| `/orders/:id/line-items` | GET | `getOrderLineItems(orderId)` | `GET /api/orders/:id/line-items` | `order_items` | `useOrderLineItemsQuery(id)` | Get line items for order |
-| `/orders/:id/line-items` | POST | `addOrderLineItem(orderId, data)` | `POST /api/orders/:id/line-items` | `order_items` | `useAddOrderLineItemMutation()` | Add line item to order |
-| `/orders/:id/line-items/:itemId` | DELETE | `removeOrderLineItem(orderId, itemId)` | `DELETE /api/orders/:id/line-items/:itemId` | `order_items` | `useRemoveOrderLineItemMutation()` | Remove line item from order |
-| `/orders/:id/meal-plan` | GET | `getOrderMealPlan(orderId)` | `GET /api/orders/:id/meal-plan` | `order_meal_plans` | `useOrderMealPlanQuery(id)` | Get meal plan for order |
-| `/orders/:id/meal-plan` | POST | `setOrderMealPlan(orderId, data)` | `POST /api/orders/:id/meal-plan` | `order_meal_plans` | `useSetOrderMealPlanMutation()` | Set/update meal plan for order |
-| `/orders/availability` | GET | `checkAvailability(params)` | `GET /api/orders/availability` | `orders`, `rooms_new` | `useAvailabilityQuery(params)` | Check availability across rooms |
-
-## Customers
-
-| Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
-|----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/customers` | GET | `getCustomers()` | `GET /api/customers` | `customers` | `useCustomersQuery()` | List all customers |
-| `/customers/:id` | GET | `getCustomer(id)` | `GET /api/customers/:id` | `customers` | `useCustomerQuery(id)` | Get single customer |
-| `/customers` | POST | `createCustomer(data)` | `POST /api/customers` | `customers` | `useCreateCustomerMutation()` | Create new customer |
+| `/orders/:id/kitchen-status` | PATCH | `updateKitchenStatus(orderId, status)` | `PATCH /api/orders/:id/kitchen-status` | `orders` | — | Update kitchen status (no hook found) |
+| `/orders/:id/payments` | GET | `getOrderPayments(id)` | `GET /api/orders/:id/payments` | `payment_records` | `useOrderPaymentsQuery(id)` | List payment records for order |
+| `/orders/:id/record-payment` | POST | `recordPayment(id, input)` | `POST /api/orders/:id/record-payment` | `payment_records` | `useRecordPaymentMutation()` | Record payment against order |
+| `/orders/status/:ref` | GET | `getOrderStatus(ref, email)` | `GET /api/orders/status/:ref` | `orders` | — | Guest order status lookup (no hook found) |
+| `/orders/bulk-delete` | POST | `bulkDeleteOrders(ids)` | `POST /api/orders/bulk-delete` | `orders` | — | Bulk delete orders (no hook found) |
+| `/orders/calculate-price` | GET | `calculatePrice(roomId, checkIn, checkOut)` | `GET /api/orders/calculate-price` | `orders`, `rooms_new` | — | Price calculation (no hook found) |
+| `/projects/:id/meal-plans` | GET | — | `GET /api/projects/:id/meal-plans` | `projects`, `pos_products` | — | Get meal plans for project (runtime-only; not in OpenAPI registry; no client wrapper/hook found) |
+| `/availability` | GET | `getAvailability(params)` | `GET /api/availability` | `orders`, `rooms_new` | `useAvailabilityQuery(params)` | Check availability across rooms |
 
 ## Meals
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/meals` | GET | `getMeals()` | `GET /api/meals` | `meals`, `meal_lang`, `meal_categories` | `useMealsQuery()` | List all meals |
-| `/meals/:id` | GET | `getMeal(id)` | `GET /api/meals/:id` | `meals`, `meal_lang` | `useMealQuery(id)` | Get single meal |
-| `/meals` | POST | `createMeal(data)` | `POST /api/meals` | `meals`, `meal_lang` | `useCreateMealMutation()` | Create new meal |
-| `/meals/:id` | PUT | `updateMeal(id, data)` | `PUT /api/meals/:id` | `meals`, `meal_lang` | `useUpdateMealMutation()` | Update meal |
-| `/meals/:id` | DELETE | `deleteMeal(id)` | `DELETE /api/meals/:id` | `meals` | `useDeleteMealMutation()` | Delete meal |
+| `/meals/:id` | GET | `getMeal(id)` | `GET /api/meals/:id` | `meals`, `meal_lang` | — | Get single meal (no hook found) |
+| `/meals` | POST | `saveMeal(data)` | `POST /api/meals` | `meals`, `meal_lang` | — | Create new meal (no hook found) |
+| `/meals/bulk` | POST | `bulkCreateMeals(items, projectId?)` | `POST /api/meals/bulk` | `meals` | — | Create multiple meals at once (no hook found) |
+| `/meals/:id` | PUT | `saveMeal(data, editId)` | `PUT /api/meals/:id` | `meals`, `meal_lang` | — | Update meal (no hook found) |
+| `/meals/:id` | DELETE | `deleteMeal(id)` | `DELETE /api/meals/:id` | `meals` | — | Delete meal (no hook found) |
 | `/meal-categories` | GET | `getMealCategories()` | `GET /api/meal-categories` | `meal_categories`, `meal_categories_lang` | `useMealCategoriesQuery()` | List meal categories |
-| `/meal-categories/:id` | GET | `getMealCategory(id)` | `GET /api/meal-categories/:id` | `meal_categories`, `meal_categories_lang` | `useMealCategoryQuery(id)` | Get single meal category |
-| `/meal-categories` | POST | `createMealCategory(data)` | `POST /api/meal-categories` | `meal_categories`, `meal_categories_lang` | `useCreateMealCategoryMutation()` | Create meal category |
-| `/meal-categories/:id` | PUT | `updateMealCategory(id, data)` | `PUT /api/meal-categories/:id` | `meal_categories`, `meal_categories_lang` | `useUpdateMealCategoryMutation()` | Update meal category |
-| `/meal-categories/:id` | DELETE | `deleteMealCategory(id)` | `DELETE /api/meal-categories/:id` | `meal_categories` | `useDeleteMealCategoryMutation()` | Delete meal category |
+| `/meal-categories/:id` | GET | — | `GET /api/meal-categories/:id` | `meal_categories`, `meal_categories_lang` | — | Get single meal category (no client wrapper/hook found) |
+| `/meal-categories` | POST | `saveMealCategory(data)` | `POST /api/meal-categories` | `meal_categories`, `meal_categories_lang` | — | Create meal category (no hook found) |
+| `/meal-categories/:id` | PUT | `saveMealCategory(data, editId)` | `PUT /api/meal-categories/:id` | `meal_categories`, `meal_categories_lang` | — | Update meal category (no hook found) |
+| `/meal-categories/:id` | DELETE | `deleteMealCategory(id)` | `DELETE /api/meal-categories/:id` | `meal_categories` | — | Delete meal category (no hook found) |
 
 ## Meal Schedules
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/meal-schedules` | GET | `getMealSchedules(params?)` | `GET /api/meal-schedules` | `meal_schedules`, `meals`, `camps` | `useMealSchedulesQuery(params?)` | List meal schedules |
-| `/meal-schedules/:id` | GET | `getMealSchedule(id)` | `GET /api/meal-schedules/:id` | `meal_schedules` | `useMealScheduleQuery(id)` | Get single meal schedule |
-| `/meal-schedules` | POST | `createMealSchedule(data)` | `POST /api/meal-schedules` | `meal_schedules` | `useCreateMealScheduleMutation()` | Create meal schedule |
-| `/meal-schedules/:id` | PUT | `updateMealSchedule(id, data)` | `PUT /api/meal-schedules/:id` | `meal_schedules` | `useUpdateMealScheduleMutation()` | Update meal schedule |
-| `/meal-schedules/:id` | DELETE | `deleteMealSchedule(id)` | `DELETE /api/meal-schedules/:id` | `meal_schedules` | `useDeleteMealScheduleMutation()` | Delete meal schedule |
+| `/meal-schedules` | GET | `getMealSchedules(params?)` | `GET /api/meal-schedules` | `meal_schedules`, `meals`, `projects` | `useMealSchedulesQuery(params?)` | List meal schedules |
+| `/meal-schedules/:id` | GET | — | `GET /api/meal-schedules/:id` | `meal_schedules` | — | Get single meal schedule (no client wrapper/hook found) |
+| `/meal-schedules` | POST | `createMealSchedule(data)` | `POST /api/meal-schedules` | `meal_schedules` | — | Create meal schedule (no hook found) |
+| `/meal-schedules/:id` | PUT | — | `PUT /api/meal-schedules/:id` | `meal_schedules` | — | Update meal schedule (no client wrapper/hook found) |
+| `/meal-schedules/:id` | DELETE | `deleteMealSchedule(id)` | `DELETE /api/meal-schedules/:id` | `meal_schedules` | — | Delete meal schedule (no hook found) |
 
 ## Promotions
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/promotions` | GET | `getPromotions()` | `GET /api/promotions` | `promotions` | `usePromotionsQuery()` | List all promotions |
-| `/promotions/:id` | GET | `getPromotion(id)` | `GET /api/promotions/:id` | `promotions` | `usePromotionQuery(id)` | Get single promotion |
-| `/promotions` | POST | `createPromotion(data)` | `POST /api/promotions` | `promotions` | `useCreatePromotionMutation()` | Create new promotion |
-| `/promotions/:id` | PUT | `updatePromotion(id, data)` | `PUT /api/promotions/:id` | `promotions` | `useUpdatePromotionMutation()` | Update promotion |
-| `/promotions/:id` | DELETE | `deletePromotion(id)` | `DELETE /api/promotions/:id` | `promotions` | `useDeletePromotionMutation()` | Delete promotion |
-| `/promotions/apply` | POST | `applyPromotion(data)` | `POST /api/promotions/apply` | `promotions` | — | Apply promotion to cart (discount engine) |
+| `/promotions` | POST | `savePromotion(data)` | `POST /api/promotions` | `promotions` | — | Create new promotion (no hook found) |
+| `/promotions/:id` | PUT | `savePromotion(data, editId)` | `PUT /api/promotions/:id` | `promotions` | — | Update promotion (no hook found) |
+| `/promotions/:id` | DELETE | `deletePromotion(id)` | `DELETE /api/promotions/:id` | `promotions` | — | Delete promotion (no hook found) |
+| `/promotions/apply` | POST | `applyPromotions(data)` | `POST /api/promotions/apply` | `promotions` | — | Apply promotion to cart (discount engine) |
 
 ## Services
 
@@ -182,7 +177,11 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/reports/occupancy` | GET | `getOccupancyReport(params?)` | `GET /api/reports/occupancy` | `orders`, `rooms_new` | `useOccupancyReportQuery(params?)` | Occupancy analytics |
 | `/reports/revenue` | GET | `getRevenueReport(params?)` | `GET /api/reports/revenue` | `orders`, `pos_transactions` | `useRevenueReportQuery(params?)` | Revenue analytics |
-| `/reports/meal-plan` | GET | `getMealPlanReport(params?)` | `GET /api/reports/meal-plan` | `order_meal_plans`, `meals` | `useMealPlanReportQuery(params?)` | Meal plan analytics |
+| `/reports/bookings` | GET | `getBookingsReport(opts?)` | `GET /api/reports/bookings` | `orders` | `useBookingsReportQuery(opts?)` | Bookings analytics |
+| `/reports/profit` | GET | `getProfitReport(opts?)` | `GET /api/reports/profit` | `order_items`, `orders` | `useProfitReportQuery(opts?)` | Per-project profit split |
+| `/reports/top-products` | GET | `getTopProducts(days?, limit?)` | `GET /api/reports/top-products` | `pos_transactions` | `useTopProductsQuery(days?, limit?)` | Top products by revenue |
+| `/reports/kitchen-performance` | GET | `getKitchenPerformance(days?)` | `GET /api/reports/kitchen-performance` | `pos_products` | `useKitchenPerformanceQuery(days?)` | Kitchen performance metrics |
+| `/reports/low-stock` | GET | `getAnalyticsLowStock()` | `GET /api/reports/low-stock` | `pos_products` | `useAnalyticsLowStockQuery()` | Low-stock snapshot (analytics) |
 | `/reports/revenue-breakdown` | GET | `getRevenueBreakdown(days?)` | `GET /api/reports/revenue-breakdown` | `orders`, `pos_transactions` | — | Revenue breakdown by type/payment |
 | `/reports/customer-metrics` | GET | `getCustomerMetrics(days?)` | `GET /api/reports/customer-metrics` | `customers`, `orders` | — | Customer analytics |
 | `/reports/seasonal` | GET | `getSeasonalComparison()` | `GET /api/reports/seasonal` | `orders`, `pos_transactions` | — | Seasonal comparison |
@@ -199,8 +198,7 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/low-stock` | GET | `getLowStockAlerts()` | `GET /api/low-stock` | `pos_products`, `inbox` | `useLowStockAlertsQuery()` | List low stock alerts |
-| `/low-stock/:id/read` | PATCH | `markLowStockRead(id)` | `PATCH /api/low-stock/:id/read` | `inbox` | `useMarkLowStockReadMutation()` | Mark alert as read |
+| `/inventory/low-stock` | GET | `getLowStock(params?)` | `GET /api/inventory/low-stock` | `pos_products`, `inbox` | `useLowStock()` | List low stock alerts |
 
 ## Marketplace
 
@@ -326,10 +324,10 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 | `/storefront/admin/blog` | POST | `createStorefrontBlogPost(data)` | `POST /api/storefront/admin/blog` | `storefront_blog_posts` | `useCreateStorefrontBlogPostMutation()` | Create blog post |
 | `/storefront/admin/blog/:id` | PUT | `updateStorefrontBlogPost(id, data)` | `PUT /api/storefront/admin/blog/:id` | `storefront_blog_posts` | `useUpdateStorefrontBlogPostMutation()` | Update blog post |
 | `/storefront/admin/blog/:id` | DELETE | `deleteStorefrontBlogPost(id)` | `DELETE /api/storefront/admin/blog/:id` | `storefront_blog_posts` | `useDeleteStorefrontBlogPostMutation()` | Delete blog post |
-| `/storefront/pages` | POST | `saveStorefrontPage(data, editId?)` | `POST/PUT /api/storefront/pages` | `storefront_pages` | — | Save page (generic) |
-| `/storefront/blog/posts` | POST | `saveStorefrontBlogPost(data, editId?)` | `POST/PUT /api/storefront/blog/posts` | `storefront_blog_posts` | — | Save blog post (generic) |
-| `/storefront/blog/categories` | POST | `saveStorefrontBlogCategory(data, editId?)` | `POST/PUT /api/storefront/blog/categories` | `storefront_blog_categories` | — | Save blog category |
-| `/storefront/blog/categories/:id` | DELETE | `deleteStorefrontBlogCategory(id)` | `DELETE /api/storefront/blog/categories/:id` | `storefront_blog_categories` | — | Delete blog category |
+| `/storefront/admin/blog-categories` | GET | `getStorefrontBlogCategories()` | `GET /api/storefront/admin/blog-categories` | `blog_categories` | `useStorefrontBlogCategoriesQuery()` | List blog categories |
+| `/storefront/admin/blog-categories` | POST | `saveStorefrontBlogCategory(data)` | `POST /api/storefront/admin/blog-categories` | `blog_categories` | — | Create blog category (no hook found) |
+| `/storefront/admin/blog-categories/:id` | PUT | `saveStorefrontBlogCategory(data, editId)` | `PUT /api/storefront/admin/blog-categories/:id` | `blog_categories` | — | Update blog category (no hook found) |
+| `/storefront/admin/blog-categories/:id` | DELETE | `deleteStorefrontBlogCategory(id)` | `DELETE /api/storefront/admin/blog-categories/:id` | `blog_categories` | — | Delete blog category (no hook found) |
 
 ## AI & Intelligence
 
@@ -347,7 +345,7 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 | `/ai/automation-rules` | GET | `getAiAutomationRules()` | `GET /api/ai/automation-rules` | `ai_automation_rules` | `useAiAutomationRulesQuery()` | List automation rules |
 | `/ai/automation-rules` | POST | `createAiAutomationRule(data)` | `POST /api/ai/automation-rules` | `ai_automation_rules` | `useCreateAiAutomationRuleMutation()` | Create automation rule |
 | `/ai/automation-rules/:id/activate` | PATCH | `toggleAiAutomationRule(id)` | `PATCH /api/ai/automation-rules/:id/activate` | `ai_automation_rules` | `useToggleAiAutomationRuleMutation()` | Toggle rule active/inactive |
-| `/ai/automation-rules/:id/toggle` | PUT | `toggleAIAutomationRule(id)` | `PUT /api/ai/automation-rules/:id/toggle` | `ai_automation_rules` | — | Toggle rule (alternate) |
+| `/ai/automation-rules/:id/toggle` | POST | `toggleAIAutomationRule(id)` | `POST /api/ai/automation-rules/:id/toggle` | `ai_automation_rules` | — | Toggle rule (alternate) |
 | `/ai/automation-rules/:id` | PUT | `updateAIAutomationRule(id, data)` | `PUT /api/ai/automation-rules/:id` | `ai_automation_rules` | `useUpdateAiAutomationRuleMutation()` | Update automation rule |
 | `/ai/automation-logs` | GET | `getAiAutomationLogs()` | `GET /api/ai/automation-logs` | `ai_automation_logs` | `useAiAutomationLogsQuery()` | List automation logs |
 | `/ai/workers-ai/analyze` | POST | `analyzeWithWorkersAI(data)` | `POST /api/ai/workers-ai/analyze` | — | — | Workers AI analysis (stub) |
@@ -401,10 +399,15 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/auth/login` | POST | `login(email, password)` | `POST /api/auth/login` | `admins` | `useLoginMutation()` | Admin login |
-| `/auth/register` | POST | `register(data)` | `POST /api/auth/register` | `admins`, `tenants` | `useRegisterMutation()` | New tenant registration |
-| `/auth/me` | GET | `getMe()` | `GET /api/auth/me` | `admins`, `tenants` | `useMeQuery()` | Get current user |
-| `/auth/logout` | POST | `logout()` | `POST /api/auth/logout` | — | `useLogoutMutation()` | Logout |
+| `/auth/login` | POST | `login(email, password)` | `POST /api/auth/login` | `admins` | — | Admin login (no hook found) |
+| `/auth/register` | POST | `registerUser(data)` | `POST /api/auth/register` | `admins`, `tenants` | — | New tenant registration (no hook found) |
+| `/auth/refresh` | POST | — (internal silent-refresh via raw fetch) | `POST /api/auth/refresh` | `admins` | — | Rotate access token (no public wrapper; api.ts uses a raw fetch on purpose) |
+| `/auth/forgot-password` | POST | `forgotPassword(email)` | `POST /api/auth/forgot-password` | `admins` | — | Request password reset (no hook found) |
+| `/auth/reset-password` | POST | `resetPassword(token, password)` | `POST /api/auth/reset-password` | `admins` | — | Reset password with token (no hook found) |
+| `/auth/change-password` | POST | `changePassword(currentPassword, newPassword)` | `POST /api/auth/change-password` | `admins` | `useChangePasswordMutation()` | Change password |
+| `/auth/pos-login` | POST | `posLogin(identifier, password)` | `POST /api/auth/pos-login` | `pos_users` | — | POS cashier login via admin host (no hook found) |
+| `/auth/me` | GET | `getMe()` | `GET /api/auth/me` | `admins`, `tenants` | — | Get current user (no hook found) |
+| `/auth/logout` | POST | `logout()` | `POST /api/auth/logout` | — | — | Logout (no hook found) |
 
 ## Settings
 
@@ -530,22 +533,21 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 
 | Domain | Endpoints | Frontend Functions | DB Tables |
 |--------|-----------|-------------------|-----------|
-| Camps/Projects | 8 | 8 | 1 (`camps`) |
-| Products | 5 | 5 | 3 (`products`, `product_lang`, `categories`) |
-| Rooms | 7 | 7 | 1 (`rooms_new`) |
+| Camps/Projects | 5 | 5 | 2 (`projects`, `product_camps`) |
+| Products | 6 | 6 | 3 (`products`, `product_lang`, `categories`) |
+| Rooms | 7 | 4 | 1 (`rooms_new`) |
 | Rate Plans | 5 | 5 | 1 (`rate_plans_new`) |
-| Orders | 12 | 12 | 5 (`orders`, `customers`, `order_state`, `order_items`, `order_meal_plans`) |
-| Customers | 3 | 3 | 1 (`customers`) |
-| Meals | 5 | 5 | 3 (`meals`, `meal_lang`, `meal_categories`) |
+| Orders | 14 | 13 | 6 (`orders`, `customers`, `order_state`, `order_items`, `order_meal_plans`, `payment_records`) |
+| Meals | 6 | 6 | 3 (`meals`, `meal_lang`, `meal_categories`) |
 | Meal Categories | 5 | 5 | 2 (`meal_categories`, `meal_categories_lang`) |
 | Meal Schedules | 5 | 5 | 1 (`meal_schedules`) |
-| Promotions | 6 | 6 | 1 (`promotions`) |
+| Promotions | 5 | 5 | 1 (`promotions`) |
 | Services | 17 | 17 | 4 (`service_definitions`, `service_items`, `service_bookings`, `service_reviews`, `service_availability`) |
 | Inbox | 3 | 3 | 4 (`leads`, `orders`, `inbox_reads`, `inbox`) |
 | Tags | 7 | 7 | 2 (`tags`, `project_tags`) |
 | Meta | 4 | 4 | 2 (`tenant_meta`, `project_meta`) |
 | Categories | 5 | 5 | 2 (`categories`, `category_lang`) |
-| Reports | 6 | 6 | 3 (`orders`, `pos_transactions`, `meals`) |
+| Reports | 10 | 7 | 5 (`orders`, `rooms_new`, `order_items`, `pos_transactions`, `pos_products`) |
 | Inventory | 3 | 3 | 2 (`inventory_adjustments`, `pos_products`) |
 | Marketplace | 5 | 5 | 4 (`marketplace_reviews`, `marketplace_categories`, `marketplace_project_categories`) |
 | Planning | 5 | 5 | 1 (`plans_new`) |
@@ -553,11 +555,11 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 | HR | 12 | 12 | 7 (`employees`, `leave_types`, `leave_requests`, `payroll_runs`, `payroll_lines`, `job_posts`, `applicants`) |
 | Supply Chain | 14 | 14 | 7 (`warehouses`, `stock_quant`, `stock_transfers`, `purchase_orders`, `purchase_order_lines`, `boms`, `bom_lines`, `manufacturing_orders`) |
 | CRM | 14 | 14 | 6 (`crm_contacts`, `crm_leads`, `crm_opportunities`, `crm_tasks`, `crm_tickets`, `crm_knowledge_articles`) |
-| Storefront | 18 | 18 | 4 (`storefront_pages`, `storefront_blog_posts`, `storefront_blog_categories`, `pos_products`) |
-| AI | 15 | 15 | 3 (`ai_predictions`, `ai_price_rules`, `ai_automation_rules`, `ai_automation_logs`) |
+| Storefront | 20 | 20 | 5 (`storefront_pages`, `storefront_blog_posts`, `blog_categories`, `pos_products`, `storefront_cart`) |
+| AI | 20 | 20 | 4 (`ai_predictions`, `ai_price_rules`, `ai_automation_rules`, `ai_automation_logs`) |
 | Super Admin — Pillars | 20 | 20 | 8 (`invoices`, `employees`, `warehouses`, `crm_contacts`, `pos_products`, `ai_predictions`, `platform_settings`, `tenant_subscriptions`) |
 | Super Admin — Users & Stats | 4 | 4 | 4 (`admins`, `tenants`, `projects`, `rooms_new`) |
-| Auth | 4 | 4 | 2 (`admins`, `tenants`) |
+| Auth | 9 | 8 | 3 (`admins`, `tenants`, `pos_users`) |
 | Settings | 2 | 2 | 1 (`tenants`) |
 | POS — Auth | 2 | — | 3 (`pos_users`, `pos_organizations`, `tenant_org_mapping`) |
 | POS — Products/Orders/Dashboard | 5 | — | 6 (`pos_transactions`, `pos_transaction_items`, `pos_products`, `order_discounts`, `pos_tables`, `pos_organizations`) |
@@ -566,9 +568,9 @@ Complete mapping of all business-domain API endpoints, frontend functions, backe
 | POS — Barcode | 1 | — | 1 (`pos_products`) |
 | POS — User Mgmt | 5 | — | 2 (`pos_users`, `pos_stores`) |
 | Upload & Media | 2 | — | 1 (R2 bucket) |
-| Payments | 3 | — | 1 (`orders`) |
+| Payments (retired) | 1 | — | 0 (mutates nothing) |
 | Onboarding | 4 | — | 3 (`tenants`, `admins`, `pos_organizations`) |
 | Leads | 4 | 4 | 1 (`leads`) |
 | Price Overrides | 3 | — | 2 (`price_overrides`, `pos_products`) |
 | Tenant Billing | 1 | 1 | 4 (`tenant_subscriptions`, `subscription_plans`, `orders`, `pos_users`) |
-| **Total** | **~270+** | **~220+** | **~65 unique tables** |
+| **Total** | **~278** | **~220+** | **~65 unique tables** |
