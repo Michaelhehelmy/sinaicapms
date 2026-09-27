@@ -767,7 +767,7 @@ pos.post('/orders', async (c) => {
            paid_amount, payment_method, payment_status, notes,
             amount_cash, amount_card, idempotency_key, table_id, kitchen_status,
             tip_amount, created_at, updated_at, project_id)
-         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'), ?)`
+         VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, 'pending', ?, datetime('now'), datetime('now'), ?)`
       ).bind(
         orderId, tenantId, organizationId, storeId, orderNumber,
         String(posUser.userId),
