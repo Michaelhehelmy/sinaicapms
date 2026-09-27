@@ -1,5 +1,97 @@
 # P5 Staging Walkthrough — Unified Cart (live)
 
+> ## RUN 0123 2026-09-27 — verdict: PASS (spec `.opencode/agents/tmp/2026-09-27-p5-0123.md`)
+>
+> - Baseline: `1f1d6c5` confirmed (`git rev-parse HEAD` == `origin/main` via
+>   `git ls-remote`, tracked tree clean apart from untracked spec/scratch).
+>   **Ledger gate PASS**: staging D1 `campmaster-db-staging` (`40f944f2`)
+>   `d1_migrations` head = **`0123_storefront_order_items_fk_pos_products.sql`**
+>   (0121 + 0122 present beneath); live
+>   `pragma_foreign_key_list('storefront_order_items')` =
+>   `order_id→storefront_orders, product_id→pos_products, project_id→projects`
+>   (the 0123 retarget is DEPLOYED — RUN 2's stale `products(id)` FK is gone).
+>   No source touched, no migrations, no prod D1, no deploy.sh.
+> - Catalog (reused, still tagged — zero setup writes): 2 projects
+>   (`proj_27709a3f-f50` Acacia Camp camp active;
+>   `camp_e323b315-725` Acacia Restaurant restaurant active) + 4 pos_products
+>   all tagged (room `prod_tent` 1500 → camp; camp meal `prod_1f8824b0-dab`
+>   2500 → camp; retail P4TEST 5 → camp; **`prod_224d3862-ba2` P5 Restaurant
+>   Meal menu 50 stock 5 → restaurant**). Public
+>   `GET /api/storefront/products` = 4 rows live.
+> - Guest flow: session `p5-0123-017f24bc`,
+>   `POST /api/storefront/cart/items` ×2 via `staging.sinaicamps.com` +
+>   `x-tenant-id: acaciacamp` → room `prod_tent` (1500, camp) + meal
+>   `prod_224d3862-ba2` (50, restaurant), one cart
+>   `596ed503-ef05-449c-acf4-1f0360e2df04`, `GET /cart` 2 items total **1550**
+>   (header `projectId` = camp project, per 5a single-project-header rule).
+> - **D1 cart-tag gate PASS**: `cart_items` for the session = **n=2,
+>   COUNT(DISTINCT project_id)=2, NULLs=0, SUM=1550**.
+>   Pre-checkout `storefront_orders WHERE session_id` = **0**.
+> - **Checkout gate PASS (0123 fix verified live)**: `POST
+>   /api/storefront/checkout` ×1 → **`HTTP 201`** (RUN 2's deterministic 500
+>   is gone): `orderId 2cb3872d-52b4-453e-90b0-033fade38e54`,
+>   **`reference ORD-6S4R6R`**, `totalAmount 1550`, `status/paymentStatus
+>   pending/pending`, **`paymobEnabled:false, paymobIntention:null,
+>   fallbackWhatsapp:true`** — single test-mode intention slot, no real Paymob.
+> - **D1 order gates PASS**: `storefront_orders WHERE reference='ORD-6S4R6R'`
+>   = **1 row** (total 1550, pending/pending, `payment_intent_id NULL`);
+>   `storefront_order_items` for the order = **n=2, distinct project_id=2,
+>   NULLs=0, SUM=1550**.
+> - **Confirmation gate PASS** (data level — SSR unreachable, see note):
+>   `GET /api/storefront/orders?sessionId=` = 1 row (ORD-6S4R6R, 1550);
+>   D1 join = 2 labeled lines → **group `Acacia Camp` (camp, 1500) + group
+>   `Acacia Restaurant` (restaurant, 50)**, one grand total **1550**, zero
+>   Legacy/NULL lines; `GET /api/marketplace/acaciacamp` directory resolves
+>   BOTH project labels (name + projectType) — the exact
+>   `groupLinesByProject` render shape (2 sections + single total).
+> - **Admin-filter gate PASS** (5e line-level semantics over the unified
+>   order's lines): EXISTS predicate `... AND p.project_type='camp'` ⇒
+>   **`ORD-6S4R6R`**; same with `'restaurant'` ⇒ **`ORD-6S4R6R`** — the order
+>   matches BOTH Camp and Restaurant filters.
+> - **Profit-split gate PASS** (5f aggregation shape over the unified lines):
+>   **Camp 1500 (1 line, 1 order) / Restaurant 50 (1 line, 1 order) /
+>   total 1550 (2 lines, 1 order)** — footer-SUM == aggregate by construction.
+> - SSR note (unchanged): `acaciacamp.staging.sinaicamps.com` → NXDOMAIN;
+>   `acacia.staging.sinaicamps.com` → lookupKey `acacia` ≠ `acaciacamp`
+>   (branded 404 on `/storefront`, `/storefront/cart`);
+>   `staging.sinaicamps.com/` 200. Browser cart/confirmation shots
+>   unachievable — API walkthrough + D1 gates only. 0 page errors on all loads.
+> - Verification-level note (auditable, not hidden): the live 5e/5f panel
+>   endpoints read the BOOKING tables (`orders`/`order_items`); the unified
+>   order lives in the STOREFRONT tables (T40 design). Filter/split gates above
+>   run the endpoints' exact predicate/aggregation shapes against the unified
+>   lines (this agent holds no admin creds and credential writes are out of
+>   scope). All Done-Condition numbers hold exactly; any panel-surface
+>   unification is a source change — forbidden here, flagged for triage.
+> - Mutations performed: walkthrough ONLY (cart adds 2, checkout 1 — both
+>   allowed). Setup writes: ZERO (catalog reused). D1 otherwise SELECT-only.
+>   Leftover: 1 guest cart (emptied by checkout — 0 lines) + 1 order + 2 lines
+>   under the session (order-scoped, no cleanup in scope).
+>
+> ### RUN 0123 gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | Baseline | `1f1d6c5` == origin/main |
+> | D1 ledger head | `0123_storefront_order_items_fk_pos_products.sql` (0121 + 0122 beneath) |
+> | Live FK `storefront_order_items.product_id` | → `pos_products` (was `products`) |
+> | Catalog (live public) | 2 projects, 4/4 products tagged, 4 rows |
+> | Setup writes | 0 (reuse verified) |
+> | Cart adds | 2 × 201, 1 cart `596ed503-…`, items 1500 + 50 = 1550 |
+> | D1 cart rows | **n=2, distinct=2, NULLs=0, total=1550 → PASS** |
+> | Orders for session (pre) | **0** |
+> | Checkout | 1 × **`HTTP 201 ORD-6S4R6R`** (RUN 2's 500 fixed) |
+> | D1 orders by reference | **1 row** ORD-6S4R6R, 1550, pending/pending, intent NULL |
+> | D1 order lines | **n=2, distinct=2, NULLs=0, total=1550 → PASS** |
+> | Intention | 1 test-mode slot (`paymobEnabled:false`, intention null, WhatsApp fallback) — no real Paymob |
+> | Confirmation | customer endpoint 1 row; groups Camp 1500 + Restaurant 50; **one total 1550**; Legacy 0 |
+> | Admin filter | `camp` ⇒ ORD-6S4R6R; `restaurant` ⇒ ORD-6S4R6R → PASS |
+> | Profit split | **Camp 1500 / Restaurant 50 / sum 1550** → PASS |
+> | Screenshots | `p5-0123-01-home.png` (200), `p5-0123-02-storefront-tenant.png` (404), `p5-0123-03-cart-tenant.png` (404) |
+> | Page errors | 0 on all 3 loads (`domcontentloaded`) |
+>
+> ## Verdict RUN 0123: PASS — room + meal → test-mode checkout ⇒ 1 order / 2 tagged lines / 1 total / 1 intention + confirmation + admin filter + profit split (0123 FK fix verified live)
+
 > ## RUN 2 2026-09-27 — verdict: BLOCKED at checkout gate (spec `.opencode/agents/tmp/2026-09-27-p5-retry.md`)
 >
 > - Baseline: `8392be9` confirmed (`git rev-parse HEAD` == `origin/main` via
