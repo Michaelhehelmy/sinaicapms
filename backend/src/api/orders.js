@@ -806,8 +806,8 @@ ordersRoutes.post('/', async (c) => {
     // between batch statements: a lost-race 409 must not leave orphaned items.
     if (orderItems.length > 0) {
       const itemStmts = orderItems.map((it) => c.env.DB.prepare(
-        `INSERT INTO order_items (id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+        `INSERT INTO order_items (id, order_id, type, reference_id, name, quantity, unit_price, total_price, project_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
       ).bind(
         'oi_' + crypto.randomUUID().slice(0, 12), // L1 fix
         ordId,
@@ -816,7 +816,14 @@ ordersRoutes.post('/', async (c) => {
         it.name,
         it.quantity,
         it.unit_price,
-        Math.round(it.quantity * it.unit_price * 100) / 100
+        Math.round(it.quantity * it.unit_price * 100) / 100,
+        // 5b: generic client-supplied items carry no product linkage
+        // (orderItemSchema strips unknown keys; reference_id is NULL by
+        // design) and the parent orders.project_id is never stamped on this
+        // path (checkout shape is owned by 5c) — no source and no parent
+        // project to inherit, so bind NULL explicitly. The column is always
+        // present: no order_items INSERT omits project_id.
+        null
       ));
       await c.env.DB.batch(itemStmts);
     }
@@ -881,11 +888,15 @@ ordersRoutes.post('/', async (c) => {
         mealPlanTotal += lineTotal;
 
         itemStmts.push(c.env.DB.prepare(
-          `INSERT INTO order_items (id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at)
-           VALUES (?, ?, 'meal_plan', ?, ?, ?, ?, ?, datetime('now'))`
+          `INSERT INTO order_items (id, order_id, type, reference_id, name, quantity, unit_price, total_price, project_id, created_at)
+           VALUES (?, ?, 'meal_plan', ?, ?, ?, ?, ?, ?, datetime('now'))`
         ).bind(
           'oi_' + crypto.randomUUID().slice(0, 12), ordId, mp.product_id,
-          product.name, mp.quantity, unitPrice, lineTotal
+          product.name, mp.quantity, unitPrice, lineTotal,
+          // 5b: stamp the line product's project, derived server-side from
+          // pos_products (never from the client — meal_plans carry only
+          // product_id + quantity). NULL only for legacy untagged rows.
+          product.project_id ?? null
         ));
 
         if (organizationId && mirrorStoreId != null) {

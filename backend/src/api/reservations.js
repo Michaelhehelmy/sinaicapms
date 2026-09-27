@@ -430,11 +430,15 @@ reservationsRoutes.post('/', async (c) => {
 
         itemStmts.push(c.env.DB.prepare(
           `INSERT INTO order_items
-             (id, order_id, type, reference_id, name, quantity, unit_price, total_price, created_at)
-           VALUES (?, ?, 'meal_plan', ?, ?, ?, ?, ?, datetime('now'))`
+             (id, order_id, type, reference_id, name, quantity, unit_price, total_price, project_id, created_at)
+           VALUES (?, ?, 'meal_plan', ?, ?, ?, ?, ?, ?, datetime('now'))`
         ).bind(
           'oi_' + crypto.randomUUID().slice(0, 12), ordId, mp.product_id,
-          product.name, mp.quantity, unitPrice, lineTotal
+          product.name, mp.quantity, unitPrice, lineTotal,
+          // 5b: stamp the line product's project, derived server-side from
+          // pos_products (never from the client — items carry only
+          // product_id + quantity). NULL only for legacy untagged rows.
+          product.project_id ?? null
         ));
 
         if (organizationId != null && storeId != null) {
