@@ -12,7 +12,7 @@
 | Stripe | Mock-but-safe only. No live gateway this pass. |
 | Local payment methods | e-wallet (Vodafone Cash), Instapay, cash — recorded with `payment_status='pending'` + optional reference; manager verifies/voids later |
 | DB schema | Migrations allowed (next: `0051+`) |
-| PWA/offline POS | Included. Workbox vendored locally into `app/public` (no CDN) |
+| PWA/offline POS | Planned, not shipped (see §3.10). No Workbox vendored; `app/public/service-worker.js` and `app/public/manifest.webmanifest` do not exist on disk. |
 | Command palette | Deferred |
 | Documentation | This file (`docs/POLISH_PLAN.md`) |
 
@@ -74,7 +74,7 @@
 | 3.6 | POS: void — `POST /api/pos/orders/:id/void` (manager-gated, stock restore, audit) + UI confirm | `backend/src/routes/pos/index.js`, `OrdersView.tsx` |
 | 3.7 | POS: server-side order pagination (`?page&pageSize&status`) | `routes/pos/index.js`, `OrdersView.tsx` |
 | 3.8 | POS: session handling — 401 → `/pos/login` toast redirect; per-identifier lockout; single login limiter | `app/src/lib/api.ts`, `backend/src/index.js`, `sharedAuth.js` |
-| 3.9 | POS tender parity: quick-cash, custom amount, per-item discount, barcode input, keyboard shortcuts (PLANNED remainder: tip persistence — `pos_transactions` has no `tip_amount` column; booking-order tips persist via `PATCH /orders/:id/tip` only) | `CartPanel.tsx`, `ProductsView.tsx`, `routes/pos/index.js` |
+| 3.9 | POS tender parity: quick-cash, custom amount, per-item discount, barcode input, keyboard shortcuts (remainder: POS tips persist via `tip_amount` on `pos_transactions` since `0120_add_tip_amount_to_pos_transactions.sql` — sale INSERT binds `tipAmount \|\| 0`; booking-order tips persist via `PATCH /orders/:id/tip`) | `CartPanel.tsx`, `ProductsView.tsx`, `routes/pos/index.js` |
 | 3.10 | **PWA/offline POS (PLANNED, not shipped)**: Workbox SW (vendored `workbox-sw.js` in `app/public`) caching `/api/pos/products` stale-while-revalidate, IndexedDB cart, offline order queue replayed via `idempotencyKey`; manifest + icons + registration in POS shell only — `app/public/service-worker.js` and `app/public/manifest.webmanifest` do not exist on disk | `app/public/service-worker.js`, `app/public/manifest.webmanifest`, `app/src/layouts/POSLayout.astro`, `app/src/pages/pos/[...rest]/index.astro` |
 | 3.11 | POS design tokens + a11y: brand accent (kill indigo), modal focus trap/aria, icon `aria-label`s, pause poll on hidden tab | `POSLayout.astro`, `ProductsView.tsx`, `CartPanel.tsx`, `ReceiptModal.tsx`, `DashboardView.tsx` |
 | 3.12 | Backend: SSE auth — short-lived single-use `/api/stream/token` instead of JWT in query string | `backend/src/index.js`, `sse.ts` |
@@ -101,7 +101,7 @@
 
 - Backend: zod POS-order validation (unknown method → 400), atomic stock (concurrent undersell), intent-ledger confirm (forged/mismatched/foreign intent rejected), reviews CRUD + public filter.
 - Frontend: theme/amenities render, leads POST on booking, tax from server value, cart persistence/restore, POS method buttons, nav zone-awareness.
-- E2E: marketplace nav no-404, camp-card photo+price, availability blocked dates, POS receipt/void/quick-cash, PWA SW registration, Arabic marketplace copy.
+- E2E: marketplace nav no-404, camp-card photo+price, availability blocked dates, POS receipt/void/quick-cash, PWA SW registration (planned — §3.10 unshipped, no SW on disk), Arabic marketplace copy (cancelled per roadmap T11 — suite asserts en/ltr).
 
 ## Verification per wave
 
