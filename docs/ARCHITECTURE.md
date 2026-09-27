@@ -39,8 +39,8 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 | Zone | Hosts | Routes |
 | --- | --- | --- |
-| `marketplace` | `sinaicamps.com`, `localhost` (default) | `/`, `/camps`, `/camp/*`, `/admin/*`, auth pages |
-| `tenant` | `x.sinaicamps.com`, custom domains (e.g. `acaciacamp.com`) | `/`, `/camp/*` detail, `/book`, `/menu`, `/rooms`, `/pos/*` |
+| `marketplace` | `sinaicamps.com`, `localhost` (default) | `/camps`, `/camp`, `/camp/*` (marketplace-only); system prefixes + `/`, `/about`, `/contact`, `/faq`, `/gallery` (both zones) |
+| `tenant` | `x.sinaicamps.com`, custom domains (e.g. `acaciacamp.com`) | `/pos`, `/pos/*`, `/menu`, `/book`, `/rooms`, `/storefront`, `/storefront/*` (tenant-only); system prefixes + both-zones pages |
 
 - System prefixes (`/admin`, `/api`, `/auth`, `/register`, `/login`, `/robots.txt`, `/sitemap.xml`, `/404`, `/_astro`, `/favicon`) are **never forbidden**.
 - Forbidden routes render a branded 404 (`ZoneGuard`) — exact-path matching only (siblings like `/bookings` are NOT forbidden).
@@ -69,8 +69,8 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 ## 5. Database & migrations
 
-- **D1 (SQLite)** — schema lives in `backend/migrations/` (currently **99 migrations**, latest `0099_normalize_marketplace_payouts_ids.sql`).
-- One numbered `.sql` file per migration, applied in order via `wrangler d1 migrations apply` (see `MIGRATION_GUIDE.md` and the `db-migration` skill).
+- **D1 (SQLite)** — schema lives in `backend/migrations/` (currently **37 migrations**: `0001`–`0014` + `0100`–`0123` minus reserved-but-absent `0109`; latest `0123_storefront_order_items_fk_pos_products.sql`).
+- One numbered `.sql` file per migration (plus `legacy/` and `SCHEMA_DIRECTION_PLAN.md`), applied in order via `wrangler d1 migrations apply` (see `MIGRATION_GUIDE.md` and the `db-migration` skill).
 - KV holds **only** rate-limit state (`RATE_LIMIT_KV`); `KV_CACHE` is bound but never written — public-read caching uses `Cache-Control` headers via `cachedJsonResponse` (no KV writes, free-plan safe). R2 (`MEDIA_BUCKET` = `campmaster-media`) holds uploads (wired in staging + prod). SSE is broadcast through the `BROADCASTER` Durable Object (admin inbox/orders).
 
 ## 6. Deployment
@@ -84,7 +84,7 @@ Four suites — see `TESTING.md` for exact counts and commands:
 
 | Suite | Location | Count |
 | --- | --- | --- |
-| Backend unit | `backend/` | 2225 tests / 84 files (see TESTING.md) |
-| Frontend unit | `app/` | 3416 tests / 137 files (see TESTING.md) |
+| Backend unit | `backend/` | 2610 tests / 115 files (see TESTING.md) |
+| Frontend unit | `app/` | 3561 tests / 149 files (see TESTING.md) |
 | Root integration | repo root | 255 tests (see TESTING.md) |
 | E2E (Playwright) | `tests/e2e/` | see TESTING.md for gate counts |
