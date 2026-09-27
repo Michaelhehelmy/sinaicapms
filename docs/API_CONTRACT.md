@@ -66,3 +66,31 @@ Exact paths, methods, and payloads: see `backend/openapi.json` (source of truth)
 3. Never set CORS headers in response helpers — `hono/cors` in `index.js` is the single source of truth.
 4. Public endpoints must remain cache-safe; anything user-specific must use `private`/`no-store` semantics if caching is added.
 5. Frontend components must render user data through `escHtml()` (in `app/src/lib/utils.ts`).
+
+## 7. Auth status semantics — 401 vs 403
+
+Single gate: `backend/src/middleware/requireAuth.js` (plus `resolveScope.js` on
+project/tenant-context routes). Checks run in this order — signature →
+token-type → realm → role → activity → tenant scope (`evaluate`, requireAuth.js) —
+so the FIRST failure wins. Individual gates may override a message/status
+per key; the codes below are the defaults.
+
+**401 — authentication failed (who you are is unknown or stale):**
+
+| Case | Message | Where |
+| --- | --- | --- |
+| No/broken `Authorization` header | `Missing or invalid Authorization header` | every gated route |
+| Bad signature, expired session, or wrong token type (e.g. a `refresh` token on an access gate) | `Session expired or invalid signature` | every gated route (POS refresh gate overrides via `typeMismatch` → `Invalid token type`) |
+| Account deactivated (`is_active` / `deleted_at` probe) | `Account deactivated` | every gated route, re-checked on each request |
+| No tenant context to scope against | `Unauthorized: missing tenant context` | `resolveScope` routes (orders, camps, reservations, storefront, promotions, supply, upload, inbox, categories, POS barcode, stream-token, paymob webhook) |
+
+**403 — authorization denied (identity is valid, access is not):**
+
+| Case | Message | Affected endpoints |
+| --- | --- | --- |
+| Realm mismatch — POS token on an admin route (or admin token on a POS route); checked BEFORE the activity probe so it never surfaces as 401 | `Forbidden: POS sessions are not allowed to access admin routes` | all `realm: 'admin'` routes hit with a POS token; all `realm: 'pos'` routes (`/api/pos/*`) hit with an admin token; SSE `GET /api/stream/orders` rejects POS sessions and non-admin roles with 403 |
+| Role not in the gate's allow-list (evaluated after realm, zero DB round-trips) | `Forbidden: Insufficient permissions` | role-gated routes: `super_admin`-only platform surface (`/api/admin/*`, platform settings), `/api/pos-users` gate (`super_admin`/`admin`), stream-credential mint (`admin`/`super_admin`) |
+| Tenant scope denial — token `tenantId` claim differs from the route tenant, or a non-`super_admin` token carries a null/empty `tenantId` claim (`super_admin` is exempt) | `Forbidden: Access denied to this tenant partition` | all default `requireTenant: true` tenant routes; cross-tenant access (admin of tenant A calling tenant B) always lands here, never on data |
+| Project scope mismatch | `Forbidden: project scope mismatch` | `resolveScope` routes called with a project context outside the caller's scope (orders, camps, reservations, …) |
+
+Rule of thumb for clients: **401 → re-authenticate** (login/refresh); **403 → do not retry** with the same identity (wrong realm, role, tenant, or project — switch context or escalate to an authorized role).
