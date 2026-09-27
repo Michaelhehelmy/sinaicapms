@@ -10,8 +10,13 @@ import { useQuery } from '@tanstack/react-query';
 import { getStorefrontCart, checkoutStorefront } from '@/lib/api';
 import { getSessionId } from '@/lib/storefrontSession';
 import { formatCurrency } from '@/lib/utils';
+import { saveConfirmationSnapshot, type ConfirmationLine } from './StorefrontConfirmation';
 
-type CartItem = { id: string; productId?: string; productName?: string; quantity: number; totalPrice: number };
+// Note: projectId rides the cart wire (cart_items.project_id, 5a) but is
+// intentionally absent from the api.ts cart type — it is grouping metadata,
+// not cart-display state. Declared here so the confirmation snapshot keeps
+// each line's project tag.
+type CartItem = { id: string; productId?: string; productName?: string; quantity: number; totalPrice: number; projectId?: string | null };
 
 interface Props {
   tenantId: string;
@@ -82,12 +87,26 @@ export default function StorefrontCheckout({ tenantId, primaryColor }: Props) {
       // NOTE: the session is intentionally NOT cleared here — the cart is
       // emptied server-side, and the confirmation page needs the sessionId
       // to look the order up via getStorefrontOrders().
+      // 5d: snapshot the pre-checkout lines (with their project tags) for the
+      // confirmation page — the server deletes cart_items in the same batch
+      // that creates the order, so this closed-over cart is the only
+      // frontend-readable line source. Display plumbing only: the checkout
+      // request/response flow above is untouched.
+      const snapshotLines: ConfirmationLine[] = items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        totalPrice: item.totalPrice,
+        projectId: item.projectId ?? null,
+      }));
+      saveConfirmationSnapshot(res.orderNumber, snapshotLines);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Checkout failed');
     } finally {
       setSubmitting(false);
     }
-  }, [sessionId, email, phone, address]);
+  }, [sessionId, email, phone, address, items]);
 
   // ── Empty cart guard ───────────────────────────────────────────────────
   if (!sessionId || (items.length === 0 && !checkoutResult)) {
