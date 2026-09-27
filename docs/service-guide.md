@@ -92,7 +92,7 @@ Worker assignments help track performance and manage scheduling.
 
 ### Viewing Bookings
 
-The **Bookings** panel provides:
+The **Service Bookings** panel provides:
 
 - Calendar view of all upcoming services
 - List view with filtering (by date, status, worker)
@@ -128,7 +128,7 @@ The availability calendar shows raw slots (`available_date/from/to/worker_id/is_
 
 ### Managing Availability
 
-1. Navigate to the **Availability** section
+1. Navigate to the **Availability** section (no dedicated Availability panel in the admin nav — UNVERIFIABLE as a named panel; slots via `GET /items/:id/availability`, calendar surface is Booking Calendar)
 2. Select a service and date range (slot CRUD as-is — no block/unblock/capacity API)
 
 Availability updates propagate to the public booking portal in real-time.

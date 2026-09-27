@@ -13,6 +13,7 @@ The analytics dashboard is accessible from the admin panel under **Reports**. It
 | **occupancy** | Occupancy analytics (live) |
 | **revenue** | Revenue analytics (live) |
 | **bookings** | Bookings list (live) |
+| **profit** | Profit by project (panel tab present; per-project P&L shipped `149a38c`) |
 
 ---
 

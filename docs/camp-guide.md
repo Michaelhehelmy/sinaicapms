@@ -8,9 +8,9 @@ This guide covers how to set up and manage a camp in SinaiCamps — from creatin
 
 ### 1. Create a Camp
 
-Navigate to the admin dashboard at `/admin`. The **Camps** panel lets you create and manage camp entries:
+Navigate to the admin dashboard at `/admin`. The **Projects** panel (nav label; code id `camps`) lets you create and manage camp entries:
 
-1. Click **Add Camp** in the camps panel
+1. Click **Add Camp** in the Projects panel
 2. Fill in the required fields:
    - **Name** — Display name (e.g., "Acacia Camp")
    - **Location** — Geographic location
@@ -55,7 +55,7 @@ Multiple rate plans can overlap; precedence logic UNVERIFIABLE — `GET rate-pla
 
 ### Viewing Reservations
 
-The **Reservations** panel shows all booking activity:
+The **Orders** panel (nav id `reservations`) shows all booking activity:
 
 - Filter by date range, status, or guest name
 - Click any reservation to view full details
@@ -63,7 +63,7 @@ The **Reservations** panel shows all booking activity:
 
 ### Check-In Process
 
-1. Locate the reservation in the Reservations panel
+1. Locate the reservation in the Orders panel
 2. Verify guest identity and booking details
 3. Click **Check In** to update the status
 4. The room status transitions from `reserved` to `occupied`

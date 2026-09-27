@@ -68,7 +68,7 @@ Only the best eligible promotion applies per line item (no stacking).
 
 ### Viewing Inventory
 
-The **Inventory** panel shows current stock levels for all products:
+The **Low Stock** panel (nav id `low-stock`; no single Inventory panel — procurement lives in Supply Chain) shows current stock levels for all products:
 
 - Filter by category, stock status, or name
 - Sort by quantity, name, or last updated
@@ -87,7 +87,7 @@ Set minimum stock thresholds per product:
 
 Manually adjust inventory when needed:
 
-1. Navigate to **Inventory**
+1. Navigate to **Low Stock**
 2. Select the product to adjust
 3. Enter signed quantity + reason text (no fixed Restock/Damage/Correction enum)
 4. Enter the quantity and reason
@@ -113,7 +113,7 @@ All adjustments are logged with timestamps and operator info for audit trails.
 
 ### End of Shift
 
-1. Navigate to **Shifts**
+1. Navigate to **Shift** (POS view label, singular)
 2. Click **End Shift**
 3. Enter closing cash count
 4. System calculates variance (expected vs. actual)

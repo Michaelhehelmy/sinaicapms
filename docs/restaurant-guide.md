@@ -8,7 +8,7 @@ This guide covers table management, reservations, kitchen workflow, and billing 
 
 ### Creating Tables
 
-Navigate to the **Tables** section in the admin panel:
+Open the **Tables** view in the POS terminal (POSApp `tables` view — there is no Tables panel in the admin nav):
 
 1. Click **Add Table**
 2. Configure the table:
@@ -48,7 +48,7 @@ Tables follow a status lifecycle:
 
 ### Making a Reservation
 
-1. Open the **Reservations** panel
+1. Open the **Orders** panel (nav id `reservations`)
 2. Click **New Reservation**
 3. Fill in details:
    - **Guest Name** — Party name or lead guest
@@ -124,7 +124,7 @@ Split a table's bill by items or evenly:
 
 ### Tips
 
-Tips persist on booking orders (PATCH /orders/:id/tip); POS tip shows on the immediate receipt only and is not stored/surfaced in reports.
+Tips persist on booking orders (PATCH /orders/:id/tip); POS tips persist to `pos_transactions.tip_amount` (0120, sale binds `tipAmount || 0`) and show on the immediate receipt — not broken out in Reports (no tip handling in `admin-reports.js`).
 
 1. Review the bill total
 2. Add tip amount (manual entry or percentage preset)
