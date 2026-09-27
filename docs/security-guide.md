@@ -29,6 +29,7 @@ SinaiCamps uses **JWT (HS256) Bearer tokens** for authentication:
 - Tokens are stateless (no server-side session store).
 - Role-based access control (RBAC) enforced in `backend/src/middleware/requireAuth.js`.
 - Cross-tenant access blocked: admin tokens are bound to a single `tenantId`.
+- **Scope denial returns 403, not 401**: a valid token with the wrong tenant/project scope (`scopeDenied`), a POS↔admin realm mismatch, or insufficient role returns `403 Forbidden`. `401` is only for missing/invalid/expired tokens, deactivated accounts, or missing tenant context. Full matrix: `docs/API_CONTRACT.md` §7 (sourced from `backend/src/middleware/requireAuth.js` `DEFAULT_MESSAGES`).
 
 ---
 
@@ -81,19 +82,13 @@ All user data rendered in Astro templates is escaped via `escHtml()` from `app/s
 
 65+ usages across the frontend — every user-facing field is escaped.
 
-### Layer 3: ~~`sanitizeInput()` middleware~~ — REMOVED (Hono 4.12 dropped it: silent no-op)
+### Layer 3: Zod validation at the API boundary
 
-Sanitization removed: no `sanitizeInput` middleware exists — `backend/src/middleware/sanitize.js` is absent from disk. Since Hono 4.12 the old middleware was a silent no-op, so it was REMOVED. The active contract is: zod validation at the API boundary + `escHtml`/escaping at render (see `backend/src/index.js` T2 note, L147).
-No pattern-stripping occurs anywhere: `javascript:` URLs, embedded HTML, and options-like patterns pass through to the boundary, where zod rejects them and `escHtml` neutralizes them at render.
+All API endpoints validate input with Zod schemas (unknown fields stripped via `.strip()`). Malformed input is rejected with a clean JSON error before it reaches storage. Stored user content is never mutated at the storage boundary — it is escaped at the presentation boundary (Layers 1–2). The old `sanitizeInput` middleware was removed rather than left as a false defense: since Hono 4.12 it had been a silent no-op (getter-only `c.req`), so no pattern-stripping layer exists — see the removal note in `backend/src/index.js` (T2).
 
+### Layer 4: No scrub-on-write layer (by design)
 
-- `javascript:` protocol URLs
-
-This middleware is mounted on `/api/*` in `backend/src/index.js` and applies to all POST/PUT/PATCH requests.
-
-### Layer 4: Migration 0076 (data sanitization)
-
-Migration `0076_sanitize_user_data.sql` sanitizes any existing XSS payloads in user-generated text fields (`meta_value`, `description`, `notes`, `comment`, `review`) using SQLite `REPLACE()` functions.
+There is no stored-content scrub: user content keeps its original bytes in D1 and is escaped at render (Layers 1–2). (Earlier revisions of this guide cited a one-time `0076_sanitize_user_data.sql` scrub — no such file exists in the current `backend/migrations/` lineage, and a one-time scrub cannot stop new payloads, so render-time escaping is the guarantee.)
 
 ### Known safe patterns
 
@@ -141,14 +136,9 @@ app.use('*', cors({
 
 ## Input Sanitization
 
-### Backend middleware
+### Backend validation (no sanitize middleware)
 
-`backend/src/middleware/sanitize.js` — applied to all `/api/*` POST/PUT/PATCH requests:
-
-```javascript
-// Strips <script> tags, on* handlers, javascript: URLs from string values
-export function sanitizeInput() { ... }
-```
+No sanitize middleware exists — `backend/src/middleware/sanitize.js` is absent from disk and no `sanitizeInput` mount exists in `backend/src/index.js` (removed; see XSS Prevention Layer 3). Boundary defense is Zod schema validation (below), not pattern-stripping.
 
 ### Zod validation
 
@@ -181,7 +171,7 @@ await env.DB.prepare(`SELECT * FROM camps WHERE id = '${campId}'`).all();
 1. **Never store JWT in cookies** — keep using `localStorage` + `Authorization` header to maintain CSRF resistance.
 2. **Rotate JWT secrets** periodically — `env.JWT_SECRET` has no fallback; if compromised, all tokens are valid.
 3. **Keep `RATE_LIMIT_KV_ENABLED="false"`** on the free plan — KV writes/day quota will cause API outage if enabled.
-4. **Monitor for XSS payloads** in user-generated content — the sanitize middleware is defense-in-depth, not a guarantee.
+4. **Monitor for XSS payloads** in user-generated content — render-time escaping (React + `escHtml`) is the guarantee, not input scrubbing.
 5. **Review new endpoints** for CORS compliance — never set CORS headers outside `hono/cors`.
 6. **Use parameterized queries** exclusively — never interpolate user input into SQL strings.
 
