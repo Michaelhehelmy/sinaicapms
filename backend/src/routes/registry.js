@@ -996,8 +996,8 @@ export const marketplaceRoutes = [
     method: 'get',
     path: '/api/orders',
     tags: ['orders'],
-    summary: 'List orders (paginated; optional status filter)',
-    request: { query: z.object({ status: z.string().optional(), page: z.string().optional(), pageSize: z.string().optional() }) },
+    summary: 'List orders (paginated; optional status + projectType filters)',
+    request: { query: z.object({ status: z.string().optional(), projectType: z.string().optional(), page: z.string().optional(), pageSize: z.string().optional() }) },
     responses: {
       200: { description: 'Paginated orders', content: { 'application/json': { schema: paginatedOrdersSchema } } },
       ...errorResponses(),

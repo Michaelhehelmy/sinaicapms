@@ -7711,7 +7711,7 @@
         "tags": [
           "orders"
         ],
-        "summary": "List orders (paginated; optional status filter)",
+        "summary": "List orders (paginated; optional status + projectType filters)",
         "parameters": [
           {
             "schema": {
@@ -7719,6 +7719,14 @@
             },
             "required": false,
             "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "projectType",
             "in": "query"
           },
           {

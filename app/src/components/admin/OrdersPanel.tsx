@@ -53,7 +53,12 @@ function getOrderStateVariant(stateId: string): 'warning' | 'info' | 'success' |
 }
 
 export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersPanelProps) {
-  const { data: ordersRes, isLoading, isFetching } = useOrdersQuery();
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  // 5e: server narrows by line-level project type (?projectType=); 'all' keeps
+  // the exact legacy paramless call (hook key + fetch byte-identical).
+  const { data: ordersRes, isLoading, isFetching } = useOrdersQuery(
+    projectFilter === 'all' ? undefined : { projectType: projectFilter },
+  );
   const orders = ordersRes?.data ?? [];
   const { data: rooms } = useRoomsQuery();
   const { data: campsData } = useCampsQuery();
@@ -116,6 +121,24 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
     return map;
   }, [campsData]);
 
+  // 5e: project-type options from the tenant's projects (All + distinct types
+  // in first-seen order: All/Camp/Restaurant/...). Labels are capitalized
+  // types — never raw ids.
+  const projectFilterOptions = useMemo(() => {
+    const seen: string[] = [];
+    (campsData ?? []).forEach((c) => {
+      const t = (c.projectType || 'camp').trim() || 'camp';
+      if (!seen.includes(t)) seen.push(t);
+    });
+    return [
+      { value: 'all', label: 'All Projects' },
+      ...seen.map((t) => ({
+        value: t,
+        label: t.charAt(0).toUpperCase() + t.slice(1),
+      })),
+    ];
+  }, [campsData]);
+
   const handleStateChange = useCallback(() => {
     if (!showStateChange || !newState) return;
     statusMutation.mutate(
@@ -168,6 +191,12 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
           options={statusFilterOptions}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
+        />
+        <Select
+          label="Project"
+          options={projectFilterOptions}
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
         />
         {isFetching && !isLoading && (
           <span className="text-xs text-gray-500 animate-pulse">Updating...</span>

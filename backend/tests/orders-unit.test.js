@@ -119,6 +119,35 @@ describe('handleOrdersRoute', () => {
       const body = await res.json();
       expect(body.pageSize).toBe(200);
     });
+
+    it('narrows by projectType with line-level scoping (count + data)', async () => {
+      // 5e: ?projectType= adds a line-level EXISTS predicate (order_items →
+      // projects) plus the legacy camp fallback to BOTH the count and the
+      // data query; the value travels only as binds, never interpolated.
+      const { db, chain } = makeDbMock();
+      const req = makeRequest('GET', 'https://x.com/api/orders?projectType=restaurant');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const sqls = db.prepare.mock.calls.map(c => c[0]);
+      expect(sqls).toHaveLength(2);
+      for (const sql of sqls) {
+        expect(sql).toContain('order_items');
+        expect(sql).toContain('project_type = ?');
+        expect(sql).toContain('camp_id');
+        expect(sql).not.toContain('restaurant');
+      }
+      const bindArgs = chain.bind.mock.calls.flat();
+      expect(bindArgs.filter(a => a === 'restaurant')).toHaveLength(4);
+    });
+
+    it('omits the project predicate when projectType is absent (legacy SQL)', async () => {
+      const { db } = makeDbMock();
+      const req = makeRequest('GET', 'https://x.com/api/orders');
+      await handleOrdersRoute(req, { DB: db }, TENANT);
+      const sqls = db.prepare.mock.calls.map(c => c[0]);
+      expect(sqls.some(s => s.includes('project_type'))).toBe(false);
+      expect(sqls.some(s => s.includes('order_items'))).toBe(false);
+    });
   });
 
   describe('GET /orders/:id (detail)', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 
 const mockUseOrdersQuery = vi.fn();
@@ -352,5 +352,77 @@ describe('OrdersPanel', () => {
     fireEvent.click(screen.getByTestId('record-payment-btn'));
     expect(screen.getByTestId('record-payment-form')).toBeInTheDocument();
     expect(screen.getByTestId('record-payment-balance')).toBeInTheDocument();
+  });
+});
+
+describe('OrdersPanel project filter (5e)', () => {
+  // Shared Phase-5 vocabulary (mirrors storefront-confirmation.test.tsx):
+  // one camp project + one restaurant project; order A has lines in both.
+  const projects = [
+    { id: 'proj_camp', name: 'Accommodation', projectType: 'camp' },
+    { id: 'proj_rest', name: 'Restaurant', projectType: 'restaurant' },
+  ];
+  const orderA = { id: 'oA', campId: 'proj_camp', roomId: 'r1', reference: 'REF-A', orderStateId: 'confirmed', paymentStatus: 'paid', totalAmount: 250, customerFirstName: 'Mixed', customerLastName: 'Guest', checkInDate: '2026-08-01', checkOutDate: '2026-08-03', stateName: 'confirmed' };
+  const orderB = { id: 'oB', campId: 'proj_camp', roomId: 'r1', reference: 'REF-B', orderStateId: 'pending', paymentStatus: 'paid', totalAmount: 200, customerFirstName: 'Camp', customerLastName: 'Only', checkInDate: '2026-08-02', checkOutDate: '2026-08-04', stateName: 'pending' };
+
+  function setupProjectMocks() {
+    setupMocks();
+    // Server narrow, mocked at the hook boundary: the hook echoes the
+    // narrowed set, so the panel only passes the param through.
+    mockUseOrdersQuery.mockImplementation((params?: Record<string, string>) => {
+      const base = { isLoading: false, error: null, isFetching: false };
+      if (params?.projectType === 'camp') return { ...base, data: { data: [orderA], total: 1 } };
+      if (params?.projectType === 'restaurant') return { ...base, data: { data: [orderA], total: 1 } };
+      return { ...base, data: { data: [orderA, orderB], total: 2 } };
+    });
+    mockUseCampsQuery.mockReturnValue({ data: projects, isLoading: false, error: null });
+    mockUseRoomsQuery.mockReturnValue({ data: [{ id: 'r1', name: 'Room 1', campId: 'proj_camp' }], isLoading: false, error: null });
+  }
+
+  function renderPanel() {
+    render(<OrdersPanel campIds={['proj_camp', 'proj_rest']} camps={projects as never} />);
+  }
+
+  function projectSelect() {
+    return screen.getByDisplayValue('All Projects');
+  }
+
+  it('offers All/Camp/Restaurant project options', () => {
+    setupProjectMocks();
+    renderPanel();
+    const select = projectSelect();
+    expect(within(select as unknown as HTMLElement).getByRole('option', { name: 'Camp' })).toBeInTheDocument();
+    expect(within(select as unknown as HTMLElement).getByRole('option', { name: 'Restaurant' })).toBeInTheDocument();
+  });
+
+  it('filter by Camp shows 1 order and passes projectType to the hook', () => {
+    setupProjectMocks();
+    renderPanel();
+    expect(screen.getAllByTestId('data-row')).toHaveLength(2);
+    fireEvent.change(projectSelect(), { target: { value: 'camp' } });
+    expect(mockUseOrdersQuery).toHaveBeenLastCalledWith({ projectType: 'camp' });
+    expect(screen.getAllByTestId('data-row')).toHaveLength(1);
+    expect(screen.getAllByText('REF-A').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryAllByText('REF-B')).toHaveLength(0);
+  });
+
+  it('filter by Restaurant shows the same order (line-level scoping)', () => {
+    setupProjectMocks();
+    renderPanel();
+    fireEvent.change(projectSelect(), { target: { value: 'restaurant' } });
+    expect(mockUseOrdersQuery).toHaveBeenLastCalledWith({ projectType: 'restaurant' });
+    expect(screen.getAllByTestId('data-row')).toHaveLength(1);
+    expect(screen.getAllByText('REF-A').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryAllByText('REF-B')).toHaveLength(0);
+  });
+
+  it('All restores the full list with the legacy paramless call', () => {
+    setupProjectMocks();
+    renderPanel();
+    fireEvent.change(projectSelect(), { target: { value: 'camp' } });
+    expect(screen.getAllByTestId('data-row')).toHaveLength(1);
+    fireEvent.change(screen.getByDisplayValue('Camp'), { target: { value: 'all' } });
+    expect(mockUseOrdersQuery).toHaveBeenLastCalledWith(undefined);
+    expect(screen.getAllByTestId('data-row')).toHaveLength(2);
   });
 });

@@ -585,6 +585,12 @@ describe('order endpoints', () => {
     expect(url).toContain('camp_id=5');
   });
 
+  it('getOrders with projectType adds the 5e narrow param', async () => {
+    await getOrders({ projectType: 'restaurant' });
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toContain('projectType=restaurant');
+  });
+
   it('getOrder GET /orders/10', async () => {
     await getOrder(10);
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/orders/10'), expect.any(Object));

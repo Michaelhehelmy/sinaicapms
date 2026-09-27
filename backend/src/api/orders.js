@@ -666,6 +666,13 @@ ordersRoutes.get('/', async (c) => {
   const url = new URL(c.req.url);
   const tenantId = getScope(c).tenantId;
   const status = url.searchParams.get('status');
+  // 5e: optional ?projectType= narrow (line-level scoping). An order matches
+  // when ANY of its lines belongs to a same-tenant project of that type
+  // (order_items.project_id, stamped server-side since 5b); legacy untagged
+  // orders match via their booking project (orders.camp_id → projects).
+  // Additive: omitted = legacy tenant-wide list, byte-identical SQL. The value
+  // is bound via `?` (never interpolated), so unknown types safely match nothing.
+  const projectType = url.searchParams.get('projectType');
   // T6: page/pageSize envelope (clean migration from limit/offset)
   const { page, pageSize, offset } = parsePagination(url);
 
@@ -690,6 +697,15 @@ ordersRoutes.get('/', async (c) => {
     countBindings.push(status);
     dataQuery += " AND o.order_state_id = ?";
     dataBindings.push(status);
+  }
+
+  if (projectType) {
+    const countPredicate = " AND (EXISTS (SELECT 1 FROM order_items oi JOIN projects p ON p.id = oi.project_id AND p.tenant_id = orders.tenant_id WHERE oi.order_id = orders.id AND p.project_type = ?) OR EXISTS (SELECT 1 FROM projects pc WHERE pc.id = orders.camp_id AND pc.tenant_id = orders.tenant_id AND pc.project_type = ?))";
+    const dataPredicate = " AND (EXISTS (SELECT 1 FROM order_items oi JOIN projects p ON p.id = oi.project_id AND p.tenant_id = o.tenant_id WHERE oi.order_id = o.id AND p.project_type = ?) OR EXISTS (SELECT 1 FROM projects pc WHERE pc.id = o.camp_id AND pc.tenant_id = o.tenant_id AND pc.project_type = ?))";
+    countQuery += countPredicate;
+    countBindings.push(projectType, projectType);
+    dataQuery += dataPredicate;
+    dataBindings.push(projectType, projectType);
   }
 
   const { results: countResults } = await c.env.DB.prepare(countQuery).bind(...countBindings).all();
