@@ -68,7 +68,7 @@ function makeRequest(method, path, headers = {}, body = null) {
 
 function cartDb() {
   return makeRoutingDb()
-    .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
+    .on(/SELECT id, selling_price, project_id FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
     .on(/SELECT id FROM carts WHERE session_id/, null)
     .on(/INSERT INTO carts/, { meta: { changes: 1 } })
     .on(/SELECT id, quantity FROM cart_items/, null)

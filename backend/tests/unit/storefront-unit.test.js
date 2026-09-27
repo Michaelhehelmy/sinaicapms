@@ -127,7 +127,7 @@ describe('Storefront Cart', () => {
 
   it('POST /cart/items adds item to new cart', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
+      .on(/SELECT id, selling_price, project_id FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
       .on(/SELECT id FROM carts WHERE session_id/, null)
       .on(/INSERT INTO carts/, { meta: { changes: 1 } })
       .on(/SELECT id, quantity FROM cart_items/, null)
@@ -149,7 +149,7 @@ describe('Storefront Cart', () => {
   // if the handler ever reads the wrong column this test fails loudly.
   it('POST /cart/items prices from selling_price, not price (F-A4-1)', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', price: 999.0, selling_price: 30.0 }])
+      .on(/SELECT id, selling_price, project_id FROM pos_products/, [{ id: 'p1', price: 999.0, selling_price: 30.0 }])
       .on(/SELECT id FROM carts WHERE session_id/, null)
       .on(/INSERT INTO carts/, { meta: { changes: 1 } })
       .on(/SELECT id, quantity FROM cart_items/, null)
@@ -171,7 +171,7 @@ describe('Storefront Cart', () => {
 
   it('POST /cart/items increases quantity for existing item', async () => {
     const db = makeRoutingDb()
-      .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
+      .on(/SELECT id, selling_price, project_id FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
       .on(/SELECT id FROM carts WHERE session_id/, [{ id: 'cart1' }])
       .on(/SELECT id, quantity FROM cart_items/, [{ id: 'ci1', quantity: 1 }])
       .on(/UPDATE cart_items SET/, { meta: { changes: 1 } });
@@ -224,7 +224,7 @@ describe('Storefront Cart', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       const db = makeRoutingDb()
-        .on(/SELECT id, selling_price FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
+        .on(/SELECT id, selling_price, project_id FROM pos_products/, [{ id: 'p1', selling_price: 25.0 }])
         .on(/SELECT id FROM carts WHERE session_id/, null)
         .on(/INSERT INTO carts/, { meta: { changes: 1 } })
         .on(/SELECT id, quantity FROM cart_items/, null)

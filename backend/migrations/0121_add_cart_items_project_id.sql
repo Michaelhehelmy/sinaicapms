@@ -1,0 +1,44 @@
+-- Migration 0121: Phase-5 step 5a — cart_items.project_id (nullable, schema-only).
+--
+-- WHAT: adds a nullable `project_id TEXT REFERENCES projects(id) ON DELETE SET NULL`
+-- column to cart_items plus a matching lookup index. Zero behavior change:
+-- nullable, no backfill, no NOT NULL, no data touched. Writers stamp it
+-- server-side from the owning pos_products.project_id
+-- (backend/src/api/storefront.js POST /cart/items); legacy rows stay NULL.
+--
+-- NUMBERING: filesystem head was 0120_add_tip_amount_to_pos_transactions.sql.
+-- 0109 is RESERVED-but-absent (0110:20-25 — destructive camp-column drops, must
+-- not be consumed by any other task), so 0121 is the next free slot. Verified
+-- at commit time: no 0109 file present, no 0121 file present before this one.
+--
+-- SCOPE: this file touches cart_items ONLY. carts.project_id already exists
+-- since 0103 (nullable + idx_carts_project); checkout/order paths are owned by
+-- steps 5b/5c and are NOT touched here. No POS, no Paymob, no record-payment.
+--
+-- IDEMPOTENCY: SQLite/D1 has no `ADD COLUMN IF NOT EXISTS`, so the ADD COLUMN
+-- below is intentionally bare — same established pattern as
+-- 0100_add_project_id_nullable.sql / 0103_add_carts_project_id.sql (plain ALTER,
+-- applied once by the d1_migrations ledger). The companion index uses
+-- `CREATE INDEX IF NOT EXISTS` (mirrors 0082_ecommerce_cms.sql
+-- idx_cart_items_cart on this same table, plus 0100/0103).
+--
+-- FK PRECISION: inline `REFERENCES projects(id) ON DELETE SET NULL` follows the
+-- project ADD COLUMN precedent (0069_restaurant_tables.sql:46,54;
+-- 0090_marketplace_payouts.sql:34; 0100; 0103) and is recorded as the logical
+-- scope link; full FK enforcement/backfill is deferred (mirrors how camp_id FKs
+-- arrived via later rebuilds, e.g. 0066/0091).
+--
+-- ROLLBACK SAFETY (hard rule 7): ADD COLUMN is forward-only. Rollback = a NEW
+-- migration with `ALTER TABLE cart_items DROP COLUMN project_id` (SQLite 3.35+);
+-- optionally `DROP INDEX IF EXISTS idx_cart_items_project` for hygiene.
+--
+-- VERIFY (post-apply, read-only):
+-- SELECT name FROM pragma_table_info('cart_items') WHERE name = 'project_id';
+-- -- expect exactly one row: project_id | TEXT | 0 | 0 | 0 |
+-- SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_cart_items_project';
+-- -- expect exactly one row.
+--
+-- No KV writes (free-plan 1,000 writes/day quota).
+
+ALTER TABLE cart_items ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_cart_items_project ON cart_items(project_id);

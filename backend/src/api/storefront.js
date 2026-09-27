@@ -191,8 +191,11 @@ router.post('/cart/items', async (c) => {
   if (!parsed.success) return validationError(parsed);
   const { productId, quantity, sessionId } = parsed.data;
 
+  // 5a: the line's project rides along from the owning product, derived
+  // server-side (never trusted from the client — addToCartSchema strips
+  // unknown keys). NULL only for legacy untagged product rows.
   const product = await c.env.DB.prepare(
-    'SELECT id, selling_price FROM pos_products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL'
+    'SELECT id, selling_price, project_id FROM pos_products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL'
   ).bind(productId, tenantId).first();
   if (!product) return errorResponse('Product not found', 404);
 
@@ -202,9 +205,12 @@ router.post('/cart/items', async (c) => {
 
   if (!cart) {
     const cartId = crypto.randomUUID();
+    // 5a: stamp the header with the creating line's project (single-project
+    // header; later lines with different projects keep their own project on
+    // cart_items). NULL only when the product itself is legacy-untagged.
     await c.env.DB.prepare(
-      'INSERT INTO carts (id, tenant_id, session_id) VALUES (?, ?, ?)'
-    ).bind(cartId, tenantId, sessionId).run();
+      'INSERT INTO carts (id, tenant_id, session_id, project_id) VALUES (?, ?, ?, ?)'
+    ).bind(cartId, tenantId, sessionId, product.project_id ?? null).run();
     cart = { id: cartId };
   }
 
@@ -217,16 +223,19 @@ router.post('/cart/items', async (c) => {
 
   if (existingItem) {
     const newQty = existingItem.quantity + quantity;
+    // 5a: re-stamp the line's project from its product (authoritative per
+    // line; heals legacy NULL rows on re-add).
     await c.env.DB.prepare(
-      "UPDATE cart_items SET quantity = ?, total_price = unit_price * ?, created_at = datetime('now') WHERE id = ?"
-    ).bind(newQty, newQty, existingItem.id).run();
+      "UPDATE cart_items SET quantity = ?, total_price = unit_price * ?, project_id = ?, created_at = datetime('now') WHERE id = ?"
+    ).bind(newQty, newQty, product.project_id ?? null, existingItem.id).run();
     return jsonResponse({ id: existingItem.id, cartId: cart.id, productId, quantity: newQty, unitPrice, totalPrice: unitPrice * newQty, success: true });
   }
 
   const itemId = crypto.randomUUID();
+  // 5a: every new line binds its product's project (never from the client).
   await c.env.DB.prepare(
-    'INSERT INTO cart_items (id, cart_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(itemId, cart.id, productId, quantity, unitPrice, totalPrice).run();
+    'INSERT INTO cart_items (id, cart_id, product_id, quantity, unit_price, total_price, project_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(itemId, cart.id, productId, quantity, unitPrice, totalPrice, product.project_id ?? null).run();
 
   // Wave 1.5 monitoring: structured [storefront] log (Workers Logs, logpush-consumable JSON).
   console.log('[storefront]', JSON.stringify({ event: 'cart.add', productId, quantity, sessionId, tenantId, unitPrice, success: true }));
