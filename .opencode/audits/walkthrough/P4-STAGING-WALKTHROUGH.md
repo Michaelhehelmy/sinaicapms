@@ -1,5 +1,55 @@
 # P4 Staging Walkthrough — POS Isolation (live)
 
+> ## ATTEMPT 4 2026-09-27 — verdict: BLOCKED at D.4 (spec `.opencode/agents/tmp/2026-09-27-section-d.md`, fresh D1 `40f944f2`)
+>
+> - D.1 PASS — `GET /pos` on `acacia.staging.sinaicamps.com` 200 (462 ms);
+>   `testpos` login hydrates, NULL-claim cashier takes the designed explicit
+>   picker (1 option: `Acacia Camp`); shell `pos-user-name` = `Test POS`,
+>   `pos-project-name` = 1 element `Acacia Camp`, body contains = true, 0 page errors.
+> - D.2 PASS — open shift `sh_f0208dde-7a3`, opening 100; D1: exactly 1 open,
+>   store_id 1, cashier 3.
+> - D.3 PASS — P4TEST `p4test_55D6EA4F0CDD` stock == **10** exact; same-name rows: 1.
+> - D.4 FAIL — sell 3× P4TEST cash → **`500 {"success":false,"error":"Failed to create order"}`
+>   (×2, keys `p4fresh-001/002`)**. Live `wrangler tail` on
+>   `campmaster-backend-staging` captured the worker-side cause verbatim:
+>   `[POS CREATE ORDER ERROR] D1_ERROR: CHECK constraint failed: kitchen_status IN
+>   ('pending', 'confirmed', 'preparing', 'ready', 'served', 'canceled')`.
+>   Root cause (source read-only, NOT touched): the `ef8b776` tip_amount fix
+>   misordered the sale INSERT binds — columns list `…, table_id, kitchen_status,
+>   tip_amount, …` but values bind `tableId, tipAmount||0 (=0), 'pending', …`, so
+>   `kitchen_status ← 0` violates the CHECK and `tip_amount ← 'pending'`. The
+>   `'pending'` literal sits one slot too late (`backend/src/routes/pos/index.js`
+>   ~:764-783). EVERY POS sale on this tree is broken (staging now, prod on next
+>   deploy) — with or without a tip. STOP honored, D.5–D.7 NOT RUN, no source/deploy touched.
+> - State left clean: shift `sh_f0208dde-7a3` closed (expected 100 / actual 100 /
+>   discrepancy 0); P4TEST stock still 10; today `pos_transactions` for tenant = 0;
+>   open shifts = 0. D1 otherwise SELECT-only.
+> - Remediation: swap the two slots (bind `tipAmount||0` to `tip_amount`,
+>   literal `'pending'` to `kitchen_status`) + extend the INSERT-shape test to
+>   assert value→column positional mapping (not just column presence) +
+>   `./deploy.sh --staging`, then re-run this spec — D.4 gate is stock 10→7 exact
+>   + txn `project_id` = `proj_27709a3f-f50` NOT NULL (resolves via tenant-default
+>   fallback: store 1 `project_id` IS NULL, token claim null, single-project default).
+>
+> ### Attempt-4 gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | D1 `GET /pos` (tenant host) | 200 · 462 ms nav (`domcontentloaded`); root-host `/pos` = 404 (tenant-only, by design) |
+> | D1 login → shell | ok (`Test POS`), picker 1 option (`Acacia Camp`), 0 page errors |
+> | D1 `pos-project-name` elements | 1, text `Acacia Camp`; body contains = true |
+> | D1 POS login API | 200 · user 3 / store 1 / projectId null (store 1 unbound) |
+> | D1 D1 ledger head | `0120_add_tip_amount_to_pos_transactions.sql` (`tip_amount` PRAGMA present) |
+> | D2 open shift | `sh_f0208dde-7a3`, opening 100; D1: exactly 1 open, store_id 1, cashier 3 |
+> | D3 pre-sale stock | P4TEST `p4test_55D6EA4F0CDD` (price 5, retail, project `proj_27709a3f-f50`) == **10** exact; same-name rows: 1 |
+> | D4 sale attempts | 2 × `500 Failed to create order`; post-sale stock **10** (unchanged); today txns **0** |
+> | D4 worker error (tail verbatim) | `D1_ERROR: CHECK constraint failed: kitchen_status IN ('pending', …)` |
+> | Cleanup close | expected 100 / actual 100 / discrepancy **0**; open shifts after = 0 |
+> | Mutations performed | open 1, successful sales 0 (2 failed, zero writes), close 1; D1 otherwise SELECT-only |
+> | Screenshots | `p4-fresh-01-login.png`, `p4-fresh-01b-picker.png`, `p4-fresh-02-shell.png` |
+>
+> ### Prior runs kept below (attempt 3 BLOCKED at STEP 4 on missing-column drift; retry BLOCKED at STEP 4 idem; first run BLOCKED at STEP 1, staging stale).
+
 > ## ATTEMPT 3 2026-09-25 — verdict: BLOCKED at STEP 4 (spec `.opencode/agents/tmp/2026-09-24-p4-attempt3.md`)
 >
 > - Premise ("post-0120 redeploy, 0120 live") FALSIFIED read-only at STEP 1: staging
