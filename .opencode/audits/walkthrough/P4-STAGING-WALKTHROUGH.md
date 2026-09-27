@@ -1,5 +1,66 @@
 # P4 Staging Walkthrough — POS Isolation (live)
 
+> ## ATTEMPT 5 2026-09-27 — verdict: PASS (spec `.opencode/agents/tmp/2026-09-27-p4-postfix.md`, fresh D1 `40f944f2`, staging redeployed with `bd452c9`)
+>
+> - D.1 PASS — `GET /pos` on `acacia.staging.sinaicamps.com` 200 (curl 0.50 s /
+>   8297 B; Playwright nav 592 ms `domcontentloaded`); root-host `/pos` = 404
+>   (tenant-only, by design); `testpos` login hydrates, NULL-claim cashier takes
+>   the designed explicit picker (1 radio: `Acacia Camp` + Continue); shell
+>   `pos-user-name` = `Test POS`, `pos-project-name` = 1 element `Acacia Camp`,
+>   body contains = true, 0 page errors. POS login API 200, token user 3 /
+>   store 1 / projectId null (store 1 unbound — server scopes via tenant-default
+>   fallback below).
+> - D.2 PASS — open shift `sh_9efa2eac-c1e`, opening 100; D1: exactly 1 open,
+>   tenant `tenant_a2d040ea-3b1`, store_id 1, cashier 3. Pre-open open shifts = 0.
+> - D.3 PASS — P4TEST `p4test_55D6EA4F0CDD` (price 5, retail, project
+>   `proj_27709a3f-f50`, org 1) stock == **10** exact (re-verified immediately
+>   pre-sale); same-name rows: 1; today `pos_transactions` = 0.
+> - D.4 PASS — sell 3× P4TEST cash (single qty-3 order, key `p4fix-001`) →
+>   **`200 {"success":true}`** `ord_ae05afe6-04b` / `ORD-MUJOT2R7`, subtotal 15,
+>   tax 1.5, total 16.5, kitchenStatus `pending`, tipAmount 0. The `bd452c9` bind
+>   fix is proven live (attempt-4's 500 CHECK failure is gone). D1 asserts, all
+>   exact: stock **10 → 7**; txn `project_id` = `proj_27709a3f-f50` NOT NULL
+>   (NULL-claim + unbound store 1 → single-project tenant-default fallback);
+>   `kitchen_status` = `pending` (valid enum string); `tip_amount` = 0, typeof
+>   real (numeric). Orders view screenshot shows `ORD-MUJOT2R7`, 0 page errors.
+> - D.5 NOT-TESTABLE (recorded) — tenant owns exactly 1 project; zero SKUs span
+>   >1 project, so there is no cross-project pair to isolate. PRESENT-or-NOT-TESTABLE
+>   allowance applied, no write attempted.
+> - D.6 PASS — close shift `sh_9efa2eac-c1e`: expected **116.5** / actual 116.5 /
+>   discrepancy **0** (100 + 16.5 cash sale); D1: open shifts = 0, today txns = 1,
+>   today total = 16.5.
+> - D.7 PASS — cross-tenant leak probe: `GET /api/pos/orders/ord_foreign0000`
+>   with acacia token → **404 `{"success":false,"error":"Order not found"}`
+>   (never 200+row)**; `GET /api/pos/orders?limit=50` returns exactly 1 row
+>   (`ord_ae05afe6-04b`, our sale — D1 already proves its tenant/project scope).
+> - D.8 PASS — final sweep: P4TEST stock 7, shift closed 100/116.5/116.5/0,
+>   today txns 1 × 16.5, open shifts 0. State left clean (fresh shift opened and
+>   closed inside this run; no stray opens).
+> - Mutations performed (budget: open/sell/close ONLY): open 1, sales 1 (qty-3,
+>   1 order), close 1. D1 otherwise SELECT-only. No source touched, no deploy.sh.
+>
+> ### Attempt-5 gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | D1 `GET /pos` (tenant host) | 200 · curl 0.50 s / 8297 B · nav 592 ms (`domcontentloaded`); root-host `/pos` = 404 (tenant-only, by design) |
+> | D1 login → shell | ok (`Test POS`), picker 1 radio (`Acacia Camp`) + Continue, 0 page errors |
+> | D1 `pos-project-name` elements | 1, text `Acacia Camp`; body contains = true |
+> | D1 POS login API | 200 · user 3 / store 1 / projectId null (store 1 unbound) / tenant `tenant_a2d040ea-3b1` |
+> | D2 open shift | `sh_9efa2eac-c1e`, opening 100; D1: exactly 1 open, store_id 1, cashier 3 |
+> | D3 pre-sale stock | P4TEST `p4test_55D6EA4F0CDD` (price 5, retail, project `proj_27709a3f-f50`) == **10** exact; same-name rows: 1; today txns 0 |
+> | D4 sale | 200 `ord_ae05afe6-04b` / `ORD-MUJOT2R7` (qty 3, key `p4fix-001`); subtotal 15 / tax 1.5 / total 16.5 / cash 16.5 |
+> | D4 post-sale stock | **7** exact (10 → 7) |
+> | D4 txn asserts (D1) | `project_id` = `proj_27709a3f-f50` NOT NULL; `kitchen_status` = `pending` (enum); `tip_amount` = 0 typeof real (numeric) |
+> | D5 cross-project | NOT-TESTABLE — 1 project, 0 multi-project SKUs |
+> | D6 close | expected **116.5** / actual 116.5 / discrepancy **0**; open shifts after = 0; today txns = 1 × 16.5 |
+> | D7 cross-tenant | foreign order id → **404** Order not found (never 200+row); list = exactly 1 row (our sale) |
+> | D8 final sweep | stock 7, shift closed, open 0, today 1 × 16.5 — clean |
+> | Mutations performed | open 1, sales 1 (qty-3 single order), close 1; D1 otherwise SELECT-only |
+> | Screenshots | `p4-fix-00-login-form.png`, `p4-fix-01-after-login.png`, `p4-fix-01b-picker.png`, `p4-fix-02-shell.png`, `p4-fix-03-orders.png` |
+>
+> ### Prior runs kept below (attempt 4 BLOCKED at D.4 on the kitchen_status/tip_amount bind swap — fixed by `bd452c9`, proven live here).
+
 > ## ATTEMPT 4 2026-09-27 — verdict: BLOCKED at D.4 (spec `.opencode/agents/tmp/2026-09-27-section-d.md`, fresh D1 `40f944f2`)
 >
 > - D.1 PASS — `GET /pos` on `acacia.staging.sinaicamps.com` 200 (462 ms);
