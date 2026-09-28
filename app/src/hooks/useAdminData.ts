@@ -64,6 +64,13 @@ export interface Order {
   customerPhone?: string | null;
   roomName: string | null;
   stateName: string | null;
+  // T40 union list (additive): `source` discriminator projected by
+  // GET /orders over orders + storefront_orders ('booking' | 'storefront').
+  // Legacy rows omit it — treat missing as booking. `projectId` is the
+  // header project tag (orders.project_id); absent until the backend
+  // projects it — callers fall back to campId.
+  source?: 'booking' | 'storefront' | string;
+  projectId?: string | null;
 }
 
 export interface RatePlan {

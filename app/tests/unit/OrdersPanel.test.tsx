@@ -426,3 +426,70 @@ describe('OrdersPanel project filter (5e)', () => {
     expect(screen.getAllByTestId('data-row')).toHaveLength(2);
   });
 });
+
+describe('OrdersPanel T40 unified list', () => {
+  // Spec vocabulary: booking 200 Camp + storefront 1550 (NULL header project).
+  const booking = { id: 'oB', campId: 'c1', roomId: 'r1', reference: 'REF-B', orderStateId: 'confirmed', paymentStatus: 'paid', totalAmount: 200, customerFirstName: 'Camp', customerLastName: 'Guest', checkInDate: '2026-08-01', checkOutDate: '2026-08-03', stateName: 'confirmed', source: 'booking' };
+  const shop = { id: 'so_1', campId: null, roomId: null, reference: 'SHOP-1', orderStateId: 'pending', paymentStatus: 'paid', totalAmount: 1550, customerFirstName: null, customerLastName: null, checkInDate: null, checkOutDate: null, stateName: 'pending', source: 'storefront' };
+
+  function setupUnion() {
+    setupMocks({
+      useOrdersQuery: { data: { data: [booking, shop] as never, total: 2 }, isLoading: false, error: null, isFetching: false },
+    });
+  }
+
+  function renderUnion() {
+    render(<OrdersPanel campIds={['c1']} camps={[{ id: 'c1', name: 'Test Camp' } as never]} />);
+  }
+
+  it('renders Booking/Shop badges and keeps storefront rows outside the camp scope', () => {
+    setupUnion();
+    renderUnion();
+    // The NULL-campId shop row survives the campIds filter (dual-source scope).
+    expect(screen.getAllByTestId('data-row')).toHaveLength(2);
+    expect(screen.getByText('Booking')).toBeInTheDocument();
+    expect(screen.getByText('Shop')).toBeInTheDocument();
+    // Revenue sums both sources over paid rows (200 + 1550).
+    expect(screen.getByText('$1750.00')).toBeInTheDocument();
+  });
+
+  it('renders N/A for the storefront NULL room and stay dates (NULL-guard)', () => {
+    setupUnion();
+    renderUnion();
+    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('gates State/Del actions to booking rows (storefront rows are read-only)', () => {
+    setupUnion();
+    renderUnion();
+    expect(screen.getAllByText('View')).toHaveLength(2);
+    expect(screen.getAllByText('State')).toHaveLength(1);
+    expect(screen.getAllByText('Del')).toHaveLength(1);
+  });
+
+  it('hides Record payment on the shop detail modal, keeps it on booking', () => {
+    setupUnion();
+    renderUnion();
+    fireEvent.click(screen.getAllByText('View')[1]);
+    expect(screen.getByText('Reservation — SHOP-1')).toBeInTheDocument();
+    expect(screen.getAllByText('Shop').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByTestId('record-payment-btn')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('modal-close'));
+    fireEvent.click(screen.getAllByText('View')[0]);
+    expect(screen.getByTestId('record-payment-btn')).toBeInTheDocument();
+  });
+
+  it('dual-source project filter passes projectType through; shop rows survive client scope', () => {
+    setupMocks();
+    // Server narrow mocked at the hook boundary (line-level EXISTS match);
+    // the panel passes the param through and must not drop shop rows locally.
+    mockUseOrdersQuery.mockImplementation(() => ({
+      data: { data: [booking, shop] as never, total: 2 }, isLoading: false, error: null, isFetching: false,
+    }));
+    mockUseCampsQuery.mockReturnValue({ data: [{ id: 'c1', name: 'Test Camp', projectType: 'camp' }], isLoading: false, error: null });
+    renderUnion();
+    fireEvent.change(screen.getByDisplayValue('All Projects'), { target: { value: 'camp' } });
+    expect(mockUseOrdersQuery).toHaveBeenLastCalledWith({ projectType: 'camp' });
+    expect(screen.getAllByTestId('data-row')).toHaveLength(2);
+  });
+});

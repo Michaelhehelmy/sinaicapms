@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import ReportsPanel from '@/components/admin/ReportsPanel';
+import ReportsPanel, { mergeProfitSources } from '@/components/admin/ReportsPanel';
 
 const mockShowToast = vi.fn();
 
@@ -18,6 +18,11 @@ let mockOccError: Error | null = null;
 let mockRevError: Error | null = null;
 let mockBookError: Error | null = null;
 let mockProfitError: Error | null = null;
+// T40: union-orders mock (storefront leg of the profit union; empty default
+// keeps every pre-T40 profit test booking-only and byte-identical).
+// Shape is the Paginated envelope: { data: <rows>, total, ... }.
+let mockUnionRes: unknown = { data: [], total: 0, page: 1, pageSize: 50, hasMore: false };
+let mockUnionLoading = false;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -38,6 +43,8 @@ vi.mock('@/hooks/useQueryHooks', () => {
     useBookingsReportQuery: () => useQuery(mockBookData, mockBookLoading, mockBookError),
     // 5f: profit hook mock (same hook-boundary idiom as the other three).
     useProfitReportQuery: () => useQuery(mockProfitData, mockProfitLoading, mockProfitError),
+    // T40: union orders hook mock (storefront leg source; same idiom).
+    useOrdersQuery: () => useQuery(mockUnionRes, mockUnionLoading, null),
   };
 });
 
@@ -101,6 +108,8 @@ describe('ReportsPanel', () => {
     mockRevError = null;
     mockBookError = null;
     mockProfitError = null;
+    mockUnionRes = { data: [], total: 0, page: 1, pageSize: 50, hasMore: false };
+    mockUnionLoading = false;
   });
 
   it('renders the reports panel with header', () => {
@@ -391,5 +400,100 @@ describe('ReportsPanel profit tab (5f)', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'revenue' } });
     expect(screen.getByText('Revenue Report')).toBeInTheDocument();
     expect(screen.getByText('$500.00')).toBeInTheDocument();
+  });
+});
+
+describe('ReportsPanel profit union (T40)', () => {
+  // Spec vocabulary: one camp project + one restaurant project; booking 200
+  // Camp + storefront 1550 (1500 Camp / 50 Restaurant).
+  const t40Projects = [
+    { id: 'proj_camp', name: 'Accommodation', projectType: 'camp' },
+    { id: 'proj_rest', name: 'Restaurant', projectType: 'restaurant' },
+  ];
+  const t40Camps = [
+    { id: 'proj_camp', name: 'Accommodation', location: '', startDate: '', endDate: '', capacity: 0, status: 'active', notes: '', projectType: 'camp' },
+    { id: 'proj_rest', name: 'Restaurant', location: '', startDate: '', endDate: '', capacity: 0, status: 'active', notes: '', projectType: 'restaurant' },
+  ];
+  const bookingCamp200 = {
+    byProject: [
+      { projectId: 'proj_camp', projectName: 'Accommodation', projectType: 'camp', revenue: 200, lineCount: 1, orderCount: 1 },
+    ],
+    total: { totalRevenue: 200, totalLines: 1, totalOrders: 1 },
+  };
+  const shopSo1 = {
+    id: 'so_1', campId: null, roomId: null, reference: 'SHOP-1', orderStateId: 'pending',
+    paymentStatus: 'paid', totalAmount: 1550, customerFirstName: null, customerLastName: null,
+    checkInDate: null, checkOutDate: null, stateName: 'pending', source: 'storefront',
+    items: [
+      { projectId: 'proj_camp', totalPrice: 1500 },
+      { projectId: 'proj_rest', totalPrice: 50 },
+    ],
+  };
+
+  function renderProfitUnion() {
+    render(<ReportsPanel campIds={['proj_camp', 'proj_rest']} camps={t40Camps as never} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'profit' } });
+  }
+
+  it('numeric: booking 200 Camp + storefront 1550 (1500/50) ⇒ total 1750, Camp 1700, Restaurant 50', () => {
+    const { rows, total } = mergeProfitSources(
+      [{ projectId: 'proj_camp', projectName: 'Accommodation', projectType: 'camp', revenue: 200, lineCount: 1, orderCount: 1 }],
+      [
+        { projectId: 'proj_camp', totalPrice: 1500, orderId: 'so_1' },
+        { projectId: 'proj_rest', totalPrice: 50, orderId: 'so_1' },
+      ],
+      t40Projects,
+    );
+    expect(total.revenue).toBe(1750);
+    expect(rows.find((r) => r.projectId === 'proj_camp')?.revenue).toBe(1700);
+    expect(rows.find((r) => r.projectId === 'proj_rest')?.revenue).toBe(50);
+    // Footer-SUM == aggregate by construction.
+    expect(rows.reduce((a, r) => a + r.revenue, 0)).toBe(total.revenue);
+  });
+
+  it('tab renders the both-source union (footer 1750, Camp 1700, Restaurant 50)', () => {
+    mockProfitData = bookingCamp200;
+    mockUnionRes = { data: [shopSo1], total: 1, page: 1, pageSize: 50, hasMore: false };
+    renderProfitUnion();
+    expect(screen.getByText('Accommodation')).toBeInTheDocument();
+    expect(screen.getByText('Restaurant')).toBeInTheDocument();
+    expect(screen.getByText('$1700.00')).toBeInTheDocument();
+    expect(screen.getByText('$50.00')).toBeInTheDocument();
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$1750.00');
+  });
+
+  it('union-list booking rows never double-count the server leg', () => {
+    mockProfitData = bookingCamp200;
+    mockUnionRes = {
+      data: [{ id: 'oB', campId: 'proj_camp', roomId: 'r1', reference: 'REF-B', orderStateId: 'confirmed', paymentStatus: 'paid', totalAmount: 200, source: 'booking' }],
+      total: 1, page: 1, pageSize: 50, hasMore: false,
+    };
+    renderProfitUnion();
+    // Exactly one row cell + the footer (a doubled server leg would render 3).
+    expect(screen.getAllByText('$200.00')).toHaveLength(2);
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$200.00');
+  });
+
+  it('header-grain storefront rows without line tags land in Unassigned (nothing dropped)', () => {
+    mockProfitData = bookingCamp200;
+    mockUnionRes = {
+      data: [{ id: 'so_2', campId: null, roomId: null, reference: 'SHOP-2', orderStateId: 'pending', paymentStatus: 'paid', totalAmount: 100, source: 'storefront' }],
+      total: 1, page: 1, pageSize: 50, hasMore: false,
+    };
+    renderProfitUnion();
+    expect(screen.getByText('Unassigned')).toBeInTheDocument();
+    expect(screen.getByText('$100.00')).toBeInTheDocument();
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$300.00');
+  });
+
+  it('cancelled storefront rows are excluded like the server leg', () => {
+    mockProfitData = bookingCamp200;
+    mockUnionRes = {
+      data: [{ ...shopSo1, id: 'so_x', orderStateId: 'cancelled', items: [{ projectId: 'proj_camp', totalPrice: 999 }] }],
+      total: 1, page: 1, pageSize: 50, hasMore: false,
+    };
+    renderProfitUnion();
+    expect(screen.queryByText('$999.00')).not.toBeInTheDocument();
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$200.00');
   });
 });

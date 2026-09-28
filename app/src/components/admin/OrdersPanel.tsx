@@ -52,6 +52,23 @@ function getOrderStateVariant(stateId: string): 'warning' | 'info' | 'success' |
   }
 }
 
+// T40 union list — dual-source helpers (design 07-t40-design.md §3).
+// `source` is projected by GET /orders ('booking' | 'storefront'); legacy
+// rows omit it and read as booking. Storefront rows carry NULL camp/room/
+// stay columns by design, so they can never match the header-project scope.
+export function orderSource(o: Order): 'booking' | 'storefront' {
+  return (o as Order & { source?: string }).source === 'storefront' ? 'storefront' : 'booking';
+}
+
+// Dual-source project scope: booking rows match via the header project tag
+// (orders.project_id, camp_id fallback); storefront rows match via the
+// server-side EXISTS line match (?projectType= over
+// storefront_order_items.project_id), so they always pass the client scope.
+export function matchesProjectScope(o: Order, campIds: string[]): boolean {
+  if (orderSource(o) === 'storefront') return true;
+  return campIds.includes(o.projectId ?? o.campId);
+}
+
 export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersPanelProps) {
   const [projectFilter, setProjectFilter] = useState<string>('all');
   // 5e: server narrows by line-level project type (?projectType=); 'all' keeps
@@ -82,7 +99,7 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
   const deleteMutation = useDeleteOrderMutation();
 
   const filteredOrders = useMemo(() => {
-    let result = orders.filter((o) => campIds.includes(o.campId));
+    let result = orders.filter((o) => matchesProjectScope(o, campIds));
     if (statusFilter !== 'all') {
       result = result.filter((o) => o.paymentStatus === statusFilter);
     }
@@ -90,7 +107,7 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
   }, [orders, campIds, statusFilter]);
 
   const stats = useMemo(() => {
-    const filtered = orders.filter((o) => campIds.includes(o.campId));
+    const filtered = orders.filter((o) => matchesProjectScope(o, campIds));
     return {
       total: filtered.length,
       pending: filtered.filter((o) => o.orderStateId === 'pending').length,
@@ -222,6 +239,18 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
         <DataTable<Order & Record<string, unknown>>
           columns={[
             { key: 'reference', header: 'Ref #', sortable: true, render: (o) => <strong className="text-green-700">{String(o.reference || o.id).slice(0, 12)}</strong> },
+            // T40: source discriminator badge (Booking = orders leg, Shop = storefront leg).
+            {
+              key: 'source',
+              header: 'Type',
+              render: (o) => (
+                orderSource(o as unknown as Order) === 'storefront' ? (
+                  <Badge variant="info" size="sm">Shop</Badge>
+                ) : (
+                  <Badge variant="neutral" size="sm">Booking</Badge>
+                )
+              ),
+            },
             {
               key: 'customerFirstName',
               header: 'Guest',
@@ -244,13 +273,15 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
               key: 'checkInDate',
               header: 'Check-in',
               sortable: true,
-              render: (o) => formatDate(String(o.checkInDate)),
+              // T40: storefront rows carry NULL stay dates — render N/A
+              // (formatDate throws RangeError on Invalid Date).
+              render: (o) => (o.checkInDate ? formatDate(String(o.checkInDate)) : 'N/A'),
             },
             {
               key: 'checkOutDate',
               header: 'Check-out',
               sortable: true,
-              render: (o) => formatDate(String(o.checkOutDate)),
+              render: (o) => (o.checkOutDate ? formatDate(String(o.checkOutDate)) : 'N/A'),
             },
             {
               key: 'totalAmount',
@@ -279,23 +310,30 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
               >
                 View
               </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setShowStateChange(o as unknown as Order);
-                  setNewState(String(o.orderStateId));
-                }}
-              >
-                State
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setDeleteTarget(o as unknown as Order)}
-              >
-                Del
-              </Button>
+              {/* T40 lifecycle gating (design §3): State / Del are
+                  booking-table writers — storefront rows are read-only
+                  in the panel (backend 400s them since dd5b7d9). */}
+              {orderSource(o as unknown as Order) === 'booking' && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setShowStateChange(o as unknown as Order);
+                      setNewState(String(o.orderStateId));
+                    }}
+                  >
+                    State
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setDeleteTarget(o as unknown as Order)}
+                  >
+                    Del
+                  </Button>
+                </>
+              )}
             </div>
           )}
         />
@@ -310,6 +348,13 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
           submitLabel="Close"
         >
           <div className="space-y-3 text-sm">
+            <div>
+              {orderSource(detail) === 'storefront' ? (
+                <Badge variant="info" size="sm">Shop</Badge>
+              ) : (
+                <Badge variant="neutral" size="sm">Booking</Badge>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div><strong>Reference:</strong> {detail.reference}</div>
               <div><strong>State:</strong> {detail.stateName || detail.orderStateId}</div>
@@ -317,9 +362,9 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
               <div><strong>Email:</strong> {detail.customerEmail || 'N/A'}</div>
               <div><strong>Phone:</strong> {detail.customerPhone || 'N/A'}</div>
               <div><strong>Room:</strong> {roomMap[String(detail.roomId)]?.name ?? 'N/A'}</div>
-              <div><strong>Check-in:</strong> {formatDate(String(detail.checkInDate))}</div>
-              <div><strong>Check-out:</strong> {formatDate(String(detail.checkOutDate))}</div>
-              <div><strong>People:</strong> {detail.numberOfPeople}</div>
+              <div><strong>Check-in:</strong> {detail.checkInDate ? formatDate(String(detail.checkInDate)) : 'N/A'}</div>
+              <div><strong>Check-out:</strong> {detail.checkOutDate ? formatDate(String(detail.checkOutDate)) : 'N/A'}</div>
+              <div><strong>People:</strong> {detail.numberOfPeople ?? 'N/A'}</div>
               <div><strong>Total:</strong> {formatCurrency(detail.totalAmount || 0)}</div>
               <div><strong>Paid:</strong> {formatCurrency(detail.amountPaid || 0)}</div>
               <div><strong>Payment:</strong> {detail.paymentMethod || 'N/A'}</div>
@@ -329,16 +374,19 @@ export default function OrdersPanel({ campIds, camps, onNavigateToTab }: OrdersP
                 <strong>Notes:</strong> {detail.notes}
               </div>
             )}
-            <div>
-              <Button
-                variant="secondary"
-                size="sm"
-                data-testid="record-payment-btn"
-                onClick={() => setPaymentTarget(detail)}
-              >
-                Record payment
-              </Button>
-            </div>
+            {/* T40: record-payment is a booking-table writer — hidden on shop rows. */}
+            {orderSource(detail) === 'booking' && (
+              <div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  data-testid="record-payment-btn"
+                  onClick={() => setPaymentTarget(detail)}
+                >
+                  Record payment
+                </Button>
+              </div>
+            )}
           </div>
         </FormModal>
       )}

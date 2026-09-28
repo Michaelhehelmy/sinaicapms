@@ -44,6 +44,13 @@ vi.mock('@/hooks/useQueryHooks', () => ({
     isLoading: mockProfitLoading,
     error: mockProfitError,
   }),
+  // T40: union orders hook mock — empty list keeps this suite booking-only.
+  useOrdersQuery: () => ({
+    data: { data: [], total: 0, page: 1, pageSize: 50, hasMore: false },
+    isLoading: false,
+    error: null,
+    isFetching: false,
+  }),
 }));
 
 vi.mock('@/lib/utils', () => ({
