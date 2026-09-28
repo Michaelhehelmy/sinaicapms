@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import ReportsPanel, { mergeProfitSources } from '@/components/admin/ReportsPanel';
+import ReportsPanel from '@/components/admin/ReportsPanel';
 
 const mockShowToast = vi.fn();
 
@@ -18,11 +18,13 @@ let mockOccError: Error | null = null;
 let mockRevError: Error | null = null;
 let mockBookError: Error | null = null;
 let mockProfitError: Error | null = null;
-// T40: union-orders mock (storefront leg of the profit union; empty default
-// keeps every pre-T40 profit test booking-only and byte-identical).
-// Shape is the Paginated envelope: { data: <rows>, total, ... }.
+// T40 client-leg removal: the profit tab makes NO orders-list fetch.
+// This spy pins it — the panel no longer imports useOrdersQuery, so any call
+// proves a client-leg regression. The union envelope mock stays so a
+// non-empty list would double-count under the old merge (3100 + list).
 let mockUnionRes: unknown = { data: [], total: 0, page: 1, pageSize: 50, hasMore: false };
 let mockUnionLoading = false;
+let ordersQueryCalls = 0;
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast: mockShowToast }),
@@ -43,8 +45,8 @@ vi.mock('@/hooks/useQueryHooks', () => {
     useBookingsReportQuery: () => useQuery(mockBookData, mockBookLoading, mockBookError),
     // 5f: profit hook mock (same hook-boundary idiom as the other three).
     useProfitReportQuery: () => useQuery(mockProfitData, mockProfitLoading, mockProfitError),
-    // T40: union orders hook mock (storefront leg source; same idiom).
-    useOrdersQuery: () => useQuery(mockUnionRes, mockUnionLoading, null),
+    // T40 client-leg removal: spy — the panel must never call this for profit.
+    useOrdersQuery: () => { ordersQueryCalls += 1; return useQuery(mockUnionRes, mockUnionLoading, null); },
   };
 });
 
@@ -110,6 +112,7 @@ describe('ReportsPanel', () => {
     mockProfitError = null;
     mockUnionRes = { data: [], total: 0, page: 1, pageSize: 50, hasMore: false };
     mockUnionLoading = false;
+    ordersQueryCalls = 0;
   });
 
   it('renders the reports panel with header', () => {
@@ -403,97 +406,73 @@ describe('ReportsPanel profit tab (5f)', () => {
   });
 });
 
-describe('ReportsPanel profit union (T40)', () => {
-  // Spec vocabulary: one camp project + one restaurant project; booking 200
-  // Camp + storefront 1550 (1500 Camp / 50 Restaurant).
-  const t40Projects = [
-    { id: 'proj_camp', name: 'Accommodation', projectType: 'camp' },
-    { id: 'proj_rest', name: 'Restaurant', projectType: 'restaurant' },
-  ];
+describe('ReportsPanel profit server-only (T40 client-leg removal)', () => {
+  // Server UNION vocabulary (staging truth 2026-09-28): Camp 3000/2/2 +
+  // Restaurant 100/2/2 = total 3100/4/2, Unassigned absent. The panel renders
+  // these rows verbatim — no orders-list fetch, no client merge.
   const t40Camps = [
     { id: 'proj_camp', name: 'Accommodation', location: '', startDate: '', endDate: '', capacity: 0, status: 'active', notes: '', projectType: 'camp' },
     { id: 'proj_rest', name: 'Restaurant', location: '', startDate: '', endDate: '', capacity: 0, status: 'active', notes: '', projectType: 'restaurant' },
   ];
-  const bookingCamp200 = {
+  const serverProfit3100 = {
     byProject: [
-      { projectId: 'proj_camp', projectName: 'Accommodation', projectType: 'camp', revenue: 200, lineCount: 1, orderCount: 1 },
+      { projectId: 'proj_camp', projectName: 'Accommodation', projectType: 'camp', revenue: 3000, lineCount: 2, orderCount: 2 },
+      { projectId: 'proj_rest', projectName: 'Restaurant', projectType: 'restaurant', revenue: 100, lineCount: 2, orderCount: 2 },
     ],
-    total: { totalRevenue: 200, totalLines: 1, totalOrders: 1 },
+    total: { totalRevenue: 3100, totalLines: 4, totalOrders: 2 },
   };
-  const shopSo1 = {
-    id: 'so_1', campId: null, roomId: null, reference: 'SHOP-1', orderStateId: 'pending',
-    paymentStatus: 'paid', totalAmount: 1550, customerFirstName: null, customerLastName: null,
-    checkInDate: null, checkOutDate: null, stateName: 'pending', source: 'storefront',
-    items: [
-      { projectId: 'proj_camp', totalPrice: 1500 },
-      { projectId: 'proj_rest', totalPrice: 50 },
+  // The old client leg built this header-grain Unassigned bucket from the
+  // union list (2x1550, NULL header projectId) and added it on top of the
+  // server 3100 ⇒ 6200. It must now be ignored even when present.
+  const legacyUnionDoubleCount = {
+    data: [
+      { id: 'so_1', campId: null, roomId: null, reference: 'ORD-6SJU3V', orderStateId: 'pending', paymentStatus: 'pending', totalAmount: 1550, source: 'storefront', projectId: null },
+      { id: 'so_2', campId: null, roomId: null, reference: 'ORD-6S4R6R', orderStateId: 'pending', paymentStatus: 'pending', totalAmount: 1550, source: 'storefront', projectId: null },
     ],
+    total: 2, page: 1, pageSize: 50, hasMore: false,
   };
 
-  function renderProfitUnion() {
+  function renderProfitServer(data: unknown = serverProfit3100) {
+    mockProfitData = data;
     render(<ReportsPanel campIds={['proj_camp', 'proj_rest']} camps={t40Camps as never} />);
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'profit' } });
   }
 
-  it('numeric: booking 200 Camp + storefront 1550 (1500/50) ⇒ total 1750, Camp 1700, Restaurant 50', () => {
-    const { rows, total } = mergeProfitSources(
-      [{ projectId: 'proj_camp', projectName: 'Accommodation', projectType: 'camp', revenue: 200, lineCount: 1, orderCount: 1 }],
-      [
-        { projectId: 'proj_camp', totalPrice: 1500, orderId: 'so_1' },
-        { projectId: 'proj_rest', totalPrice: 50, orderId: 'so_1' },
-      ],
-      t40Projects,
-    );
-    expect(total.revenue).toBe(1750);
-    expect(rows.find((r) => r.projectId === 'proj_camp')?.revenue).toBe(1700);
-    expect(rows.find((r) => r.projectId === 'proj_rest')?.revenue).toBe(50);
-    // Footer-SUM == aggregate by construction.
-    expect(rows.reduce((a, r) => a + r.revenue, 0)).toBe(total.revenue);
-  });
-
-  it('tab renders the both-source union (footer 1750, Camp 1700, Restaurant 50)', () => {
-    mockProfitData = bookingCamp200;
-    mockUnionRes = { data: [shopSo1], total: 1, page: 1, pageSize: 50, hasMore: false };
-    renderProfitUnion();
+  it('server rows Camp 3000 + Restaurant 100 ⇒ footer total 3100', () => {
+    renderProfitServer();
+    expect(screen.getByRole('heading', { name: 'Profit by Project' })).toBeInTheDocument();
     expect(screen.getByText('Accommodation')).toBeInTheDocument();
     expect(screen.getByText('Restaurant')).toBeInTheDocument();
-    expect(screen.getByText('$1700.00')).toBeInTheDocument();
-    expect(screen.getByText('$50.00')).toBeInTheDocument();
-    expect(screen.getByTestId('profit-total')).toHaveTextContent('$1750.00');
-  });
-
-  it('union-list booking rows never double-count the server leg', () => {
-    mockProfitData = bookingCamp200;
-    mockUnionRes = {
-      data: [{ id: 'oB', campId: 'proj_camp', roomId: 'r1', reference: 'REF-B', orderStateId: 'confirmed', paymentStatus: 'paid', totalAmount: 200, source: 'booking' }],
-      total: 1, page: 1, pageSize: 50, hasMore: false,
-    };
-    renderProfitUnion();
-    // Exactly one row cell + the footer (a doubled server leg would render 3).
-    expect(screen.getAllByText('$200.00')).toHaveLength(2);
-    expect(screen.getByTestId('profit-total')).toHaveTextContent('$200.00');
-  });
-
-  it('header-grain storefront rows without line tags land in Unassigned (nothing dropped)', () => {
-    mockProfitData = bookingCamp200;
-    mockUnionRes = {
-      data: [{ id: 'so_2', campId: null, roomId: null, reference: 'SHOP-2', orderStateId: 'pending', paymentStatus: 'paid', totalAmount: 100, source: 'storefront' }],
-      total: 1, page: 1, pageSize: 50, hasMore: false,
-    };
-    renderProfitUnion();
-    expect(screen.getByText('Unassigned')).toBeInTheDocument();
+    expect(screen.getByText('$3000.00')).toBeInTheDocument();
     expect(screen.getByText('$100.00')).toBeInTheDocument();
-    expect(screen.getByTestId('profit-total')).toHaveTextContent('$300.00');
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$3100.00');
   });
 
-  it('cancelled storefront rows are excluded like the server leg', () => {
-    mockProfitData = bookingCamp200;
-    mockUnionRes = {
-      data: [{ ...shopSo1, id: 'so_x', orderStateId: 'cancelled', items: [{ projectId: 'proj_camp', totalPrice: 999 }] }],
-      total: 1, page: 1, pageSize: 50, hasMore: false,
-    };
-    renderProfitUnion();
-    expect(screen.queryByText('$999.00')).not.toBeInTheDocument();
-    expect(screen.getByTestId('profit-total')).toHaveTextContent('$200.00');
+  it('makes zero orders-list fetches on the profit tab (no client leg, no /storefront/orders)', () => {
+    renderProfitServer();
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$3100.00');
+    expect(ordersQueryCalls).toBe(0);
+  });
+
+  it('ignores union-list rows even when present (3100, never 6200 double-count)', () => {
+    mockUnionRes = legacyUnionDoubleCount;
+    renderProfitServer();
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$3100.00');
+    expect(screen.queryByText('Unassigned')).not.toBeInTheDocument();
+    expect(ordersQueryCalls).toBe(0);
+  });
+
+  it('keeps the Unassigned fallback for NULL-project server rows (nothing dropped)', () => {
+    renderProfitServer({
+      byProject: [
+        { projectId: null, projectName: null, projectType: null, revenue: 100, lineCount: 1, orderCount: 1 },
+      ],
+      total: { totalRevenue: 100, totalLines: 1, totalOrders: 1 },
+    });
+    expect(screen.getByText('Unassigned')).toBeInTheDocument();
+    // Row cell + footer total share the same value.
+    expect(screen.getAllByText('$100.00')).toHaveLength(2);
+    expect(screen.getByTestId('profit-total')).toHaveTextContent('$100.00');
+    expect(ordersQueryCalls).toBe(0);
   });
 });

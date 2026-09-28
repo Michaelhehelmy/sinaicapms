@@ -44,7 +44,9 @@ vi.mock('@/hooks/useQueryHooks', () => ({
     isLoading: mockProfitLoading,
     error: mockProfitError,
   }),
-  // T40: union orders hook mock — empty list keeps this suite booking-only.
+  // T40 client-leg removal: the panel no longer imports useOrdersQuery for
+  // profit (server-only). This mock stays unused so the suite keeps proving
+  // every non-profit tab renders with zero orders-list dependency.
   useOrdersQuery: () => ({
     data: { data: [], total: 0, page: 1, pageSize: 50, hasMore: false },
     isLoading: false,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Camp } from '@/hooks/useAdminData';
-import { useOccupancyReportQuery, useRevenueReportQuery, useBookingsReportQuery, useProfitReportQuery, useOrdersQuery } from '@/hooks/useQueryHooks';
+import { useOccupancyReportQuery, useRevenueReportQuery, useBookingsReportQuery, useProfitReportQuery } from '@/hooks/useQueryHooks';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Input } from '@/components/ui/Input';
@@ -21,32 +21,16 @@ const reportTypeOptions = [
   { value: 'profit', label: 'Profit by Project' },
 ];
 
-// ── T40 profit union (frontend-side; backend GET /reports/profit stays
-// booking-only, so the storefront leg is merged here) ────────────────────
-// Booking leg: per-project rows tagged by the HEADER project (server
-// /reports/profit by_project rows, which GROUP BY the order's project).
-// Storefront leg: LINE-tagged contributions (storefront_order_items
-// project_id + total_price). Total = both-source SUM; per-project rows
-// merge both legs. NULL-project lines land in the explicit 'Unassigned'
-// bucket (5f idiom) so nothing is silently dropped.
-export interface ProfitBookingRow {
-  projectId: string | null;
-  projectName?: string | null;
-  projectType?: string | null;
-  revenue: number;
-  lineCount?: number;
-  orderCount?: number;
-}
-export interface ProfitStorefrontLine {
-  projectId: string | null;
-  totalPrice: number;
-  orderId?: string | null;
-}
-export interface ProfitProject {
-  id: string;
-  name: string;
-  projectType?: string | null;
-}
+// ── T40 client-leg removal (server-only profit; backend GET /reports/profit
+// UNIONs booking + storefront lines at line grain since 3bcab82) ──────────
+// The pre-union client storefrontLeg (useOrdersQuery over GET /orders +
+// mergeProfitSources) double-counted storefront once the server union
+// deployed (3100 server + 3100 client = 6200, see cb88355). Profit now renders
+// the server rows verbatim — no second fetch, no client merge. The explicit
+// 'Unassigned' fallback STAYS (server COALESCEs NULL-project lines via LEFT
+// JOIN projects; client keeps ?? 'Unassigned' so legacy NULL lines and
+// FK-orphans on project delete never silently drop). Do NOT delete it and do
+// NOT re-add a client orders fetch for profit.
 export interface MergedProfitRow {
   projectId: string | null;
   projectName: string;
@@ -59,77 +43,6 @@ export interface MergedProfitTotal {
   revenue: number;
   lines: number;
   orders: number;
-}
-
-export function mergeProfitSources(
-  booking: ProfitBookingRow[],
-  storefrontLines: ProfitStorefrontLine[],
-  projects: ProfitProject[],
-): { rows: MergedProfitRow[]; total: MergedProfitTotal } {
-  const catalog = new Map(projects.map((p) => [p.id, p]));
-  const buckets = new Map<string, MergedProfitRow & { shopOrderIds: Set<string>; shopOrphans: number }>();
-  const keyOf = (projectId: string | null | undefined) => projectId ?? 'unassigned';
-  // T40-profit-fix (defensive note — no behavior change): the backend
-  // GET /reports/profit now UNIONs booking + storefront lines at line grain,
-  // so server rows already carry real project tags. This 'Unassigned' bucket
-  // STAYS VISIBLE for legacy NULL lines (pre-5b/5c untagged rows, FK-orphans
-  // on project delete) so nothing is silently dropped. The storefrontLeg
-  // client merge below is retained as the pre-deploy fallback; once the union
-  // backend is deployed, BOTH legs count storefront — a follow-up must gate
-  // or remove the client leg to avoid double-count. Do NOT delete this bucket.
-  const bucket = (
-    projectId: string | null | undefined,
-    fallbackName?: string | null,
-    fallbackType?: string | null,
-  ) => {
-    const key = keyOf(projectId);
-    let b = buckets.get(key);
-    if (!b) {
-      const cat = projectId ? catalog.get(projectId) : undefined;
-      b = {
-        projectId: projectId ?? null,
-        projectName: fallbackName || cat?.name || 'Unassigned',
-        projectType: fallbackType || cat?.projectType || 'unassigned',
-        revenue: 0,
-        lineCount: 0,
-        orderCount: 0,
-        shopOrderIds: new Set<string>(),
-        shopOrphans: 0,
-      };
-      buckets.set(key, b);
-    }
-    return b;
-  };
-  for (const r of booking) {
-    const b = bucket(r.projectId, r.projectName, r.projectType);
-    b.revenue += r.revenue ?? 0;
-    b.lineCount += r.lineCount ?? 0;
-    b.orderCount += r.orderCount ?? 0;
-  }
-  for (const l of storefrontLines) {
-    const b = bucket(l.projectId);
-    b.revenue += l.totalPrice ?? 0;
-    b.lineCount += 1;
-    if (l.orderId != null) b.shopOrderIds.add(l.orderId);
-    else b.shopOrphans += 1;
-  }
-  const rows: MergedProfitRow[] = [...buckets.values()].map((b) => ({
-    projectId: b.projectId,
-    projectName: b.projectName,
-    projectType: b.projectType,
-    revenue: b.revenue,
-    lineCount: b.lineCount,
-    orderCount: b.orderCount + b.shopOrderIds.size + b.shopOrphans,
-  }));
-  // Server convention: ORDER BY revenue DESC (name ASC tie-break for stability).
-  rows.sort((a, b) => b.revenue - a.revenue || a.projectName.localeCompare(b.projectName));
-  // Footer-SUM == aggregate by construction (summed over the merged rows).
-  const total: MergedProfitTotal = {
-    revenue: rows.reduce((a, r) => a + r.revenue, 0),
-    lines: rows.reduce((a, r) => a + r.lineCount, 0),
-    orders: rows.reduce((a, r) => a + r.orderCount, 0),
-  };
-  return { rows, total };
 }
 
 export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
@@ -146,17 +59,11 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
   const { data: revData, isLoading: revLoading, error: revError } = useRevenueReportQuery(dateParams);
   const { data: bookData, isLoading: bookLoading, error: bookError } = useBookingsReportQuery(dateParams);
   // 5f: profit hook (same date-window contract; unconditional like the other three).
+  // T40 client-leg removal: server-only — no useOrdersQuery fetch for profit
+  // (backend GET /reports/profit UNIONs both legs; a client leg double-counts).
   const { data: profitData, isLoading: profitLoading, error: profitError } = useProfitReportQuery(dateParams);
-  // T40: storefront leg of the profit union — same date window over the
-  // UNION orders list (GET /orders supports ?start=/?end= since bdb500c).
-  // Only source='storefront' rows feed the union below; booking rows are
-  // ignored here (the booking leg stays server-side — no double count).
-  // Unconditional like the other report hooks (stable hook order, TanStack-cached).
-  const { data: unionRes, isLoading: unionLoading } = useOrdersQuery(
-    dateParams ? { start: dateParams.start, end: dateParams.end } : undefined,
-  );
 
-  const loading = reportType === 'occupancy' ? occLoading : reportType === 'revenue' ? revLoading : reportType === 'profit' ? (profitLoading || unionLoading) : bookLoading;
+  const loading = reportType === 'occupancy' ? occLoading : reportType === 'revenue' ? revLoading : reportType === 'profit' ? profitLoading : bookLoading;
 
   useEffect(() => {
     if (reportType === 'occupancy' && occError) {
@@ -210,74 +117,58 @@ export default function ReportsPanel({ campIds, camps }: ReportsPanelProps) {
     return Array.isArray(bookData) ? bookData : [];
   }, [bookData]);
 
-  // T40: booking leg of the profit union (server-grouped line grain).
-  // Accepts camelCase wire (byProject) and snake_case (by_project).
-  const bookingLeg = React.useMemo((): ProfitBookingRow[] => {
-    if (!profitData) return [];
-    const raw = profitData as unknown as {
-      byProject?: Array<{ projectId?: string | null; projectName?: string; projectType?: string; revenue?: number; lineCount?: number; orderCount?: number }>;
-      by_project?: Array<{ project_id?: string | null; project_name?: string; project_type?: string; revenue?: number; line_count?: number; order_count?: number }>;
-    };
-    if (Array.isArray(raw)) {
-      return (raw as Array<{ projectId?: string | null; project_id?: string | null; projectName?: string; project_name?: string; projectType?: string; project_type?: string; revenue?: number; lineCount?: number; line_count?: number; orderCount?: number; order_count?: number }>).map((row) => ({
-        projectId: (row.projectId ?? row.project_id ?? null) as string | null,
-        projectName: (row.projectName ?? row.project_name ?? 'Unassigned') as string,
-        projectType: (row.projectType ?? row.project_type ?? 'unassigned') as string,
-        revenue: (row.revenue ?? 0) as number,
-        lineCount: (row.lineCount ?? row.line_count ?? 0) as number,
-        orderCount: (row.orderCount ?? row.order_count ?? 0) as number,
-      }));
-    }
-    const list = Array.isArray(raw.byProject) ? raw.byProject : Array.isArray(raw.by_project) ? raw.by_project.map((r) => ({
-      projectId: r.project_id ?? null,
-      projectName: r.project_name ?? 'Unassigned',
-      projectType: r.project_type ?? 'unassigned',
-      revenue: r.revenue ?? 0,
-      lineCount: r.line_count ?? 0,
-      orderCount: r.order_count ?? 0,
-    })) : [];
-    return list.map((row) => ({
-      projectId: (row.projectId ?? null) as string | null,
-      projectName: (row.projectName ?? 'Unassigned') as string,
-      projectType: (row.projectType ?? 'unassigned') as string,
-      revenue: (row.revenue ?? 0) as number,
-      lineCount: (row.lineCount ?? 0) as number,
-      orderCount: (row.orderCount ?? 0) as number,
-    }));
-  }, [profitData]);
-
-  // T40: storefront leg — line-tagged contributions from the union list.
-  // Prefers embedded line tags (`items[].projectId/totalPrice`,
-  // forward-compatible with a backend line projection); else one
-  // header-grain line per order (header project tag, else Unassigned).
-  // Cancelled rows are excluded, mirroring the server predicate.
-  const storefrontLeg = React.useMemo((): ProfitStorefrontLine[] => {
-    const rows = unionRes?.data ?? [];
-    const lines: ProfitStorefrontLine[] = [];
-    for (const r of rows) {
-      if (r.source !== 'storefront') continue;
-      if (r.orderStateId === 'cancelled') continue;
-      const items = (r as unknown as { items?: Array<{ projectId?: string | null; totalPrice?: number }> }).items;
-      if (Array.isArray(items) && items.length > 0) {
-        for (const it of items) {
-          lines.push({ projectId: it.projectId ?? null, totalPrice: Number(it.totalPrice ?? 0), orderId: r.id });
-        }
-      } else {
-        lines.push({ projectId: r.projectId ?? null, totalPrice: Number(r.totalAmount ?? 0), orderId: r.id });
-      }
-    }
-    return lines;
-  }, [unionRes]);
-
-  // T40: per-project P&L rows + both-source total (footer SUM == aggregate
-  // by construction — mergeProfitSources sums the merged rows).
+  // T40 client-leg removal: server-only profit rows + server total.
+  // Backend GET /reports/profit UNIONs booking + storefront lines at line
+  // grain (GROUP BY lines.project_id, ORDER BY revenue DESC). Accepts
+  // camelCase wire (byProject/totalRevenue) and snake_case (by_project/
+  // total_revenue) plus a bare-array passthrough. 'Unassigned' stays as an
+  // explicit defensive fallback (server COALESCE + client ??) so legacy NULL
+  // lines and FK-orphans never silently drop. No orders fetch, no merge.
   const profit = React.useMemo(() => {
-    if (!profitData && storefrontLeg.length === 0) {
+    if (!profitData) {
       return { rows: [] as MergedProfitRow[], total: null as null | MergedProfitTotal };
     }
-    const merged = mergeProfitSources(bookingLeg, storefrontLeg, camps);
-    return { rows: merged.rows, total: merged.total };
-  }, [profitData, bookingLeg, storefrontLeg, camps]);
+    const raw = profitData as unknown as {
+      byProject?: Array<{ projectId?: string | null; projectName?: string | null; projectType?: string | null; revenue?: number; lineCount?: number; orderCount?: number }>;
+      by_project?: Array<{ project_id?: string | null; project_name?: string | null; project_type?: string | null; revenue?: number; line_count?: number; order_count?: number }>;
+      total?: { totalRevenue?: number; total_revenue?: number; totalLines?: number; total_lines?: number; totalOrders?: number; total_orders?: number };
+    };
+    const normRows = (list: Array<Record<string, unknown>>): MergedProfitRow[] =>
+      list.map((row) => ({
+        projectId: ((row.projectId ?? row.project_id ?? null) as string | null),
+        projectName: ((row.projectName ?? row.project_name ?? 'Unassigned') as string) || 'Unassigned',
+        projectType: ((row.projectType ?? row.project_type ?? 'unassigned') as string) || 'unassigned',
+        revenue: Number(row.revenue ?? 0),
+        lineCount: Number(row.lineCount ?? row.line_count ?? 0),
+        orderCount: Number(row.orderCount ?? row.order_count ?? 0),
+      }));
+    let rows: MergedProfitRow[];
+    if (Array.isArray(raw)) {
+      rows = normRows(raw as unknown as Array<Record<string, unknown>>);
+    } else {
+      const list = Array.isArray(raw.byProject)
+        ? (raw.byProject as unknown as Array<Record<string, unknown>>)
+        : Array.isArray(raw.by_project)
+          ? (raw.by_project as unknown as Array<Record<string, unknown>>)
+          : [];
+      rows = normRows(list);
+    }
+    // Server convention: ORDER BY revenue DESC (name ASC tie-break for stability).
+    rows.sort((a, b) => b.revenue - a.revenue || a.projectName.localeCompare(b.projectName));
+    // Server-only total: prefer the server aggregate when present, else the
+    // footer SUM over the server rows (same rows, never a client second source).
+    const t = (Array.isArray(raw) ? undefined : raw.total) as
+      | { totalRevenue?: number; total_revenue?: number; totalLines?: number; total_lines?: number; totalOrders?: number; total_orders?: number }
+      | undefined;
+    const total: MergedProfitTotal | null = rows.length === 0 && !t
+      ? null
+      : {
+          revenue: Number(t?.totalRevenue ?? t?.total_revenue ?? rows.reduce((a, r) => a + r.revenue, 0)),
+          lines: Number(t?.totalLines ?? t?.total_lines ?? rows.reduce((a, r) => a + r.lineCount, 0)),
+          orders: Number(t?.totalOrders ?? t?.total_orders ?? rows.reduce((a, r) => a + r.orderCount, 0)),
+        };
+    return { rows, total };
+  }, [profitData]);
 
   const occupancyRateColor = (rate: number) => {
     if (rate > 80) return 'text-green-600';
