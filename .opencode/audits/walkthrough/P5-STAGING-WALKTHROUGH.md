@@ -1,5 +1,65 @@
 # P5 Staging Walkthrough — Unified Cart (live)
 
+> ## RUN T40-profit-final 2026-09-28 — verdict: PASS (spec `.opencode/agents/tmp/2026-09-28-t40pf2.md`)
+>
+> - Baseline: `0b17105` confirmed (`git rev-parse HEAD` == `origin/main` via
+>   `git ls-remote`, tracked tree clean apart from untracked spec/scratch).
+>   No source touched, no data writes, no deploy.sh.
+> - Deploy live: `7c0c70c9` matches no git object (`git cat-file -t` → fatal)
+>   — recorded as the spec's staging-deployment id; deploy-live confirmed
+>   FUNCTIONALLY (0b17105's client-leg removal live: profit tab renders server
+>   rows only, zero orders-list fetches for profit; 3bcab82 union still live:
+>   `GET /api/reports/profit` returns per-project UNION rows Camp +
+>   Restaurant, no Unassigned). Cloudflare Builds API returned Unauthorized,
+>   so no worker version id could be listed — functional proof instead.
+> - Server profit (admin `admin.test@acaciacamp.com`, `x-tenant-id: acaciacamp`):
+>   default window AND `?days=3650` both return **`byProject: [Acacia Camp
+>   3000/2/2, Acacia Restaurant 100/2/2], total 3100/4/2, NO Unassigned
+>   bucket`** → server PASS (NOT 6200).
+> - D1 cross-check (staging `campmaster-db-staging` `40f944f2`, SELECT-only,
+>   every read `rows_written 0`): `storefront_orders` for
+>   `tenant_a2d040ea-3b1` = **ORD-6S4R6R + ORD-6SJU3V, ×1550,
+>   pending/pending**; `storefront_order_items` = **Camp 3000/2 + Restaurant
+>   100/2 = 3100/4**; `project_id IS NULL` lines = **0/0**; booking
+>   `order_items` for the tenant = **0 rows** (shop-only tenant — union legs
+>   are disjoint, no overlap to double-count server-side). D1 total **3100**
+>   == server total 3100 == UI total 3100 → D1 PASS.
+> - Admin profit tab (chromium-1228 headless, session-kernel injection — the
+>   apex host forces UI-form login to 401 by design, same as RUN T40-profit;
+>   token + user blob seeded from the API login, reads only): Reports → Profit
+>   by Project renders **`Acacia Camp $3,000.00/2/2 + Acacia Restaurant
+>   $100.00/2/2 = Total $3,100.00/4/2, Unassigned ABSENT`** → **PASS** (Done
+>   Condition: Camp 3000 / Restaurant 100 / Unassigned absent / total 3100;
+>   6200 nowhere). Raw panel text verbatim:
+>   `Profit by Project Project Revenue Lines Orders Acacia Camp $3,000.00 2 2
+>   Acacia Restaurant $100.00 2 2 Total $3,100.00 4 2`. Screenshot
+>   `t40-profit-split-final.png` (1366×900, visually verified: 2 data rows +
+>   Total footer, no Unassigned row). **0 page errors**.
+> - Diagnosis (double-count gone, code fix verified live): 0b17105 removed the
+>   client `storefrontLeg` (useOrdersQuery over union `GET /orders` +
+>   mergeProfitSources) from `ReportsPanel.tsx`, so the header-grain 2×1550
+>   Unassigned fallback no longer stacks on top of the server-unioned rows.
+>   3100 server + 0 client = **3100**. The cb88355 6200 FAIL is closed.
+> - Mutations performed: ZERO data writes (API login + profit reads +
+>   D1 SELECTs + screenshot only). Orders ORD-6S4R6R + ORD-6SJU3V + lines
+>   pre-existed and are untouched.
+>
+> ### RUN T40-profit-final gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | Baseline | `0b17105` == origin/main |
+> | Deploy live | `7c0c70c9` = spec-stated staging id (no git object); functional: server-only profit tab + union rows |
+> | Server profit | **Camp 3000/2/2, Restaurant 100/2/2, total 3100/4/2, Unassigned absent** → PASS |
+> | D1 storefront lines | **Camp 3000/2 + Restaurant 100/2 = 3100/4; NULLs 0/0** → PASS |
+> | D1 booking lines | **0 rows** (legs disjoint) |
+> | D1 total vs server vs UI | **3100 == 3100 == 3100** → match |
+> | Admin profit tab | **Camp 3000/2/2 + Restaurant 100/2/2 = Total 3100/4/2, Unassigned absent** → PASS (never 6200) |
+> | Screenshot | `t40-profit-split-final.png` (1366×900, visually verified) |
+> | Page errors | 0 |
+>
+> ## Verdict RUN T40-profit-final: PASS — profit tab 3100 (Camp 3000 / Restaurant 100 / no Unassigned) == D1 bookings+storefront SUM 3100; 0b17105 client-leg removal verified live, cb88355 6200 closed
+
 > ## RUN T40-profit 2026-09-28 — verdict: BLOCKED at profit-total gate (spec `.opencode/agents/tmp/2026-09-28-t40pw.md`)
 >
 > - Baseline: `3bcab82` confirmed (`git rev-parse HEAD` == `origin/main` via
