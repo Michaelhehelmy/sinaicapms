@@ -1,5 +1,97 @@
 # P5 Staging Walkthrough — Unified Cart (live)
 
+> ## RUN T40 2026-09-28 — verdict: PASS (spec `.opencode/agents/tmp/2026-09-27-t40walk.md`)
+>
+> - Baseline: `f002dd1` confirmed (`git rev-parse HEAD` == `origin/main` via
+>   `git ls-remote`, tracked tree clean apart from untracked spec/scratch).
+>   `be84352f` matches no git object (`git cat-file -t` → fatal) — recorded as
+>   the spec's staging-deployment id; deploy-live confirmed FUNCTIONALLY
+>   (union `source` on list = bdb500c live, `source`+items on detail + 400
+>   flip guard = dd5b7d9 live, Shop badge + project filter + profit merge in
+>   the served admin bundle = f002dd1 live). No source touched, no deploy.sh.
+> - Catalog (reused, 0 setup writes): 2 projects (`proj_27709a3f-f50` Acacia
+>   Camp camp; `camp_e323b315-725` Acacia Restaurant restaurant) + room
+>   `prod_tent` Beach Tent 1500 (camp) + meal `prod_224d3862-ba2` P5 Restaurant
+>   Meal 50 stock 5 (restaurant). Public `GET /api/storefront/products` live.
+> - Guest flow: session `t40walk-1790605484-a1b2c3`,
+>   `POST /api/storefront/cart/items` ×2 via `staging.sinaicamps.com` +
+>   `x-tenant-id: acaciacamp` → room (1500) + meal (50), one cart
+>   `3c658e15-029c-4187-b6db-92bb71128ad7`, `GET /cart` 2 items total **1550**
+>   (header `projectId` = camp project).
+> - **Checkout gate PASS**: `POST /api/storefront/checkout` ×1 →
+>   `orderId 30d9da91-48d5-4b11-8c3e-aaa7bb7bd520`, **`reference ORD-6SJU3V`**,
+>   `totalAmount 1550`, `status/paymentStatus pending/pending`,
+>   **`paymobEnabled:false, paymobIntention:null, fallbackWhatsapp:true`**
+>   (test-mode, no real Paymob).
+> - **Union-list gate PASS**: `GET /api/orders` (admin) = **total 2**
+>   (`ORD-6SJU3V` + `ORD-6S4R6R`, both `source=storefront`, created_at DESC).
+>   Tenant holds **0 booking rows** — "alongside booking rows" is N/A (no
+>   Booking badge exists to render; Shop badge renders on both rows).
+> - **Camp-filter gate PASS**: `GET /api/orders?projectType=camp` = **total 2**,
+>   finds **`ORD-6SJU3V`** (line-level EXISTS over 5c-stamped project_ids).
+> - **Detail gate PASS**: `GET /api/orders/30d9da91-…` =
+>   **`source=storefront`**, 2 items (Beach Tent 1500 → camp project / P5
+>   Restaurant Meal 50 → restaurant project).
+> - **Flip-reject gate PASS**: `PATCH /orders/30d9da91-…/status`
+>   `{"status":"confirmed"}` → **`HTTP 400
+>   {"success":false,"error":"Storefront orders do not support booking status
+>   transitions"}`** (dd5b7d9 guard verbatim).
+> - **Admin UI gates PASS** (chromium-1228 headless, real login session for
+>   `admin.test@acaciacamp.com` injected into the session-kernel keys —
+>   the apex host forces `tenantId=marketplace` on UI-form login → 401, so the
+>   form path cannot authenticate tenant admins on staging; injection uses the
+>   same token/user blob the form would store, reads only):
+>   (01) Orders panel renders **TYPE column with Shop badge ×2, Booking ×0**,
+>   both refs, N/A NULL-guards (guest/room/dates), View-only actions (State/Del
+>   hidden on shop rows), stats Total 2 / Pending 2 / Revenue $0.00 (both
+>   pending — consistent).
+>   (02) Project filter → `camp` keeps **`ORD-6SJU3V`** visible.
+>   (03) Reports → Profit by Project: **Unassigned $3,100.00 / 2 lines /
+>   2 orders; Total $3,100.00** — total INCLUDES both storefront revenues.
+>   (04) Detail modal `Reservation — ORD-6SJU3V`: **Shop badge**,
+>   Total $1,550.00, Paid $0.00, Notes "Storefront checkout", no
+>   record-payment button (booking-writer gating visible).
+>   (05) Raw PATCH 400 body rendered + shot. **0 page errors** on all loads.
+> - **Profit-split note (auditable, not hidden)**: the panel shows the whole
+>   $3,100 under **Unassigned**, not Camp/Restaurant rows. This is the shipped
+>   f002dd1 contract, not a walkthrough failure — the union list carries no
+>   `items`, so `storefrontLeg` falls to header-grain and
+>   `storefront_orders.project_id` is NULL for mixed orders (5c), landing in
+>   the unit-tested Unassigned bucket (f002dd1 asserts exactly this). The
+>   Camp/Restaurant attribution EXISTS at line level (detail API above).
+>   Per-project panel attribution needs a backend line projection or
+>   detail-enrichment follow-up (source change — out of scope here).
+> - Host note (unchanged): `acacia.staging.sinaicamps.com` → 404 (lookupKey
+>   `acacia` ≠ `acaciacamp`); all gates ran on `staging.sinaicamps.com`
+>   (API + admin SPA, `domcontentloaded`).
+> - Mutations performed: walkthrough ONLY (cart adds 2, checkout 1 — both
+>   allowed). Setup writes: ZERO. No direct D1 reads (API + panel only).
+>   Leftover: 1 guest cart (emptied by checkout) + 1 order + 2 lines under
+>   the session (order-scoped, no cleanup in scope).
+>
+> ### RUN T40 gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | Baseline | `f002dd1` == origin/main |
+> | Deploy live | functional: list `source` + detail `source`/items + 400 guard + Shop UI |
+> | Catalog (live public) | 2 projects, room 1500 camp + meal 50 restaurant (stock 5) |
+> | Setup writes | 0 (reuse verified) |
+> | Cart adds | 2 × success, 1 cart `3c658e15-…`, items 1500 + 50 = 1550 |
+> | Checkout | 1 × `success:true ORD-6SJU3V` (test-mode: paymob false, WhatsApp fallback) |
+> | Union list (admin) | **total 2**, both `source=storefront` (booking rows 0) |
+> | `?projectType=camp` | **total 2**, finds ORD-6SJU3V → PASS |
+> | Detail | **source=storefront**, 2 items (1500 camp / 50 restaurant) → PASS |
+> | PATCH status flip | **HTTP 400** storefront-guard verbatim → PASS |
+> | Admin list badge | Shop ×2, Booking ×0, both refs, N/A guards, View-only → PASS |
+> | Admin camp filter | keeps ORD-6SJU3V → PASS |
+> | Admin profit | **Unassigned $3,100 / 2 / 2; Total $3,100** (header-grain by shipped contract) → PASS |
+> | Admin detail modal | Shop badge, $1,550.00, no record-payment → PASS |
+> | Screenshots | `p5-t40-01-admin-orders.png`, `p5-t40-02-admin-filter-camp.png`, `p5-t40-03-admin-profit.png`, `p5-t40-04-admin-detail.png`, `p5-t40-05-flip-reject.png` (all 1440×900) |
+> | Page errors | 0 on all loads |
+>
+> ## Verdict RUN T40: PASS — fresh unified order ORD-6SJU3V ⇒ union list + Shop badges + camp filter + profit total $3,100 + detail render + 400 flip-reject (T40 stack verified live on staging)
+
 > ## RUN 0123 2026-09-27 — verdict: PASS (spec `.opencode/agents/tmp/2026-09-27-p5-0123.md`)
 >
 > - Baseline: `1f1d6c5` confirmed (`git rev-parse HEAD` == `origin/main` via
