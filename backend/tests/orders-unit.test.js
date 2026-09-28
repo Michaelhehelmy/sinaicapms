@@ -254,6 +254,39 @@ describe('handleOrdersRoute', () => {
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(404);
     });
+
+    it('T40: returns booking detail with source=booking and items', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'ord_1', reference: 'ORD-111111' }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'oi_1', order_id: 'ord_1', name: 'Addon' }] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('GET', 'https://x.com/api/orders/ord_1');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.source).toBe('booking');
+      expect(body.id).toBe('ord_1');
+      expect(body.items).toHaveLength(1);
+    });
+
+    it('T40: returns storefront detail with source=storefront and items', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'so_1', reference: 'ORD-222222', status: 'pending' }] }); },
+        (ch) => { ch.all.mockResolvedValue({ results: [{ id: 'soi_1', order_id: 'so_1', product_name: 'Tent' }] }); },
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('GET', 'https://x.com/api/orders/so_1');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.source).toBe('storefront');
+      expect(body.id).toBe('so_1');
+      expect(body.items).toHaveLength(1);
+    });
   });
 
   describe('GET /orders/:id/items (0067 line items)', () => {
@@ -1539,6 +1572,21 @@ describe('handleOrdersRoute', () => {
       expect(db.batch.mock.calls[0][0]).toHaveLength(1); // order UPDATE only
       expect(db.prepare.mock.calls.some(([sql]) => sql.includes('rooms_new'))).toBe(false);
     });
+
+    it('T40: rejects a status flip on a storefront id (400, order unchanged)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue(null); }, // no booking row
+        (ch) => { ch.first.mockResolvedValue({ id: 'so_1' }); }, // storefront row
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('PATCH', 'https://x.com/api/orders/so_1/status', { status: 'confirmed' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/storefront/i);
+      expect(db.batch).not.toHaveBeenCalled();
+    });
   });
 
   describe('DELETE /orders/:id', () => {
@@ -1604,6 +1652,39 @@ describe('handleOrdersRoute', () => {
       const req = makeRequest('DELETE', 'https://x.com/api/orders/o1');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
       expect(res.status).toBe(500);
+    });
+
+    it('T40: rejects DELETE on a storefront id (400, nothing deleted)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.all.mockResolvedValue({ results: [] }); }, // no booking row
+        (ch) => { ch.first.mockResolvedValue({ id: 'so_1' }); }, // storefront row
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('DELETE', 'https://x.com/api/orders/so_1');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/storefront/i);
+      const sqls = db.prepare.mock.calls.map(c => c[0]);
+      expect(sqls.some(s => s.includes('DELETE FROM orders'))).toBe(false);
+    });
+  });
+
+  describe('T40: storefront write guards (record-payment)', () => {
+    it('rejects record-payment on a storefront id (400, no ledger write)', async () => {
+      const { db } = makeDbMock();
+      const fn = chainMock([
+        (ch) => { ch.first.mockResolvedValue(null); }, // no booking row
+        (ch) => { ch.first.mockResolvedValue({ id: 'so_1' }); }, // storefront row
+      ]);
+      db.prepare.mockImplementation(fn);
+      const req = makeRequest('POST', 'https://x.com/api/orders/so_1/record-payment', { amount: 100, method: 'cash' });
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/storefront/i);
+      expect(db.batch).not.toHaveBeenCalled();
     });
   });
 

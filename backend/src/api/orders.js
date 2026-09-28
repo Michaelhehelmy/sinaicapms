@@ -507,7 +507,17 @@ ordersRoutes.patch('/:id/status', async (c) => {
     const existing = await c.env.DB.prepare(
       "SELECT id, order_state_id, room_id, total_amount, amount_paid FROM orders WHERE tenant_id = ? AND id = ?"
     ).bind(tenantId, ordId).first();
-    if (!existing) return errorResponse('Order not found', 404);
+    if (!existing) {
+      // T40: storefront rows are read-only on booking write paths — a
+      // storefront id is a client error (400), an unknown id stays 404.
+      // .first() only (never destructured) so exhausted sequential mocks
+      // resolve undefined → falsy → 404, never a TypeError.
+      const shop = await c.env.DB.prepare(
+        "SELECT id FROM storefront_orders WHERE tenant_id = ? AND id = ?"
+      ).bind(tenantId, ordId).first();
+      if (shop) return errorResponse('Storefront orders do not support booking status transitions', 400);
+      return errorResponse('Order not found', 404);
+    }
 
     const state = await c.env.DB.prepare(
       "SELECT id, paid FROM order_state WHERE id = ?"
@@ -795,7 +805,13 @@ ordersRoutes.get('/:id/items', async (c) => {
 
 ordersRoutes.get('/:id', async (c) => {
   const ordId = c.req.param('id');
-  const { results } = await c.env.DB.prepare(
+  const tenantId = getScope(c).tenantId;
+  // T40 (commit 3 — source-aware detail): booking row first (legacy SELECT,
+  // byte-identical columns), else the storefront header (own columns — no
+  // shape unification, each type returns its own fields). Both embed
+  // `source` ('booking' | 'storefront') + `items` (order_items /
+  // storefront_order_items, oldest first). Tenant-scoped, all `?`-bound.
+  const { results: booking } = await c.env.DB.prepare(
     `SELECT o.id, o.tenant_id, o.camp_id, o.room_id, o.customer_id,
       o.order_state_id, o.check_in_date, o.check_out_date,
       o.number_of_people, o.total_amount, o.amount_paid,
@@ -808,9 +824,32 @@ ordersRoutes.get('/:id', async (c) => {
      LEFT JOIN rooms_new r ON r.id = o.room_id
      LEFT JOIN order_state_lang osi ON osi.order_state_id = o.order_state_id AND osi.lang = 'en'
      WHERE o.tenant_id = ? AND o.id = ?`
-  ).bind(getScope(c).tenantId, ordId).all();
-  if (results.length === 0) return errorResponse('Order not found', 404);
-  return jsonResponse(results[0]);
+  ).bind(tenantId, ordId).all();
+  if (booking.length > 0) {
+    const { results: items } = await c.env.DB.prepare(
+      "SELECT * FROM order_items WHERE order_id = ? ORDER BY created_at ASC, id ASC"
+    ).bind(ordId).all();
+    return jsonResponse({ source: 'booking', ...booking[0], items: items ?? [] });
+  }
+
+  const { results: shop } = await c.env.DB.prepare(
+    `SELECT so.id, so.tenant_id, so.customer_id, so.reference, so.session_id,
+      so.project_id, so.total_amount, so.currency, so.status, so.payment_status,
+      so.notes, so.created_at, so.updated_at,
+      c.first_name as customer_first_name, c.last_name as customer_last_name,
+      c.email as customer_email, c.phone as customer_phone
+     FROM storefront_orders so
+     LEFT JOIN customers c ON c.id = so.customer_id
+     WHERE so.tenant_id = ? AND so.id = ?`
+  ).bind(tenantId, ordId).all();
+  if (shop.length > 0) {
+    const { results: items } = await c.env.DB.prepare(
+      "SELECT * FROM storefront_order_items WHERE order_id = ? ORDER BY created_at ASC, id ASC"
+    ).bind(ordId).all();
+    return jsonResponse({ source: 'storefront', ...shop[0], items: items ?? [] });
+  }
+
+  return errorResponse('Order not found', 404);
 });
 
 ordersRoutes.post('/', async (c) => {
@@ -1095,6 +1134,16 @@ ordersRoutes.delete('/:id', async (c) => {
 
     const { results: ordResult } = await c.env.DB.prepare("SELECT room_id FROM orders WHERE tenant_id = ? AND id = ?").bind(tenantId, ordId).all();
     const order = ordResult[0];
+
+    if (!order) {
+      // T40: storefront rows are read-only on booking write paths — reject
+      // BEFORE any delete/cascade. .first() only so exhausted sequential
+      // mocks resolve undefined → falsy → legacy proceed, never a TypeError.
+      const shop = await c.env.DB.prepare(
+        "SELECT id FROM storefront_orders WHERE tenant_id = ? AND id = ?"
+      ).bind(tenantId, ordId).first();
+      if (shop) return errorResponse('Storefront orders cannot be deleted via booking delete', 400);
+    }
 
     if (order) {
       const { results: others } = await c.env.DB.prepare("SELECT id FROM orders WHERE tenant_id = ? AND id != ? AND room_id = ? AND order_state_id != 'cancelled'").bind(tenantId, ordId, order.room_id).all();
@@ -1408,7 +1457,15 @@ ordersRoutes.post('/:id/record-payment', async (c) => {
     const order = await c.env.DB.prepare(
       'SELECT id, total_amount, amount_paid, payment_status FROM orders WHERE tenant_id = ? AND id = ?'
     ).bind(tenantId, orderId).first();
-    if (!order) return errorResponse('Order not found', 404);
+    if (!order) {
+      // T40: storefront rows are read-only on booking write paths — a
+      // storefront id is a client error (400), an unknown id stays 404.
+      const shop = await c.env.DB.prepare(
+        'SELECT id FROM storefront_orders WHERE tenant_id = ? AND id = ?'
+      ).bind(tenantId, orderId).first();
+      if (shop) return errorResponse('Storefront orders do not support booking payment recording', 400);
+      return errorResponse('Order not found', 404);
+    }
 
     const total = Number(order.total_amount) || 0;
     const paidSoFar = Number(order.amount_paid) || 0;
