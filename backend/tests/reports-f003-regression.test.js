@@ -76,6 +76,27 @@ function createTestDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       order_state_id TEXT DEFAULT 'confirmed'
     );
+    -- T40-profit-fix fixture catch-up (parity class): /top-products and
+    -- /revenue-breakdown now UNION the storefront leg, so the fixture
+    -- declares both tables (empty ⇒ the F-003 POS-only assertions below hold
+    -- verbatim against the union SQL).
+    CREATE TABLE storefront_orders (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      total_amount REAL DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE storefront_order_items (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL DEFAULT 0,
+      total_price REAL NOT NULL DEFAULT 0,
+      project_id TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
   `);
   return db;
 }

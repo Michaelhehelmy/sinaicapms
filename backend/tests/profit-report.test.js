@@ -68,6 +68,21 @@ function buildProfitDb() {
       total_price REAL DEFAULT 0, project_id TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+    -- T40-profit-fix fixture catch-up (parity class): /profit now UNIONs the
+    -- storefront leg, so the fixture declares both tables (empty ⇒ the 5f
+    -- booking-only assertions below hold verbatim against the union SQL).
+    CREATE TABLE storefront_orders (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+      reference TEXT UNIQUE NOT NULL, total_amount REAL DEFAULT 0,
+      status TEXT DEFAULT 'pending', created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE storefront_order_items (
+      id TEXT PRIMARY KEY, order_id TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      quantity INTEGER DEFAULT 1, unit_price REAL DEFAULT 0,
+      total_price REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')),
+      project_id TEXT
+    );
     INSERT INTO projects (id, tenant_id, name, project_type, deleted_at) VALUES
       ('proj_camp', '${TENANT}', 'Accommodation', 'camp', NULL),
       ('proj_rest', '${TENANT}', 'Restaurant', 'restaurant', NULL);

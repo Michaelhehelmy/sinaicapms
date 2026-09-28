@@ -147,7 +147,18 @@ reportsRoutes.get('/bookings', async (c) => {
   }
 });
 
-// ── Top Products: aggregate POS order items by quantity sold ─────────────
+// ── Top Products: aggregate POS + storefront order items by quantity ─────
+// T40-profit-fix: UNION ALL line grain over both item tables. The POS leg is
+// verbatim (quantity + quantity*unit_price, voided excluded); the storefront
+// leg joins its own header (storefront_order_items carries NO tenant_id —
+// scope via so.tenant_id, mirroring order_items→orders) and uses the
+// persisted soi.total_price (REMOTE DDL-confirmed col; equals
+// quantity*unit_price at checkout). Product space is shared: 0123 retargeted
+// storefront_order_items.product_id → pos_products(id), so one products join
+// covers both legs. Statuses never overlap (POS voided vs shop pending/… —
+// webhook flips payment_status only, never so.status), so the legs are
+// disjoint by construction (no double count). Single prepare (wire + output
+// aliases unchanged).
 reportsRoutes.get('/top-products', async (c) => {
   const env = c.env;
   const tenantId = getScope(c).tenantId;
@@ -159,19 +170,31 @@ reportsRoutes.get('/top-products', async (c) => {
     const cutoffStr = cutoffDate.toISOString().split('T')[0];
 
     const { results } = await env.DB.prepare(
-      `SELECT p.id, p.name, SUM(oi.quantity) as total_qty,
-              SUM(oi.quantity * oi.unit_price) as total_revenue,
-              COUNT(DISTINCT o.id) as order_count
-       FROM pos_transaction_items oi
-       JOIN pos_products p ON p.id = oi.product_id AND p.tenant_id = oi.tenant_id
-        JOIN pos_transactions o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id
-       WHERE oi.tenant_id = ?
-         AND o.created_at >= ?
-         AND o.status != 'voided'
+      `SELECT p.id, p.name, SUM(lines.qty) as total_qty,
+              SUM(lines.revenue) as total_revenue,
+              COUNT(DISTINCT lines.order_id) as order_count
+       FROM (
+         SELECT oi.product_id as product_id, oi.quantity as qty,
+                (oi.quantity * oi.unit_price) as revenue, oi.order_id as order_id
+         FROM pos_transaction_items oi
+         JOIN pos_transactions o ON o.id = oi.order_id AND o.tenant_id = oi.tenant_id
+         WHERE oi.tenant_id = ?
+           AND o.created_at >= ?
+           AND o.status != 'voided'
+         UNION ALL
+         SELECT soi.product_id as product_id, soi.quantity as qty,
+                soi.total_price as revenue, soi.order_id as order_id
+         FROM storefront_order_items soi
+         JOIN storefront_orders so ON so.id = soi.order_id
+         WHERE so.tenant_id = ?
+           AND so.created_at >= ?
+           AND so.status != 'cancelled'
+       ) lines
+       JOIN pos_products p ON p.id = lines.product_id AND p.tenant_id = ?
        GROUP BY p.id, p.name
        ORDER BY total_qty DESC
        LIMIT ?`
-    ).bind(tenantId, cutoffStr, limit).all();
+    ).bind(tenantId, cutoffStr, tenantId, cutoffStr, tenantId, limit).all();
 
     return jsonResponse({ days, top_products: results });
   } catch (e) {
@@ -257,25 +280,54 @@ reportsRoutes.get('/revenue-breakdown', async (c) => {
     cutoffDate.setDate(cutoffDate.getDate() - days);
     const cutoffStr = cutoffDate.toISOString().split('T')[0];
 
-    // POS revenue by product type
+    // T40-profit-fix: POS + storefront revenue by product type (UNION ALL line
+    // grain — same legs as /top-products above; storefront product space is
+    // pos_products per 0123, so one join covers both; legs disjoint by status
+    // vocab, no double count). Single prepare, aliases unchanged.
     const { results: byProductType } = await env.DB.prepare(
-      `SELECT p.type, SUM(ti.quantity * ti.unit_price) as revenue, COUNT(DISTINCT o.id) as order_count
-       FROM pos_transaction_items ti
-       JOIN pos_products p ON p.id = ti.product_id AND p.tenant_id = ti.tenant_id
-        JOIN pos_transactions o ON o.id = ti.order_id AND o.tenant_id = ti.tenant_id
-       WHERE ti.tenant_id = ? AND o.created_at >= ? AND o.status != 'voided'
+      `SELECT p.type, SUM(lines.revenue) as revenue, COUNT(DISTINCT lines.order_id) as order_count
+       FROM (
+         SELECT ti.product_id as product_id,
+                (ti.quantity * ti.unit_price) as revenue, ti.order_id as order_id
+         FROM pos_transaction_items ti
+         JOIN pos_transactions o ON o.id = ti.order_id AND o.tenant_id = ti.tenant_id
+         WHERE ti.tenant_id = ? AND o.created_at >= ? AND o.status != 'voided'
+         UNION ALL
+         SELECT soi.product_id as product_id,
+                soi.total_price as revenue, soi.order_id as order_id
+         FROM storefront_order_items soi
+         JOIN storefront_orders so ON so.id = soi.order_id
+         WHERE so.tenant_id = ? AND so.created_at >= ? AND so.status != 'cancelled'
+       ) lines
+       JOIN pos_products p ON p.id = lines.product_id AND p.tenant_id = ?
        GROUP BY p.type ORDER BY revenue DESC`
-    ).bind(tenantId, cutoffStr).all();
+    ).bind(tenantId, cutoffStr, tenantId, cutoffStr, tenantId).all();
 
-    // POS revenue by payment method
+    // T40-profit-fix: POS + storefront revenue by payment method (UNION ALL
+    // header grain). storefront_orders has NO payment_method column
+    // (REMOTE DDL-confirmed) — the shop leg projects the literal 'storefront'
+    // bucket (Paymob/online channel) so shop revenue is never silently
+    // dropped and never mislabeled as a POS method. POS NULL-method semantics
+    // preserved verbatim (COALESCE display, raw GROUP BY). Single prepare.
     const { results: byPayment } = await env.DB.prepare(
-      `SELECT COALESCE(payment_method, 'unknown') as method, SUM(total_amount) as revenue, COUNT(*) as count
-       FROM pos_transactions
-       WHERE tenant_id = ? AND created_at >= ? AND status != 'voided'
-       GROUP BY payment_method ORDER BY revenue DESC`
-    ).bind(tenantId, cutoffStr).all();
+      `SELECT COALESCE(lines.method, 'unknown') as method, SUM(lines.revenue) as revenue, COUNT(*) as count
+       FROM (
+         SELECT o.payment_method as method, o.total_amount as revenue
+         FROM pos_transactions o
+         WHERE o.tenant_id = ? AND o.created_at >= ? AND o.status != 'voided'
+         UNION ALL
+         SELECT 'storefront' as method, so.total_amount as revenue
+         FROM storefront_orders so
+         WHERE so.tenant_id = ? AND so.created_at >= ? AND so.status != 'cancelled'
+       ) lines
+       GROUP BY lines.method ORDER BY revenue DESC`
+    ).bind(tenantId, cutoffStr, tenantId, cutoffStr).all();
 
-    // Accommodation revenue
+    // Accommodation revenue — booking channel ONLY (audited, intentionally not
+    // unioned): this key means room-stay revenue (orders headers). Storefront
+    // lines are product sales attributed per-project via by_product_type above
+    // (line grain); folding them in here would mislabel product revenue as
+    // accommodation while keeping the wire key. Wire + query unchanged.
     const { results: accommodation } = await env.DB.prepare(
       `SELECT SUM(total_amount) as revenue, COUNT(*) as order_count
        FROM orders WHERE tenant_id = ? AND created_at >= ? AND order_state_id != 'cancelled'`
@@ -312,20 +364,42 @@ reportsRoutes.get('/customer-metrics', async (c) => {
       "SELECT COUNT(*) as count FROM customers WHERE tenant_id = ? AND created_at >= ?"
     ).bind(tenantId, cutoffStr).all();
 
-    // Repeat customers (ordered more than once)
+    // T40-profit-fix: repeat customers across BOTH order tables (UNION ALL
+    // header grain). storefront_orders.customer_id is nullable (guest checkout
+    // → NULL, excluded in-leg); a customer who booked AND bought online counts
+    // once per order, so cross-channel repeats are detected. Status filters
+    // match the legacy shape (none — verbatim). Single prepare.
     const { results: repeatRes } = await env.DB.prepare(
       `SELECT COUNT(*) as count FROM (
-        SELECT customer_id FROM orders
-        WHERE tenant_id = ? AND customer_id IS NOT NULL AND created_at >= ?
-        GROUP BY customer_id HAVING COUNT(*) > 1
+        SELECT lines.customer_id FROM (
+          SELECT o.customer_id as customer_id FROM orders o
+          WHERE o.tenant_id = ? AND o.customer_id IS NOT NULL AND o.created_at >= ?
+          UNION ALL
+          SELECT so.customer_id as customer_id FROM storefront_orders so
+          WHERE so.tenant_id = ? AND so.customer_id IS NOT NULL AND so.created_at >= ?
+        ) lines
+        GROUP BY lines.customer_id HAVING COUNT(*) > 1
       )`
-    ).bind(tenantId, cutoffStr).all();
+    ).bind(tenantId, cutoffStr, tenantId, cutoffStr).all();
 
-    // Average order value
+    // T40-profit-fix: average order value across BOTH order tables (UNION ALL
+    // header grain). storefront_orders has NO amount_paid column
+    // (REMOTE DDL-confirmed — paid-ness lives in payment_status per the union
+    // list design) so the shop leg projects NULL; AVG skips NULLs, hence
+    // avg_collected stays the booking-channel average by construction while
+    // avg_order_value becomes cross-channel. Cancelled excluded on both legs
+    // (shop: so.status != 'cancelled' mirror — no-op today, future-proof).
+    // Single prepare, aliases unchanged.
     const { results: aovRes } = await env.DB.prepare(
-      `SELECT AVG(total_amount) as avg_order_value, AVG(amount_paid) as avg_collected
-       FROM orders WHERE tenant_id = ? AND created_at >= ? AND order_state_id != 'cancelled'`
-    ).bind(tenantId, cutoffStr).all();
+      `SELECT AVG(lines.total_amount) as avg_order_value, AVG(lines.amount_paid) as avg_collected
+       FROM (
+         SELECT o.total_amount as total_amount, o.amount_paid as amount_paid FROM orders o
+         WHERE o.tenant_id = ? AND o.created_at >= ? AND o.order_state_id != 'cancelled'
+         UNION ALL
+         SELECT so.total_amount as total_amount, NULL as amount_paid FROM storefront_orders so
+         WHERE so.tenant_id = ? AND so.created_at >= ? AND so.status != 'cancelled'
+       ) lines`
+    ).bind(tenantId, cutoffStr, tenantId, cutoffStr).all();
 
     return jsonResponse({
       days,
@@ -376,14 +450,24 @@ reportsRoutes.get('/seasonal', async (c) => {
   }
 });
 
-// ── Profit by Project: per-project P&L split (Phase 5 step 5f) ──────────
-// Line-grain aggregation over order_items.project_id (stamped server-side
-// since 5b; backfilled 0105; NOT NULL 0106) with tenant scope via the parent
-// order join. NULL-project lines (legacy / FK-orphan on project delete) form
-// an explicit 'Unassigned' bucket so nothing is silently dropped (design
-// §7.2 shape 2 + shape 4 unassigned bucket). The tenant total is the SUM over
-// the same filtered lines, so footer-SUM == tenant aggregate by construction
-// (design §7.3 acceptance). Additive: existing endpoints above are untouched.
+// ── Profit by Project: per-project P&L split (Phase 5 step 5f + T40 union) ─
+// T40-profit-fix: UNION ALL line-grain aggregation over BOTH item tables.
+// Booking leg = order_items.project_id (stamped server-side since 5b;
+// backfilled 0105; 0111-relaxed) scoped via the parent orders join.
+// Storefront leg = storefront_order_items.project_id (stamped server-side
+// since 5c; 0122) scoped via its own storefront_orders join — the items table
+// carries NO tenant_id (REMOTE DDL-confirmed), so tenant isolation MUST come
+// from so.tenant_id in-leg (same pattern as the booking leg). Both legs read
+// the persisted total_price (REMOTE DDL-confirmed on both tables — no
+// quantity*unit_price fallback needed). Cancelled excluded on both legs
+// (booking: order_state_id; shop: so.status mirror — webhook flips
+// payment_status only, never status, so the shop predicate is a no-op today
+// and future-proof). ?projectId= narrows BOTH legs (indexed project_id on
+// each table). NULL-project lines (legacy / FK-orphan on project delete /
+// mixed-order headers stay NULL by 5c design) form the explicit 'Unassigned'
+// bucket via the single outer LEFT JOIN, so nothing is silently dropped. The
+// tenant total aggregates the SAME inner union, so footer-SUM == aggregate by
+// construction. Two prepares (wire + output aliases byte-identical).
 reportsRoutes.get('/profit', async (c) => {
   const env = c.env;
   const tenantId = getScope(c).tenantId;
@@ -402,32 +486,35 @@ reportsRoutes.get('/profit', async (c) => {
     const endDate = endParam || new Date().toISOString().split('T')[0];
     const projectId = c.req.query('projectId') || c.req.query('project_id');
 
-    const lineFilter = `o.tenant_id = ? AND o.created_at >= ? AND date(o.created_at) <= ? AND o.order_state_id != 'cancelled'`;
-    const narrow = projectId ? ` AND oi.project_id = ?` : ``;
-    const binds = projectId ? [tenantId, cutoffStr, endDate, projectId] : [tenantId, cutoffStr, endDate];
-
-    const { results: byProject } = await env.DB.prepare(
-      `SELECT oi.project_id as project_id,
-              COALESCE(p.name, 'Unassigned') as project_name,
-              COALESCE(p.project_type, 'unassigned') as project_type,
-              SUM(oi.total_price) as revenue,
-              COUNT(*) as line_count,
-              COUNT(DISTINCT oi.order_id) as order_count
+    const bookingLeg = `SELECT oi.project_id as project_id, oi.total_price as revenue, oi.order_id as order_id
        FROM order_items oi
        JOIN orders o ON o.id = oi.order_id
-       LEFT JOIN projects p ON p.id = oi.project_id
-       WHERE ${lineFilter}${narrow}
-       GROUP BY oi.project_id
+       WHERE o.tenant_id = ? AND o.created_at >= ? AND date(o.created_at) <= ? AND o.order_state_id != 'cancelled'${projectId ? ` AND oi.project_id = ?` : ``}`;
+    const shopLeg = `SELECT soi.project_id as project_id, soi.total_price as revenue, soi.order_id as order_id
+       FROM storefront_order_items soi
+       JOIN storefront_orders so ON so.id = soi.order_id
+       WHERE so.tenant_id = ? AND so.created_at >= ? AND date(so.created_at) <= ? AND so.status != 'cancelled'${projectId ? ` AND soi.project_id = ?` : ``}`;
+    const legBinds = projectId ? [tenantId, cutoffStr, endDate, projectId] : [tenantId, cutoffStr, endDate];
+    const binds = [...legBinds, ...legBinds];
+
+    const { results: byProject } = await env.DB.prepare(
+      `SELECT lines.project_id as project_id,
+              COALESCE(p.name, 'Unassigned') as project_name,
+              COALESCE(p.project_type, 'unassigned') as project_type,
+              SUM(lines.revenue) as revenue,
+              COUNT(*) as line_count,
+              COUNT(DISTINCT lines.order_id) as order_count
+       FROM (${bookingLeg} UNION ALL ${shopLeg}) lines
+       LEFT JOIN projects p ON p.id = lines.project_id
+       GROUP BY lines.project_id
        ORDER BY revenue DESC`
     ).bind(...binds).all();
 
     const { results: totalRes } = await env.DB.prepare(
-      `SELECT COALESCE(SUM(oi.total_price), 0) as total_revenue,
+      `SELECT COALESCE(SUM(lines.revenue), 0) as total_revenue,
               COUNT(*) as total_lines,
-              COUNT(DISTINCT oi.order_id) as total_orders
-       FROM order_items oi
-       JOIN orders o ON o.id = oi.order_id
-       WHERE ${lineFilter}${narrow}`
+              COUNT(DISTINCT lines.order_id) as total_orders
+       FROM (${bookingLeg} UNION ALL ${shopLeg}) lines`
     ).bind(...binds).all();
 
     return jsonResponse({

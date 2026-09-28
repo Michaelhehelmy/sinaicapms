@@ -69,6 +69,14 @@ export function mergeProfitSources(
   const catalog = new Map(projects.map((p) => [p.id, p]));
   const buckets = new Map<string, MergedProfitRow & { shopOrderIds: Set<string>; shopOrphans: number }>();
   const keyOf = (projectId: string | null | undefined) => projectId ?? 'unassigned';
+  // T40-profit-fix (defensive note — no behavior change): the backend
+  // GET /reports/profit now UNIONs booking + storefront lines at line grain,
+  // so server rows already carry real project tags. This 'Unassigned' bucket
+  // STAYS VISIBLE for legacy NULL lines (pre-5b/5c untagged rows, FK-orphans
+  // on project delete) so nothing is silently dropped. The storefrontLeg
+  // client merge below is retained as the pre-deploy fallback; once the union
+  // backend is deployed, BOTH legs count storefront — a follow-up must gate
+  // or remove the client leg to avoid double-count. Do NOT delete this bucket.
   const bucket = (
     projectId: string | null | undefined,
     fallbackName?: string | null,
