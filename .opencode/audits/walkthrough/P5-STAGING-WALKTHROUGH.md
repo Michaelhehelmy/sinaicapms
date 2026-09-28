@@ -1,5 +1,68 @@
 # P5 Staging Walkthrough — Unified Cart (live)
 
+> ## RUN T40-profit 2026-09-28 — verdict: BLOCKED at profit-total gate (spec `.opencode/agents/tmp/2026-09-28-t40pw.md`)
+>
+> - Baseline: `3bcab82` confirmed (`git rev-parse HEAD` == `origin/main` via
+>   `git ls-remote`, tracked tree clean apart from untracked spec/scratch).
+>   No source touched, no data writes, no deploy.sh.
+> - Deploy live: frontend staging **`63cd47ae`**-fe7e-49cd-ad75-186166d7a293
+>   (2026-09-28T21:53:13Z, 100% traffic, latest
+>   `campmaster-marketplace-staging` version) + backend staging `0d6de0e6`
+>   (2026-09-28T21:51Z, latest `campmaster-backend-staging` deployment).
+>   3bcab82 live PROVEN functionally: `GET /api/reports/profit` returns
+>   per-project UNION rows (Camp + Restaurant, no Unassigned).
+> - Server profit (admin `admin.test@acaciacamp.com`, `x-tenant-id: acaciacamp`):
+>   default window AND `?days=3650` both return **`byProject: [Acacia Camp
+>   3000/2 lines/2 orders, Acacia Restaurant 100/2/2], total 3100/4/2, NO
+>   Unassigned bucket`** → server PASS (NOT 6200).
+> - D1 cross-check (staging `campmaster-db-staging` `40f944f2`, SELECT-only,
+>   every read `rows_written 0`): `storefront_orders` for
+>   `tenant_a2d040ea-3b1` = **ORD-6S4R6R + ORD-6SJU3V, ×1550,
+>   pending/pending**; `storefront_order_items` = **Camp 3000/2 + Restaurant
+>   100/2 = 3100/4**; `project_id IS NULL` lines = **0/0**; booking
+>   `order_items` for the tenant = **0 rows** (shop-only tenant — union legs
+>   are disjoint, no overlap to double-count server-side). D1 PASS.
+> - Admin profit tab (chromium-1228 headless, session-kernel injection — the
+>   apex host forces UI-form login to 401 by design, same as RUN T40; token
+>   + user blob seeded from the API login, reads only): Reports → Profit by
+>   Project renders **`Unassigned $3,100.00/2/2 + Acacia Camp
+>   $3,000.00/2/2 + Acacia Restaurant $100.00/2/2 = Total $6,200.00/6/6`**
+>   → **FAIL** (Done Condition demands Camp 3000 / Restaurant 100 /
+>   Unassigned empty / total 3100). Raw panel text verbatim:
+>   `PROJECT REVENUE LINES ORDERS / Unassigned $3,100.00 2 2 / Acacia Camp
+>   $3,000.00 2 2 / Acacia Restaurant $100.00 2 2 / Total $6,200.00 6 6`.
+>   Screenshot `t40-profit-split.png` (1366×900). **0 page errors**.
+> - Diagnosis (double-count, code not data): 3bcab82 correctly UNIONs
+>   storefront lines into `GET /reports/profit`, but `ReportsPanel.tsx`
+>   (unchanged by 3bcab82) still merges the client `storefrontLeg` built
+>   from the union `GET /orders` list — which carries NO `items[]` and NULL
+>   header `projectId`, so it falls to header-grain (2 × 1550 = 3100 into
+>   Unassigned) ON TOP of the already-unioned server rows. 3100 (server,
+>   correctly split) + 3100 (client header fallback) = **6200**. The code
+>   comment at `ReportsPanel.tsx:72-79` predicts exactly this ("once the
+>   union backend is deployed, BOTH legs count storefront — a follow-up must
+>   gate or remove the client leg"). Fix is a source change — forbidden
+>   here. **STOP honored.**
+> - Mutations performed: ZERO data writes (API login + profit/orders reads +
+>   D1 SELECTs + screenshot only). Orders ORD-6S4R6R + ORD-6SJU3V + lines
+>   pre-existed and are untouched.
+>
+> ### RUN T40-profit gate numbers (every figure exact)
+>
+> | Gate | Number |
+> |------|--------|
+> | Baseline | `3bcab82` == origin/main |
+> | Deploy live | frontend `63cd47ae` (21:53Z, 100%) + backend `0d6de0e6` (21:51Z) |
+> | Server profit | **Camp 3000/2/2, Restaurant 100/2/2, total 3100/4/2, Unassigned absent** → PASS |
+> | D1 storefront lines | **Camp 3000/2 + Restaurant 100/2 = 3100/4; NULLs 0/0** → PASS |
+> | D1 booking lines | **0 rows** (legs disjoint) |
+> | Union list (admin) | **total 2**, both `source=storefront`, no `items`, projectId NULL |
+> | Admin profit tab | **Unassigned 3100/2/2 + Camp 3000/2/2 + Restaurant 100/2/2 = Total 6200/6/6** → FAIL |
+> | Screenshot | `t40-profit-split.png` (1366×900) |
+> | Page errors | 0 |
+>
+> ## Verdict RUN T40-profit: BLOCKED — server profit 3100 correct (Camp 3000 / Restaurant 100 / no Unassigned), UI profit 6200 double-count (server-union + client-leg header fallback into Unassigned); needs client-leg gate/removal follow-up
+
 > ## RUN T40 2026-09-28 — verdict: PASS (spec `.opencode/agents/tmp/2026-09-27-t40walk.md`)
 >
 > - Baseline: `f002dd1` confirmed (`git rev-parse HEAD` == `origin/main` via
