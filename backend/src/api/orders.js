@@ -666,53 +666,108 @@ ordersRoutes.get('/', async (c) => {
   const url = new URL(c.req.url);
   const tenantId = getScope(c).tenantId;
   const status = url.searchParams.get('status');
-  // 5e: optional ?projectType= narrow (line-level scoping). An order matches
-  // when ANY of its lines belongs to a same-tenant project of that type
-  // (order_items.project_id, stamped server-side since 5b); legacy untagged
-  // orders match via their booking project (orders.camp_id → projects).
-  // Additive: omitted = legacy tenant-wide list, byte-identical SQL. The value
-  // is bound via `?` (never interpolated), so unknown types safely match nothing.
+  // 5e: optional ?projectType= narrow (line-level scoping). A booking order
+  // matches when ANY of its lines belongs to a same-tenant project of that
+  // type (order_items.project_id, stamped server-side since 5b); legacy
+  // untagged orders match via their booking project (orders.camp_id →
+  // projects). Additive: omitted = legacy tenant-wide list. The value is
+  // bound via `?` (never interpolated), so unknown types safely match nothing.
   const projectType = url.searchParams.get('projectType');
+  // T40: optional ?start=/?end= date window over created_at (profit-report
+  // convention: `created_at >= ? AND date(created_at) <= ?`). Additive:
+  // omitted = legacy tenant-wide list.
+  const startDate = url.searchParams.get('start');
+  const endDate = url.searchParams.get('end');
   // T6: page/pageSize envelope (clean migration from limit/offset)
   const { page, pageSize, offset } = parsePagination(url);
 
-  let countQuery = "SELECT COUNT(*) as total FROM orders WHERE tenant_id = ?";
-  let countBindings = [tenantId];
+  // T40 (Option A union read — design 07-t40-design.md §3): GET /orders
+  // returns booking rows (orders) UNION ALL storefront rows
+  // (storefront_orders) in ONE canonical shape with a `source`
+  // discriminator ('booking' | 'storefront'). Storefront rows have no
+  // room/stay (camp_id/room_id/room_name/check-in-out/number_of_people NULL),
+  // no amount_paid/payment_method columns (NULL — paid-ness reads from
+  // payment_status only), and order_state_id/state_name carry so.status
+  // passthrough (vocabs differ; Badge defaults neutral for unknown values).
+  // Customers join on so.customer_id (guest checkout leaves it NULL → panel
+  // 'N/A'). Write paths (POST, PATCH status/payment, DELETE) are untouched —
+  // commit 3 owns source-aware routing/guards.
+  //
+  // Per-leg WHERE fragments share one text between the COUNT legs and the
+  // DATA legs (both use the `o.` / `so.` aliases). UNION-level ORDER BY
+  // created_at DESC + LIMIT/OFFSET; every predicate is bound via `?`, never
+  // interpolated. Envelope `{ data, total, page, pageSize, hasMore }`
+  // byte-identical (pagination.js).
+  let bookingWhere = "o.tenant_id = ?";
+  const bookingBindings = [tenantId];
+  let shopWhere = "so.tenant_id = ?";
+  const shopBindings = [tenantId];
+
+  if (status) {
+    bookingWhere += " AND o.order_state_id = ?";
+    bookingBindings.push(status);
+    // T40: passthrough onto the shop leg (booking lifecycle vs shop
+    // pending/… vocab — see design §4.3).
+    shopWhere += " AND so.status = ?";
+    shopBindings.push(status);
+  }
+
+  if (startDate) {
+    bookingWhere += " AND o.created_at >= ?";
+    bookingBindings.push(startDate);
+    shopWhere += " AND so.created_at >= ?";
+    shopBindings.push(startDate);
+  }
+
+  if (endDate) {
+    bookingWhere += " AND date(o.created_at) <= ?";
+    bookingBindings.push(endDate);
+    shopWhere += " AND date(so.created_at) <= ?";
+    shopBindings.push(endDate);
+  }
+
+  if (projectType) {
+    bookingWhere += " AND (EXISTS (SELECT 1 FROM order_items oi JOIN projects p ON p.id = oi.project_id AND p.tenant_id = o.tenant_id WHERE oi.order_id = o.id AND p.project_type = ?) OR EXISTS (SELECT 1 FROM projects pc WHERE pc.id = o.camp_id AND pc.tenant_id = o.tenant_id AND pc.project_type = ?))";
+    bookingBindings.push(projectType, projectType);
+    // T40: mirror onto the shop leg via 5c-stamped
+    // storefront_order_items.project_id → projects.project_type (header
+    // storefront_orders.project_id stays out — NULL for mixed orders, 5c).
+    shopWhere += " AND EXISTS (SELECT 1 FROM storefront_order_items soi JOIN projects p ON p.id = soi.project_id AND p.tenant_id = so.tenant_id WHERE soi.order_id = so.id AND p.project_type = ?)";
+    shopBindings.push(projectType);
+  }
+
   // P-M4 fix: Select specific columns instead of SELECT o.*
-  let dataQuery = `SELECT o.id, o.tenant_id, o.camp_id, o.room_id, o.customer_id,
+  const bookingLeg = `SELECT o.id, o.tenant_id, o.camp_id, o.room_id, o.customer_id,
     o.order_state_id, o.check_in_date, o.check_out_date,
     o.number_of_people, o.total_amount, o.amount_paid,
     o.payment_status, o.reference, o.created_at,
     c.first_name as customer_first_name, c.last_name as customer_last_name,
-    r.name as room_name, osi.name as state_name
+    r.name as room_name, osi.name as state_name,
+    'booking' as source
     FROM orders o
     LEFT JOIN customers c ON c.id = o.customer_id
     LEFT JOIN rooms_new r ON r.id = o.room_id
     LEFT JOIN order_state_lang osi ON osi.order_state_id = o.order_state_id AND osi.lang = 'en'
-    WHERE o.tenant_id = ?`;
-  let dataBindings = [tenantId];
+    WHERE ${bookingWhere}`;
+  const shopLeg = `SELECT so.id, so.tenant_id, NULL as camp_id, NULL as room_id, so.customer_id,
+    so.status as order_state_id, NULL as check_in_date, NULL as check_out_date,
+    NULL as number_of_people, so.total_amount, NULL as amount_paid,
+    so.payment_status, so.reference, so.created_at,
+    c.first_name as customer_first_name, c.last_name as customer_last_name,
+    NULL as room_name, so.status as state_name,
+    'storefront' as source
+    FROM storefront_orders so
+    LEFT JOIN customers c ON c.id = so.customer_id
+    WHERE ${shopWhere}`;
 
-  if (status) {
-    countQuery += " AND order_state_id = ?";
-    countBindings.push(status);
-    dataQuery += " AND o.order_state_id = ?";
-    dataBindings.push(status);
-  }
-
-  if (projectType) {
-    const countPredicate = " AND (EXISTS (SELECT 1 FROM order_items oi JOIN projects p ON p.id = oi.project_id AND p.tenant_id = orders.tenant_id WHERE oi.order_id = orders.id AND p.project_type = ?) OR EXISTS (SELECT 1 FROM projects pc WHERE pc.id = orders.camp_id AND pc.tenant_id = orders.tenant_id AND pc.project_type = ?))";
-    const dataPredicate = " AND (EXISTS (SELECT 1 FROM order_items oi JOIN projects p ON p.id = oi.project_id AND p.tenant_id = o.tenant_id WHERE oi.order_id = o.id AND p.project_type = ?) OR EXISTS (SELECT 1 FROM projects pc WHERE pc.id = o.camp_id AND pc.tenant_id = o.tenant_id AND pc.project_type = ?))";
-    countQuery += countPredicate;
-    countBindings.push(projectType, projectType);
-    dataQuery += dataPredicate;
-    dataBindings.push(projectType, projectType);
-  }
-
+  // Union-shaped COUNT so `total`/`hasMore` stay exact over both tables.
+  const countQuery = `SELECT COUNT(*) as total FROM (SELECT o.id FROM orders o WHERE ${bookingWhere} UNION ALL SELECT so.id FROM storefront_orders so WHERE ${shopWhere})`;
+  const countBindings = [...bookingBindings, ...shopBindings];
   const { results: countResults } = await c.env.DB.prepare(countQuery).bind(...countBindings).all();
   const total = countResults[0]?.total || 0;
 
-  dataQuery += " ORDER BY o.created_at DESC LIMIT ? OFFSET ?";
-  dataBindings.push(pageSize, offset);
+  const dataQuery = `SELECT * FROM (${bookingLeg} UNION ALL ${shopLeg}) ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+  const dataBindings = [...bookingBindings, ...shopBindings, pageSize, offset];
   const { results } = await c.env.DB.prepare(dataQuery).bind(...dataBindings).all();
   return jsonResponse(paginationEnvelope(results, total, page, pageSize));
 });

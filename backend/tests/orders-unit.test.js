@@ -124,6 +124,9 @@ describe('handleOrdersRoute', () => {
       // 5e: ?projectType= adds a line-level EXISTS predicate (order_items →
       // projects) plus the legacy camp fallback to BOTH the count and the
       // data query; the value travels only as binds, never interpolated.
+      // T40: the predicate is mirrored onto the shop leg via
+      // storefront_order_items.project_id → projects.project_type (ONE bind),
+      // so each of the 2 union queries carries 3 binds (2 booking + 1 shop).
       const { db, chain } = makeDbMock();
       const req = makeRequest('GET', 'https://x.com/api/orders?projectType=restaurant');
       const res = await handleOrdersRoute(req, { DB: db }, TENANT);
@@ -131,13 +134,15 @@ describe('handleOrdersRoute', () => {
       const sqls = db.prepare.mock.calls.map(c => c[0]);
       expect(sqls).toHaveLength(2);
       for (const sql of sqls) {
+        expect(sql).toContain('UNION ALL');
         expect(sql).toContain('order_items');
+        expect(sql).toContain('storefront_order_items');
         expect(sql).toContain('project_type = ?');
         expect(sql).toContain('camp_id');
         expect(sql).not.toContain('restaurant');
       }
       const bindArgs = chain.bind.mock.calls.flat();
-      expect(bindArgs.filter(a => a === 'restaurant')).toHaveLength(4);
+      expect(bindArgs.filter(a => a === 'restaurant')).toHaveLength(6);
     });
 
     it('omits the project predicate when projectType is absent (legacy SQL)', async () => {
@@ -147,6 +152,88 @@ describe('handleOrdersRoute', () => {
       const sqls = db.prepare.mock.calls.map(c => c[0]);
       expect(sqls.some(s => s.includes('project_type'))).toBe(false);
       expect(sqls.some(s => s.includes('order_items'))).toBe(false);
+    });
+
+    it('unions 1 booking + 1 storefront seed into 2 rows with correct source (envelope unchanged)', async () => {
+      // T40 Done: 1 booking seed + 1 storefront seed ⇒ 2 rows, correct
+      // source discriminator each; envelope { data, total, page, pageSize,
+      // hasMore } byte-identical (no new keys).
+      const bookingRow = { id: 'ord_1', tenant_id: TENANT, reference: 'ORD-111111', source: 'booking', created_at: '2026-09-20 10:00:00' };
+      const shopRow = { id: 'so_1', tenant_id: TENANT, reference: 'ORD-222222', source: 'storefront', camp_id: null, room_id: null, created_at: '2026-09-21 10:00:00' };
+      const db = {
+        prepare: vi.fn(chainMock([
+          (ch) => { ch.all.mockResolvedValue({ results: [{ total: 2 }] }); },
+          (ch) => { ch.all.mockResolvedValue({ results: [shopRow, bookingRow] }); },
+        ])),
+        batch: vi.fn(),
+      };
+      const req = makeRequest('GET', 'https://x.com/api/orders');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Object.keys(body).sort()).toEqual(['data', 'hasMore', 'page', 'pageSize', 'total']);
+      expect(body.total).toBe(2);
+      expect(body.page).toBe(1);
+      expect(body.pageSize).toBe(50);
+      expect(body.hasMore).toBe(false);
+      expect(body.data).toHaveLength(2);
+      expect(body.data.map(r => r.source).sort()).toEqual(['booking', 'storefront']);
+      expect(body.data.find(r => r.id === 'ord_1').reference).toBe('ORD-111111');
+      expect(body.data.find(r => r.id === 'so_1').reference).toBe('ORD-222222');
+    });
+
+    it('scopes both union legs by tenant (isolation)', async () => {
+      // T40 Done (tenant isolation): the tenant predicate sits inside EACH
+      // leg — a foreign tenant's booking AND storefront rows are excluded.
+      const { db, chain } = makeDbMock();
+      const req = makeRequest('GET', 'https://x.com/api/orders');
+      await handleOrdersRoute(req, { DB: db }, TENANT);
+      const sqls = db.prepare.mock.calls.map(c => c[0]);
+      expect(sqls).toHaveLength(2);
+      for (const sql of sqls) {
+        expect(sql).toContain('UNION ALL');
+        expect(sql).toContain('o.tenant_id = ?');
+        expect(sql).toContain('so.tenant_id = ?');
+      }
+      // Shared mock chain accumulates binds across both queries: count binds
+      // the tenant twice (one per leg), data binds it twice + pageSize/offset.
+      const bindArgs = chain.bind.mock.calls.flat();
+      expect(bindArgs.filter(a => a === TENANT)).toHaveLength(4);
+    });
+
+    it('filters both union legs by ?start=/?end= date window (subset)', async () => {
+      // T40 Done (date subset): the created_at window narrows BOTH legs, so
+      // a row outside the window on either table is excluded from data+total.
+      const { db, chain } = makeDbMock();
+      const req = makeRequest('GET', 'https://x.com/api/orders?start=2026-09-01&end=2026-09-30');
+      const res = await handleOrdersRoute(req, { DB: db }, TENANT);
+      expect(res.status).toBe(200);
+      const sqls = db.prepare.mock.calls.map(c => c[0]);
+      expect(sqls).toHaveLength(2);
+      for (const sql of sqls) {
+        expect(sql).toContain('o.created_at >= ?');
+        expect(sql).toContain('so.created_at >= ?');
+        expect(sql).toContain('date(o.created_at) <= ?');
+        expect(sql).toContain('date(so.created_at) <= ?');
+        expect(sql).not.toContain('2026-09-01');
+        expect(sql).not.toContain('2026-09-30');
+      }
+      // Each query binds start+end once per leg (2 each per query × 2 queries).
+      const bindArgs = chain.bind.mock.calls.flat();
+      expect(bindArgs.filter(a => a === '2026-09-01')).toHaveLength(4);
+      expect(bindArgs.filter(a => a === '2026-09-30')).toHaveLength(4);
+    });
+
+    it('applies status filter to both union legs', async () => {
+      // T40 Done (status both sides): booking leg keeps
+      // o.order_state_id = ?; shop leg gets the so.status = ? passthrough
+      // (design §4.3; vocabs differ, Badge defaults neutral).
+      const { db } = makeDbMock();
+      const req = makeRequest('GET', 'https://x.com/api/orders?status=confirmed');
+      await handleOrdersRoute(req, { DB: db }, TENANT);
+      const calls = db.prepare.mock.calls.map(c => c[0]);
+      expect(calls.some(c => c.includes('o.order_state_id = ?'))).toBe(true);
+      expect(calls.some(c => c.includes('so.status = ?'))).toBe(true);
     });
   });
 
