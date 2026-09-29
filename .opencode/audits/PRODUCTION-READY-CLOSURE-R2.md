@@ -1,0 +1,54 @@
+# PRODUCTION-READY CLOSURE R2 — Refreshed Closure 2026-09-29 (Step 4 R2)
+
+- Date: 2026-09-29 UTC (session window 2026-09-24 → 2026-09-29)
+- Spec: `.opencode/agents/tmp/2026-09-29-closure2.md` (task `closure-r2-report`)
+- Baseline confirmed: `10800cc` pushed (`git rev-parse HEAD` == `git rev-parse origin/main` == `10800ccd34ccd898f1b04b7cf6dd6b5ebc099730`; `git branch -r --contains 10800cc` → `origin/main`; zero unpushed commits)
+- Scope: this report (NEW — R1 file `.opencode/audits/PRODUCTION-READY-CLOSURE.md` untouched) + `AGENT_LOGBOOK.md` fold, one commit. No source, no `deploy.sh`, no prod writes.
+
+## 1. Session
+
+- Anchor: pre-audit baseline `259ace3` (commit object verified via `git cat-file -t` → `commit`).
+- Range `259ace3..HEAD` = **80 commits**, all pushed (`HEAD == origin/main`, `git log origin/main..HEAD` empty). R1 covered 77; R2 adds exactly 3: `6152268` (R1 closure report), `e1dc4ac` (R2 E2E re-run), `10800cc` (R2 x-tenant probes).
+- Session arc (all SHAs verified in `git log`):
+  - Full read-only audit `09a7653` (51 findings) → 10 fixes, all pushed (`ae94905`, `b9cb43f`, `300cff3`, `20102c4`, `23b04d5`, `3790a67`, `cb3927c`, `4ae505a` + `8534795`, `938054d`).
+  - Phase 4 project-scoping (0118/0119/0120 + gates 1–6) → staging walkthrough PASS `8916108` after two BLOCKED attempts (missing `tip_amount` column; `kitchen_status`/`tip_amount` bind swap), each fixed forward and pinned by tests.
+  - Staging D1 reset: deleted DB `4a9e6e45` → new `40f944f2` + full migration replay + reseed (`af764a0`, `abe2774`, `20a02b2`, `f30181b`).
+  - Phase 5 unified cart (`2712171`, `149a38c`) + `0121`/`0122`/`0123` (stale `products(id)` FK → `pos_products(id)`, `49d7ce1`).
+  - Phase 6 docs pass 6.1–6.12 (`4892268` … `210c52e`).
+  - Part 3 deploy gates: `996bb46` parity script, `f2695b2` preflight, `e651475` runbook + consolidation `1f1d6c5` (full SHAs `996bb46f…`, `f2695b290…`, `e651475dc…` verified via `git show -s`).
+  - T40 union arc: triage `f7e6b2c` → design `20aa719` → list union `bdb500c` → detail routing `dd5b7d9` → admin UI `f002dd1` → walkthrough PASS `6637e69`/`bb1db42` → profit grain verify `e851e0f` → server union `3bcab82` → BLOCKED double-count `cb88355` (6200 vs 3100) → client-leg removal `0b17105` → final PASS `3e924a9` → R1 gates `7a486c5` (E2E 10/0/1) + `27bfcd1` (probes PASS) → R1 closure `6152268` → **R2 gates `e1dc4ac` (E2E 10/0/1) + `10800cc` (probes PASS)**.
+- Mutations this step: ZERO (read-only fact gathering; this commit adds 2 docs files only).
+
+## 2. Code
+
+- Backend suite: **116 files / 2623 tests, 0 failed** (source: `0b17105` commit body STEP 4, `cd backend && npx vitest run`; +1 file / +4 tests vs `3bcab82` baseline 115/2619 via `reports-unified-profit.test.js`). No re-run per spec; tree unchanged since — `git log 0b17105..HEAD -- backend/ app/` returns EMPTY (all 6 commits since are audits/logbook/walkthrough docs only: `3e924a9`, `7a486c5`, `27bfcd1`, `6152268`, `e1dc4ac`, `10800cc`).
+- Frontend suite: **149 files / 3570 tests, 0 failed** (source: `0b17105` commit body STEP 4; baseline 149/3571 → −5 merge-suite +4 server-only pins = −1, with `ordersQueryCalls === 0` no-fetch proof in 3/4 new tests + targeted 59/59 file run). No re-run per spec; tree unchanged since (same empty `git log` proof as above).
+- Staging E2E gate R2 (`e1dc4ac` body): `STAGING=1 CI=true npx playwright test --config=tests/e2e/playwright.production.config.ts` (11 read-only critical-flows, read-only global-setup-production, no seeding, tee `/tmp/staging-e2e2.log`) → **10 passed / 0 failed / 1 skipped** in 18.4s, all first-attempt, zero retries, exit 0. Matches R1 gate `7a486c5` (10/0/1 in 19.4s) test-for-test: tests 1–7, 9–11 PASS (home, search filter, camp detail, tenant portal home, /book, /menu, /admin login render, API health 200s, security headers incl. strict `/` X-Frame-Options gate, branded 404). Skip = test 8 POS-login (spec-encoded `test.skip(!customDomain)`; staging tenant `customDomain` null + POS tenant-only per zone model) — accepted, no fix. JWT-shaped grep over tracked files returns only synthetic fixtures (`.invalid` / `INVALIDSIGNATURE`) — zero live tokens. Full local suite NOT run against staging (unsupported by design — seeding would pollute pinned staging D1 state).
+- Cross-tenant probes R2 (`10800cc` + `10-x-tenant-probes-r2.md`, raw bodies verbatim): staging census exactly **1 active tenant** (`tenant_a2d040ea-3b1` / `acaciacamp`); `michaelshouse` absent post-reset → single-tenant branch (foreign-formatted nonexistent ids, every target stated). PROBE-1 booking foreign id → **404** (`orders.js:692` tenant-bound predicate); PROBE-2 POS foreign id → **404** (`pos/index.js:985-987` predicate); PROBE-3 products cross-tenant header → **200 with 4/4 own-tenant rows, 0 foreign** (GET `/api/products` is method-branched public per `index.js:643-648`, so 403 inapplicable by design); BONUS orders cross-tenant header → **401 fail-closed** (`resolveScope.js:233-237`); controls 200/200/200. Zero foreign rows disclosed. Both JWTs shredded via `chmod 600` files + `rm` (zero `eyJ` strings, grep-verified). Matches R1 probes `27bfcd1` probe-for-probe.
+- T40 final (`3e924a9` + `P5-STAGING-WALKTHROUGH.md` RUN T40-profit-final): server Camp 3000/2/2 + Restaurant 100/2/2 = 3100/4/2, Unassigned absent; D1 lines Camp 3000/2 + Restaurant 100/2 = 3100/4, NULLs 0/0, booking lines 0; admin tab Camp $3,000 + Restaurant $100 = Total $3,100, Unassigned absent; **3100 == 3100 == 3100**, 0 page errors. `cb88355` 6200 closed by `0b17105` (server-only profit memo; `ordersQueryCalls === 0` no-fetch proof).
+- Corroborating invariant: `storefront_orders.status` never transitions (webhook flips `payment_status` only, `paymob-webhook.js:317-324`) — every storefront predicate mirrors `!= 'cancelled'` (logbook T40 bullet).
+
+## 3. Infra
+
+- Migration lineage: **37 top-level files** (`0001`–`0014` + `0100`–`0123`, `0109` reserved-absent), head `0123_storefront_order_items_fk_pos_products.sql` (filesystem-verified `ls backend/migrations/*.sql | wc -l` = 37).
+- Staging D1 `campmaster-db-staging` (`40f944f2`): ledger head **0123** + live `pragma_foreign_key_list` confirms `product_id → pos_products` (evidence: p5-0123 walkthrough logbook entry; T40-final D1 SELECTs all `rows_written 0`).
+- Prod D1 `campmaster-db` (`1008d7ef`): **UNKNOWN this step — no prod access** (all tmp agents forbidden from `deploy.sh`; no prod ledger read performed or recorded since R1). Carried from R1: last direct read-only evidence 2026-09-25 = ledger head **0110**, `tip_amount` ABSENT on `pos_transactions`. **No repo evidence of a prod deploy applying 0120+ since** — carried per spec as "0120–0123 pending prod deploy — owner-gated".
+- Deploy gates (full SHAs verified via `git show -s`): `996bb46` `scripts/check-deploy-parity.sh` (dry-run default, `--ack-prod` for prod), `f2695b2` `scripts/deploy-preflight.sh` + `./deploy.sh --preflight` wiring (default deploy byte-identical), `e651475` `docs/RUNBOOK.md` (10 sections, drift classes + incident procedures). `bash -n` clean; dry-runs reviewed; `deploy.sh` never executed by agents.
+- Backups: `backups/campmaster-20260928-*.sql` + `20260929-*.sql` present per R1 (fresh, satisfies preflight gate [1/4] freshness); not re-listed this step (read-only carry).
+- Checkpoint-2: **owner-attested, 2 confirmations** — (1) 2026-09-28 owner-pasted outcomes (JWT `secret put` success + empty token `grep`), recorded in the staging-e2e-rerun logbook entry and referenced in the `e1dc4ac` body ("Checkpoint-2 owner-confirmed … 2026-09-28"); (2) 2026-09-29 re-confirmation via execution order, recorded in the `e1dc4ac` commit body ("Checkpoint-2 owner-confirmed (JWT success + empty token grep 2026-09-28)"). No independent repo artifact exists (the E2E agent's repo-wide search found no checkpoint-2 record — `7a486c5` body deviation #1, unchanged); substituted in-session by verified equivalents (HEAD pushed, staging apex 200, staging tenant present, T40 deploy-live proven, zero live tokens by grep).
+- 5xx alerting: **NO evidence in repo** (no uptime-monitor config; RUNBOOK covers incident response only). Per spec: stays **owner action / open** — NO, unless evidence; none found.
+
+## 4. Open Items (all owner-gated, none code-blocking)
+
+1. **Prod deploy of 0120–0123** (`./deploy.sh` → applies ledger 0110 → 0123 incl. `tip_amount` + `0123` FK retarget; pre-deploy `PRAGMA foreign_key_check` on prod per `49d7ce1` note; `./deploy.sh --preflight` first). No agent may run this.
+2. **5xx alerting** — owner action, no repo evidence (see §3).
+3. **Single-tenant staging**: `michaelshouse` absent post-reset (census: exactly 1 active tenant `tenant_a2d040ea-3b1`, re-confirmed in R2 probes). The two-tenant 403 `scopeDenied` path (`requireAuth.js:204-207`) is code-reviewed + unit-pinned but **not live-proven on staging** (R2 probes used foreign-format nonexistent ids → 404/401, correctly fail-closed, but a second existing tenant is required to exercise 403).
+4. **Walkthrough caveats** (accepted, documented): apex host forces UI-form login to 401 by design (session-injection used for admin-UI gates); POS-login E2E skipped (customDomain null); `acacia.staging` 404 lookupKey mismatch / `acaciacamp.staging` NXDOMAIN (apex used); Cloudflare Builds API Unauthorized → deploy-live confirmed functionally, not by worker version id.
+
+## 5. Recommendation: HOLD
+
+**HOLD** — evidence-backed, per the spec's gate rule (HOLD if any gate open: prod ledger, alerting, single-tenant staging).
+
+- Code is green on every measured axis across BOTH runs (backend 116/2623, frontend 149/3570, staging E2E R1 10/0/1 + R2 10/0/1, x-tenant R1 PASS + R2 PASS, T40 3100 == 3100 == 3100), and the audit → fix → walkthrough chain is fully closed in-repo across 80 pushed commits with zero backend/app drift since `0b17105`.
+- But three gates remain open, each an owner action: (a) prod ledger is **UNKNOWN by direct evidence this step** (last read 0110 on 2026-09-25 — the 0120–0123 lineage incl. the tip column the live POS sale path writes and the FK the checkout path requires is **not proven on prod**); (b) 5xx alerting has **no evidence**; (c) staging is single-tenant, so the two-tenant 403 path is **not live-proven**.
+- Flip conditions (all owner-side, no code work): run `./deploy.sh --preflight` then `./deploy.sh` (prod ledger → 0123, `foreign_key_check` clean), confirm 5xx alerting in place, and re-run the staging E2E + x-tenant probes post-deploy (second tenant optional but recommended to live-prove 403). On those three evidences, recommendation becomes **READY** with no further code changes required.
