@@ -21,11 +21,13 @@ Worker name: `campmaster-monitor` · entry `src/index.js` · route
   `GET /api/history?target=<name>&hours=<1–168, default 24>`.
 - **Intake API**: `POST /report/error` + `POST /report/feedback` (Bearer
   `REPORT_TOKEN`, 60/min per-IP limit, 201 `{id, kind, status: "new"}`).
-- **Operator**: `POST /internal/check` (Bearer `REPORT_TOKEN`; empty body
-  probes all, `{"target": "<name>"}` probes one) and `GET /` (Bearer
-  `DASHBOARD_TOKEN` via `Authorization` header or `?token=`; dark mobile
+- **Operator**: `POST /internal/check` (session cookie from password
+  login OR Bearer `REPORT_TOKEN` for scripts; empty body probes all,
+  `{"target": "<name>"}` probes one) and `GET /` (session cookie only —
+  sign in at `GET /login` with `DASHBOARD_PASSWORD`; dark mobile
   dashboard with status pill, per-target cards, sparklines, last-20 checks
-  and last-20 reports).
+  and last-20 reports, plus a Log out button posting to `POST /logout`).
+  The old `?token=` bookmark is deleted — query tokens never authenticate.
 - **Schema** (`migrations/0001_init.sql`, D1 `campmaster-monitor-db`):
   `checks`, `reports`, `alert_state`.
 - **Tests**: `tests/` (`alerts`, `check-logic`, `auth`, `api`) —
@@ -49,7 +51,7 @@ wrangler d1 migrations apply campmaster-monitor-db --remote
 
 # 3. Set secrets (values prompted interactively, never echoed).
 wrangler secret put REPORT_TOKEN
-wrangler secret put DASHBOARD_TOKEN
+wrangler secret put DASHBOARD_PASSWORD
 wrangler secret put ALERT_WEBHOOK_URL
 
 # 4. Deploy. To deploy without the custom domain first, comment out the
@@ -61,7 +63,47 @@ wrangler deploy
 curl https://status.sinaicamps.com/api/status
 ```
 
-## 3. How to add a target
+## 3. First login
+
+1. Deploy with both secrets set (section 2).
+2. Visit `https://status.sinaicamps.com/login` in a browser.
+3. Enter the dashboard password once — the server sets a signed
+   `monitor_session` cookie (`HttpOnly; Secure; SameSite=Strict; Path=/;
+   Max-Age=2592000`, 30 days, well under 4KB) and redirects to `/`.
+4. Unauthenticated `GET /` redirects to `/login` (302). The old
+   `?token=` bookmark no longer works by design.
+5. Log out with the dashboard "Log out" button (`POST /logout` clears
+   the cookie with `Max-Age=0`).
+6. Missing `DASHBOARD_PASSWORD` renders a "dashboard password not
+   configured" page (set it via `wrangler secret put DASHBOARD_PASSWORD`).
+
+`POST /login` is rate-limited (5/min per IP, 429 `rate limit exceeded`)
+and requires a CSRF header (`Origin` or `Referer`, else 400).
+
+## 4. Rotate the dashboard password
+
+1. `wrangler secret put DASHBOARD_PASSWORD` (new value prompted, never echoed).
+2. Redeploy (`wrangler deploy` from `monitor/`).
+3. All existing session cookies invalidate immediately (sessions are
+   HMAC-signed with the password itself), so every operator signs in again.
+
+## 5. REPORT_TOKEN for scripts (no browser login)
+
+`POST /internal/check` accepts the session cookie OR
+`Authorization: Bearer REPORT_TOKEN` — scripts use the Bearer path with
+no cookie or CSRF header:
+
+```bash
+curl -X POST https://status.sinaicamps.com/internal/check \
+  -H "Authorization: Bearer $REPORT_TOKEN" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+`REPORT_TOKEN` is also the Bearer for `POST /report/error` and
+`POST /report/feedback`. It is set via `wrangler secret put REPORT_TOKEN`
+only — never in `wrangler.toml`, never printed, never committed.
+
+## 6. How to add a target
 
 Targets live in code, not in the DB — no migration needed.
 
@@ -76,13 +118,13 @@ Targets live in code, not in the DB — no migration needed.
 Alert state for the new target is created automatically on the first cron
 evaluation (`alert_state` upsert).
 
-## 4. Cron interval
+## 7. Cron interval
 
 `[triggers] crons = [ "*/5 * * * *" ]` in `wrangler.toml` — the `scheduled`
 handler (`runProbeCycle` → `evaluateAlerts`) runs **every 5 minutes**.
 Change the expression and redeploy to adjust.
 
-## 5. Telegram / Slack alerts
+## 8. Telegram / Slack alerts
 
 Set the webhook destination via secret (never in `wrangler.toml`):
 
@@ -103,7 +145,7 @@ wrangler secret put ALERT_WEBHOOK_URL
   skip — the cron run never crashes for lack of webhook config). A dead
   webhook endpoint likewise cannot fail the run (`sendAlert` never throws).
 
-## 6. Troubleshooting
+## 9. Troubleshooting
 
 - `wrangler deploy` fails on the route: comment out the `[[routes]]`
   block (`pattern = "status.sinaicamps.com"`) and deploy to
@@ -111,11 +153,21 @@ wrangler secret put ALERT_WEBHOOK_URL
 - `database_id` placeholder: `wrangler.toml` ships with
   `database_id = "<owner pastes after wrangler d1 create>"` — replace it
   with the id from step 1 before deploying.
-- Dashboard returns 401 JSON: `GET /` needs `DASHBOARD_TOKEN` as
-  `Authorization: Bearer <token>` or `?token=<token>` (constant-time
-  compare; missing/invalid → 401 by design).
-- `/report/*` or `/internal/check` return 401: they take `REPORT_TOKEN`
-  (Bearer only, no `?token=`); check `wrangler secret put REPORT_TOKEN`.
+- Dashboard redirects to `/login`: `GET /` needs the `monitor_session`
+  cookie from `POST /login` (`DASHBOARD_PASSWORD`, constant-time compare;
+  missing/invalid/expired → 302 to `/login` by design). The old
+  `?token=` bookmark never authenticates.
+- `/login` returns 500 "dashboard password not configured": set it via
+  `wrangler secret put DASHBOARD_PASSWORD` from `monitor/`, then redeploy.
+- `/login` returns 429: the in-memory 5/min per-IP limiter fired
+  (per-isolate Map on `cf-connecting-ip` only; no KV writes, so it never
+  touches the free-plan 1,000/day quota).
+- `/login` or `/logout` return 400 `csrf required`: send `Origin` (or
+  `Referer`) — browsers do this automatically on same-origin POSTs.
+- `/report/*` return 401: they take `REPORT_TOKEN` (Bearer only, no
+  `?token=`); check `wrangler secret put REPORT_TOKEN`.
+- `/internal/check` returns 401: it takes the session cookie OR Bearer
+  `REPORT_TOKEN` (scripts); check one of the two is valid.
 - `/report/*` returns 429: the in-memory 60/min per-IP limiter fired
   (per-isolate Map on `cf-connecting-ip` only — same trade-off as the main
   backend's `RATE_LIMIT_KV_ENABLED="false"` fallback; no KV writes, so it

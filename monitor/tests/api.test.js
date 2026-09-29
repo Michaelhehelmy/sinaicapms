@@ -142,8 +142,8 @@ class FakeDb {
 }
 
 const REPORT_TOKEN = 'test-report-secret';
-const DASHBOARD_TOKEN = 'test-dashboard-secret';
-const envFor = (db) => ({ DB: db, REPORT_TOKEN, DASHBOARD_TOKEN });
+const DASHBOARD_PASSWORD = 'test-dashboard-password-123';
+const envFor = (db) => ({ DB: db, REPORT_TOKEN, DASHBOARD_PASSWORD });
 
 function postReport(path, { token = REPORT_TOKEN, body = { message: 'help' }, ip = '10.9.0.1' } = {}) {
   const headers = { 'Content-Type': 'application/json', 'cf-connecting-ip': ip };
@@ -366,17 +366,36 @@ describe('POST /internal/check (tokened manual probe)', () => {
   });
 });
 
-describe('GET / dashboard (tokened HTML)', () => {
-  it('401 without token and with wrong token', async () => {
+describe('GET / dashboard (cookie-session HTML)', () => {
+  it('302 to /login without cookie; ?token= no longer authenticates', async () => {
     const db = new FakeDb();
-    expect((await app.request('/', {}, envFor(db))).status).toBe(401);
-    expect((await app.request('/?token=wrong', {}, envFor(db))).status).toBe(401);
+    const bare = await app.request('/', {}, envFor(db));
+    expect(bare.status).toBe(302);
+    expect(bare.headers.get('location')).toContain('/login');
+    const queryToken = await app.request('/?token=wrong', {}, envFor(db));
+    expect(queryToken.status).toBe(302);
   });
 
   it('200 HTML contains status-pill, dark bg, Check Now, lists', async () => {
     const db = new FakeDb();
     for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
-    const res = await app.request(`/?token=${DASHBOARD_TOKEN}`, {}, envFor(db));
+    const env = envFor(db);
+    const login = await app.request(
+      '/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          origin: 'https://status.sinaicamps.com',
+          'cf-connecting-ip': '10.9.0.11',
+        },
+        body: JSON.stringify({ password: DASHBOARD_PASSWORD }),
+      },
+      env,
+    );
+    expect(login.status).toBe(302);
+    const cookie = String(login.headers.get('set-cookie')).split(';')[0];
+    const res = await app.request('/', { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
@@ -390,7 +409,7 @@ describe('GET / dashboard (tokened HTML)', () => {
     expect(html).toContain('marketplace');
   });
 
-  it('accepts Authorization header too and escapes report content', async () => {
+  it('accepts session cookie too and escapes report content', async () => {
     const db = new FakeDb();
     db.seedCheck('marketplace', { ok: false, errorMessage: '<img src=x>' });
     const env = envFor(db);
@@ -407,11 +426,22 @@ describe('GET / dashboard (tokened HTML)', () => {
       },
       env,
     );
-    const res = await app.request(
-      '/',
-      { headers: { authorization: `Bearer ${DASHBOARD_TOKEN}` } },
+    const login = await app.request(
+      '/login',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          origin: 'https://status.sinaicamps.com',
+          'cf-connecting-ip': '10.9.0.12',
+        },
+        body: JSON.stringify({ password: DASHBOARD_PASSWORD }),
+      },
       env,
     );
+    expect(login.status).toBe(302);
+    const cookie = String(login.headers.get('set-cookie')).split(';')[0];
+    const res = await app.request('/', { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).not.toContain('<script>alert(1)</script>');

@@ -2,6 +2,14 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { TARGETS, matchesExpect } from './targets.js';
 import * as db from './db.js';
+import {
+  SESSION_COOKIE,
+  parseCookie,
+  signSession,
+  verifySession,
+  buildSessionCookie,
+  clearSessionCookie,
+} from './auth.js';
 
 const app = new Hono();
 
@@ -113,7 +121,7 @@ app.get('/api/history', async (c) => {
 
 // Constant-time string compare over UTF-8 bytes (length folded into the diff
 // so short/long guesses take the same path). Guards REPORT_TOKEN /
-// DASHBOARD_TOKEN against timing side-channels. Never throws.
+// DASHBOARD_PASSWORD against timing side-channels. Never throws.
 export function timingSafeEqual(provided, expected) {
   const a = new TextEncoder().encode(String(provided ?? ''));
   const b = new TextEncoder().encode(String(expected ?? ''));
@@ -177,6 +185,106 @@ export function getClientIp(c) {
   return c.req.header('cf-connecting-ip')?.trim() || 'unknown';
 }
 
+// In-memory 5/min per-IP limiter for POST /login (brute-force budget).
+// Same per-isolate trade-off as the report limiter (no KV writes —
+// free-plan 1,000/day quota). Only cf-connecting-ip is trusted.
+export const LOGIN_RATE_LIMIT = 5;
+export const LOGIN_RATE_WINDOW_MS = 60_000;
+
+function loginRateStore() {
+  if (!globalThis.__monitorLoginRate) globalThis.__monitorLoginRate = new Map();
+  return globalThis.__monitorLoginRate;
+}
+
+// Returns { allowed, count, limit }. Exported for tests.
+export function checkLoginRateLimit(ip, now = Date.now()) {
+  const store = loginRateStore();
+  const windowStart = Math.floor(now / LOGIN_RATE_WINDOW_MS) * LOGIN_RATE_WINDOW_MS;
+  if (store.size > 2000) {
+    for (const key of store.keys()) {
+      const w = Number(key.slice(key.lastIndexOf(':') + 1));
+      if (Number.isFinite(w) && w < windowStart) store.delete(key);
+    }
+  }
+  const key = `${ip}:${windowStart}`;
+  const count = (store.get(key) ?? 0) + 1;
+  store.set(key, count);
+  return { allowed: count <= LOGIN_RATE_LIMIT, count, limit: LOGIN_RATE_LIMIT };
+}
+
+// CSRF gate for cookie-authenticated POSTs (/login, /logout). Browsers
+// always send Origin (fetch/form) or Referer on same-origin POSTs; a
+// missing pair means a forged cross-site request path. Returns true when
+// the gate passes.
+export function hasCsrfHeader(c) {
+  return Boolean(c.req.header('origin') || c.req.header('referer'));
+}
+
+// True when the request carries a fresh session cookie signed with
+// DASHBOARD_PASSWORD. Fail-closed: unconfigured password, missing cookie,
+// or bad/expired signature all deny. Never throws, never logs.
+export async function hasValidSession(c, now = Date.now()) {
+  const password = c.env?.DASHBOARD_PASSWORD;
+  if (!password) return false;
+  const cookies = parseCookie(c.req.header('cookie'));
+  const value = cookies[SESSION_COOKIE];
+  if (!value) return false;
+  return verifySession(value, password, now);
+}
+
+// Login form (GET /login). No token in the page — password posts to
+// POST /login which sets the HttpOnly session cookie.
+function buildLoginHtml() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — SinaiCamps Status</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0}
+.wrap{max-width:24rem;margin:4rem auto;padding:1rem}
+.card{background:#1e293b;border:1px solid #334155;border-radius:.75rem;padding:1.5rem}
+h1{font-size:1.1rem;margin:0 0 1rem}
+label{display:block;font-size:.8rem;color:#cbd5e1;margin-bottom:.3rem}
+input{width:100%;padding:.6rem;font-size:1rem;border-radius:.5rem;border:1px solid #475569;background:#0b1220;color:#e2e8f0}
+button{width:100%;padding:.7rem;margin-top:1rem;font-size:.9rem;font-weight:700;color:#0f172a;background:#38bdf8;border:0;border-radius:.6rem}
+.muted{color:#94a3b8;font-size:.75rem;margin-top:1rem}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+<h1>SinaiCamps Status — sign in</h1>
+<form method="POST" action="/login">
+<label for="password">Dashboard password</label>
+<input id="password" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">Sign in</button>
+</form>
+<p class="muted">Session cookie lasts 30 days (HttpOnly, Secure, SameSite=Strict).</p>
+</div></div>
+</body>
+</html>`;
+}
+
+// Error page when DASHBOARD_PASSWORD is not configured. Names the secret
+// to set (`wrangler secret put DASHBOARD_PASSWORD`) without ever printing
+// or requiring its value.
+function buildUnconfiguredHtml() {
+  return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard not configured</title></head>
+<body style="background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif">
+<div style="max-width:28rem;margin:4rem auto;padding:1rem">
+<h1>Dashboard password not configured</h1>
+<p>Set it via <code>wrangler secret put DASHBOARD_PASSWORD</code> from <code>monitor/</code>, then redeploy.</p>
+</div>
+</body>
+</html>`;
+}
+
 // Minimal HTML escaper for server-rendered dashboard values (report messages,
 // page URLs, probe error strings are all operator/user-controlled).
 export function escapeHtml(value) {
@@ -236,7 +344,9 @@ app.post('/report/feedback', (c) => handleReport(c, 'feedback'));
 // empty body probes all. Unknown target → 400. Always 200 with the alert
 // evaluation outcomes (probe rows are written first, same as the cron path).
 app.post('/internal/check', async (c) => {
-  if (!isAuthorizedToken(c.req.header('authorization'), c.env.REPORT_TOKEN)) {
+  const cookieOk = await hasValidSession(c);
+  const bearerOk = isAuthorizedToken(c.req.header('authorization'), c.env.REPORT_TOKEN);
+  if (!cookieOk && !bearerOk) {
     return c.json({ error: 'unauthorized' }, 401);
   }
   let targetName = null;
@@ -379,6 +489,7 @@ td.ok{color:#4ade80}td.bad{color:#f87171}
 <header>
 <h1>SinaiCamps Status</h1>
 <div id="status-pill" class="${overall}">${pillLabel}</div>
+<form method="POST" action="/logout" style="margin:0"><button id="logout" type="submit" style="background:none;border:1px solid #334155;color:#94a3b8;border-radius:.5rem;padding:.3rem .7rem;font-size:.75rem">Log out</button></form>
 </header>
 <p class="muted" id="updated">updated ${escapeHtml(checked_at ?? 'never')}</p>
 <button id="check-now" type="button">Check Now</button>
@@ -456,16 +567,59 @@ refreshAll();
 </html>`;
 }
 
-// Tokened operator dashboard. Accepts DASHBOARD_TOKEN via
-// `Authorization: Bearer` OR `?token=` (browser-friendly); both compared
-// constant-time. Tokens are set via `wrangler secret put` — never in
-// wrangler.toml [vars]. Missing/invalid → 401 JSON (no HTML leak).
+// Password login (form-friendly). GET renders the form; POST checks
+// DASHBOARD_PASSWORD constant-time and issues the signed session cookie.
+// Secrets via `wrangler secret put` — never in wrangler.toml [vars],
+// never logged, never echoed.
+app.get('/login', async (c) => {
+  if (!c.env.DASHBOARD_PASSWORD) return c.html(buildUnconfiguredHtml(), 500);
+  if (await hasValidSession(c)) return c.redirect('/', 302);
+  return c.html(buildLoginHtml());
+});
+
+app.post('/login', async (c) => {
+  if (!c.env.DASHBOARD_PASSWORD) return c.json({ error: 'dashboard password not configured' }, 500);
+  const rl = checkLoginRateLimit(getClientIp(c));
+  if (!rl.allowed) return c.json({ error: 'rate limit exceeded' }, 429);
+  if (!hasCsrfHeader(c)) return c.json({ error: 'csrf required' }, 400);
+  let password = '';
+  const contentType = c.req.header('content-type') ?? '';
+  const raw = await c.req.text();
+  if (contentType.includes('application/json')) {
+    let body;
+    try {
+      body = JSON.parse(raw || '{}');
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    password = typeof body?.password === 'string' ? body.password : '';
+  } else {
+    password = new URLSearchParams(raw).get('password') ?? '';
+  }
+  if (!password) return c.json({ error: 'password is required' }, 400);
+  if (!timingSafeEqual(password, c.env.DASHBOARD_PASSWORD)) {
+    return c.json({ error: 'invalid password' }, 401);
+  }
+  const session = await signSession(c.env.DASHBOARD_PASSWORD, Date.now());
+  c.header('Set-Cookie', buildSessionCookie(session));
+  return c.redirect('/', 302);
+});
+
+app.post('/logout', (c) => {
+  if (!hasCsrfHeader(c)) return c.json({ error: 'csrf required' }, 400);
+  c.header('Set-Cookie', clearSessionCookie());
+  return c.redirect('/login', 302);
+});
+
+// Cookie-session operator dashboard. Requires a fresh `monitor_session`
+// cookie from POST /login (signed with DASHBOARD_PASSWORD, 30d window).
+// The old `?token=` bookmark is deleted — query tokens never authenticate.
+// Unauthenticated browsers redirect to /login (302); the password itself
+// is set via `wrangler secret put` — never in wrangler.toml [vars].
 app.get('/', async (c) => {
-  const headerToken = getBearerToken(c.req.header('authorization'));
-  const queryToken = c.req.query('token') || null;
-  const provided = headerToken ?? queryToken;
-  if (!provided || !c.env.DASHBOARD_TOKEN || !timingSafeEqual(provided, c.env.DASHBOARD_TOKEN)) {
-    return c.json({ error: 'unauthorized' }, 401);
+  if (!c.env.DASHBOARD_PASSWORD) return c.html(buildUnconfiguredHtml(), 500);
+  if (!(await hasValidSession(c))) {
+    return c.redirect('/login', 302);
   }
   const agg = await getDashboardAggregate(c.env);
   const recentChecks = await db.getRecentChecks(c.env.DB, 20);
