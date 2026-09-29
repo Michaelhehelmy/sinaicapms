@@ -1,19 +1,25 @@
 // Signed session-cookie helpers for the monitor dashboard login.
 //
 // Cookie-session auth replaces the old `?token=` bookmark: POST /login checks
-// DASHBOARD_PASSWORD (constant-time) and issues a signed `monitor_session`
+// DASHBOARD_PIN (6 digits, constant-time) and issues a signed `monitor_session`
 // cookie; GET / and POST /internal/check verify it. REPORT_TOKEN (Bearer) is
 // kept for scripts on /internal/check and /report/*.
 //
-// Session value shape: `<ts>.<hmac-hex>` where ts = Date.now() ms and hmac =
-// HMAC-SHA256(DASHBOARD_PASSWORD, ts). 30-day window enforced on verify.
-// Secrets are set via `wrangler secret put` — never in wrangler.toml [vars],
-// never logged, never echoed.
+// Session value shape: `<ts>.<hmac-hex>` where ts = Date.now() ms
+// (the {issued_at} payload — no other fields) and hmac =
+// HMAC-SHA256(DASHBOARD_PIN, ts). Trust-device controls the cookie Max-Age
+// only (12h default, 90d trusted); the server verify window accepts up to the
+// 90d bound so both cookie types verify. Secrets are set via
+// `wrangler secret put` — never in wrangler.toml [vars], never logged,
+// never echoed.
 
 export const SESSION_COOKIE = 'monitor_session';
 
-// 30 days in seconds (cookie Max-Age) — single source of truth.
-export const SESSION_MAX_AGE = 2592000;
+// 12 hours in seconds (default cookie Max-Age) — single source of truth.
+export const SESSION_DEFAULT_MAX_AGE = 43200;
+
+// 90 days in seconds (trusted-device cookie Max-Age) — single source of truth.
+export const SESSION_TRUSTED_MAX_AGE = 7776000;
 
 // Hard upper bound for the session cookie value (header-safety; real
 // sessions are ~80 bytes: 13-digit ts + '.' + 64-char hex).
@@ -66,19 +72,20 @@ async function hmacHex(key, message) {
 }
 
 // Sign a session for `timestamp` (defaults to Date.now()). Returns
-// `<ts>.<64-char hex>`. Never logs the password.
-export async function signSession(password, timestamp = Date.now()) {
+// `<ts>.<64-char hex>`. Never logs the PIN.
+export async function signSession(pin, timestamp = Date.now()) {
   const ts = String(timestamp);
-  const sig = await hmacHex(password, ts);
+  const sig = await hmacHex(pin, ts);
   return `${ts}.${sig}`;
 }
 
-// True when `value` is a fresh signature over a numeric ts within the 30d
-// window. Fail-closed: missing/empty value or password, malformed shape,
-// non-numeric ts, future ts, expired ts, or bad signature all deny.
-// Signature compare is constant-time. Never throws.
-export async function verifySession(value, password, now = Date.now()) {
-  if (!value || !password) return false;
+// True when `value` is a fresh signature over a numeric ts within the 90d
+// window (covers both 12h default and 90d trusted cookies). Fail-closed:
+// missing/empty value or PIN, malformed shape, non-numeric ts, future ts,
+// expired ts, or bad signature all deny. Signature compare is constant-time.
+// Never throws.
+export async function verifySession(value, pin, now = Date.now()) {
+  if (!value || !pin) return false;
   const s = String(value);
   if (s.length > SESSION_MAX_BYTES) return false;
   const dot = s.lastIndexOf('.');
@@ -91,19 +98,23 @@ export async function verifySession(value, password, now = Date.now()) {
   if (!Number.isFinite(ts)) return false;
   const age = now - ts;
   if (age < 0) return false;
-  if (age > SESSION_MAX_AGE * 1000) return false;
-  const expected = await hmacHex(password, tsStr);
+  if (age > SESSION_TRUSTED_MAX_AGE * 1000) return false;
+  const expected = await hmacHex(pin, tsStr);
   return timingSafeEqual(sig, expected);
 }
 
 // Exact Set-Cookie value for an issued session. Flags are pinned:
-// HttpOnly Secure SameSite=Strict Path=/ Max-Age=2592000. Total length
-// stays well under 4KB (≤4KB asserted in tests).
-export function buildSessionCookie(value) {
-  return `${SESSION_COOKIE}=${value}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_MAX_AGE}`;
+// HttpOnly Secure SameSite=Strict Path=/ Max-Age=43200 default,
+// Max-Age=7776000 when `trusted` is true. Total length stays well under
+// 4KB (≤4KB asserted in tests).
+export function buildSessionCookie(value, trusted = false) {
+  const maxAge = trusted ? SESSION_TRUSTED_MAX_AGE : SESSION_DEFAULT_MAX_AGE;
+  return `${SESSION_COOKIE}=${value}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
 }
 
-// Clearing cookie for POST /logout — same flags, Max-Age=0.
+// Clearing cookie for POST /logout — same flags, Max-Age=0. Clears the
+// session cookie only (login_attempts rows are left for the 5-min gate +
+// scheduled cleanup).
 export function clearSessionCookie() {
   return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
 }

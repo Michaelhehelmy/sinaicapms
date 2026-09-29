@@ -160,3 +160,40 @@ export async function getRecentChecks(db, limit = 20) {
     .all();
   return (res.results ?? []).map((row) => ({ ...row, checked_at: toIso(row.checked_at) }));
 }
+
+// --- PIN login gate helpers (append-only; helpers above untouched) ---
+//
+// One row per POST /login attempt (success AND failure AND rate-limited).
+// Only the outcome bit is stored — never the PIN value or hash. `ip` is
+// cf-connecting-ip only (never x-forwarded-for).
+
+// Insert one login-attempt row. `success` is truthy on correct PIN.
+export async function recordLoginAttempt(db, { ip, success }) {
+  await db
+    .prepare('INSERT INTO login_attempts (ip, success) VALUES (?, ?)')
+    .bind(ip, success ? 1 : 0)
+    .run();
+}
+
+// Count of FAILED attempts for `ip` in the last 5 minutes (the brute-force
+// budget for POST /login: 5 fails per 5 min per IP, then 429). Returns 0
+// when there are none.
+export async function getRecentFailCount(db, ip) {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS fail_count FROM login_attempts
+       WHERE ip = ? AND success = 0 AND attempted_at >= datetime('now', '-5 minutes')`,
+    )
+    .bind(ip)
+    .first();
+  return row?.fail_count ?? 0;
+}
+
+// Delete attempt rows older than 1 hour (keeps the 5-min gate window plus
+// headroom; runs from scheduled() so the table stays small). Returns the
+// driver result.
+export async function clearOldLoginAttempts(db) {
+  return db
+    .prepare(`DELETE FROM login_attempts WHERE attempted_at < datetime('now', '-1 hour')`)
+    .run();
+}

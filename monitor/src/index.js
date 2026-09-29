@@ -4,6 +4,8 @@ import { TARGETS, matchesExpect } from './targets.js';
 import * as db from './db.js';
 import {
   SESSION_COOKIE,
+  SESSION_DEFAULT_MAX_AGE,
+  SESSION_TRUSTED_MAX_AGE,
   parseCookie,
   signSession,
   verifySession,
@@ -121,7 +123,7 @@ app.get('/api/history', async (c) => {
 
 // Constant-time string compare over UTF-8 bytes (length folded into the diff
 // so short/long guesses take the same path). Guards REPORT_TOKEN /
-// DASHBOARD_PASSWORD against timing side-channels. Never throws.
+// DASHBOARD_PIN against timing side-channels. Never throws.
 export function timingSafeEqual(provided, expected) {
   const a = new TextEncoder().encode(String(provided ?? ''));
   const b = new TextEncoder().encode(String(expected ?? ''));
@@ -185,32 +187,15 @@ export function getClientIp(c) {
   return c.req.header('cf-connecting-ip')?.trim() || 'unknown';
 }
 
-// In-memory 5/min per-IP limiter for POST /login (brute-force budget).
-// Same per-isolate trade-off as the report limiter (no KV writes —
-// free-plan 1,000/day quota). Only cf-connecting-ip is trusted.
-export const LOGIN_RATE_LIMIT = 5;
-export const LOGIN_RATE_WINDOW_MS = 60_000;
-
-function loginRateStore() {
-  if (!globalThis.__monitorLoginRate) globalThis.__monitorLoginRate = new Map();
-  return globalThis.__monitorLoginRate;
-}
-
-// Returns { allowed, count, limit }. Exported for tests.
-export function checkLoginRateLimit(ip, now = Date.now()) {
-  const store = loginRateStore();
-  const windowStart = Math.floor(now / LOGIN_RATE_WINDOW_MS) * LOGIN_RATE_WINDOW_MS;
-  if (store.size > 2000) {
-    for (const key of store.keys()) {
-      const w = Number(key.slice(key.lastIndexOf(':') + 1));
-      if (Number.isFinite(w) && w < windowStart) store.delete(key);
-    }
-  }
-  const key = `${ip}:${windowStart}`;
-  const count = (store.get(key) ?? 0) + 1;
-  store.set(key, count);
-  return { allowed: count <= LOGIN_RATE_LIMIT, count, limit: LOGIN_RATE_LIMIT };
-}
+// POST /login brute-force budget: 5 failed PIN attempts per 5 minutes per IP,
+// enforced in D1 via the login_attempts table (see db.js recordLoginAttempt /
+// getRecentFailCount + migrations/0002_login_attempts.sql). D1-backed so the
+// budget survives isolate restarts; only cf-connecting-ip is trusted (not
+// spoofable x-forwarded-for). No KV writes (free-plan 1,000/day quota).
+// Every POST /login inserts exactly one attempt row (success + failure +
+// rate-limited alike) — only the outcome bit, never the PIN value or hash.
+export const LOGIN_FAIL_LIMIT = 5;
+export const LOGIN_FAIL_WINDOW = '5 minutes';
 
 // CSRF gate for cookie-authenticated POSTs (/login, /logout). Browsers
 // always send Origin (fetch/form) or Referer on same-origin POSTs; a
@@ -221,20 +206,26 @@ export function hasCsrfHeader(c) {
 }
 
 // True when the request carries a fresh session cookie signed with
-// DASHBOARD_PASSWORD. Fail-closed: unconfigured password, missing cookie,
+// DASHBOARD_PIN. Fail-closed: unconfigured/invalid PIN, missing cookie,
 // or bad/expired signature all deny. Never throws, never logs.
 export async function hasValidSession(c, now = Date.now()) {
-  const password = c.env?.DASHBOARD_PASSWORD;
-  if (!password) return false;
+  const pin = c.env?.DASHBOARD_PIN;
+  if (!pin || !/^\d{6}$/.test(pin)) return false;
   const cookies = parseCookie(c.req.header('cookie'));
   const value = cookies[SESSION_COOKIE];
   if (!value) return false;
-  return verifySession(value, password, now);
+  return verifySession(value, pin, now);
 }
 
-// Login form (GET /login). No token in the page — password posts to
-// POST /login which sets the HttpOnly session cookie.
+// PIN login form (GET /login). No token or PIN bytes in the page — the 6-digit
+// PIN posts to POST /login which sets the HttpOnly session cookie. The PIN
+// itself never appears in a URL (no ?pin= / ?token= path authenticates).
+// Includes an on-screen keypad (10 digit buttons), a <noscript> fallback
+// (the plain PIN field + submit keep working with JS disabled), and a
+// prefers-reduced-motion guard.
 function buildLoginHtml() {
+  const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+  const keys = digits.map((d) => `<button type="button" class="key" data-digit="${d}">${d}</button>`).join('');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -249,28 +240,49 @@ body{background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,Segoe 
 .card{background:#1e293b;border:1px solid #334155;border-radius:.75rem;padding:1.5rem}
 h1{font-size:1.1rem;margin:0 0 1rem}
 label{display:block;font-size:.8rem;color:#cbd5e1;margin-bottom:.3rem}
-input{width:100%;padding:.6rem;font-size:1rem;border-radius:.5rem;border:1px solid #475569;background:#0b1220;color:#e2e8f0}
-button{width:100%;padding:.7rem;margin-top:1rem;font-size:.9rem;font-weight:700;color:#0f172a;background:#38bdf8;border:0;border-radius:.6rem}
+input[type=text]{width:100%;padding:.6rem;font-size:1.25rem;letter-spacing:.4em;text-align:center;border-radius:.5rem;border:1px solid #475569;background:#0b1220;color:#e2e8f0}
+button[type=submit]{width:100%;padding:.7rem;margin-top:1rem;font-size:.9rem;font-weight:700;color:#0f172a;background:#38bdf8;border:0;border-radius:.6rem}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:1rem}
+.key{padding:.8rem;font-size:1.1rem;font-weight:700;color:#e2e8f0;background:#0b1220;border:1px solid #475569;border-radius:.6rem}
+.key:active{background:#334155}
+.trust{display:flex;align-items:center;gap:.5rem;margin-top:1rem;font-size:.8rem;color:#cbd5e1}
+.trust input{width:auto}
 .muted{color:#94a3b8;font-size:.75rem;margin-top:1rem}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
 <div class="wrap"><div class="card">
 <h1>SinaiCamps Status — sign in</h1>
 <form method="POST" action="/login">
-<label for="password">Dashboard password</label>
-<input id="password" name="password" type="password" autocomplete="current-password" required>
+<label for="pin">6-digit PIN</label>
+<input id="pin" name="pin" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+<div class="keypad">${keys}</div>
+<label class="trust"><input type="checkbox" name="trust" value="1"> Trust this device for 90 days</label>
 <button type="submit">Sign in</button>
 </form>
-<p class="muted">Session cookie lasts 30 days (HttpOnly, Secure, SameSite=Strict).</p>
+<noscript><p>Enter your 6-digit PIN above and press Sign in. The on-screen keypad needs JavaScript; the PIN field works without it.</p></noscript>
+<p class="muted">Session cookie lasts 12 hours, or 90 days on trusted devices (HttpOnly, Secure, SameSite=Strict). 5 wrong tries per 5 minutes per IP, then try again later.</p>
 </div></div>
+<script>
+(function(){
+var input = document.getElementById('pin');
+var keys = document.querySelectorAll('.key');
+for (var i = 0; i < keys.length; i++) {
+  keys[i].addEventListener('click', function(){
+    if (input.value.length < 6) input.value += this.getAttribute('data-digit');
+    input.focus();
+  });
+}
+})();
+</script>
 </body>
 </html>`;
 }
 
-// Error page when DASHBOARD_PASSWORD is not configured. Names the secret
-// to set (`wrangler secret put DASHBOARD_PASSWORD`) without ever printing
-// or requiring its value.
+// Error page when DASHBOARD_PIN is not configured (missing or not 6 digits).
+// Names the secret to set (`wrangler secret put DASHBOARD_PIN`) without ever
+// printing or requiring its value.
 function buildUnconfiguredHtml() {
   return `<!doctype html>
 <html lang="en">
@@ -278,8 +290,8 @@ function buildUnconfiguredHtml() {
 <title>Dashboard not configured</title></head>
 <body style="background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif">
 <div style="max-width:28rem;margin:4rem auto;padding:1rem">
-<h1>Dashboard password not configured</h1>
-<p>Set it via <code>wrangler secret put DASHBOARD_PASSWORD</code> from <code>monitor/</code>, then redeploy.</p>
+<h1>Dashboard PIN not configured</h1>
+<p>Set it via <code>wrangler secret put DASHBOARD_PIN</code> from <code>monitor/</code>, then redeploy. It must be exactly 6 digits.</p>
 </div>
 </body>
 </html>`;
@@ -567,22 +579,37 @@ refreshAll();
 </html>`;
 }
 
-// Password login (form-friendly). GET renders the form; POST checks
-// DASHBOARD_PASSWORD constant-time and issues the signed session cookie.
+// 6-digit PIN login (form-friendly). GET renders the keypad form; POST checks
+// DASHBOARD_PIN constant-time and issues the signed session cookie.
+// D1 gate: 5 failed attempts per 5 minutes per IP (cf-connecting-ip only),
+// then 429 `rate limit exceeded`; every POST inserts one login_attempts row
+// (success + failure + rate-limited alike — outcome bit only, never the PIN).
+// Trust-device checkbox extends the cookie Max-Age from 12h (43200) to 90d
+// (7776000). The PIN never appears in a URL and is never logged.
 // Secrets via `wrangler secret put` — never in wrangler.toml [vars],
 // never logged, never echoed.
+export function isPinConfigured(env) {
+  const pin = env?.DASHBOARD_PIN;
+  return typeof pin === 'string' && /^\d{6}$/.test(pin);
+}
+
 app.get('/login', async (c) => {
-  if (!c.env.DASHBOARD_PASSWORD) return c.html(buildUnconfiguredHtml(), 500);
+  if (!isPinConfigured(c.env)) return c.html(buildUnconfiguredHtml(), 500);
   if (await hasValidSession(c)) return c.redirect('/', 302);
   return c.html(buildLoginHtml());
 });
 
 app.post('/login', async (c) => {
-  if (!c.env.DASHBOARD_PASSWORD) return c.json({ error: 'dashboard password not configured' }, 500);
-  const rl = checkLoginRateLimit(getClientIp(c));
-  if (!rl.allowed) return c.json({ error: 'rate limit exceeded' }, 429);
+  if (!isPinConfigured(c.env)) return c.json({ error: 'dashboard pin not configured' }, 500);
   if (!hasCsrfHeader(c)) return c.json({ error: 'csrf required' }, 400);
-  let password = '';
+  const ip = getClientIp(c);
+  const failCount = await db.getRecentFailCount(c.env.DB, ip);
+  if (failCount >= LOGIN_FAIL_LIMIT) {
+    await db.recordLoginAttempt(c.env.DB, { ip, success: false });
+    return c.json({ error: 'rate limit exceeded' }, 429);
+  }
+  let pin = '';
+  let trust = false;
   const contentType = c.req.header('content-type') ?? '';
   const raw = await c.req.text();
   if (contentType.includes('application/json')) {
@@ -592,16 +619,23 @@ app.post('/login', async (c) => {
     } catch {
       return c.json({ error: 'invalid JSON body' }, 400);
     }
-    password = typeof body?.password === 'string' ? body.password : '';
+    pin = typeof body?.pin === 'string' ? body.pin : '';
+    trust = body?.trust === true || body?.trust === 1 || body?.trust === '1' || body?.trust === 'on';
   } else {
-    password = new URLSearchParams(raw).get('password') ?? '';
+    const params = new URLSearchParams(raw);
+    pin = params.get('pin') ?? '';
+    const trustRaw = params.get('trust') ?? '';
+    trust = trustRaw === '1' || trustRaw === 'on' || trustRaw === 'true';
   }
-  if (!password) return c.json({ error: 'password is required' }, 400);
-  if (!timingSafeEqual(password, c.env.DASHBOARD_PASSWORD)) {
-    return c.json({ error: 'invalid password' }, 401);
+  if (!pin) return c.json({ error: 'pin is required' }, 400);
+  const ok = timingSafeEqual(pin, c.env.DASHBOARD_PIN);
+  await db.recordLoginAttempt(c.env.DB, { ip, success: ok });
+  if (!ok) {
+    const triesLeft = Math.max(0, LOGIN_FAIL_LIMIT - failCount - 1);
+    return c.json({ error: `Wrong PIN, ${triesLeft} tries left` }, 401);
   }
-  const session = await signSession(c.env.DASHBOARD_PASSWORD, Date.now());
-  c.header('Set-Cookie', buildSessionCookie(session));
+  const session = await signSession(c.env.DASHBOARD_PIN, Date.now());
+  c.header('Set-Cookie', buildSessionCookie(session, trust));
   return c.redirect('/', 302);
 });
 
@@ -612,12 +646,13 @@ app.post('/logout', (c) => {
 });
 
 // Cookie-session operator dashboard. Requires a fresh `monitor_session`
-// cookie from POST /login (signed with DASHBOARD_PASSWORD, 30d window).
-// The old `?token=` bookmark is deleted — query tokens never authenticate.
-// Unauthenticated browsers redirect to /login (302); the password itself
+// cookie from POST /login (signed with DASHBOARD_PIN, 90d verify window;
+// cookie Max-Age 12h default, 90d trusted). The old `?token=` bookmark is
+// deleted — query tokens never authenticate, and the PIN never appears in
+// a URL. Unauthenticated browsers redirect to /login (302); the PIN itself
 // is set via `wrangler secret put` — never in wrangler.toml [vars].
 app.get('/', async (c) => {
-  if (!c.env.DASHBOARD_PASSWORD) return c.html(buildUnconfiguredHtml(), 500);
+  if (!isPinConfigured(c.env)) return c.html(buildUnconfiguredHtml(), 500);
   if (!(await hasValidSession(c))) {
     return c.redirect('/login', 302);
   }
@@ -725,11 +760,15 @@ export async function evaluateAlerts(env, probeResults, fetchFn = fetch) {
   return outcomes;
 }
 
-// Cron entry: probe every target, store the rows, then evaluate alerts.
+// Cron entry: probe every target, store the rows, then evaluate alerts,
+// then prune old login_attempts rows (keeps the 5-min PIN gate table small).
 // Runs every 5 minutes via the [triggers] crons schedule in wrangler.toml.
+// Probe/alert/target logic above is untouched — only the cleanup DELETE
+// is added here.
 async function scheduled(event, env, ctx) {
   const results = await runProbeCycle(env);
   await evaluateAlerts(env, results);
+  await db.clearOldLoginAttempts(env.DB);
 }
 
 export default { fetch: app.fetch, scheduled };

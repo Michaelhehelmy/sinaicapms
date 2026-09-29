@@ -38,6 +38,7 @@ class FakeDb {
     this.checks = [];
     this.reports = [];
     this.alert = new Map();
+    this.attempts = [];
     this.seq = 0;
     this.reportSeq = 0;
     this.tick = 0;
@@ -100,9 +101,29 @@ class FakeDb {
       });
       return { success: true };
     }
+    if (sql.startsWith('INSERT INTO login_attempts')) {
+      const [ip, success] = args;
+      this.tick += 1;
+      this.attempts.push({
+        id: this.attempts.length + 1,
+        ip,
+        success,
+        attempted_at: `2026-09-29 00:02:${String(this.tick).padStart(2, '0')}`,
+      });
+      return { success: true };
+    }
+    if (sql.startsWith('DELETE FROM login_attempts')) {
+      this.attempts = [];
+      return { success: true };
+    }
     throw new Error(`FakeDb.run: unhandled SQL: ${sql}`);
   }
   execAll(sql, args) {
+    if (sql.includes('FROM login_attempts')) {
+      const [ip] = args;
+      const fails = this.attempts.filter((r) => r.ip === ip && r.success === 0).length;
+      return [{ fail_count: fails }];
+    }
     if (sql.includes('SELECT MAX(id)')) {
       const newest = new Map();
       for (const r of this.checks) newest.set(r.target, r);
@@ -142,8 +163,8 @@ class FakeDb {
 }
 
 const REPORT_TOKEN = 'test-report-secret';
-const DASHBOARD_PASSWORD = 'test-dashboard-password-123';
-const envFor = (db) => ({ DB: db, REPORT_TOKEN, DASHBOARD_PASSWORD });
+const DASHBOARD_PIN = '123456';
+const envFor = (db) => ({ DB: db, REPORT_TOKEN, DASHBOARD_PIN });
 
 function postReport(path, { token = REPORT_TOKEN, body = { message: 'help' }, ip = '10.9.0.1' } = {}) {
   const headers = { 'Content-Type': 'application/json', 'cf-connecting-ip': ip };
@@ -389,7 +410,7 @@ describe('GET / dashboard (cookie-session HTML)', () => {
           origin: 'https://status.sinaicamps.com',
           'cf-connecting-ip': '10.9.0.11',
         },
-        body: JSON.stringify({ password: DASHBOARD_PASSWORD }),
+        body: JSON.stringify({ pin: DASHBOARD_PIN }),
       },
       env,
     );
@@ -435,7 +456,7 @@ describe('GET / dashboard (cookie-session HTML)', () => {
           origin: 'https://status.sinaicamps.com',
           'cf-connecting-ip': '10.9.0.12',
         },
-        body: JSON.stringify({ password: DASHBOARD_PASSWORD }),
+        body: JSON.stringify({ pin: DASHBOARD_PIN }),
       },
       env,
     );

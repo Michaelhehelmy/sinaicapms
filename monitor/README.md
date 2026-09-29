@@ -21,10 +21,10 @@ Worker name: `campmaster-monitor` · entry `src/index.js` · route
   `GET /api/history?target=<name>&hours=<1–168, default 24>`.
 - **Intake API**: `POST /report/error` + `POST /report/feedback` (Bearer
   `REPORT_TOKEN`, 60/min per-IP limit, 201 `{id, kind, status: "new"}`).
-- **Operator**: `POST /internal/check` (session cookie from password
+- **Operator**: `POST /internal/check` (session cookie from 6-digit PIN
   login OR Bearer `REPORT_TOKEN` for scripts; empty body probes all,
   `{"target": "<name>"}` probes one) and `GET /` (session cookie only —
-  sign in at `GET /login` with `DASHBOARD_PASSWORD`; dark mobile
+  sign in at `GET /login` with `DASHBOARD_PIN` (6 digits, on-screen keypad); dark mobile
   dashboard with status pill, per-target cards, sparklines, last-20 checks
   and last-20 reports, plus a Log out button posting to `POST /logout`).
   The old `?token=` bookmark is deleted — query tokens never authenticate.
@@ -51,7 +51,7 @@ wrangler d1 migrations apply campmaster-monitor-db --remote
 
 # 3. Set secrets (values prompted interactively, never echoed).
 wrangler secret put REPORT_TOKEN
-wrangler secret put DASHBOARD_PASSWORD
+wrangler secret put DASHBOARD_PIN
 wrangler secret put ALERT_WEBHOOK_URL
 
 # 4. Deploy. To deploy without the custom domain first, comment out the
@@ -67,25 +67,25 @@ curl https://status.sinaicamps.com/api/status
 
 1. Deploy with both secrets set (section 2).
 2. Visit `https://status.sinaicamps.com/login` in a browser.
-3. Enter the dashboard password once — the server sets a signed
+3. Enter the 6-digit dashboard PIN once — the server sets a signed
    `monitor_session` cookie (`HttpOnly; Secure; SameSite=Strict; Path=/;
-   Max-Age=2592000`, 30 days, well under 4KB) and redirects to `/`.
+   Max-Age=43200`, 12 hours (or `Max-Age=7776000`, 90 days when Trust this device is checked), well under 4KB) and redirects to `/`.
 4. Unauthenticated `GET /` redirects to `/login` (302). The old
    `?token=` bookmark no longer works by design.
 5. Log out with the dashboard "Log out" button (`POST /logout` clears
    the cookie with `Max-Age=0`).
-6. Missing `DASHBOARD_PASSWORD` renders a "dashboard password not
-   configured" page (set it via `wrangler secret put DASHBOARD_PASSWORD`).
+6. Missing/invalid `DASHBOARD_PIN` renders a "dashboard PIN not
+   configured" page (set it via `wrangler secret put DASHBOARD_PIN`, exactly 6 digits).
 
-`POST /login` is rate-limited (5/min per IP, 429 `rate limit exceeded`)
+`POST /login` is rate-limited (5 failed PIN attempts per 5 minutes per IP in D1 `login_attempts`, 429 `rate limit exceeded`; every attempt inserts one row with the outcome bit only, never the PIN)
 and requires a CSRF header (`Origin` or `Referer`, else 400).
 
-## 4. Rotate the dashboard password
+## 4. Rotate the dashboard PIN
 
-1. `wrangler secret put DASHBOARD_PASSWORD` (new value prompted, never echoed).
+1. `wrangler secret put DASHBOARD_PIN` (new value prompted, never echoed).
 2. Redeploy (`wrangler deploy` from `monitor/`).
 3. All existing session cookies invalidate immediately (sessions are
-   HMAC-signed with the password itself), so every operator signs in again.
+   HMAC-signed with the PIN itself), so every operator signs in again.
 
 ## 5. REPORT_TOKEN for scripts (no browser login)
 
@@ -154,13 +154,13 @@ wrangler secret put ALERT_WEBHOOK_URL
   `database_id = "<owner pastes after wrangler d1 create>"` — replace it
   with the id from step 1 before deploying.
 - Dashboard redirects to `/login`: `GET /` needs the `monitor_session`
-  cookie from `POST /login` (`DASHBOARD_PASSWORD`, constant-time compare;
+  cookie from `POST /login` (`DASHBOARD_PIN`, constant-time compare;
   missing/invalid/expired → 302 to `/login` by design). The old
   `?token=` bookmark never authenticates.
-- `/login` returns 500 "dashboard password not configured": set it via
-  `wrangler secret put DASHBOARD_PASSWORD` from `monitor/`, then redeploy.
-- `/login` returns 429: the in-memory 5/min per-IP limiter fired
-  (per-isolate Map on `cf-connecting-ip` only; no KV writes, so it never
+- `/login` returns 500 "dashboard PIN not configured": set it via
+  `wrangler secret put DASHBOARD_PIN` (exactly 6 digits) from `monitor/`, then redeploy.
+- `/login` returns 429: the D1-backed 5-fails-per-5-minutes-per-IP gate fired
+  (D1 `login_attempts` on `cf-connecting-ip` only; no KV writes, so it never
   touches the free-plan 1,000/day quota).
 - `/login` or `/logout` return 400 `csrf required`: send `Origin` (or
   `Referer`) — browsers do this automatically on same-origin POSTs.
