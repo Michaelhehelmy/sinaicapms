@@ -25,6 +25,7 @@
  */
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/Toast';
+import { reportError } from '@/lib/reporter';
 import * as api from '@/lib/api';
 import type {
   AdminAuditPage,
@@ -162,6 +163,11 @@ function useErrorToast() {
     setTimeout(() => {
       showToast(`${message}: ${msg}`, 'error');
     }, 0);
+    // Monitor copy: this helper is the single choke point for every admin query
+    // `throwOnError` + mutation `onError` in the app (~90 hooks), so one line
+    // here reports all TanStack failures without forking per-panel handlers.
+    // reportError is a silent no-op without PUBLIC_REPORT_TOKEN and never throws.
+    reportError(`${message}: ${msg}`);
   };
 }
 

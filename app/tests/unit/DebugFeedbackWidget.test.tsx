@@ -31,6 +31,13 @@ vi.mock('@/lib/api', () => ({
   submitFeedback,
 }));
 
+// The widget's monitor copy is a lazy import — mock it so the D1 submit and
+// the monitor forward can be asserted independently.
+const reportFeedback = vi.fn();
+vi.mock('@/lib/reporter', () => ({
+  reportFeedback,
+}));
+
 const debugFlagKey = 'sc_debug';
 
 function setDebugFlag(on: boolean) {
@@ -162,5 +169,27 @@ describe('DebugFeedbackWidget', () => {
     await waitFor(() => expect(submitFeedback).toHaveBeenCalledTimes(1));
     const payload = submitFeedback.mock.calls[0][0];
     expect(payload.screenshot).toBeNull();
+  });
+
+  it('forwards a fire-and-forget monitor copy to /report/feedback on submit', async () => {
+    mockUser.value = { email: 'admin.test@acaciacamp.com', role: 'admin', fullName: 'Test Admin' };
+    window.history.pushState({}, '', '/admin/camps');
+    render(<DebugFeedbackWidget />);
+    fireEvent.click(screen.getByTestId('debug-feedback-open'));
+    await waitFor(() => expect(screen.getByTestId('debug-feedback-modal')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('debug-feedback-capture-status').textContent).toContain('Screenshot attached'));
+
+    fireEvent.input(screen.getByTestId('debug-feedback-message'), { target: { value: 'Monitor copy check' } });
+    fireEvent.click(screen.getByTestId('debug-feedback-submit'));
+
+    // The D1 submit stays the source of truth…
+    await waitFor(() => expect(submitFeedback).toHaveBeenCalledTimes(1));
+    // …and the monitor copy follows with message + page URL + contact.
+    await waitFor(() => expect(reportFeedback).toHaveBeenCalledTimes(1));
+    expect(reportFeedback).toHaveBeenCalledWith({
+      message: 'Monitor copy check',
+      pageUrl: expect.stringContaining('/admin/camps'),
+      contact: 'admin.test@acaciacamp.com',
+    });
   });
 });

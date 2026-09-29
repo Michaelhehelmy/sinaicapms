@@ -40,6 +40,24 @@ declare global {
       };
     }
   }
+
+  /**
+   * Client-visible env (`import.meta.env.PUBLIC_*`, baked at build time).
+   * - `PUBLIC_REPORT_TOKEN`: write-only campmaster-monitor intake token for
+   *   `app/src/lib/reporter.ts` (POST /report/error + /report/feedback).
+   *   Absent ⇒ reporter is a silent no-op. Safe to expose: it can only APPEND
+   *   reports (60/min per-IP throttle). NEVER add `DASHBOARD_TOKEN` here.
+   * - `PUBLIC_REPORT_URL`: optional monitor-origin override (staging/local
+   *   monitor). Defaults to `https://status.sinaicamps.com` when blank.
+   */
+  interface ImportMetaEnv {
+    readonly PUBLIC_REPORT_TOKEN?: string;
+    readonly PUBLIC_REPORT_URL?: string;
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv;
+  }
 }
 
 export {};

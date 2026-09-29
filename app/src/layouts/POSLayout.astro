@@ -63,5 +63,11 @@ import '@/styles/global.css';
 
   <!-- React POS app mounts here -->
   <div id="pos-root"><slot /></div>
+  <script>
+    // Global error reporter → campmaster-monitor (POST /report/error).
+    // Silent no-op without PUBLIC_REPORT_TOKEN; never throws.
+    import { initErrorReporting } from '@/lib/reporter';
+    initErrorReporting();
+  </script>
 </body>
 </html>

@@ -776,6 +776,12 @@ const jsonLd = sanitizeForJsonLd({
   <!-- Human-testing debug feedback widget: server-gated (cookie/query) so
        regular visitors ship zero extra JS. -->
   {debugEnabled && <DebugFeedbackWidget client:load /> /* load, not visible: SSR renders null until the flag/session resolves, so a visible-gated island would never intersect/hydrate */}
+  <script>
+    // Global error reporter → campmaster-monitor (POST /report/error).
+    // Silent no-op without PUBLIC_REPORT_TOKEN; never throws.
+    import { initErrorReporting } from '@/lib/reporter';
+    initErrorReporting();
+  </script>
   <script is:inline>
     (function () {
       try {

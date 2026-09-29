@@ -261,6 +261,15 @@ export function DebugFeedbackWidget() {
         userAgent,
         screenshot,
       });
+      // Monitor copy (campmaster-monitor POST /report/feedback): fire-and-forget,
+      // never awaited — the D1 submit above is the source of truth and its
+      // latency/shape stay exactly as before. Silent no-op without
+      // PUBLIC_REPORT_TOKEN; failures never surface in the widget.
+      void import('@/lib/reporter')
+        .then(({ reportFeedback }) =>
+          reportFeedback({ message: message.trim(), pageUrl, contact: identity.authorEmail }),
+        )
+        .catch(() => {});
       setSent(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit feedback');
