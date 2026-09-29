@@ -13,6 +13,7 @@
     "hono": "^4.13.7"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.11",
     "vitest": "^4.1.10",
     "wrangler": "^4.112.0"
   }
