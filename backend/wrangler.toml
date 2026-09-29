@@ -43,6 +43,11 @@ class_name = "Broadcaster"
 tag = "v1"
 new_sqlite_classes = ["Broadcaster"]
 
+# Worker observability — logs + invocation logs to keep deployments in sync.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 [vars]
 ENVIRONMENT = "production"
 # false = use in-memory rate limiting (no KV writes). Re-enable distributed
