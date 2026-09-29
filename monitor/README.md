@@ -78,7 +78,9 @@ curl https://status.sinaicamps.com/api/status
    configured" page (set it via `wrangler secret put DASHBOARD_PIN`, exactly 6 digits).
 
 `POST /login` is rate-limited (5 failed PIN attempts per 5 minutes per IP in D1 `login_attempts`, 429 `rate limit exceeded`; every attempt inserts one row with the outcome bit only, never the PIN)
-and requires a CSRF header (`Origin` or `Referer`, else 400).
+and requires a CSRF header (`Origin` or `Referer`, else 400). Attempt rows
+older than 1 hour are auto-cleared by the cron `scheduled()` handler
+(`clearOldLoginAttempts`), so the gate table stays small with no manual cleanup.
 
 ## 4. Rotate the dashboard PIN
 
