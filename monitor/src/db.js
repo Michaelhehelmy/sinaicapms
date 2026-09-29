@@ -118,3 +118,45 @@ export async function upsertAlertState(db, target, { consecutiveFailures, alerti
     .bind(target, consecutiveFailures, alerting ? 1 : 0, lastAlertAt ?? null)
     .run();
 }
+
+// --- A.4 intake + dashboard helpers (append-only; A.3 helpers above untouched) ---
+
+// Insert one intake row (`kind` is 'error' or 'feedback'). Returns the new row
+// id (D1 `meta.last_row_id`) or null when the driver omits it.
+export async function insertReport(db, { kind, message, pageUrl, contact }) {
+  const res = await db
+    .prepare('INSERT INTO reports (kind, message, page_url, contact) VALUES (?, ?, ?, ?)')
+    .bind(kind, message, pageUrl ?? null, contact ?? null)
+    .run();
+  return res?.meta?.last_row_id ?? null;
+}
+
+// Newest-first intake rows, max `limit`. Server-rendered into the dashboard
+// "Recent reports" list; ISO times via toIso().
+export async function getRecentReports(db, limit = 20) {
+  const res = await db
+    .prepare(
+      `SELECT id, kind, message, page_url, contact, status, created_at
+       FROM reports
+       ORDER BY id DESC
+       LIMIT ?`,
+    )
+    .bind(limit)
+    .all();
+  return (res.results ?? []).map((row) => ({ ...row, created_at: toIso(row.created_at) }));
+}
+
+// Newest-first probe rows across all targets, max `limit`. Server-rendered
+// into the dashboard "Recent checks" list; ISO times via toIso().
+export async function getRecentChecks(db, limit = 20) {
+  const res = await db
+    .prepare(
+      `SELECT target, status_code, ok, response_ms, error_message, checked_at
+       FROM checks
+       ORDER BY id DESC
+       LIMIT ?`,
+    )
+    .bind(limit)
+    .all();
+  return (res.results ?? []).map((row) => ({ ...row, checked_at: toIso(row.checked_at) }));
+}
