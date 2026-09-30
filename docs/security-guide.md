@@ -71,16 +71,32 @@ SinaiCamps uses a **defense-in-depth** approach to prevent Cross-Site Scripting:
 
 React automatically escapes all JSX expressions. User data rendered as `{user.name}` is safe — React converts `<script>` to `&lt;script&gt;`.
 
-### Layer 2: `escHtml()` in Astro templates (server-side)
+### Layer 2: `escHtml()` — raw-HTML pipelines ONLY (never in framework expressions)
 
-All user data rendered in Astro templates is escaped via `escHtml()` from `app/src/lib/utils.ts`:
+`escHtml()` (canonical def `app/src/lib/utils.ts:3`) is used ONLY where a hand-built HTML string is inserted as raw HTML (`innerHTML` / `document.write`). It must NEVER wrap an Astro `{...}` or React `{...}` expression — both frameworks auto-escape, so wrapping double-escapes (`Michael's House` renders as `Michael&#39;s House`).
+
+Rule: sink auto-escapes (Astro/React expression) or is plain text (WhatsApp/`wa.me` message, `textContent`, clipboard) → raw value, no wrapper. Sink is raw HTML (`innerHTML`, `document.write`, `set:html`) → `escHtml()` every interpolated value.
 
 ```astro
-<h1>{escHtml(camp.name)}</h1>
-<p>{escHtml(camp.description)}</p>
+<h1>{camp.name}</h1>              <!-- ✅ Astro auto-escapes -->
+<p>{camp.description}</p>         <!-- ✅ no wrapper -->
 ```
 
-65+ usages across the frontend — every user-facing field is escaped.
+```javascript
+grid.innerHTML = '<h3>' + escHtml(t.name) + '</h3>';  // ✅ raw-HTML sink needs escHtml
+```
+
+When to use which (full inventory: `docs/audit-2026-09-30-eschtml-inventory.md`):
+
+| Category | Sink | Action |
+|----------|------|--------|
+| A — Astro `{...}` expression | framework auto-escapes | REMOVE wrapper |
+| B — React `{...}` expression | framework auto-escapes | REMOVE wrapper |
+| C — `set:html` raw-HTML insertion | raw HTML | KEEP (zero escHtml sites — all 3 `set:html` are JSON-LD `JSON.stringify`) |
+| D — manual HTML string → `innerHTML` / `document.write` | raw HTML | KEEP |
+| E — plain-text sink (WhatsApp/`wa.me`, `textContent`) | plain text | REMOVE wrapper |
+
+Fix commit `af1d69b` unwrapped all 46 A/B/E call sites (inner expressions byte-identical); 18 `escHtml` hits remain, all KEEP (CampsSection D `innerHTML` pipeline + HRPanel D `document.write` lines + defs). Regression test `app/tests/unit/tenant-name-escape.test.tsx` (commit `09ff710`) pins single-escaping.
 
 ### Layer 3: Zod validation at the API boundary
 
@@ -171,10 +187,10 @@ await env.DB.prepare(`SELECT * FROM camps WHERE id = '${campId}'`).all();
 1. **Never store JWT in cookies** — keep using `localStorage` + `Authorization` header to maintain CSRF resistance.
 2. **Rotate JWT secrets** periodically — `env.JWT_SECRET` has no fallback; if compromised, all tokens are valid.
 3. **Keep `RATE_LIMIT_KV_ENABLED="false"`** on the free plan — KV writes/day quota will cause API outage if enabled.
-4. **Monitor for XSS payloads** in user-generated content — render-time escaping (React + `escHtml`) is the guarantee, not input scrubbing.
+4. **Monitor for XSS payloads** in user-generated content — render-time escaping (Astro/React auto-escape + `escHtml()` in raw-HTML pipelines only) is the guarantee, not input scrubbing.
 5. **Review new endpoints** for CORS compliance — never set CORS headers outside `hono/cors`.
 6. **Use parameterized queries** exclusively — never interpolate user input into SQL strings.
 
 ---
 
-*Last updated: 2026-08-26 — Audit resolution (Task 4: CSRF Documentation)*
+*Last updated: 2026-09-30 — escHtml correction (Step 4: Layer 2 defense-layer claim replaced with raw-HTML-only guidance + A–E table; fix SHA af1d69b, regression test 09ff710)*
