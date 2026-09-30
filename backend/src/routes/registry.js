@@ -2946,10 +2946,15 @@ const posOrderCreateItemSchema = z
 const posOrderCreateRequestSchema = z
   .object({
     items: z.array(posOrderCreateItemSchema).min(1, 'Order must contain at least one item'),
-    paymentMethod: z.enum(['cash', 'card', 'split']).optional(),
+    paymentMethod: z.enum(['cash', 'card', 'split', 'folio']).optional(),
     notes: z.string().optional(),
     amountCash: z.number().optional(),
     amountCard: z.number().optional(),
+    // B.6 charge-to-folio (mirrors the B.4 handler field in routes/pos):
+    // optional open guest folio receiving one 'restaurant' charge per line.
+    // camelCase ONLY — the T8-D no-snake suite forbids snake_case keys in
+    // this doc (the handler still accepts folio_id on the wire via toSnake).
+    folioId: z.string().max(64).optional(),
   })
   .openapi('PosOrderCreateRequest');
 

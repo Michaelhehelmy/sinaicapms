@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import * as apiClient from '@/lib/api';
-import type { PromotionApplyResult } from '@/lib/api';
+import type { PromotionApplyResult, Folio } from '@/lib/api';
 import { posUrl } from '@/lib/posUrl';
 import { push } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
@@ -44,6 +45,26 @@ export default function CartPanel({
   const [showCustomTip, setShowCustomTip] = useState(false);
   const { showToast } = useToast();
 
+  // ─── B.6 charge-to-folio ──────────────────────────────────
+  // Toggle + open-folio picker. When active the order posts with
+  // paymentMethod 'folio' + folioId (backend B.4 auto-posts one
+  // 'restaurant' charge per line and bumps the folio total; the B.6
+  // backend note maps 'folio' to zero cash/card legs).
+  // Invalidation needs the QueryClient POSApp provides; provider-free unit
+  // renders (PosViews.test.tsx) have none, so the lookup is guarded and
+  // folio invalidation silently skips there.
+  const [chargeToFolio, setChargeToFolio] = useState(false);
+  const [folioId, setFolioId] = useState('');
+  const [folios, setFolios] = useState<Folio[]>([]);
+  const [foliosLoading, setFoliosLoading] = useState(false);
+  const [foliosError, setFoliosError] = useState<string | null>(null);
+  let queryClient: ReturnType<typeof useQueryClient> | null = null;
+  try {
+    queryClient = useQueryClient();
+  } catch {
+    queryClient = null;
+  }
+
   // Debounce timer for promotion preview
   const promoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -70,6 +91,32 @@ export default function CartPanel({
 
     return () => { if (promoTimer.current) clearTimeout(promoTimer.current); };
   }, [cart]);
+
+  // B.6: load open folios when the cashier opts into folio charging.
+  useEffect(() => {
+    if (!chargeToFolio) {
+      setFolioId('');
+      setFoliosError(null);
+      return;
+    }
+    let cancelled = false;
+    setFoliosLoading(true);
+    setFoliosError(null);
+    apiClient.listFolios({ status: 'open', limit: 50 }).then(
+      (res) => {
+        if (cancelled) return;
+        setFolios(res.folios ?? []);
+        setFoliosLoading(false);
+      },
+      () => {
+        if (cancelled) return;
+        setFolios([]);
+        setFoliosLoading(false);
+        setFoliosError('Could not load open folios');
+      },
+    );
+    return () => { cancelled = true; };
+  }, [chargeToFolio]);
 
   function updateQty(productId: string, delta: number) {
     setCart((prev) =>
@@ -98,12 +145,21 @@ export default function CartPanel({
 
   async function handleCheckout() {
     if (cart.length === 0 || paying) return;
+    // B.6: folio mode requires a selected open folio — fail fast with a
+    // toast so no order posts without its folio link.
+    if (chargeToFolio && !folioId) {
+      showToast('Select a folio to charge to', 'error');
+      return;
+    }
     setPaying(true);
     try {
       const body: PosOrderCreateRequest & { tipAmount?: number } = {
         items: cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
-        paymentMethod: payMethod,
+        paymentMethod: chargeToFolio ? 'folio' : payMethod,
       };
+      if (chargeToFolio) {
+        body.folioId = folioId;
+      }
       if (payMethod === 'split') {
         body.amountCash = splitCashAmt;
         body.amountCard = splitCardAmt;
@@ -112,6 +168,14 @@ export default function CartPanel({
         body.tipAmount = tip;
       }
       const res = await apiClient.posCreateOrder(body);
+      // B.6: a folio charge changes the folio total — refresh the admin
+      // folio list + detail queries (same keys FoliosPanel reads) so the
+      // guest folio panel never shows a stale balance. The standard POS
+      // invalidation still runs via onCheckout() on receipt close.
+      if (chargeToFolio && queryClient) {
+        queryClient.invalidateQueries({ queryKey: ['admin', 'folios'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'folios', folioId] });
+      }
       // Show the receipt BEFORE leaving the products view (A2 #2). The cart
       // reset, query invalidation and the orders-page navigation all wait for
       // the modal to close (see handleReceiptClose) so the receipt is visible.
@@ -285,11 +349,53 @@ export default function CartPanel({
               variant={payMethod === m ? 'primary' : 'secondary'}
               size="sm"
               onClick={() => setPayMethod(m)}
+              disabled={chargeToFolio}
               className="flex-1 min-h-[44px]"
             >
               {m === 'split' ? 'Split' : m.charAt(0).toUpperCase() + m.slice(1)}
             </Button>
           ))}
+        </div>
+
+        {/* B.6 charge-to-folio toggle + open-folio picker */}
+        <div className="pt-2 space-y-2" data-testid="folio-section">
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer min-h-[44px]">
+            <input
+              type="checkbox"
+              checked={chargeToFolio}
+              onChange={(e) => setChargeToFolio(e.target.checked)}
+              data-testid="folio-toggle"
+              className="h-5 w-5 accent-emerald-600"
+            />
+            Charge to folio
+          </label>
+          {chargeToFolio && (
+            <div className="space-y-1">
+              {foliosLoading && <div className="text-xs text-gray-500">Loading open folios…</div>}
+              {!foliosLoading && foliosError && (
+                <div className="text-xs text-red-500" data-testid="folio-error">{foliosError}</div>
+              )}
+              {!foliosLoading && !foliosError && (
+                <select
+                  value={folioId}
+                  onChange={(e) => setFolioId(e.target.value)}
+                  data-testid="folio-picker"
+                  aria-label="Select guest folio"
+                  className="w-full min-h-[48px] rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-900"
+                >
+                  <option value="">Select a folio…</option>
+                  {folios.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.id}{f.guestId ? ` — guest ${f.guestId}` : ' — walk-in'} (${Number(f.totalAmount).toFixed(2)})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {!foliosLoading && !foliosError && folios.length === 0 && (
+                <div className="text-xs text-gray-500">No open folios</div>
+              )}
+            </div>
+          )}
         </div>
 
         {payMethod === 'split' && (
@@ -319,12 +425,12 @@ export default function CartPanel({
           size="lg"
           fullWidth
           loading={paying}
-          disabled={cart.length === 0 || (payMethod === 'split' && splitCardAmt < 0)}
+          disabled={cart.length === 0 || (payMethod === 'split' && splitCardAmt < 0) || (chargeToFolio && !folioId)}
           className="mt-3"
           onClick={handleCheckout}
           data-testid="pay-btn"
         >
-          {paying ? 'Processing...' : `Pay $${total.toFixed(2)}`}
+          {paying ? 'Processing...' : chargeToFolio ? `Charge $${total.toFixed(2)} to folio` : `Pay $${total.toFixed(2)}`}
         </Button>
       </div>
     </div>

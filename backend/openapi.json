@@ -3986,7 +3986,8 @@
             "enum": [
               "cash",
               "card",
-              "split"
+              "split",
+              "folio"
             ]
           },
           "notes": {
@@ -3997,6 +3998,10 @@
           },
           "amountCard": {
             "type": "number"
+          },
+          "folioId": {
+            "type": "string",
+            "maxLength": 64
           }
         },
         "required": [

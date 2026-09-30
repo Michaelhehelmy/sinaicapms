@@ -10182,10 +10182,11 @@ export interface components {
         PosOrderCreateRequest: {
             items: components["schemas"]["PosOrderItemRequest"][];
             /** @enum {string} */
-            paymentMethod?: "cash" | "card" | "split";
+            paymentMethod?: "cash" | "card" | "split" | "folio";
             notes?: string;
             amountCash?: number;
             amountCard?: number;
+            folioId?: string;
         };
         PosOrder: {
             id: string;

@@ -21,7 +21,7 @@ const posOrderSchema = z.object({
   items: z.array(posOrderItemSchema)
     .min(1, 'Order must contain at least one item')
     .max(100, 'Order has too many items (max 100)'),
-  paymentMethod: z.enum(['cash', 'card', 'split'], { message: 'Invalid payment method' }).optional(),
+  paymentMethod: z.enum(['cash', 'card', 'split', 'folio'], { message: 'Invalid payment method' }).optional(),
   notes: z.string({ message: 'Notes must be text' }).max(500, 'Notes must be 500 characters or less').optional(),
   amountCash: z.number({ message: 'Cash amount must be a number' }).min(0, 'Cash amount cannot be negative').optional(),
   amountCard: z.number({ message: 'Card amount must be a number' }).min(0, 'Card amount cannot be negative').optional(),
@@ -681,6 +681,11 @@ pos.post('/orders', async (c) => {
       }
     } else if (method === 'card') {
       finalAmountCard = totalAmount;
+    } else if (method === 'folio') {
+      // B.6 charge-to-folio: no cash/card changes hands now — the guest folio
+      // carries the balance via the B.4 auto-post below (folio_charges rows +
+      // total bump in the same batch). Both legs stay 0; payment_status logic
+      // further down is untouched (minimal mapping — see spec fb6 note).
     } else {
       finalAmountCash = totalAmount;
     }
