@@ -1,0 +1,199 @@
+{
+  "tenant": {
+    "name": "Bedouin Table Restaurant / مطعم المائدة البدوية",
+    "logoUrl": "https://cdn.example.com/bedouin-table/logo.png",
+    "faviconUrl": "https://cdn.example.com/bedouin-table/favicon.png",
+    "heroImageUrl": "https://cdn.example.com/bedouin-table/hero.jpg",
+    "primaryColor": "#b45309",
+    "currency": "EGP",
+    "footerText": "Bedouin Table — Sharm Old Market / المائدة البدوية — السوق القديم شرم",
+    "location": "Old Market, Sharm El-Sheikh, South Sinai, Egypt",
+    "whatsappNumber": "+201033333333",
+    "phone": "+201033333333",
+    "email": "hello@bedouintable-full.example.com",
+    "description": "Dine-in Bedouin restaurant: mandi, grills and seafood. No stays, no delivery fleet. / مطعم بدوي صالة: مندي ومشويات وسي فود.",
+    "aboutText": "Charcoal kitchen in the Old Market since 2018. Family cabins for groups, walk-ins welcome. / مطبخ فحم في السوق القديم منذ ٢٠١٨. كبائن عائلية للمجموعات.",
+    "galleryImages": "[\"https://cdn.example.com/bedouin-table/gallery/mandi.jpg\",\"https://cdn.example.com/bedouin-table/gallery/cabin.jpg\"]",
+    "mapEmbedUrl": "https://maps.google.com/?q=Old+Market+Sharm",
+    "activities": "[\"Live grill nights / ليالي الشواء\",\"Cooking classes / دروس طبخ\"]",
+    "faqItems": "[{\"q\":\"Groups? / مجموعات؟\",\"a\":\"Cabins seat 6-10 / الكبائن ٦-١٠ أفراد\"}]",
+    "reviews": "[{\"author\":\"Omar / عمر\",\"text\":\"Best mandi in Sharm / أحلى مندي في شرم\"}]",
+    "capacity": 120,
+    "menuConfig": "{\"showWhatsapp\":true}"
+  },
+  "project": {
+    "name": "Bedouin Table Restaurant",
+    "location": "Old Market, Sharm El-Sheikh, South Sinai, Egypt",
+    "capacity": 120,
+    "status": "active"
+  },
+  "products": [
+    {
+      "id": "prod_familycabin",
+      "name": "Family Dining Cabin / كابينة عائلية",
+      "sku": "CABIN-FAM",
+      "basePrice": 300,
+      "capacity": 10,
+      "description": "Private dining cabin for 6-10 guests, minimum spend applies. / كابينة طعام خاصة ٦-١٠ أفراد بحد أدنى للطلب.",
+      "shortDescription": "Private cabin 6-10 / كابينة خاصة ٦-١٠",
+      "imageUrl": "https://cdn.example.com/bedouin-table/products/family-cabin.jpg",
+      "categoryId": "cat-seating",
+      "isActive": 1,
+      "type": "room",
+      "campId": "proj_bedouin_table"
+    },
+    {
+      "id": "prod_mandi",
+      "name": "Lamb Mandi / مندي لحم",
+      "sku": "MEAL-MANDI",
+      "basePrice": 280,
+      "capacity": 2,
+      "description": "Slow-cooked lamb mandi for two with basmati rice. / مندي لحم على مهل لفردين مع أرز بسمتي.",
+      "shortDescription": "Mandi for two / مندي لفردين",
+      "imageUrl": "https://cdn.example.com/bedouin-table/products/mandi.jpg",
+      "categoryId": "cat-mains",
+      "isActive": 1,
+      "type": "menu",
+      "campId": "proj_bedouin_table"
+    },
+    {
+      "id": "prod_mezze",
+      "name": "Bedouin Mezze Set / تشكيلة مقبلات بدوية",
+      "sku": "MEAL-MEZZE",
+      "basePrice": 160,
+      "capacity": 2,
+      "description": "Hummus, foul, salads and Bedouin bread. / حمص وفول وسلطات وعيش بدوي.",
+      "shortDescription": "Mezze for two / مقبلات لفردين",
+      "imageUrl": "https://cdn.example.com/bedouin-table/products/mezze.jpg",
+      "categoryId": "cat-starters",
+      "isActive": 1,
+      "type": "buffet",
+      "campId": "proj_bedouin_table"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room_c1",
+      "name": "Cabin C1 / كابينة ج١",
+      "productName": "Family Dining Cabin / كابينة عائلية",
+      "floor": 1,
+      "status": "available",
+      "bedType": "banquette",
+      "maxGuests": 10,
+      "basePrice": 300,
+      "notes": "Group cabin, min spend 1500 / كابينة مجموعات بحد أدنى ١٥٠٠",
+      "isActive": 1
+    },
+    {
+      "id": "room_c2",
+      "name": "Cabin C2 / كابينة ج٢",
+      "productId": "prod_familycabin",
+      "floor": "1",
+      "status": "available",
+      "bedType": "banquette",
+      "maxGuests": 8,
+      "basePrice": 300,
+      "notes": "Quieter corner / ركن أهدأ",
+      "isActive": 1
+    }
+  ],
+  "ratePlans": [
+    {
+      "id": "rp_weekend_cabin",
+      "productName": "Family Dining Cabin / كابينة عائلية",
+      "name": "Weekend Evenings / أمسيات نهاية الأسبوع",
+      "pricePerNight": 500,
+      "startDate": "2026-01-01",
+      "endDate": "2026-12-31",
+      "season": "weekend",
+      "minStay": 1,
+      "isActive": 1
+    },
+    {
+      "id": "rp_mandi_friday",
+      "productId": "prod_mandi",
+      "name": "Friday Feast / وليمة الجمعة",
+      "pricePerNight": 320,
+      "startDate": "2026-01-01",
+      "endDate": "2026-12-31",
+      "season": "all",
+      "minStay": 1,
+      "isActive": 1
+    }
+  ],
+  "menu": {
+    "categories": [
+      {
+        "name": "Mandi & Mains / مندي وأطباق رئيسية",
+        "position": 1
+      },
+      {
+        "name": "Grills / مشويات",
+        "position": 2
+      },
+      {
+        "name": "Desserts & Drinks / حلويات ومشروبات",
+        "position": 3
+      }
+    ],
+    "meals": [
+      {
+        "id": "meal_mandi",
+        "name": "Lamb Mandi / مندي لحم",
+        "categoryName": "Mandi & Mains / مندي وأطباق رئيسية",
+        "price": 280,
+        "description": "Slow-cooked lamb with basmati, serves two. / لحم على مهل مع بسمتي يكفي فردين.",
+        "imageUrl": "https://cdn.example.com/bedouin-table/menu/mandi.jpg",
+        "isActive": 1
+      },
+      {
+        "id": "meal_grill",
+        "name": "Mixed Grill / مشويات مشكلة",
+        "mealCategoryId": "mcat_existing_grills",
+        "price": 310,
+        "description": "Charcoal mixed grill. / مشويات مشكلة على الفحم.",
+        "imageUrl": "https://cdn.example.com/bedouin-table/menu/grill.jpg",
+        "isActive": 1
+      },
+      {
+        "name": "Om Ali / أم علي",
+        "categoryName": "Desserts & Drinks / حلويات ومشروبات",
+        "price": 95,
+        "description": "Hot Om Ali with nuts. / أم علي سخنة بالمكسرات."
+      }
+    ]
+  },
+  "posUsers": [
+    {
+      "email": "cashier@bedouintable-full.example.com",
+      "username": "tarek_cashier",
+      "password": "RestoFull123",
+      "firstName": "Tarek / طارق",
+      "lastName": "Nour / نور",
+      "phone": "+201033333333",
+      "role": "cashier",
+      "department": "Service / الخدمة",
+      "employeeId": "BT-001",
+      "storeId": 1
+    },
+    {
+      "email": "chef@bedouintable-full.example.com",
+      "username": "hassan_mgr",
+      "password": "RestoFull456",
+      "firstName": "Hassan / حسن",
+      "lastName": "Ali / علي",
+      "role": "manager"
+    }
+  ],
+  "_note": "EXAMPLE restaurant-only manifest: schema-valid, FK-resolving, bilingual (EN/AR). 'restaurant-only' is NOT a valid identity.type (Zod enum backend/src/api/tenant-import.js:15 + D1 CHECK backend/migrations/0001_core.sql:19) so identity uses type 'other' + businessType 'restaurant-only'; the restaurant core is menu+posUsers while rooms (dining cabins) + ratePlans (weekend/friday pricing) keep the file schema-complete. meal_grill shows the direct mealCategoryId path (pre-existing id or null — no error). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
+  "identity": {
+    "name": "Bedouin Table Restaurant",
+    "subdomain": "bedouintable-full",
+    "type": "other",
+    "email": "owner@bedouintable-full.example.com",
+    "password": "RestoFull789",
+    "firstName": "Tarek",
+    "lastName": "Nour",
+    "businessType": "restaurant-only"
+  }
+}

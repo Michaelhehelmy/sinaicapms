@@ -1,0 +1,199 @@
+{
+  "tenant": {
+    "name": "Dahab Corner Market / ماركت ركن دهب",
+    "logoUrl": "https://cdn.example.com/dahab-market/logo.png",
+    "faviconUrl": "https://cdn.example.com/dahab-market/favicon.png",
+    "heroImageUrl": "https://cdn.example.com/dahab-market/hero.jpg",
+    "primaryColor": "#16a34a",
+    "currency": "EGP",
+    "footerText": "Dahab Corner Market — Masbat, Dahab / ماركت ركن دهب — المسبط، دهب",
+    "location": "Masbat, Dahab, South Sinai, Egypt",
+    "whatsappNumber": "+201022222222",
+    "phone": "+201022222222",
+    "email": "hello@dahabmarket-full.example.com",
+    "description": "Neighbourhood supermarket with fresh bakery, dairy and imported goods. / سوبر ماركت بخبز طازج وألبان ومنتجات مستوردة.",
+    "aboutText": "Family-run corner market serving Masbat since 2015. Daily bread, fresh produce and a prepared-foods counter. / ماركت عائلي يخدم المسبط منذ ٢٠١٥. عيش يومي وخضار طازج وركن مأكولات جاهزة.",
+    "galleryImages": "[\"https://cdn.example.com/dahab-market/gallery/front.jpg\",\"https://cdn.example.com/dahab-market/gallery/aisle.jpg\"]",
+    "mapEmbedUrl": "https://maps.google.com/?q=Masbat+Dahab",
+    "activities": "[\"Daily fresh bread / عيش طازج يوميا\",\"Fruit & veg boxes / بوكسات خضار وفاكهة\"]",
+    "faqItems": "[{\"q\":\"Delivery? / توصيل؟\",\"a\":\"Inside Dahab daily / داخل دهب يوميا\"}]",
+    "reviews": "[{\"author\":\"Karim / كريم\",\"text\":\"Best laban in Dahab / أحلى لبن في دهب\"}]",
+    "capacity": 40,
+    "menuConfig": "{\"showWhatsapp\":true}"
+  },
+  "project": {
+    "name": "Dahab Corner Market",
+    "location": "Masbat, Dahab, South Sinai, Egypt",
+    "capacity": 40,
+    "status": "active"
+  },
+  "products": [
+    {
+      "id": "prod_sourdough",
+      "name": "Sourdough Loaf / رغيف ساوردو",
+      "sku": "BAKE-SD",
+      "basePrice": 65,
+      "capacity": 1,
+      "description": "Daily-baked sourdough loaf, 600g. / رغيف ساوردو يومي ٦٠٠ جرام.",
+      "shortDescription": "Sourdough 600g / ساوردو ٦٠٠ جرام",
+      "imageUrl": "https://cdn.example.com/dahab-market/products/sourdough.jpg",
+      "categoryId": "cat-bakery",
+      "isActive": 1,
+      "type": "retail",
+      "campId": "proj_dahab_market"
+    },
+    {
+      "id": "prod_laban",
+      "name": "Buffalo Laban 1kg / لبن جاموسي ١ كيلو",
+      "sku": "DAIRY-LB1",
+      "basePrice": 95,
+      "capacity": 1,
+      "description": "Fresh buffalo laban delivered daily from Fayoum. / لبن جاموسي طازج يوميا من الفيوم.",
+      "shortDescription": "Laban 1kg / لبن ١ كيلو",
+      "imageUrl": "https://cdn.example.com/dahab-market/products/laban.jpg",
+      "categoryId": "cat-dairy",
+      "isActive": 1,
+      "type": "retail",
+      "campId": "proj_dahab_market"
+    },
+    {
+      "id": "prod_staffroom",
+      "name": "Staff Rest Room / غرفة استراحة العاملين",
+      "sku": "ROOM-STAFF",
+      "basePrice": 200,
+      "capacity": 3,
+      "description": "Overnight rest room for night-shift staff. / غرفة مبيت لعاملين الوردية الليلية.",
+      "shortDescription": "Staff room / غرفة عاملين",
+      "imageUrl": "https://cdn.example.com/dahab-market/products/staff-room.jpg",
+      "categoryId": "cat-facilities",
+      "isActive": 1,
+      "type": "room",
+      "campId": "proj_dahab_market"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room_sr1",
+      "name": "Staff Room 1 / غرفة العاملين ١",
+      "productName": "Staff Rest Room / غرفة استراحة العاملين",
+      "floor": 2,
+      "status": "available",
+      "bedType": "bunk",
+      "maxGuests": 3,
+      "basePrice": 200,
+      "notes": "Staff only / للعاملين فقط",
+      "isActive": 1
+    },
+    {
+      "id": "room_sr2",
+      "name": "Staff Room 2 / غرفة العاملين ٢",
+      "productId": "prod_staffroom",
+      "floor": "2",
+      "status": "available",
+      "bedType": "bunk",
+      "maxGuests": 3,
+      "basePrice": 200,
+      "notes": "Staff only / للعاملين فقط",
+      "isActive": 1
+    }
+  ],
+  "ratePlans": [
+    {
+      "id": "rp_staff_monthly",
+      "productName": "Staff Rest Room / غرفة استراحة العاملين",
+      "name": "Monthly Staff Rate / سعر شهري للعاملين",
+      "pricePerNight": 150,
+      "startDate": "2026-01-01",
+      "endDate": "2026-12-31",
+      "season": "all",
+      "minStay": 30,
+      "isActive": 1
+    },
+    {
+      "id": "rp_sourdough_sub",
+      "productId": "prod_sourdough",
+      "name": "Bread Subscription / اشتراك العيش",
+      "pricePerNight": 55,
+      "startDate": "2026-01-01",
+      "endDate": "2026-12-31",
+      "season": "all",
+      "minStay": 7,
+      "isActive": 1
+    }
+  ],
+  "menu": {
+    "categories": [
+      {
+        "name": "Bakery / مخبز",
+        "position": 1
+      },
+      {
+        "name": "Prepared Foods / مأكولات جاهزة",
+        "position": 2
+      },
+      {
+        "name": "Fresh Juices / عصائر طازجة",
+        "position": 3
+      }
+    ],
+    "meals": [
+      {
+        "id": "meal_feteer",
+        "name": "Feteer with Honey / فطير بالعسل",
+        "categoryName": "Bakery / مخبز",
+        "price": 85,
+        "description": "Layered feteer with Sinai honey. / فطير مورق بعسل سيناوي.",
+        "imageUrl": "https://cdn.example.com/dahab-market/menu/feteer.jpg",
+        "isActive": 1
+      },
+      {
+        "id": "meal_koshary",
+        "name": "Koshary Box / علبة كشري",
+        "mealCategoryId": "mcat_existing_prepared",
+        "price": 60,
+        "description": "Takeaway koshary box. / علبة كشري تيك أواي.",
+        "imageUrl": "https://cdn.example.com/dahab-market/menu/koshary.jpg",
+        "isActive": 1
+      },
+      {
+        "name": "Sugarcane Juice / عصير قصب",
+        "categoryName": "Fresh Juices / عصائر طازجة",
+        "price": 40,
+        "description": "Fresh-pressed sugarcane. / قصب طازج معصور."
+      }
+    ]
+  },
+  "posUsers": [
+    {
+      "email": "cashier@dahabmarket-full.example.com",
+      "username": "hani_cashier",
+      "password": "MarketFull123",
+      "firstName": "Hani / هاني",
+      "lastName": "Saeed / سعيد",
+      "phone": "+201022222222",
+      "role": "cashier",
+      "department": "Checkout / الكاشير",
+      "employeeId": "DM-001",
+      "storeId": 1
+    },
+    {
+      "email": "manager@dahabmarket-full.example.com",
+      "username": "dina_mgr",
+      "password": "MarketFull456",
+      "firstName": "Dina / دينا",
+      "lastName": "Fouad / فؤاد",
+      "role": "manager"
+    }
+  ],
+  "_note": "EXAMPLE supermarket-full manifest: schema-valid, FK-resolving, bilingual (EN/AR). Rooms model staff accommodation (supermarkets rarely sell stays); ratePlans model staff monthly rates + a bread subscription. meal_koshary shows the direct mealCategoryId path (needs a pre-existing category id, else null — no error). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
+  "identity": {
+    "name": "Dahab Corner Market",
+    "subdomain": "dahabmarket-full",
+    "type": "supermarket",
+    "email": "owner@dahabmarket-full.example.com",
+    "password": "MarketFull789",
+    "firstName": "Hani",
+    "lastName": "Saeed",
+    "businessType": "supermarket"
+  }
+}

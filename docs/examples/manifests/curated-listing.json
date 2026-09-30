@@ -1,0 +1,199 @@
+{
+  "tenant": {
+    "name": "Sinai Stays Directory / دليل إقامات سيناء",
+    "logoUrl": "https://cdn.example.com/sinai-stays/logo.png",
+    "faviconUrl": "https://cdn.example.com/sinai-stays/favicon.png",
+    "heroImageUrl": "https://cdn.example.com/sinai-stays/hero.jpg",
+    "primaryColor": "#7c3aed",
+    "currency": "EGP",
+    "footerText": "Sinai Stays Directory — hand-picked camps / دليل إقامات سيناء — مخيمات مختارة",
+    "location": "Dahab, South Sinai, Egypt",
+    "whatsappNumber": "+201055555555",
+    "phone": "+201055555555",
+    "email": "hello@sinaistays-full.example.com",
+    "description": "Curated listing of partner camps across Sinai: browse, compare and book. / دليل مختار لمخيمات شريكة في سيناء: تصفح وقارن واحجز.",
+    "aboutText": "We list ten hand-picked partner camps from Ras Shaitan to St Catherine. Book direct, pay at the camp. / نعرض عشرة مخيمات شريكة من راس شيطان لسانت كاترين. احجز مباشرة وادفع في المخيم.",
+    "galleryImages": "[\"https://cdn.example.com/sinai-stays/gallery/blue-lagoon.jpg\",\"https://cdn.example.com/sinai-stays/gallery/mountain.jpg\"]",
+    "mapEmbedUrl": "https://maps.google.com/?q=South+Sinai",
+    "activities": "[\"Partner camp stays / إقامة في مخيمات شريكة\",\"Curated trips / رحلات مختارة\"]",
+    "faqItems": "[{\"q\":\"How to book? / كيف أحجز؟\",\"a\":\"WhatsApp the camp direct / واتساب للمخيم مباشرة\"}]",
+    "reviews": "[{\"author\":\"Laila / ليلى\",\"text\":\"Found our camp in minutes / لقينا مخيمنا في دقائق\"}]",
+    "capacity": 200,
+    "menuConfig": "{\"showWhatsapp\":true}"
+  },
+  "project": {
+    "name": "Sinai Stays Directory",
+    "location": "Dahab, South Sinai, Egypt",
+    "capacity": 200,
+    "status": "active"
+  },
+  "products": [
+    {
+      "id": "prod_featured_tent",
+      "name": "Featured Partner Tent / خيمة شريك مميزة",
+      "sku": "LIST-TENT",
+      "basePrice": 1200,
+      "capacity": 3,
+      "description": "Reference listing for a partner camp tent, booked via the partner. / إعلان مرجعي لخيمة مخيم شريك، الحجز عبر الشريك.",
+      "shortDescription": "Partner tent / خيمة شريك",
+      "imageUrl": "https://cdn.example.com/sinai-stays/products/featured-tent.jpg",
+      "categoryId": "cat-listings",
+      "isActive": 1,
+      "type": "room",
+      "campId": "proj_sinai_stays"
+    },
+    {
+      "id": "prod_featured_suite",
+      "name": "Featured Partner Suite / جناح شريك مميز",
+      "sku": "LIST-SUITE",
+      "basePrice": 2800,
+      "capacity": 5,
+      "description": "Reference listing for a partner camp suite. / إعلان مرجعي لجناح مخيم شريك.",
+      "shortDescription": "Partner suite / جناح شريك",
+      "imageUrl": "https://cdn.example.com/sinai-stays/products/featured-suite.jpg",
+      "categoryId": "cat-listings",
+      "isActive": 1,
+      "type": "room",
+      "campId": "proj_sinai_stays"
+    },
+    {
+      "id": "prod_guidebook",
+      "name": "Printed Trail Guide / دليل المسارات المطبوع",
+      "sku": "GUIDE-01",
+      "basePrice": 180,
+      "capacity": 1,
+      "description": "Printed Sinai trail guidebook sold at the kiosk. / دليل مسارات سيناء مطبوع يباع في الكشك.",
+      "shortDescription": "Trail guide / دليل مسارات",
+      "imageUrl": "https://cdn.example.com/sinai-stays/products/guidebook.jpg",
+      "categoryId": "cat-kiosk",
+      "isActive": 1,
+      "type": "retail",
+      "campId": "proj_sinai_stays"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room_f1",
+      "name": "Listing F1 / إعلان ف١",
+      "productName": "Featured Partner Tent / خيمة شريك مميزة",
+      "floor": 1,
+      "status": "available",
+      "bedType": "double",
+      "maxGuests": 3,
+      "basePrice": 1200,
+      "notes": "Partner: Blue Lagoon / الشريك: اللاجونا الزرقاء",
+      "isActive": 1
+    },
+    {
+      "id": "room_f2",
+      "name": "Listing F2 / إعلان ف٢",
+      "productId": "prod_featured_suite",
+      "floor": "1",
+      "status": "available",
+      "bedType": "mixed",
+      "maxGuests": 5,
+      "basePrice": 2800,
+      "notes": "Partner: Mountain View / الشريك: إطلالة الجبل",
+      "isActive": 1
+    }
+  ],
+  "ratePlans": [
+    {
+      "id": "rp_eid_listing",
+      "productName": "Featured Partner Tent / خيمة شريك مميزة",
+      "name": "Eid Reference Rate / سعر استرشادي للعيد",
+      "pricePerNight": 1600,
+      "startDate": "2026-05-20",
+      "endDate": "2026-06-05",
+      "season": "eid",
+      "minStay": 2,
+      "isActive": 1
+    },
+    {
+      "id": "rp_guide_kiosk",
+      "productId": "prod_guidebook",
+      "name": "Kiosk Price / سعر الكشك",
+      "pricePerNight": 180,
+      "startDate": "2026-01-01",
+      "endDate": "2026-12-31",
+      "season": "all",
+      "minStay": 1,
+      "isActive": 1
+    }
+  ],
+  "menu": {
+    "categories": [
+      {
+        "name": "Kiosk Café / كافيه الكشك",
+        "position": 1
+      },
+      {
+        "name": "Partner Tastings / ضيافة الشركاء",
+        "position": 2
+      },
+      {
+        "name": "Cold Drinks / مشروبات باردة",
+        "position": 3
+      }
+    ],
+    "meals": [
+      {
+        "id": "meal_kiosk_breakfast",
+        "name": "Kiosk Breakfast / فطار الكشك",
+        "categoryName": "Kiosk Café / كافيه الكشك",
+        "price": 110,
+        "description": "Foul, eggs and Bedouin bread at the kiosk. / فول وبيض وعيش بدوي في الكشك.",
+        "imageUrl": "https://cdn.example.com/sinai-stays/menu/kiosk-breakfast.jpg",
+        "isActive": 1
+      },
+      {
+        "id": "meal_tasting",
+        "name": "Partner Tasting Plate / طبق ضيافة الشركاء",
+        "mealCategoryId": "mcat_existing_tastings",
+        "price": 75,
+        "description": "Rotating tasting plate from a partner camp kitchen. / طبق ضيافة متغير من مطبخ مخيم شريك.",
+        "imageUrl": "https://cdn.example.com/sinai-stays/menu/tasting.jpg",
+        "isActive": 1
+      },
+      {
+        "name": "Hibiscus Cooler / كركديه مثلج",
+        "categoryName": "Cold Drinks / مشروبات باردة",
+        "price": 50,
+        "description": "Iced hibiscus with mint. / كركديه مثلج بالنعناع."
+      }
+    ]
+  },
+  "posUsers": [
+    {
+      "email": "cashier@sinaistays-full.example.com",
+      "username": "farah_cashier",
+      "password": "ListingFull123",
+      "firstName": "Farah / فرح",
+      "lastName": "Ibrahim / إبراهيم",
+      "phone": "+201055555555",
+      "role": "cashier",
+      "department": "Kiosk / الكشك",
+      "employeeId": "SL-001",
+      "storeId": 1
+    },
+    {
+      "email": "editor@sinaistays-full.example.com",
+      "username": "youssef_ed",
+      "password": "ListingFull456",
+      "firstName": "Youssef / يوسف",
+      "lastName": "Samir / سمير",
+      "role": "admin"
+    }
+  ],
+  "_note": "EXAMPLE curated-listing manifest: schema-valid, FK-resolving, bilingual (EN/AR). 'curated-listing' is NOT a valid identity.type (Zod enum backend/src/api/tenant-import.js:15 + D1 CHECK backend/migrations/0001_core.sql:19) so identity uses type 'other' + businessType 'curated-listing'; rooms/ratePlans model partner reference listings, products mix room + retail. meal_tasting shows the direct mealCategoryId path (pre-existing id or null — no error). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
+  "identity": {
+    "name": "Sinai Stays Directory",
+    "subdomain": "sinaistays-full",
+    "type": "other",
+    "email": "owner@sinaistays-full.example.com",
+    "password": "ListingFull789",
+    "firstName": "Farah",
+    "lastName": "Ibrahim",
+    "businessType": "curated-listing"
+  }
+}

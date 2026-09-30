@@ -1,0 +1,199 @@
+{
+  "tenant": {
+    "name": "Sinai Shuttle Co. / شركة سيناء للنقل",
+    "logoUrl": "https://cdn.example.com/sinai-shuttle/logo.png",
+    "faviconUrl": "https://cdn.example.com/sinai-shuttle/favicon.png",
+    "heroImageUrl": "https://cdn.example.com/sinai-shuttle/hero.jpg",
+    "primaryColor": "#1d4ed8",
+    "currency": "EGP",
+    "footerText": "Sinai Shuttle Co. — Sharm ↔ Dahab ↔ Nuweiba / سيناء للنقل — شرم ↔ دهب ↔ نويبع",
+    "location": "Bus Station Rd, Sharm El-Sheikh, South Sinai, Egypt",
+    "whatsappNumber": "+201044444444",
+    "phone": "+201044444444",
+    "email": "book@sinaishuttle-full.example.com",
+    "description": "Scheduled shuttles and private 4x4 transfers across South Sinai. / نقل جماعي مجدول وسيارات ٤×٤ خاصة في جنوب سيناء.",
+    "aboutText": "Licensed transfer operator since 2016. Daily Sharm-Dahab-Nuweiba line plus on-demand desert trips. / شركة نقل مرخصة منذ ٢٠١٦. خط يومي شرم-دهب-نويبع ورحلات صحراوية عند الطلب.",
+    "galleryImages": "[\"https://cdn.example.com/sinai-shuttle/gallery/coaster.jpg\",\"https://cdn.example.com/sinai-shuttle/gallery/4x4.jpg\"]",
+    "mapEmbedUrl": "https://maps.google.com/?q=Sharm+Bus+Station",
+    "activities": "[\"Daily line Sharm-Dahab / خط يومي شرم-دهب\",\"Blue Hole transfers / نقل البلو هول\"]",
+    "faqItems": "[{\"q\":\"Luggage? / أمتعة؟\",\"a\":\"25kg included / ٢٥ كيلو مشمول\"}]",
+    "reviews": "[{\"author\":\"Sara / سارة\",\"text\":\"On time, every time / في الموعد دائما\"}]",
+    "capacity": 120,
+    "menuConfig": "{\"showWhatsapp\":true}"
+  },
+  "project": {
+    "name": "Sinai Shuttle Co.",
+    "location": "Bus Station Rd, Sharm El-Sheikh, South Sinai, Egypt",
+    "capacity": 120,
+    "status": "active"
+  },
+  "products": [
+    {
+      "id": "prod_coaster",
+      "name": "Coaster Seat / مقعد كوستر",
+      "sku": "SEAT-COA",
+      "basePrice": 250,
+      "capacity": 1,
+      "description": "One seat on the scheduled Sharm-Dahab coaster. / مقعد في كوستر شرم-دهب المجدول.",
+      "shortDescription": "Coaster seat / مقعد كوستر",
+      "imageUrl": "https://cdn.example.com/sinai-shuttle/products/coaster.jpg",
+      "categoryId": "cat-scheduled",
+      "isActive": 1,
+      "type": "retail",
+      "campId": "proj_sinai_shuttle"
+    },
+    {
+      "id": "prod_4x4",
+      "name": "Private 4x4 Transfer / نقل خاص ٤×٤",
+      "sku": "TRIP-4X4",
+      "basePrice": 1800,
+      "capacity": 6,
+      "description": "Private 4x4 with driver for up to 6 passengers. / سيارة ٤×٤ خاصة بسائق حتى ٦ أفراد.",
+      "shortDescription": "Private 4x4 / خاص ٤×٤",
+      "imageUrl": "https://cdn.example.com/sinai-shuttle/products/4x4.jpg",
+      "categoryId": "cat-private",
+      "isActive": 1,
+      "type": "retail",
+      "campId": "proj_sinai_shuttle"
+    },
+    {
+      "id": "prod_sleeper",
+      "name": "Night Sleeper Berth / سرير النوم الليلي",
+      "sku": "BERTH-NIGHT",
+      "basePrice": 450,
+      "capacity": 1,
+      "description": "Reclining sleeper berth on the overnight Cairo-Sharm line. / سرير نوم مائل في خط القاهرة-شرم الليلي.",
+      "shortDescription": "Sleeper berth / سرير نوم",
+      "imageUrl": "https://cdn.example.com/sinai-shuttle/products/sleeper.jpg",
+      "categoryId": "cat-overnight",
+      "isActive": 1,
+      "type": "room",
+      "campId": "proj_sinai_shuttle"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room_b01",
+      "name": "Berth B01 / سرير ب٠١",
+      "productName": "Night Sleeper Berth / سرير النوم الليلي",
+      "floor": 1,
+      "status": "available",
+      "bedType": "recliner",
+      "maxGuests": 1,
+      "basePrice": 450,
+      "notes": "Overnight bus 1 / أتوبيس الليل ١",
+      "isActive": 1
+    },
+    {
+      "id": "room_b02",
+      "name": "Berth B02 / سرير ب٠٢",
+      "productId": "prod_sleeper",
+      "floor": "1",
+      "status": "available",
+      "bedType": "recliner",
+      "maxGuests": 1,
+      "basePrice": 450,
+      "notes": "Overnight bus 1 / أتوبيس الليل ١",
+      "isActive": 1
+    }
+  ],
+  "ratePlans": [
+    {
+      "id": "rp_eid_coaster",
+      "productName": "Coaster Seat / مقعد كوستر",
+      "name": "Eid Peak / ذروة العيد",
+      "pricePerNight": 350,
+      "startDate": "2026-05-20",
+      "endDate": "2026-06-05",
+      "season": "eid",
+      "minStay": 1,
+      "isActive": 1
+    },
+    {
+      "id": "rp_winter_4x4",
+      "productId": "prod_4x4",
+      "name": "Winter Desert Rate / سعر الشتاء الصحراوي",
+      "pricePerNight": 1500,
+      "startDate": "2026-12-01",
+      "endDate": "2027-02-28",
+      "season": "winter",
+      "minStay": 1,
+      "isActive": 1
+    }
+  ],
+  "menu": {
+    "categories": [
+      {
+        "name": "Roadside Breakfast / فطار الطريق",
+        "position": 1
+      },
+      {
+        "name": "Snacks / سناكس",
+        "position": 2
+      },
+      {
+        "name": "Hot Drinks / مشروبات ساخنة",
+        "position": 3
+      }
+    ],
+    "meals": [
+      {
+        "id": "meal_foul",
+        "name": "Foul Breakfast Box / علبة فول للفطار",
+        "categoryName": "Roadside Breakfast / فطار الطريق",
+        "price": 55,
+        "description": "Foul, eggs and bread box for the road. / علبة فول وبيض وعيش للطريق.",
+        "imageUrl": "https://cdn.example.com/sinai-shuttle/menu/foul-box.jpg",
+        "isActive": 1
+      },
+      {
+        "id": "meal_chips",
+        "name": "Chips & Dates Pack / سناكس وتمر",
+        "mealCategoryId": "mcat_existing_snacks",
+        "price": 45,
+        "description": "Chips plus Sinai dates pack. / شيبسي مع تمر سيناوي.",
+        "imageUrl": "https://cdn.example.com/sinai-shuttle/menu/snack-pack.jpg",
+        "isActive": 1
+      },
+      {
+        "name": "Desert Tea / شاي صحراوي",
+        "categoryName": "Hot Drinks / مشروبات ساخنة",
+        "price": 25,
+        "description": "Bedouin sage tea served at rest stops. / شاي مرمرية بدوي في الاستراحات."
+      }
+    ]
+  },
+  "posUsers": [
+    {
+      "email": "cashier@sinaishuttle-full.example.com",
+      "username": "mahmoud_cashier",
+      "password": "ShuttleFull123",
+      "firstName": "Mahmoud / محمود",
+      "lastName": "Hassan / حسن",
+      "phone": "+201044444444",
+      "role": "cashier",
+      "department": "Terminal / المحطة",
+      "employeeId": "SS-001",
+      "storeId": 1
+    },
+    {
+      "email": "dispatcher@sinaishuttle-full.example.com",
+      "username": "asmaa_ops",
+      "password": "ShuttleFull456",
+      "firstName": "Asmaa / أسماء",
+      "lastName": "Khaled / خالد",
+      "role": "manager"
+    }
+  ],
+  "_note": "EXAMPLE transportation manifest: schema-valid, FK-resolving, bilingual (EN/AR). Seats/trips are retail products; sleeper berths are room products so rooms+ratePlans model the overnight line (seasonal pricing via rate_plans). meal_chips shows the direct mealCategoryId path (pre-existing id or null — no error). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
+  "identity": {
+    "name": "Sinai Shuttle Co.",
+    "subdomain": "sinaishuttle-full",
+    "type": "transportation",
+    "email": "owner@sinaishuttle-full.example.com",
+    "password": "ShuttleFull789",
+    "firstName": "Mahmoud",
+    "lastName": "Hassan",
+    "businessType": "shuttle"
+  }
+}

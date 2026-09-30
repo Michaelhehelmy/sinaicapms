@@ -1,0 +1,199 @@
+{
+  "tenant": {
+    "name": "Ras Shaitan Beach Camp / مخيم راس شيطان",
+    "logoUrl": "https://cdn.example.com/ras-shaitan/logo.png",
+    "faviconUrl": "https://cdn.example.com/ras-shaitan/favicon.png",
+    "heroImageUrl": "https://cdn.example.com/ras-shaitan/hero.jpg",
+    "primaryColor": "#0f766e",
+    "currency": "EGP",
+    "footerText": "Ras Shaitan Beach Camp — Nuweiba, South Sinai / مخيم راس شيطان — نويبع",
+    "location": "Ras Shaitan, Nuweiba, South Sinai, Egypt",
+    "whatsappNumber": "+201011111111",
+    "phone": "+201011111111",
+    "email": "stay@rasshaitan-full.example.com",
+    "description": "Beachfront glamping camp on the Gulf of Aqaba with tents, huts and a grill restaurant. / مخيم شاطئي على خليج العقبة بخيام وأكواخ ومطعم مشويات.",
+    "aboutText": "Family-run beach camp since 2010. Sea-view tents, palm huts, snorkeling trips and Bedouin dinners. / مخيم عائلي منذ ٢٠١٠. خيام بإطلالة بحرية وأكواخ ورحلات سنوركلينج وعشاء بدوي.",
+    "galleryImages": "[\"https://cdn.example.com/ras-shaitan/gallery/sunset.jpg\",\"https://cdn.example.com/ras-shaitan/gallery/tent.jpg\"]",
+    "mapEmbedUrl": "https://maps.google.com/?q=Ras+Shaitan+Nuweiba",
+    "activities": "[\"Snorkeling / سنوركلينج\",\"Desert safari / سفاري\",\"Sunrise yoga / يوغا الشروق\"]",
+    "faqItems": "[{\"q\":\"Check-in time? / موعد الوصول؟\",\"a\":\"From 12:00 / من ١٢ ظهرا\"}]",
+    "reviews": "[{\"author\":\"Mona / منى\",\"text\":\"Best sunset in Sinai / أجمل غروب في سيناء\"}]",
+    "capacity": 80,
+    "menuConfig": "{\"showWhatsapp\":true}"
+  },
+  "project": {
+    "name": "Ras Shaitan Beach Camp",
+    "location": "Ras Shaitan, Nuweiba, South Sinai, Egypt",
+    "capacity": 80,
+    "status": "active"
+  },
+  "products": [
+    {
+      "id": "prod_seaview",
+      "name": "Sea-View Tent / خيمة بإطلالة بحرية",
+      "sku": "TENT-SV",
+      "basePrice": 1500,
+      "capacity": 4,
+      "description": "Premium 4-person beach-facing tent with a private terrace. / خيمة فاخرة لأربعة أفراد على البحر بتراس خاص.",
+      "shortDescription": "4-person beachfront tent / خيمة شاطئية لأربعة أفراد",
+      "imageUrl": "https://cdn.example.com/ras-shaitan/products/sea-view-tent.jpg",
+      "categoryId": "cat-accommodation",
+      "isActive": 1,
+      "type": "room",
+      "campId": "proj_ras_shaitan"
+    },
+    {
+      "id": "prod_palmhut",
+      "name": "Palm Hut / كوخ النخيل",
+      "sku": "HUT-PALM",
+      "basePrice": 900,
+      "capacity": 2,
+      "description": "Cosy 2-person palm-frond hut steps from the water. / كوخ مريح لفردين على بعد خطوات من الماء.",
+      "shortDescription": "2-person palm hut / كوخ نخيل لفردين",
+      "imageUrl": "https://cdn.example.com/ras-shaitan/products/palm-hut.jpg",
+      "categoryId": "cat-accommodation",
+      "isActive": 1,
+      "type": "room",
+      "campId": "proj_ras_shaitan"
+    },
+    {
+      "id": "prod_grill",
+      "name": "Bedouin Grill Platter / صينية المشويات البدوية",
+      "sku": "MEAL-GRILL",
+      "basePrice": 350,
+      "capacity": 2,
+      "description": "Mixed grill for two with grilled vegetables and Bedouin bread. / مشويات مشكلة لفردين مع خضار مشوي وعيش بدوي.",
+      "shortDescription": "Mixed grill for two / مشويات لفردين",
+      "imageUrl": "https://cdn.example.com/ras-shaitan/products/grill-platter.jpg",
+      "categoryId": "cat-dining",
+      "isActive": 1,
+      "type": "menu",
+      "campId": "proj_ras_shaitan"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room_a1",
+      "name": "Tent A1 / خيمة أ١",
+      "productName": "Sea-View Tent / خيمة بإطلالة بحرية",
+      "floor": 1,
+      "status": "available",
+      "bedType": "twin",
+      "maxGuests": 4,
+      "basePrice": 1500,
+      "notes": "Front row, sea view / الصف الأول، إطلالة بحرية",
+      "isActive": 1
+    },
+    {
+      "id": "room_h3",
+      "name": "Hut H3 / كوخ ح٣",
+      "productId": "prod_palmhut",
+      "floor": "ground",
+      "status": "available",
+      "bedType": "double",
+      "maxGuests": 2,
+      "basePrice": 900,
+      "notes": "Quiet corner / ركن هادئ",
+      "isActive": 1
+    }
+  ],
+  "ratePlans": [
+    {
+      "id": "rp_summer",
+      "productName": "Sea-View Tent / خيمة بإطلالة بحرية",
+      "name": "Summer High Season / صيف الموسم العالي",
+      "pricePerNight": 1500,
+      "startDate": "2026-06-01",
+      "endDate": "2026-09-30",
+      "season": "summer",
+      "minStay": 2,
+      "isActive": 1
+    },
+    {
+      "id": "rp_winter_hut",
+      "productId": "prod_palmhut",
+      "name": "Winter / شتاء",
+      "pricePerNight": 750,
+      "startDate": "2026-12-01",
+      "endDate": "2027-02-28",
+      "season": "winter",
+      "minStay": 1,
+      "isActive": 1
+    }
+  ],
+  "menu": {
+    "categories": [
+      {
+        "name": "Grills / مشويات",
+        "position": 1
+      },
+      {
+        "name": "Drinks / مشروبات",
+        "position": 2
+      },
+      {
+        "name": "Desserts / حلويات",
+        "position": 3
+      }
+    ],
+    "meals": [
+      {
+        "id": "meal_grill",
+        "name": "Mixed Grill / مشويات مشكلة",
+        "categoryName": "Grills / مشويات",
+        "price": 350,
+        "description": "Chicken, kofta and lamb skewers with grilled vegetables. / فراخ وكفتة وريش مع خضار مشوي.",
+        "imageUrl": "https://cdn.example.com/ras-shaitan/menu/mixed-grill.jpg",
+        "isActive": 1
+      },
+      {
+        "id": "meal_juice",
+        "name": "Fresh Mango Juice / عصير مانجو طازج",
+        "mealCategoryId": "mcat_existing_drinks",
+        "price": 90,
+        "description": "Fresh-pressed mango, no added sugar. / مانجو طازجة بدون سكر مضاف.",
+        "imageUrl": "https://cdn.example.com/ras-shaitan/menu/mango-juice.jpg",
+        "isActive": 1
+      },
+      {
+        "name": "Dates Cake / كيك التمر",
+        "categoryName": "Desserts / حلويات",
+        "price": 120,
+        "description": "Warm Sinai date cake with tahini drizzle. / كيك تمر سيناوي دافئ مع طحينة."
+      }
+    ]
+  },
+  "posUsers": [
+    {
+      "email": "cashier@rasshaitan-full.example.com",
+      "username": "salem_cashier",
+      "password": "CampFull123",
+      "firstName": "Salem / سالم",
+      "lastName": "Mousa / موسى",
+      "phone": "+201011111111",
+      "role": "cashier",
+      "department": "Front desk / الاستقبال",
+      "employeeId": "RS-001",
+      "storeId": 1
+    },
+    {
+      "email": "manager@rasshaitan-full.example.com",
+      "username": "noura_mgr",
+      "password": "CampFull456",
+      "firstName": "Noura / نورة",
+      "lastName": "Adel / عادل",
+      "role": "manager"
+    }
+  ],
+  "_note": "EXAMPLE camp-full manifest: schema-valid, FK-resolving, bilingual (EN/AR). productName rooms/ratePlans resolve against products in this file; meals resolve via categoryName except meal_juice which shows the direct mealCategoryId path (needs a pre-existing category id, else stored null — no error). campId/categoryId/storeId placeholders must match the target tenant (or be omitted: campId falls back to the tenant's sole project, storeId to the org's first store). Passwords are example-only.",
+  "identity": {
+    "name": "Ras Shaitan Beach Camp",
+    "subdomain": "rasshaitan-full",
+    "type": "camp",
+    "email": "owner@rasshaitan-full.example.com",
+    "password": "CampFull789",
+    "firstName": "Salem",
+    "lastName": "Mousa",
+    "businessType": "glamping"
+  }
+}
