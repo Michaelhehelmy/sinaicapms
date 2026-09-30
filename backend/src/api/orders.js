@@ -1171,7 +1171,7 @@ ordersRoutes.patch('/:id/checkin', async (c) => {
     const { early_checkin, adult_count, child_count, room_id } = await c.req.json();
 
     const order = await c.env.DB.prepare(
-      'SELECT id, room_id, camp_id FROM orders WHERE tenant_id = ? AND id = ?'
+      'SELECT id, room_id, camp_id, customer_id, project_id, check_in_date, check_out_date, total_amount FROM orders WHERE tenant_id = ? AND id = ?'
     ).bind(tenantId, orderId).first();
     if (!order) return errorResponse('Order not found', 404);
 
@@ -1216,6 +1216,68 @@ ordersRoutes.patch('/:id/checkin', async (c) => {
     }
     updateParams.push(tenantId, orderId);
 
+    // B.4 auto-post: every checked-in stay accrues to an open guest folio.
+    // The order's open folio is reused when one exists; otherwise one is
+    // opened now (guest = order customer, NULL for walk-ins) with one 'room'
+    // charge per night. Per-night amounts split the order total so Σ charges
+    // == order total exactly (the last night absorbs rounding dust). Charges
+    // ride the order's project_id with a camp_id fallback (orders predate the
+    // 0100 project column). All writes join the check-in batch below: folio +
+    // charges land atomically with the order/room flips, never partially.
+    // No KV writes (free-plan quota).
+    const openFolio = await c.env.DB.prepare(
+      "SELECT id, status, total_amount FROM folios WHERE tenant_id = ? AND primary_order_id = ? AND status = 'open'"
+    ).bind(tenantId, orderId).first();
+    let folioId = openFolio ? openFolio.id : null;
+    const folioStmts = [];
+    if (!folioId) {
+      folioId = 'folio_' + crypto.randomUUID().slice(0, 12);
+      folioStmts.push(
+        c.env.DB.prepare(
+          `INSERT INTO folios (id, tenant_id, guest_id, primary_order_id, status, total_amount, notes)
+           VALUES (?, ?, ?, ?, 'open', 0, ?)`
+        ).bind(folioId, tenantId, order.customer_id || null, orderId, null)
+      );
+      const checkIn = order.check_in_date ? new Date(order.check_in_date) : null;
+      const checkOut = order.check_out_date ? new Date(order.check_out_date) : null;
+      const nights = (checkIn && checkOut && !isNaN(checkIn.getTime()) && !isNaN(checkOut.getTime()))
+        ? Math.round((checkOut - checkIn) / (1000 * 60 * 60 * 24))
+        : 0;
+      const stayTotal = Math.round(Number(order.total_amount || 0) * 100) / 100;
+      if (nights >= 1 && stayTotal > 0) {
+        const chargeProjectId = order.project_id || order.camp_id || null;
+        const nightly = Math.floor((stayTotal / nights) * 100) / 100;
+        let posted = 0;
+        let roomChargeTotal = 0;
+        for (let i = 0; i < nights; i++) {
+          const isLast = i === nights - 1;
+          const amount = isLast
+            ? Math.round((stayTotal - posted) * 100) / 100
+            : nightly;
+          posted = Math.round((posted + amount) * 100) / 100;
+          roomChargeTotal = Math.round((roomChargeTotal + amount) * 100) / 100;
+          const day = new Date(checkIn);
+          day.setDate(day.getDate() + i);
+          const dayStr = day.toISOString().slice(0, 10);
+          folioStmts.push(
+            c.env.DB.prepare(
+              `INSERT INTO folio_charges
+                 (id, folio_id, tenant_id, project_id, source, reference_id, description, quantity, unit_price, total_price)
+               VALUES (?, ?, ?, ?, 'room', ?, ?, 1, ?, ?)`
+            ).bind(
+              'chg_' + crypto.randomUUID().slice(0, 12), folioId, tenantId,
+              chargeProjectId, orderId, `Room charge ${dayStr}`, amount, amount
+            )
+          );
+        }
+        folioStmts.push(
+          c.env.DB.prepare(
+            'UPDATE folios SET total_amount = total_amount + ? WHERE tenant_id = ? AND id = ?'
+          ).bind(roomChargeTotal, tenantId, folioId)
+        );
+      }
+    }
+
     // Batch: order update + room status update land atomically.
     // If no room was assigned, only the order update runs.
     const stmts = [
@@ -1230,9 +1292,10 @@ ordersRoutes.patch('/:id/checkin', async (c) => {
         ).bind(assignedRoomId)
       );
     }
+    stmts.push(...folioStmts);
     await c.env.DB.batch(stmts);
 
-    return jsonResponse({ success: true, room_id: assignedRoomId });
+    return jsonResponse({ success: true, room_id: assignedRoomId, folio_id: folioId });
   } catch (e) {
     return errorResponse('Failed to check in');
   }
@@ -1249,6 +1312,18 @@ ordersRoutes.patch('/:id/checkout', async (c) => {
       'SELECT id, room_id FROM orders WHERE tenant_id = ? AND id = ?'
     ).bind(tenantId, orderId).first();
     if (!order) return errorResponse('Order not found', 404);
+
+    // B.4 checkout gate: an open folio carrying a balance blocks checkout
+    // until it is settled (POST /api/folios/:id/settle). Settled folios
+    // (status != 'open') and orders with no folio at all check out exactly
+    // as before — the late-checkout + room writes below are untouched, and a
+    // blocked checkout leaves the order and room fully unchanged.
+    const openFolio = await c.env.DB.prepare(
+      "SELECT id, total_amount FROM folios WHERE tenant_id = ? AND primary_order_id = ? AND status = 'open'"
+    ).bind(tenantId, orderId).first();
+    if (openFolio && Number(openFolio.total_amount || 0) > 0) {
+      return errorResponse('Settle the folio before checking out', 400);
+    }
 
     let extraCharge = 0;
     if (late_checkout) {

@@ -32,6 +32,12 @@ const posOrderSchema = z.object({
   tableId: z.string({ message: 'Table ID must be text' }).max(64, 'Table ID is too long').optional(),
   // Client-side tip display — accepted so it's not silently stripped.
   tipAmount: z.number().min(0).optional(),
+  // B.4 folio auto-post: optional open guest folio receiving one
+  // 'restaurant' charge per line item. camelCase (POS convention) and
+  // snake_case (folio API convention) both accepted; empty normalizes to
+  // null further down (same pattern as tableId).
+  folioId: z.string({ message: 'Folio ID must be text' }).max(64, 'Folio ID is too long').optional(),
+  folio_id: z.string({ message: 'Folio ID must be text' }).max(64, 'Folio ID is too long').optional(),
 }).strip();
 
 const posRefreshSchema = z.object({
@@ -437,6 +443,12 @@ pos.post('/orders', async (c) => {
     // 0069: optional dine-in table — empty string normalizes to null.
     const tableIdRaw = typeof parsed.data.tableId === 'string' ? parsed.data.tableId.trim() : '';
     const tableId = tableIdRaw.length > 0 && tableIdRaw.length <= 64 ? tableIdRaw : null;
+    // B.4: optional folio link — camelCase wins, snake_case accepted, empty
+    // normalizes to null (no folio ⇒ zero new queries, byte-identical batch).
+    const folioIdRaw = typeof parsed.data.folioId === 'string'
+      ? parsed.data.folioId.trim()
+      : (typeof parsed.data.folio_id === 'string' ? parsed.data.folio_id.trim() : '');
+    const folioId = folioIdRaw.length > 0 && folioIdRaw.length <= 64 ? folioIdRaw : null;
 
     const loadExistingOrder = async (key) => {
       const { results: existing } = await env.DB.prepare(
@@ -524,11 +536,30 @@ pos.post('/orders', async (c) => {
         tenantId,
         orderId,
         productId: item.productId,
+        // B.4: product name rides along for the folio charge description
+        // (JS-only — the txn-items INSERT binds below are untouched).
+        productName: product.name,
         quantity: qty,
         unitPrice,
         subtotal: lineTotal,
         totalAmount: lineTotal,
       });
+    }
+
+    // ── B.4 folio validation (gated: no folioId ⇒ zero new queries) ───
+    // An explicit folio must exist in THIS tenant and still be open; checked
+    // here — after product/quantity/price errors keep their priority, before
+    // any write — so a bad folio fails fast with nothing committed.
+    if (folioId) {
+      const folioRow = await env.DB.prepare(
+        `SELECT id, status, total_amount FROM folios WHERE tenant_id = ? AND id = ?`
+      ).bind(tenantId, folioId).first();
+      if (!folioRow) {
+        return errorResponse(`Folio ${folioId} not found`, 404);
+      }
+      if (folioRow.status !== 'open') {
+        return errorResponse('Folio is not open', 409);
+      }
     }
 
     // ── Apply promotions (0071) ────────────────────────────
@@ -811,12 +842,44 @@ pos.post('/orders', async (c) => {
           `INSERT INTO order_discounts
             (id, tenant_id, order_id, transaction_item_id, promotion_id, promotion_name,
              discount_type, discount_value, discount_amount, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
         ).bind(
           disc.id, disc.tenantId, disc.orderId, disc.transactionItemId,
           disc.promotionId, disc.promotionName, disc.discountType,
           disc.discountValue, disc.discountAmount
         )
+      );
+    }
+
+    // ── B.4 folio auto-post (gated: no folioId ⇒ byte-identical batch) ──
+    // One 'restaurant' charge per POS line, tagged with the sale's resolved
+    // project (claim → store→project → home → default; NULL = legacy
+    // tenant-wide token), plus the header total bump — appended LAST in the
+    // SAME commit batch as the txn insert so the sale and its folio lines
+    // land together or not at all. Charge totals reuse the discounted line
+    // totals, so the bump equals Σ charges exactly (tax stays on the POS txn
+    // only). No KV writes (free-plan quota).
+    let folioBump = 0;
+    if (folioId) {
+      for (const row of itemRows) {
+        const chargeTotal = round2(row.totalAmount);
+        folioBump = round2(folioBump + chargeTotal);
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO folio_charges
+              (id, folio_id, tenant_id, project_id, source, reference_id, description, quantity, unit_price, total_price)
+             VALUES (?, ?, ?, ?, 'restaurant', ?, ?, ?, ?, ?)`
+          ).bind(
+            'chg_' + crypto.randomUUID().slice(0, 12),
+            folioId, tenantId, projectId,
+            orderId, row.productName || row.productId, row.quantity, row.unitPrice, chargeTotal
+          )
+        );
+      }
+      statements.push(
+        env.DB.prepare(
+          `UPDATE folios SET total_amount = total_amount + ? WHERE tenant_id = ? AND id = ?`
+        ).bind(folioBump, tenantId, folioId)
       );
     }
 
@@ -863,6 +926,17 @@ pos.post('/orders', async (c) => {
         compensate.push(
           env.DB.prepare(`DELETE FROM pos_transactions WHERE id = ?`).bind(orderId)
         );
+        // B.4: the same race window covers folio lines posted in the batch —
+        // remove this sale's charges and reverse its bump so the folio never
+        // keeps an orphaned restaurant total. Gated: no-folio sales unchanged.
+        if (folioId) {
+          compensate.push(
+            env.DB.prepare(`DELETE FROM folio_charges WHERE tenant_id = ? AND reference_id = ?`).bind(tenantId, orderId)
+          );
+          compensate.push(
+            env.DB.prepare(`UPDATE folios SET total_amount = total_amount - ? WHERE tenant_id = ? AND id = ?`).bind(folioBump, tenantId, folioId)
+          );
+        }
         if (compensate.length > 0) {
           await env.DB.batch(compensate).catch(() => {});
         }
