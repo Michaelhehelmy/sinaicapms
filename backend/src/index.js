@@ -70,6 +70,7 @@ import crmRoutes from './api/crm.js';
 import storefrontRoutes from './api/storefront.js';
 import aiRoutes from './api/ai.js';
 import reservationsRoutes from './api/reservations';
+import foliosRoutes from './api/folios.js';
 import { handlePaymobWebhook } from './api/paymob-webhook';
 
 // Durable Object class export — required so `wrangler deploy` can register the
@@ -718,6 +719,16 @@ app.route('/api/orders', ordersRoutes);
 const availabilityPublicScope = resolveScope({ public: true });
 app.use('/api/availability', availabilityPublicScope);
 app.route('/api/availability', availabilityRoutes);
+
+// ── Guest folios (B.3 lifecycle) — tenant-admin scope like orders.
+// NOTE: registry/openapi update skipped — convention covers marketplace core
+// + menu modules only (financials/hr/supply/crm/storefront/ai pillars are
+// mounted without registry entries); folios follows the pillar precedent.
+const foliosScope = resolveScope();
+app.use('/api/folios', foliosScope);
+app.use('/api/folios/*', foliosScope);
+app.use('/api/folios/*', tenantAwareLimiter());
+app.route('/api/folios', foliosRoutes);
 
 // ── Public reservations + Paymob webhook (marketplace online payments) ──────
 // POST /api/public/reservations — public reservation submission endpoint;
