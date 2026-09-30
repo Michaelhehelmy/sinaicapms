@@ -24,6 +24,18 @@ migrations_dir = "migrations"
 pattern = "status.sinaicamps.com"
 custom_domain = true
 
+# B.2 (2026-09-30): explicit /api/* route so status.sinaicamps.com/api/*
+# reaches campmaster-monitor. The backend's wildcard
+# "*.sinaicamps.com/api/*" (zone sinaicamps.com) otherwise shadows the
+# root-path custom-domain route above on /api/* paths only (B.1 verdict:
+# Option 2 route shadowing — backend 404 envelope observed on /api/*,
+# monitor serves / + /login). Exact-host + path outranks wildcard-host +
+# same path (more-specific-wins), so this binding wins for the status host
+# without touching backend routes.
+[[routes]]
+pattern = "status.sinaicamps.com/api/*"
+zone_name = "sinaicamps.com"
+
 # To deploy without the custom domain first:
 # comment out the [[routes]] block, deploy to *.workers.dev, test,
 # then add the domain later.
