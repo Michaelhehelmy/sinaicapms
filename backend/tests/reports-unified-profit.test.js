@@ -101,6 +101,19 @@ function buildUnionDb() {
       total_price REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')),
       project_id TEXT
     );
+    -- B.7-folio-attribution fixture catch-up (parity class): /profit now
+    -- UNIONs the folio_charges leg + NOT EXISTS-excludes folio-linked orders,
+    -- so the fixture declares both tables (empty ⇒ no exclusion fires and
+    -- the folio leg contributes nothing ⇒ gates A–D hold verbatim).
+    CREATE TABLE folios (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+      primary_order_id TEXT, status TEXT NOT NULL DEFAULT 'open'
+    );
+    CREATE TABLE folio_charges (
+      id TEXT PRIMARY KEY, folio_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+      project_id TEXT, total_price REAL DEFAULT 0,
+      posted_at TEXT DEFAULT (datetime('now')), voided_at TEXT
+    );
     INSERT INTO projects (id, tenant_id, name, project_type, deleted_at) VALUES
       ('${CAMP}', '${TENANT}', 'Acacia Camp', 'camp', NULL),
       ('${REST}', '${TENANT}', 'Acacia Restaurant', 'restaurant', NULL);

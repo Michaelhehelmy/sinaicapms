@@ -450,24 +450,24 @@ reportsRoutes.get('/seasonal', async (c) => {
   }
 });
 
-// ── Profit by Project: per-project P&L split (Phase 5 step 5f + T40 union) ─
-// T40-profit-fix: UNION ALL line-grain aggregation over BOTH item tables.
-// Booking leg = order_items.project_id (stamped server-side since 5b;
-// backfilled 0105; 0111-relaxed) scoped via the parent orders join.
-// Storefront leg = storefront_order_items.project_id (stamped server-side
-// since 5c; 0122) scoped via its own storefront_orders join — the items table
-// carries NO tenant_id (REMOTE DDL-confirmed), so tenant isolation MUST come
-// from so.tenant_id in-leg (same pattern as the booking leg). Both legs read
-// the persisted total_price (REMOTE DDL-confirmed on both tables — no
-// quantity*unit_price fallback needed). Cancelled excluded on both legs
-// (booking: order_state_id; shop: so.status mirror — webhook flips
-// payment_status only, never status, so the shop predicate is a no-op today
-// and future-proof). ?projectId= narrows BOTH legs (indexed project_id on
-// each table). NULL-project lines (legacy / FK-orphan on project delete /
-// mixed-order headers stay NULL by 5c design) form the explicit 'Unassigned'
-// bucket via the single outer LEFT JOIN, so nothing is silently dropped. The
-// tenant total aggregates the SAME inner union, so footer-SUM == aggregate by
-// construction. Two prepares (wire + output aliases byte-identical).
+// ── Profit by Project: per-project P&L split (Phase 5 step 5f + T40 union + B.7 folio) ─
+// B.7-folio-attribution: UNION ALL line-grain aggregation over THREE legs —
+// booking (order_items), folio (folio_charges), storefront
+// (storefront_order_items). The booking leg gains a NOT EXISTS folio exclusion
+// (folios.primary_order_id = orders.id, non-voided only) so a stay whose room
+// charges were auto-posted to its folio (B.4 check-in) is counted ONCE via the
+// folio leg instead of twice (order_items + folio_charges). Voided folios do
+// NOT exclude (the stay falls back to the booking leg); voided charges
+// (voided_at) and voided-folio charges never enter the folio leg. The
+// storefront leg is verbatim (no folio linkage exists on that channel).
+// Folio leg scope: fc.tenant_id in-leg (folio_charges carries its own
+// tenant_id per 0124); the folios join is tenant-pinned and non-voided.
+// Date window over fc.posted_at mirrors the orders convention
+// (>= ? AND date() <= ?). ?projectId= narrows ALL THREE legs (indexed
+// project_id on each table). NULL-project folio lines join the explicit
+// 'Unassigned' bucket via the single outer LEFT JOIN. The tenant total
+// aggregates the SAME inner union, so footer-SUM == aggregate by construction.
+// Two prepares (wire + output aliases byte-identical).
 reportsRoutes.get('/profit', async (c) => {
   const env = c.env;
   const tenantId = getScope(c).tenantId;
@@ -489,13 +489,18 @@ reportsRoutes.get('/profit', async (c) => {
     const bookingLeg = `SELECT oi.project_id as project_id, oi.total_price as revenue, oi.order_id as order_id
        FROM order_items oi
        JOIN orders o ON o.id = oi.order_id
-       WHERE o.tenant_id = ? AND o.created_at >= ? AND date(o.created_at) <= ? AND o.order_state_id != 'cancelled'${projectId ? ` AND oi.project_id = ?` : ``}`;
+       WHERE o.tenant_id = ? AND o.created_at >= ? AND date(o.created_at) <= ? AND o.order_state_id != 'cancelled'${projectId ? ` AND oi.project_id = ?` : ``}
+         AND NOT EXISTS (SELECT 1 FROM folios f WHERE f.tenant_id = o.tenant_id AND f.primary_order_id = o.id AND f.status != 'voided')`;
+    const folioLeg = `SELECT fc.project_id as project_id, fc.total_price as revenue, fc.folio_id as order_id
+       FROM folio_charges fc
+       JOIN folios f ON f.id = fc.folio_id AND f.tenant_id = fc.tenant_id
+       WHERE fc.tenant_id = ? AND fc.posted_at >= ? AND date(fc.posted_at) <= ? AND fc.voided_at IS NULL AND f.status != 'voided'${projectId ? ` AND fc.project_id = ?` : ``}`;
     const shopLeg = `SELECT soi.project_id as project_id, soi.total_price as revenue, soi.order_id as order_id
        FROM storefront_order_items soi
        JOIN storefront_orders so ON so.id = soi.order_id
        WHERE so.tenant_id = ? AND so.created_at >= ? AND date(so.created_at) <= ? AND so.status != 'cancelled'${projectId ? ` AND soi.project_id = ?` : ``}`;
     const legBinds = projectId ? [tenantId, cutoffStr, endDate, projectId] : [tenantId, cutoffStr, endDate];
-    const binds = [...legBinds, ...legBinds];
+    const binds = [...legBinds, ...legBinds, ...legBinds];
 
     const { results: byProject } = await env.DB.prepare(
       `SELECT lines.project_id as project_id,
@@ -504,7 +509,7 @@ reportsRoutes.get('/profit', async (c) => {
               SUM(lines.revenue) as revenue,
               COUNT(*) as line_count,
               COUNT(DISTINCT lines.order_id) as order_count
-       FROM (${bookingLeg} UNION ALL ${shopLeg}) lines
+       FROM (${bookingLeg} UNION ALL ${folioLeg} UNION ALL ${shopLeg}) lines
        LEFT JOIN projects p ON p.id = lines.project_id
        GROUP BY lines.project_id
        ORDER BY revenue DESC`
@@ -514,7 +519,7 @@ reportsRoutes.get('/profit', async (c) => {
       `SELECT COALESCE(SUM(lines.revenue), 0) as total_revenue,
               COUNT(*) as total_lines,
               COUNT(DISTINCT lines.order_id) as total_orders
-       FROM (${bookingLeg} UNION ALL ${shopLeg}) lines`
+       FROM (${bookingLeg} UNION ALL ${folioLeg} UNION ALL ${shopLeg}) lines`
     ).bind(...binds).all();
 
     return jsonResponse({
