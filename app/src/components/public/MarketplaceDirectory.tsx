@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getMarketplaceListings, getMarketplaceCategories, type MarketplaceListing, type MarketplaceCategory } from '@/lib/api';
-import { escHtml, getLocationDisplay } from '@/lib/utils';
+import { getLocationDisplay } from '@/lib/utils';
 
 const PAGE_SIZE = 12;
 
@@ -150,7 +150,7 @@ export default function MarketplaceDirectory() {
                     : 'bg-warm-100 text-warm-600 hover:bg-warm-200'
                 }`}
               >
-                {escHtml(cat.name)}
+                {cat.name}
                 {cat.projectCount > 0 && (
                   <span className="ml-1 opacity-70">({cat.projectCount})</span>
                 )}
@@ -239,25 +239,23 @@ export default function MarketplaceDirectory() {
                       className="flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold text-white shadow-md ring-4 ring-white"
                       style={{ backgroundColor: color }}
                     >
-                      {escHtml(listing.tenantName.charAt(0).toUpperCase())}
+                      {listing.tenantName.charAt(0).toUpperCase()}
                     </div>
                   </div>
 
                   {/* Name & slug */}
                   <h3 className="mb-1 text-lg font-extrabold text-gray-900 line-clamp-1">
-                    {escHtml(listing.tenantName)}
+                    {listing.tenantName}
                   </h3>
                   <span className="mb-2 text-xs text-warm-500">
-                    {escHtml(listing.subdomain)}.sinaicamps.com
+                    {listing.subdomain}.sinaicamps.com
                   </span>
 
                   {/* Description */}
                   <p className="mb-3 flex-1 text-sm leading-relaxed text-warm-600 line-clamp-3">
-                    {escHtml(
-                      listing.projectDescription ||
+                    {listing.projectDescription ||
                         listing.tenantDescription ||
-                        'Premium summer adventure programs, cabins lodging, and outdoor wilderness courses.'
-                    )}
+                        'Premium summer adventure programs, cabins lodging, and outdoor wilderness courses.'}
                   </p>
 
                   {/* Location */}
@@ -267,7 +265,7 @@ export default function MarketplaceDirectory() {
                         <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                         <circle cx="12" cy="10" r="3" />
                       </svg>
-                      <span className="truncate">{escHtml(getLocationDisplay(listing.location))}</span>
+                      <span className="truncate">{getLocationDisplay(listing.location)}</span>
                     </div>
                   )}
 

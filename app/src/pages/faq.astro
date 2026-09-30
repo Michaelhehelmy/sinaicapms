@@ -1,7 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
-import { escHtml, normalizeAssetUrl } from '@/lib/utils';
+import { normalizeAssetUrl } from '@/lib/utils';
 
 function escapeUrl(url: string | undefined | null): string {
   if (!url) return '';
@@ -59,11 +59,11 @@ try {
             <summary
               class="flex cursor-pointer list-none items-center justify-between p-6 text-lg font-bold transition hover:text-[var(--primary)]"
             >
-              <span>{escHtml(faq.question)}</span>
+              <span>{faq.question}</span>
               <span class="ml-4 text-sm text-[var(--text-muted)] transition group-open:rotate-180" aria-hidden="true">▼</span>
             </summary>
             <div class="border-t border-warm-100 bg-warm-50 px-6 py-5 text-sm leading-relaxed text-[var(--text-muted)]">
-              {escHtml(faq.answer)}
+              {faq.answer}
             </div>
           </details>
         ))}

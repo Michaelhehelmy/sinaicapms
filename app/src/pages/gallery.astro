@@ -1,7 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
-import { escHtml, normalizeAssetUrl, readableTextOn } from '@/lib/utils';
+import { normalizeAssetUrl, readableTextOn } from '@/lib/utils';
 
 function escapeUrl(url: string | undefined | null): string {
   if (!url) return '';
@@ -81,7 +81,7 @@ galleryList = galleryList
           >
             <div
               class="h-64 bg-cover bg-center transition-transform duration-300 group-hover:scale-105"
-              style={`background-image: url(${escHtml(img)})`}
+              style={`background-image: url(${img})`}
               role="img"
               aria-label={`Gallery photo ${idx + 1}`}
             ></div>

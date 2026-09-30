@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { escHtml, readableTextOn } from '@/lib/utils';
+import { readableTextOn } from '@/lib/utils';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -169,7 +169,7 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
 
   const buildMessage = useCallback(() => {
     const lines = items.map((item, i) => {
-      let line = `${i + 1}. ${escHtml(item.roomType.name)}\n   📅 ${item.checkIn} → ${item.checkOut}\n   ${item.guests} ${t.guest} | ${item.nights} nights\n   ${formatPrice(item.price)}`;
+      let line = `${i + 1}. ${item.roomType.name}\n   📅 ${item.checkIn} → ${item.checkOut}\n   ${item.guests} ${t.guest} | ${item.nights} nights\n   ${formatPrice(item.price)}`;
       if (item.mealPlans && item.mealPlans.length > 0) {
         const mpLines = item.mealPlans.map(mp =>
           `   🍽️ ${mp.quantity}× ${mp.name}: ${formatPrice(mp.pricePerDay * mp.quantity * item.nights)}`
@@ -178,7 +178,7 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
       }
       return line;
     });
-    return `🏕️ ${t.newBooking.replace('{name}', escHtml(tenantName))}\n\n👤 ${escHtml(guestName)}${guestPhone ? ' - ' + escHtml(guestPhone) : ''}\n\n${lines.join('\n\n')}\n\n💰 ${t.waTotal}: ${formatPrice(totalAmount)}`;
+    return `🏕️ ${t.newBooking.replace('{name}', tenantName)}\n\n👤 ${guestName}${guestPhone ? ' - ' + guestPhone : ''}\n\n${lines.join('\n\n')}\n\n💰 ${t.waTotal}: ${formatPrice(totalAmount)}`;
   }, [items, guestName, guestPhone, t, tenantName, totalAmount]);
 
   // Best-effort server-side lead capture. The reservation previously lived
@@ -443,7 +443,7 @@ function ReservationSummaryInner({ tenantId, tenantName, primaryColor, whatsappN
             </Button>
             {payError && (
               <p className="text-xs text-center text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-                {escHtml(payError)}
+                {payError}
               </p>
             )}
             {/* WhatsApp fallback button */}

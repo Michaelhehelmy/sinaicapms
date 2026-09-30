@@ -3,7 +3,7 @@
 // client-side applyFilters pipeline. Shared by the marketplace home
 // (MarketplaceHome.astro) and the dedicated listing page (pages/camps.astro)
 // so the listing markup and behavior live in exactly one place.
-import { escHtml, normalizeAssetUrl, getLocationDisplay } from '@/lib/utils';
+import { normalizeAssetUrl, getLocationDisplay } from '@/lib/utils';
 import SafeImage from '@/components/ui/SafeImage.astro';
 
 const TYPE_VALUES = ['camp', 'supermarket', 'transportation', 'other'];
@@ -129,31 +129,31 @@ const activities = [...new Set((tenants || []).flatMap(t => (t.activities || '')
                     class="flex h-14 w-14 items-center justify-center rounded-full text-lg font-bold text-white shadow-md ring-4 ring-white"
                     style={`background-color: ${color}`}
                   >
-                    {escHtml(((t.name as string) || '').charAt(0).toUpperCase())}
+                    {((t.name as string) || '').charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
-              <h3 data-testid="camp-name" class="mb-1 text-lg font-extrabold text-gray-900">{escHtml(t.name as string)}</h3>
-              <span class="mb-4 text-sm text-[var(--text-muted)]">{t.customDomain ? escHtml(t.customDomain as string) : `${escHtml(t.subdomain as string)}.sinaicamps.com`}</span>
+              <h3 data-testid="camp-name" class="mb-1 text-lg font-extrabold text-gray-900">{t.name as string}</h3>
+              <span class="mb-4 text-sm text-[var(--text-muted)]">{t.customDomain ? (t.customDomain as string) : `${(t.subdomain as string)}.sinaicamps.com`}</span>
               <p data-testid="camp-description" class="mb-4 flex-1 text-sm text-gray-600">
-                {escHtml((t.description as string) || 'Premium summer adventure programs, cabins lodging, and outdoor wilderness courses.')}
+                {(t.description as string) || 'Premium summer adventure programs, cabins lodging, and outdoor wilderness courses.'}
               </p>
               <div class="mb-4 flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
                 <svg class="h-4 w-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
-                <span data-testid="camp-location">{escHtml(getLocationDisplay(t.location as string))}</span>
+                <span data-testid="camp-location">{getLocationDisplay(t.location as string)}</span>
               </div>
               <div class="mb-4 flex flex-wrap items-center gap-1.5">
                 <span data-testid="camp-type-badge" class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
-                  {escHtml(typeLabel(t.type))}
+                  {typeLabel(t.type)}
                 </span>
               </div>
               {t.activities && (
                 <div class="mb-4 flex flex-wrap gap-1.5">
                   {(t.activities as string).split(',').map((a) => (
-                    <span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">{escHtml(a.trim())}</span>
+                    <span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">{a.trim()}</span>
                   ))}
                 </div>
               )}

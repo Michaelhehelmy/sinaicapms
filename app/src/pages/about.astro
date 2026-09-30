@@ -1,7 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
-import { escHtml, normalizeAssetUrl, readableTextOn } from '@/lib/utils';
+import { normalizeAssetUrl, readableTextOn } from '@/lib/utils';
 
 function escapeUrl(url: string | undefined | null): string {
   if (!url) return '';
@@ -43,7 +43,7 @@ const heroImage = normalizeAssetUrl(
         Our Story
         <span class="inline-block h-px w-8 bg-white/60" aria-hidden="true"></span>
       </p>
-      <h1 data-testid="hero-title" class="font-display mb-3 text-4xl font-black tracking-tight md:text-5xl">About {escHtml(tenantName)}</h1>
+      <h1 data-testid="hero-title" class="font-display mb-3 text-4xl font-black tracking-tight md:text-5xl">About {tenantName}</h1>
       <p data-testid="hero-description" class="text-lg opacity-90">Learn more about our mission, camp history, and wilderness roots.</p>
       <div class="mt-7">
         <a
@@ -68,16 +68,14 @@ const heroImage = normalizeAssetUrl(
         </p>
         <h2 class="section-heading mb-5">Our Story & Heritage</h2>
         <p class="mb-5 leading-relaxed text-[var(--text-muted)]">
-          {escHtml(
-            tenant?.aboutText ||
-            'Welcome to our camp! We have been hosting outdoor enthusiasts, families, and campers for over 15 years. We focus on outdoor exploration, survival skills, wilderness lodging, and fostering a deep respect for the natural environment.'
-          )}
+          {tenant?.aboutText ||
+            'Welcome to our camp! We have been hosting outdoor enthusiasts, families, and campers for over 15 years. We focus on outdoor exploration, survival skills, wilderness lodging, and fostering a deep respect for the natural environment.'}
         </p>
         {missionText && (
           <>
             <h3 class="mb-3 mt-8 font-bold">Our Core Mission</h3>
             <p class="leading-relaxed text-[var(--text-muted)]">
-              {escHtml(missionText)}
+              {missionText}
             </p>
           </>
         )}
@@ -92,8 +90,8 @@ const heroImage = normalizeAssetUrl(
           <div class="flex flex-col gap-5">
             {features.map((f) => (
               <div class="rounded-xl border border-warm-100 bg-white p-6 shadow-card transition-shadow hover:shadow-elevated">
-                <h4 class="mb-2 text-lg font-extrabold">{escHtml(f.title)}</h4>
-                <p class="text-sm text-[var(--text-muted)]">{escHtml(f.description)}</p>
+                <h4 class="mb-2 text-lg font-extrabold">{f.title}</h4>
+                <p class="text-sm text-[var(--text-muted)]">{f.description}</p>
               </div>
             ))}
           </div>

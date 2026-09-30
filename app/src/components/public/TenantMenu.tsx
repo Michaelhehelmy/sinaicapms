@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { escHtml } from '@/lib/utils';
 import { normalizeHex, hexToRgb, contrastText } from '@/lib/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -287,10 +286,10 @@ export default function TenantMenu({ meals, mealCategories, tenantName, primaryC
     if (!whatsappNumber || cart.length === 0) return;
     const lines = cart.map(item => {
       const priceStr = item.price ? `${item.price} ${currency}` : '';
-      return `• ${escHtml(item.name)} × ${item.qty} - ${priceStr}`;
+      return `• ${item.name} × ${item.qty} - ${priceStr}`;
     });
     const totalStr = `\n\n${t.totalLabel}: ${cartTotal} ${currency}`;
-    const msg = `${t.newOrder.replace('{name}', escHtml(tenantName))}\n\n${lines.join('\n')}${totalStr}`;
+    const msg = `${t.newOrder.replace('{name}', tenantName)}\n\n${lines.join('\n')}${totalStr}`;
     const url = `https://wa.me/${whatsappNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
   }, [cart, cartTotal, currency, tenantName, whatsappNumber, t]);

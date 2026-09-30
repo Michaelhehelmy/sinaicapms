@@ -6,7 +6,7 @@
 import CampsSection from '@/components/public/CampsSection.astro';
 import SafeImage from '@/components/ui/SafeImage.astro';
 import PublicLayout from '@/layouts/PublicLayout.astro';
-import { normalizeAssetUrl, escHtml } from '@/lib/utils';
+import { normalizeAssetUrl } from '@/lib/utils';
 
 const API_BASE = Astro.locals.API_BASE as string;
 const ssrFetch = Astro.locals.API_FETCH as (path: string, init?: RequestInit) => Promise<Response>;
@@ -101,11 +101,11 @@ const heroStats: { value: number; label: string }[] = (() => {
             style={`background-color: ${primaryColor}`}
             aria-hidden="true"
           >
-            {escHtml(marketplaceName.charAt(0).toUpperCase())}
+            {marketplaceName.charAt(0).toUpperCase()}
           </div>
         )}
         <h1 data-testid="hero-title" class="font-display text-4xl font-extrabold tracking-tight text-[var(--text)] sm:text-5xl md:text-6xl">
-          {escHtml(marketplaceName)}
+          {marketplaceName}
         </h1>
       </div>
       <p data-testid="hero-description" class="mx-auto mb-8 max-w-2xl text-lg text-[var(--text-muted)] md:text-xl">

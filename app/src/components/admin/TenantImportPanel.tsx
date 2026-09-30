@@ -2,7 +2,6 @@ import React, { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import * as api from '@/lib/api';
 import type { components } from '@/lib/api-types';
-import { escHtml } from '@/lib/utils';
 
 type Schemas = components['schemas'];
 import { useToast } from '@/components/ui/Toast';
@@ -338,7 +337,7 @@ export function TenantImportPanel() {
               role="alert"
               className="rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
             >
-              {escHtml(parseError)}
+              {parseError}
             </div>
           )}
 
@@ -353,7 +352,7 @@ export function TenantImportPanel() {
                 </span>
                 {preview.name && (
                   <span data-testid="import-preview-name" className="text-sm text-gray-700">
-                    {escHtml(preview.name)}
+                    {preview.name}
                   </span>
                 )}
                 {preview.type && (
@@ -361,7 +360,7 @@ export function TenantImportPanel() {
                     data-testid="import-preview-type"
                     className="rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-semibold text-brand-700"
                   >
-                    {escHtml(preview.type)}
+                    {preview.type}
                   </span>
                 )}
                 <span className="text-sm font-semibold text-gray-600">
@@ -400,7 +399,7 @@ export function TenantImportPanel() {
           <div className="flex items-center gap-3">
             {submitError && (
               <span data-testid="import-submit-error" className="text-sm font-medium text-error-600">
-                {escHtml(submitError)}
+                {submitError}
               </span>
             )}
             <Button

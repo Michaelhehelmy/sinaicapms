@@ -4,7 +4,7 @@ import ZoneGuard from '@/components/public/ZoneGuard.astro';
 import SafeImage from '@/components/ui/SafeImage.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
 import type { TenantData, RoomTypeData } from '@/middleware/tenant';
-import { escHtml, normalizeAssetUrl, formatCurrency, readableTextOn } from '@/lib/utils';
+import { normalizeAssetUrl, formatCurrency, readableTextOn } from '@/lib/utils';
 
 // `/rooms` is a tenant-zone route - forbidden on the marketplace zone.
 const forbidden = Astro.locals.routeForbidden;
@@ -105,9 +105,9 @@ const bookingUrl = Astro.locals.zone === 'tenant' ? `/book${querySuffix}` : `/ca
 
                   <div class="flex flex-col justify-between gap-5 p-5 sm:p-8">
                     <div>
-                      <h2 data-testid="room-name" class="mb-3 text-2xl font-extrabold">{escHtml(rt.name as string)}</h2>
+                      <h2 data-testid="room-name" class="mb-3 text-2xl font-extrabold">{rt.name as string}</h2>
                       <p class="text-[var(--text-muted)]">
-                        {escHtml((rt.description as string) || 'Enjoy comfortable, rustic lodging facilities with scenic natural views.')}
+                        {(rt.description as string) || 'Enjoy comfortable, rustic lodging facilities with scenic natural views.'}
                       </p>
                     </div>
 

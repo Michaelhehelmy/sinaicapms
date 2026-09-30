@@ -1,7 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { getTenantSSRData } from '@/middleware/tenant';
-import { escHtml, normalizeAssetUrl, readableTextOn } from '@/lib/utils';
+import { normalizeAssetUrl, readableTextOn } from '@/lib/utils';
 
 function escapeUrl(url: string | undefined | null): string {
   if (!url) return '';
@@ -60,7 +60,7 @@ const heroImage = normalizeAssetUrl(
           </svg>
           <div>
             <strong class="mb-1 block text-xs uppercase tracking-wider text-[var(--text-muted)]">Address</strong>
-            <p class="font-bold">{escHtml(tenant?.location || 'Sinai Peninsula, Egypt')}</p>
+            <p class="font-bold">{tenant?.location || 'Sinai Peninsula, Egypt'}</p>
           </div>
         </div>
         <div class="mb-6 flex gap-5">
@@ -69,7 +69,7 @@ const heroImage = normalizeAssetUrl(
           </svg>
           <div>
             <strong class="mb-1 block text-xs uppercase tracking-wider text-[var(--text-muted)]">Phone</strong>
-            <p class="font-bold">{escHtml(tenant?.phone || 'N/A')}</p>
+            <p class="font-bold">{tenant?.phone || 'N/A'}</p>
           </div>
         </div>
         <div class="mb-6 flex gap-5">
@@ -79,7 +79,7 @@ const heroImage = normalizeAssetUrl(
           </svg>
           <div>
             <strong class="mb-1 block text-xs uppercase tracking-wider text-[var(--text-muted)]">Email</strong>
-            <p class="font-bold">{escHtml(tenant?.email || 'N/A')}</p>
+            <p class="font-bold">{tenant?.email || 'N/A'}</p>
           </div>
         </div>
       </div>
@@ -109,12 +109,6 @@ const heroImage = normalizeAssetUrl(
 </PublicLayout>
 
 <script is:inline>
-  function escHtml(s) {
-    var d = document.createElement('div');
-    d.textContent = String(s || '');
-    return d.innerHTML;
-  }
-
   async function handleContactSubmit(e) {
     e.preventDefault();
     var form = document.getElementById('contactForm');
@@ -155,7 +149,7 @@ const heroImage = normalizeAssetUrl(
       if (!response.ok) {
         throw new Error('Server returned ' + response.status);
       }
-      successBox.textContent = 'Thank you, ' + escHtml(name) + '! Your message has been sent. We will reply to ' + escHtml(email) + ' shortly.';
+      successBox.textContent = 'Thank you, ' + name + '! Your message has been sent. We will reply to ' + email + ' shortly.';
       successBox.classList.remove('hidden');
       form.reset();
     } catch (err) {
