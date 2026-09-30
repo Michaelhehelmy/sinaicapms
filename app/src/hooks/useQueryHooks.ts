@@ -69,6 +69,8 @@ export const queryKeys = {
   rooms: ['admin', 'rooms'] as const,
   orders: (params?: Record<string, string>) => ['admin', 'orders', params] as const,
   order: (id: string) => ['admin', 'orders', id] as const,
+  folios: (params?: Record<string, string>) => ['admin', 'folios', params] as const,
+  folio: (id: string) => ['admin', 'folios', id] as const,
   ratePlans: ['admin', 'ratePlans'] as const,
   plans: ['admin', 'plans'] as const,
   meals: ['admin', 'meals'] as const,
@@ -776,6 +778,121 @@ export function useRecordPaymentMutation() {
       showToast('Payment recorded', 'success');
     },
     onError: (err) => toastError('Failed to record payment', err),
+  });
+}
+
+/**
+ * Guest Folios — B.5 admin panel (backend B.3 lifecycle).
+ * List carries status/guest/date filters; mutations invalidate the folios
+ * list cache plus the affected folio detail so the panel and any open
+ * detail view refresh together.
+ */
+export function useFoliosQuery(params?: Record<string, string>) {
+  return useQuery({
+    queryKey: queryKeys.folios(params),
+    queryFn: () =>
+      api.listFolios({
+        status: params?.status as api.FolioStatus | undefined,
+        guest: params?.guest,
+        date: params?.date,
+        limit: params?.limit !== undefined ? Number(params.limit) : undefined,
+        offset: params?.offset !== undefined ? Number(params.offset) : undefined,
+      }),
+    retry: 1,
+    staleTime: 30_000,
+  });
+}
+
+export function useFolioDetailQuery(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.folio(String(id)),
+    queryFn: () => api.getFolio(String(id)),
+    enabled: !!id,
+    retry: 1,
+    staleTime: 15_000,
+  });
+}
+
+export function useCreateFolioMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: (input: api.FolioCreateInput) => api.createFolio(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'folios'] });
+      showToast('Folio opened', 'success');
+    },
+    onError: (err) => toastError('Failed to open folio', err),
+  });
+}
+
+export function useAddFolioChargeMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: api.FolioChargeInput }) =>
+      api.addFolioCharge(id, input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'folios'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.folio(variables.id) });
+      showToast('Charge posted', 'success');
+    },
+    onError: (err) => toastError('Failed to post charge', err),
+  });
+}
+
+export function useVoidFolioChargeMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, chargeId }: { id: string; chargeId: string }) =>
+      api.voidFolioCharge(id, chargeId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'folios'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.folio(variables.id) });
+      showToast('Charge voided', 'success');
+    },
+    onError: (err) => toastError('Failed to void charge', err),
+  });
+}
+
+export function useSettleFolioMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: api.FolioSettleInput }) =>
+      api.settleFolio(id, input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'folios'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.folio(variables.id) });
+      showToast('Folio settled', 'success');
+    },
+    onError: (err) => toastError('Failed to settle folio', err),
+  });
+}
+
+export function useVoidFolioMutation() {
+  const queryClient = useQueryClient();
+  const toastError = useErrorToast();
+  const { showToast } = useToast();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input?: api.FolioVoidInput }) =>
+      api.voidFolio(id, input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'folios'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.folio(variables.id) });
+      showToast('Folio voided', 'success');
+    },
+    onError: (err) => toastError('Failed to void folio', err),
   });
 }
 

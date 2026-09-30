@@ -503,16 +503,17 @@ describe('AdminApp', () => {
     expect(sidebar.queryByText('Settings')).not.toBeInTheDocument();
   });
 
-  it('tenant admin sees all 28 tenant nav items (no super tabs)', async () => {
+  it('tenant admin sees all 29 tenant nav items (no super tabs)', async () => {
     render(<AdminApp />);
     const tabIds = screen.getAllByTestId(/^nav-tab-/).map((el) => el.getAttribute('data-testid')!.replace('nav-tab-', ''));
-    expect(tabIds).toHaveLength(28);
+    expect(tabIds).toHaveLength(29);
     expect(tabIds).toContain('dashboard');
     expect(tabIds).toContain('camps');
     expect(tabIds).toContain('rooms');
     expect(tabIds).toContain('rateplans');
     expect(tabIds).toContain('reservations');
     expect(tabIds).toContain('cashdesk');
+    expect(tabIds).toContain('folios');
     expect(tabIds).toContain('inbox');
     expect(tabIds).toContain('calendar');
     expect(tabIds).toContain('meals');

@@ -442,6 +442,168 @@ export async function getOrderPayments(
   return [];
 }
 
+// ─── Guest Folios — B.5 admin panel (backend B.3 lifecycle, B.4 auto-post) ──
+// GET /folios supports status/guest/date filters + limit/offset; the list
+// response carries a tenant-wide status breakdown (counts) independent of
+// the list filters. Wire is camelCase end-to-end (response.js toCamel).
+export type FolioStatus = 'open' | 'settled' | 'voided';
+export type FolioChargeSource = 'room' | 'restaurant' | 'spa' | 'shop' | 'other';
+export type FolioSettleMethod = 'cash' | 'card' | 'split';
+
+export interface Folio {
+  id: string;
+  tenantId?: string;
+  guestId?: string | null;
+  primaryOrderId?: string | null;
+  status: FolioStatus;
+  totalAmount: number;
+  notes?: string | null;
+  openedAt?: string;
+  closedAt?: string | null;
+  settledBy?: string | null;
+  settleMethod?: FolioSettleMethod | null;
+}
+
+export interface FolioCharge {
+  id: string;
+  folioId?: string;
+  tenantId?: string;
+  projectId?: string | null;
+  source: FolioChargeSource;
+  referenceId?: string | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  postedAt?: string;
+  voidedAt?: string | null;
+  voidedBy?: string | null;
+}
+
+export interface FolioSettlement {
+  id: string;
+  folioId?: string;
+  tenantId?: string;
+  amount: number;
+  method: FolioSettleMethod;
+  amountCash: number;
+  amountCard: number;
+  receivedBy?: string | null;
+  approvedBy?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+}
+
+export interface FolioListResponse {
+  folios: Folio[];
+  counts: { open: number; settled: number; voided: number; total: number };
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface FolioDetailResponse {
+  folio: Folio;
+  charges: FolioCharge[];
+  settlements: FolioSettlement[];
+}
+
+export interface FolioListParams {
+  status?: FolioStatus;
+  guest?: string;
+  date?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface FolioCreateInput {
+  guestId?: string;
+  primaryOrderId?: string;
+  notes?: string;
+}
+
+export interface FolioChargeInput {
+  source: FolioChargeSource;
+  description: string;
+  quantity?: number;
+  unitPrice?: number;
+  projectId?: string;
+  referenceId?: string;
+}
+
+export interface FolioSettleInput {
+  amount: number;
+  method: FolioSettleMethod;
+  amountCash?: number;
+  amountCard?: number;
+  approvedBy?: string;
+  reference?: string;
+  notes?: string;
+}
+
+export interface FolioVoidInput {
+  reason?: string;
+  notes?: string;
+}
+
+/** List guest folios with optional status/guest/date filters. */
+export function listFolios(params: FolioListParams = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.guest) qs.set('guest', params.guest);
+  if (params.date) qs.set('date', params.date);
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params.offset !== undefined) qs.set('offset', String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<FolioListResponse>(`/folios${suffix}`);
+}
+
+/** Load one folio with its charges and settlements. */
+export function getFolio(id: string) {
+  return apiFetch<FolioDetailResponse>(`/folios/${id}`);
+}
+
+/** Open a new guest folio (walk-in / unlinked when no guest/order). */
+export function createFolio(input: FolioCreateInput = {}) {
+  return apiFetch<{ success: boolean; id: string; status: FolioStatus }>(`/folios`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Post a charge to an open folio (bumps the folio total). */
+export function addFolioCharge(id: string, input: FolioChargeInput) {
+  return apiFetch<{ success: boolean; id: string; totalAmount: number }>(`/folios/${id}/charges`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Soft-void one charge (voided_at stamp + total reversal, no row delete). */
+export function voidFolioCharge(id: string, chargeId: string) {
+  return apiFetch<{ success: boolean; id: string; totalAmount: number }>(
+    `/folios/${id}/charges/${chargeId}`,
+    { method: 'DELETE' },
+  );
+}
+
+/** Settle an open folio — amount must equal the folio total exactly. */
+export function settleFolio(id: string, input: FolioSettleInput) {
+  return apiFetch<{ success: boolean }>(`/folios/${id}/settle`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Void an open folio (admin tier only; status flip, rows retained). */
+export function voidFolio(id: string, input: FolioVoidInput = {}) {
+  return apiFetch<{ success: boolean; id: string; status: FolioStatus }>(`/folios/${id}/void`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export function deleteOrder(id: number | string) {
   return apiFetch<Schemas['SuccessResponse']>(`/orders/${id}`, { method: 'DELETE' });
 }
