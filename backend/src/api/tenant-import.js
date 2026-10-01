@@ -1,5 +1,6 @@
 import { jsonResponse, errorResponse, toSnake } from '../utils/response';
 import { validationError } from '../utils/errors';
+import { slugify } from '../utils/slug.js';
 import { getScope, ensureTenantOrg } from '../middleware/resolveScope.js';
 import { hashPassword } from '../middleware/sharedAuth.js';
 import { Hono } from 'hono';
@@ -86,6 +87,7 @@ const manifestSchema = z.object({
   }).optional(),
   project: z.object({
     name: z.string().min(1).optional(),
+    type: z.enum(['camp', 'supermarket', 'transportation', 'other']).optional(),
     location: z.string().optional(),
     capacity: z.number().min(0).optional(),
     status: z.enum(['active', 'inactive', 'planning', 'completed']).optional(),
@@ -194,6 +196,74 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
   const organizationId = await ensureTenantOrg(env, tenantId);
   if (!organizationId) {
     return errorResponse('Tenant is not provisioned for POS', 409);
+  }
+
+  // ── 0. Project block (DEFECT-3: was parsed then dropped) ──────────
+  // Upsert on the tenant's oldest live project so a re-import updates the
+  // tenant default instead of forking a second project row on every run.
+  // Runs BEFORE the default-camp resolution below so products/rooms created
+  // in this same import attach to the project this manifest just wrote.
+  // `projectId` stays null when the manifest has no project block — the
+  // downstream project_id binds (DEFECT-1) tolerate that.
+  let projectId = null;
+  if (data.project) {
+    const p = data.project;
+    const { results: liveProjects } = await env.DB.prepare(
+      'SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1'
+    ).bind(tenantId).all();
+    const liveProjectId = liveProjects[0]?.id || null;
+
+    if (liveProjectId) {
+      projectId = liveProjectId;
+      // slug is UNIQUE per tenant — keep the existing one when another of the
+      // tenant's projects already owns the slug this name would produce
+      // (renaming a project onto a sibling's slug must not 500 the import).
+      // The probe deliberately does NOT filter `deleted_at`: the UNIQUE index
+      // covers soft-deleted rows too, so a soft-deleted owner still collides.
+      const nextSlug = p.name ? slugify(p.name) : '';
+      let slug = null;
+      if (nextSlug) {
+        const { results: slugOwners } = await env.DB.prepare(
+          'SELECT id FROM projects WHERE tenant_id = ? AND slug = ? AND id <> ? LIMIT 1'
+        ).bind(tenantId, nextSlug, liveProjectId).all();
+        if (slugOwners.length === 0) slug = nextSlug;
+      }
+
+      await env.DB.prepare(
+        // COALESCE on the free-text columns: an omitted manifest field must
+        // never blank a value the tenant already has. project_type/status
+        // carry their schema defaults ('camp' / 'active') per the manifest
+        // contract, so they assign directly.
+        `UPDATE projects SET
+          name = COALESCE(?, name),
+          slug = COALESCE(?, slug),
+          project_type = ?,
+          location = COALESCE(?, location),
+          capacity = COALESCE(?, capacity),
+          status = ?,
+          updated_at = datetime('now')
+         WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`
+      ).bind(
+        p.name || null, slug,
+        p.type || 'camp', p.location || null, p.capacity ?? null,
+        p.status || 'active',
+        projectId, tenantId
+      ).run();
+    } else {
+      // No live project for this tenant — provision the manifest's project.
+      // `name`/`slug` are NOT NULL in the schema, so both fall back to the
+      // generated id when the manifest omits a (or an unslugifiable) name.
+      projectId = 'proj_' + crypto.randomUUID().slice(0, 12);
+      const projectName = p.name || projectId;
+      await env.DB.prepare(
+        `INSERT INTO projects (id, tenant_id, name, slug, project_type, status, location, capacity, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+      ).bind(
+        projectId, tenantId, projectName, slugify(projectName) || projectId,
+        p.type || 'camp', p.status || 'active',
+        p.location || null, p.capacity ?? null
+      ).run();
+    }
   }
 
   // Resolve the default camp/project for this tenant.

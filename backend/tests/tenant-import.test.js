@@ -502,6 +502,207 @@ describe('POST /api/tenants/import', () => {
     });
   });
 
+  describe('project block (DEFECT-3)', () => {
+    /**
+     * Stateful D1 mock for the `projects` table only — every other read
+     * falls through to happyPathQuery so the rest of the import still runs.
+     * Rows are applied on run() exactly like the T4 smoke mock, so
+     * "exactly one project" is a real row count, not a statement count.
+     */
+    function makeProjectDb(seedProjects = []) {
+      const projects = seedProjects.map((p) => ({ ...p }));
+      const statements = [];
+
+      const applyProjectWrite = (sql, b) => {
+        if (sql.includes('INSERT INTO projects')) {
+          projects.push({
+            id: b[0], tenant_id: b[1], name: b[2], slug: b[3],
+            project_type: b[4], status: b[5], location: b[6], capacity: b[7],
+          });
+          return true;
+        }
+        if (sql.includes('UPDATE projects SET')) {
+          // bind order: name, slug, project_type, location, capacity, status, id, tenant_id
+          const row = projects.find((p) => p.id === b[6] && p.tenant_id === b[7]);
+          if (!row) return true;
+          if (b[0]) row.name = b[0];
+          if (b[1]) row.slug = b[1];
+          row.project_type = b[2];
+          if (b[3]) row.location = b[3];
+          if (b[4] !== null && b[4] !== undefined) row.capacity = b[4];
+          row.status = b[5];
+          return true;
+        }
+        return false;
+      };
+
+      const query = (sql, bound) => {
+        // Oldest live project for the tenant (the upsert target).
+        if (sql.includes('ORDER BY created_at LIMIT 1')) {
+          return { results: projects.filter((p) => p.tenant_id === bound?.[0] && !p.deleted_at).slice(0, 1) };
+        }
+        // Slug-ownership probe: another project of this tenant already holds
+        // the slug this name would produce (includes soft-deleted rows — the
+        // UNIQUE index does too).
+        if (sql.includes('AND slug = ? AND id <> ?')) {
+          const [tenant, slug, id] = bound || [];
+          return { results: projects.filter((p) => p.tenant_id === tenant && p.slug === slug && p.id !== id) };
+        }
+        // Default-camp resolution after the write.
+        if (sql.includes('SELECT id FROM projects WHERE tenant_id')) {
+          return { results: projects.filter((p) => p.tenant_id === bound?.[0] && !p.deleted_at).map((p) => ({ id: p.id })) };
+        }
+        return happyPathQuery(sql);
+      };
+
+      const prepare = vi.fn((sql) => {
+        const state = { sql, bound: [] };
+        const stmt = {
+          state,
+          bind(...args) {
+            state.bound = args;
+            return stmt;
+          },
+          async all() {
+            statements.push({ type: 'all', ...state });
+            return query(state.sql, state.bound);
+          },
+          async first() {
+            statements.push({ type: 'first', ...state });
+            return query(state.sql, state.bound).results?.[0] ?? null;
+          },
+          async run() {
+            statements.push({ type: 'run', ...state });
+            applyProjectWrite(state.sql, state.bound);
+            return { meta: { changes: 1 } };
+          },
+        };
+        return stmt;
+      });
+
+      const db = {
+        prepare,
+        async batch(items) {
+          const states = items.map((s) => s.state);
+          statements.push({ type: 'batch', items: states });
+          return states.map(() => ({ meta: { changes: 1 } }));
+        },
+        __statements: statements,
+      };
+      return { db, projects };
+    }
+
+    const projectManifest = {
+      project: { name: 'Acacia Main Camp', capacity: 60 },
+    };
+
+    it('creates exactly one project with the manifest name when the tenant has none', async () => {
+      const { db, projects } = makeProjectDb();
+      env.DB = db;
+
+      const res = await post(projectManifest);
+      expect(res.status).toBe(200);
+      expect(projects).toHaveLength(1);
+      expect(projects[0].name).toBe('Acacia Main Camp');
+      expect(projects[0].capacity).toBe(60);
+      expect(projects[0].slug).toBe('acacia-main-camp');
+      expect(projects[0].project_type).toBe('camp');
+      expect(projects[0].status).toBe('active');
+      expect(projects[0].tenant_id).toBe(tenantId);
+    });
+
+    it('is idempotent — a second import updates the same row instead of forking a second project', async () => {
+      const { db, projects } = makeProjectDb();
+      env.DB = db;
+
+      expect((await post(projectManifest)).status).toBe(200);
+      const firstId = projects[0].id;
+
+      const res = await post({ project: { name: 'Acacia Main Camp', capacity: 75 } });
+      expect(res.status).toBe(200);
+      expect(projects).toHaveLength(1);
+      expect(projects[0].id).toBe(firstId);
+      expect(projects[0].capacity).toBe(75);
+    });
+
+    it('updates the tenant default project in place when one already exists', async () => {
+      const { db, projects } = makeProjectDb([
+        { id: 'camp_1', tenant_id: tenantId, name: 'Old Camp', slug: 'old-camp', project_type: 'camp', status: 'active', location: 'Old', capacity: 10 },
+      ]);
+      env.DB = db;
+
+      const res = await post({ project: { name: 'Acacia Main Camp', capacity: 60, location: 'Nuweiba' } });
+      expect(res.status).toBe(200);
+      expect(projects).toHaveLength(1);
+      expect(projects[0].id).toBe('camp_1');
+      expect(projects[0].name).toBe('Acacia Main Camp');
+      expect(projects[0].slug).toBe('acacia-main-camp');
+      expect(projects[0].capacity).toBe(60);
+      expect(projects[0].location).toBe('Nuweiba');
+    });
+
+    it('COALESCEs omitted fields — a partial block never blanks existing values', async () => {
+      const { db, projects } = makeProjectDb([
+        { id: 'camp_1', tenant_id: tenantId, name: 'Old Camp', slug: 'old-camp', project_type: 'camp', status: 'planning', location: 'Sharm', capacity: 42 },
+      ]);
+      env.DB = db;
+
+      const res = await post({ project: { name: 'Acacia Main Camp' } });
+      expect(res.status).toBe(200);
+      expect(projects[0].location).toBe('Sharm'); // untouched
+      expect(projects[0].capacity).toBe(42); // untouched
+      expect(projects[0].name).toBe('Acacia Main Camp'); // updated
+    });
+
+    it('keeps the existing slug when a sibling project already owns the target slug', async () => {
+      const { db, projects } = makeProjectDb([
+        { id: 'camp_1', tenant_id: tenantId, name: 'Old Camp', slug: 'old-camp', project_type: 'camp', status: 'active', location: null, capacity: null },
+        { id: 'camp_2', tenant_id: tenantId, name: 'Acacia Annex', slug: 'acacia-main-camp', project_type: 'camp', status: 'active', location: null, capacity: null },
+      ]);
+      env.DB = db;
+
+      const res = await post({ project: { name: 'Acacia Main Camp' } });
+      expect(res.status).toBe(200);
+      expect(projects[0].name).toBe('Acacia Main Camp');
+      expect(projects[0].slug).toBe('old-camp'); // UNIQUE(tenant_id, slug) preserved
+    });
+
+    it('keeps the existing slug when a SOFT-DELETED sibling owns it (UNIQUE covers deleted rows)', async () => {
+      // The upsert target is the oldest LIVE project; a soft-deleted project
+      // still occupies its slug in the UNIQUE(tenant_id, slug) index, so the
+      // slug probe must count deleted rows or this UPDATE 500s.
+      const { db, projects } = makeProjectDb([
+        { id: 'camp_1', tenant_id: tenantId, name: 'Old Camp', slug: 'old-camp', project_type: 'camp', status: 'active', location: null, capacity: null },
+        { id: 'camp_9', tenant_id: tenantId, name: 'Retired Annex', slug: 'acacia-main-camp', project_type: 'camp', status: 'inactive', location: null, capacity: null, deleted_at: '2026-01-01 00:00:00' },
+      ]);
+      env.DB = db;
+
+      const res = await post({ project: { name: 'Acacia Main Camp' } });
+      expect(res.status).toBe(200);
+      expect(projects[0].slug).toBe('old-camp');
+    });
+
+    it('attaches products created in the same import to the project just written', async () => {
+      const { db, projects } = makeProjectDb();
+      env.DB = db;
+
+      await post({ ...projectManifest, products: [{ name: 'Beach Tent', type: 'room' }] });
+      const products = findBatchWith(db, 'INSERT INTO pos_products');
+      expect(products[0].bound[13]).toBe(projects[0].id); // camp_id
+    });
+
+    it('writes nothing when the manifest has no project block', async () => {
+      const { db, projects } = makeProjectDb();
+      env.DB = db;
+
+      const res = await post({ tenant: { name: 'Sinai' } });
+      expect(res.status).toBe(200);
+      expect(projects).toHaveLength(0);
+      const projectWrites = runStatements(db).filter((s) => /projects/i.test(s.sql));
+      expect(projectWrites).toHaveLength(0);
+    });
+  });
+
   describe('auth harness', () => {
     it('returns 403 when no tenant scope is resolved', async () => {
       // Valid admin token WITHOUT a tenantId claim and no tenant hint: the
@@ -631,6 +832,54 @@ describe('POST /api/tenants/import', () => {
         (s) => s.type === 'run' && s.sql.includes('INSERT OR IGNORE INTO tenant_org_mapping')
       );
       expect(mappingInsert).toBeTruthy();
+    });
+
+    it('reuses the identity-created project when a project block is present (no second INSERT)', async () => {
+      // Real D1 commits the identity-mode project INSERT (step 4) BEFORE
+      // runImport runs, so the project-block upsert must find it and UPDATE —
+      // provisioning + project block must not yield two project rows.
+      // The default creation mock answers the projects SELECT with [] (it does
+      // not model the committed row), so drive it with a stateful store here.
+      const created = [];
+      const stateful = makeCreationQuery();
+      const db = makeDb({
+        query: (sql) => {
+          if (sql.includes('SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY')) {
+            return { results: created.map((p) => ({ id: p.id })) };
+          }
+          if (sql.includes('AND slug = ? AND id <> ?')) return { results: [] };
+          if (sql.includes('SELECT id FROM projects WHERE tenant_id')) {
+            return { results: created.map((p) => ({ id: p.id })) };
+          }
+          return stateful(sql);
+        },
+      });
+      // Record the identity-mode INSERT the route performs before runImport.
+      const origPrepare = db.prepare;
+      db.prepare = vi.fn((sql) => {
+        const stmt = origPrepare(sql);
+        const origRun = stmt.run;
+        stmt.run = async function (...args) {
+          const r = await origRun.apply(this, args);
+          if (sql.includes('INSERT INTO projects')) {
+            created.push({ id: stmt.state.bound[0], name: stmt.state.bound[2], slug: stmt.state.bound[3] });
+          }
+          return r;
+        };
+        return stmt;
+      });
+      env.DB = db;
+
+      const res = await postIdentity({ ...identityManifest, project: { name: 'New Camp Annex', capacity: 30 } });
+      expect(res.status).toBe(201);
+      expect(created).toHaveLength(1); // still exactly one project row
+      const inserts = runStatements(db).filter((s) => s.sql.includes('INSERT INTO projects'));
+      expect(inserts).toHaveLength(1);
+      const updates = runStatements(db).filter((s) => s.sql.includes('UPDATE projects SET'));
+      expect(updates).toHaveLength(1);
+      expect(updates[0].bound[0]).toBe('New Camp Annex'); // name overwritten
+      expect(updates[0].bound[4]).toBe(30); // capacity
+      expect(updates[0].bound[6]).toBe(created[0].id); // scoped to the identity project
     });
 
     it('runs data import after creation (products inserted)', async () => {
