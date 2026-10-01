@@ -39,8 +39,7 @@
       "imageUrl": "https://cdn.example.com/ras-shaitan/products/sea-view-tent.jpg",
       "categoryId": "cat-accommodation",
       "isActive": 1,
-      "type": "room",
-      "campId": "proj_ras_shaitan"
+      "type": "room"
     },
     {
       "id": "prod_palmhut",
@@ -53,8 +52,7 @@
       "imageUrl": "https://cdn.example.com/ras-shaitan/products/palm-hut.jpg",
       "categoryId": "cat-accommodation",
       "isActive": 1,
-      "type": "room",
-      "campId": "proj_ras_shaitan"
+      "type": "room"
     },
     {
       "id": "prod_grill",
@@ -67,8 +65,7 @@
       "imageUrl": "https://cdn.example.com/ras-shaitan/products/grill-platter.jpg",
       "categoryId": "cat-dining",
       "isActive": 1,
-      "type": "menu",
-      "campId": "proj_ras_shaitan"
+      "type": "menu"
     }
   ],
   "rooms": [
@@ -185,7 +182,7 @@
       "role": "manager"
     }
   ],
-  "_note": "EXAMPLE camp-full manifest: schema-valid, FK-resolving, bilingual (EN/AR). productName rooms/ratePlans resolve against products in this file; meals resolve via categoryName except meal_juice which shows the direct mealCategoryId path (the placeholder id must already exist in the target tenant — a missing id violates meals.meal_category_id (NOT NULL + FK) and fails the import as a raw 500, not a silent null). campId/categoryId/storeId placeholders must match the target tenant (or be omitted: campId falls back to the tenant's sole project, storeId to the org's first store). Passwords are example-only.",
+  "_note": "EXAMPLE camp-full manifest: schema-valid, FK-resolving, bilingual (EN/AR). productName rooms/ratePlans resolve against products in this file; meals resolve via categoryName except meal_juice which shows the direct mealCategoryId path (the placeholder id must already exist in the target tenant — a missing id violates meals.meal_category_id (NOT NULL + FK) and fails the import as a raw 500, not a silent null). categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks (storeId then falls back to the org's first store). campId is omitted throughout: these files use identity/create mode, which mints a random project id that no manifest can name, and an unresolvable campId is now rejected with a 400 before a single row is written -- set it only to a project the target tenant already owns. Passwords are example-only.",
   "identity": {
     "name": "Ras Shaitan Beach Camp",
     "subdomain": "rasshaitan-full",

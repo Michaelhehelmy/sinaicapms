@@ -100,7 +100,7 @@ live in Notes. Required = Zod-required. All 8 top-level sections are
 | products | categoryId | string | no | → null | stored verbatim, **no existence check** (blind, A.2 K5) |
 | products | isActive | number | no | 1 (`!== undefined ? v : 1`) | — |
 | products | type | enum room/menu/buffet/retail | no | handler `'retail'` (Zod has no default) | **product** type, not tenant type |
-| products | campId | string | no | `\|\| defaultCampId` | null when tenant has ≠1 project (A.2 U5) |
+| products | campId | string | no | `\|\| defaultCampId` | must name a live project the tenant owns, else **400** before any write; omitted → `defaultCampId` (null when tenant has ≠1 project, A.2 U5) |
 | rooms | id | string | no | `room_`+uuid12 | lands in `rooms_new` via guarded INSERT…SELECT |
 | rooms | name | string min 1 | yes | — | — |
 | rooms | productId | string | no | — | direct FK; must be tenant's product or per-room 404 |
@@ -154,6 +154,21 @@ unresolvable name used to bind NULL and fail the meals batch as an opaque
 rooms, rate plans and meal categories were already written; that partial
 write no longer happens. A meal carrying an explicit `mealCategoryId` is
 skipped by the pre-flight — the id is bound verbatim, unvalidated.
+
+`campId` is resolved by a pre-flight of its own (the first thing `runImport`
+does, before `ensureTenantOrg` and therefore before the first write): it must
+name one of the tenant's live (`deleted_at IS NULL`) projects or the import
+400s and writes nothing. Nothing checked it before, and no constraint caught
+it either — at the head `pos_products.camp_id` is a bare column (only
+`project_id` carries the `projects` FK), so an unknown id was stored verbatim
+and the import answered **200**, leaving a dangling cross-tenant project id in
+every POS report keyed off that column. Add a `ratePlans` block and the same id
+reaches `rate_plans_new.camp_id` (a real `REFERENCES projects(id)`), so the
+import instead died there as an opaque 500 *after* the project, branding,
+products and rooms were committed. The `project` block needs no extra case: it
+updates the tenant's oldest live project, and when the tenant owns none it
+mints a `proj_`+uuid that no manifest key can name. `campId` is accepted on
+`products[]` only — see mistake #3 for the rooms key.
 
 `rate_plans.camp_id` comes from the referenced product's camp (`p.camp_id`
 in the SELECT, :355–358) — no manifest key feeds it. Duplicate product names:
@@ -223,7 +238,11 @@ backend was reachable at build time):
 | `transportation.json` | Transport operator: fleet-as-products + staff | `type: 'transportation'` |
 | `curated-listing.json` | Listing-only showcase | `type: 'other'` + `businessType: 'curated-listing'` |
 
-Each file covers all 85 A.1 leaf fields, resolves rooms/ratePlans through
+Each file covers 84 of the 85 A.1 leaf fields — every one except
+`products[].campId`, which is deliberately absent: these five files use
+create mode, whose project id is a `proj_`+uuid minted at provisioning time
+that no manifest can name, so any shipped value would be a guaranteed 400
+(see §2 and mistake #3b) — resolves rooms/ratePlans through
 both `productName` and `productId`, meals through `categoryName` and direct
 `mealCategoryId`, and uses https-only image URLs (no R2 involved). The older
 `docs/examples/tenant-manifest.example.json` remains the minimal fill-mode
@@ -240,8 +259,10 @@ mirrors A.1 in the same wire order the handler uses: camelCase → deep
 rules (all sections optional; caps 200/200/200/50/200/100; dangling rooms /
 ratePlans `product_name` → ERROR; dangling meals `category_name` → WARNING
 only — the CLI is deliberately lax there, but note the route is not: a
-dangling meal `category_name` is a 400 (see §2). So a green CLI run does not
-guarantee a 200 import on the meal category; `rooms[].camp_id`
+dangling meal `category_name` is a 400 (see §2). The same holds for
+`products[].camp_id`, which the CLI does not resolve at all: an unresolvable
+one is a 400 at the route. So a green CLI run does not
+guarantee a 200 import on the meal category or on `campId`; `rooms[].camp_id`
 accepted-but-stripped, never an error; unknown keys
 stripped; no R2/KV — images are never resolved here):
 
@@ -342,6 +363,16 @@ Top-10 mistakes (every item handler-verified in A.2):
 3. **Sending `rooms[].campId` to place rooms.** No `camp_id` in the rooms Zod
    object + `.strip()` means the key never survives; the `:302` read is dead
    — rooms always land in `defaultCampId` (A.1 finding 3).
+3b. **Sending an unverified `products[].campId`.** The import now 400s with
+   `Product "<name>" references unknown camp "<campId>". campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.`
+   and writes nothing — and only a *live* project of *this* tenant counts, so
+   another tenant's or a soft-deleted project id is rejected too. (The field
+   table previously implied an unverified id would quietly fall back — never
+   true at head: `pos_products.camp_id` has no FK, so the id was stored
+   verbatim and the import answered 200, or the id reached
+   `rate_plans_new.camp_id` and 500'd the import with rows already committed.)
+   Omitting the field is the safe default: it falls back to the tenant's sole
+   project.
 4. **Referencing a `productName` that isn't imported or owned.** Rooms and
    ratePlans 400 on unknown names; pre-create the products or fix the names
    (dup names: last imported wins, A.2 U4).

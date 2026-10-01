@@ -480,6 +480,21 @@ const postImport = (sqlite, tenantId, body) => {
   );
 };
 
+/** Every table a manifest import writes — the "nothing landed" assertion set. */
+const IMPORT_TABLES = [
+  'projects', 'pos_products', 'rooms_new', 'rate_plans_new',
+  'meal_categories', 'meal_categories_lang', 'meals', 'meal_lang', 'pos_users',
+];
+const expectNoRows = (db) => {
+  for (const table of IMPORT_TABLES) {
+    expect({ table, rows: db.prepare(`SELECT COUNT(*) c FROM ${table}`).get().c }).toEqual({ table, rows: 0 });
+  }
+};
+
+/** The one live project the DEFECT-3 `project` block left behind for a tenant. */
+const tenantProjectId = (db, tenantId) =>
+  db.prepare('SELECT id FROM projects WHERE tenant_id = ? AND deleted_at IS NULL').get(tenantId).id;
+
 function seedImportTenant(db, tenantId, subdomain) {
   db.prepare("INSERT INTO tenants (id, subdomain, name, type, status, onboarding_status) VALUES (?, ?, ?, 'camp', 'active', 'completed')")
     .run(tenantId, subdomain, subdomain);
@@ -560,6 +575,148 @@ describe('0126 — overlapping manifests import without a uniqueness failure', (
     expect((await res.json()).error).toMatch(/already exist/i);
   });
 
+  it('rejects an UNRESOLVABLE products[].campId with a 400 before writing a single row', async () => {
+    const db = buildImportDb();
+    const manifest = overlappingManifest();
+    // A project id nobody in this tenant owns. Pre-fix this import had TWO
+    // outcomes and neither named the field: without a ratePlans block it
+    // answered 200 and left the dangling id in `pos_products.camp_id` (that
+    // column has no FK at the head — only `project_id` is guarded), and with
+    // one it died later on the `rate_plans_new.camp_id` FK as an opaque 500
+    // "Failed to import tenant data" after the project, branding, products
+    // and rooms were already committed. This manifest carries a ratePlans
+    // block, so it is the late-500 variant being pinned.
+    manifest.products[0].campId = 'proj_other_tenants_camp';
+
+    const res = await postImport(db, 't_overlap_a', manifest);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      'Product "Sea View Room" references unknown camp "proj_other_tenants_camp". ' +
+        'campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.'
+    );
+
+    // Nothing was written, and the manifest's own projects[]/rooms[]/
+    // ratePlans[]/posUsers[] blocks prove the 400 came from the campId probe
+    // rather than from a downstream section failing first.
+    expectNoRows(db);
+  });
+
+  it('rejects an unresolvable campId even when it is the ONLY defect and there is no project block', async () => {
+    const db = buildImportDb();
+    // No `project` block at all: the pre-flight must not depend on the DEFECT-3
+    // project write having happened, and must not be reachable only via the
+    // ratePlans FK. Pre-fix this exact manifest imported 200 with the dangling
+    // id persisted.
+    const res = await postImport(db, 't_overlap_a', {
+      products: [{ name: 'Sea View Room', sku: 'ROOM-SEA-1', basePrice: 220, capacity: 4, type: 'room', campId: 'proj_other_tenants_camp' }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/references unknown camp "proj_other_tenants_camp"/);
+    expectNoRows(db);
+  });
+
+  it('resolves a campId that names a project the tenant ALREADY owns', async () => {
+    const db = buildImportDb();
+    await postImport(db, 't_overlap_a', overlappingManifest());
+    const own = tenantProjectId(db, 't_overlap_a');
+
+    // Second manifest points its product at the project the first import
+    // created — the union case. Without it, a manifest could never address its
+    // own tenant's project by id, which is the whole point of the field.
+    // menu/posUsers are dropped because the first import already owns their
+    // SKUs/emails for this tenant (0126's same-tenant arbiters 409 on those);
+    // rooms and ratePlans stay, because rate_plans_new.camp_id inherits
+    // `p.camp_id` — that inheritance is the FK edge the late 500 detonated on.
+    const manifest = overlappingManifest();
+    manifest.menu = {};
+    manifest.posUsers = [];
+    manifest.products[0].sku = 'ROOM-SEA-2';
+    manifest.products[1].sku = 'BUFFET-PM';
+    manifest.products[0].campId = own;
+
+    const res = await postImport(db, 't_overlap_a', manifest);
+    expect(res.status).toBe(200);
+    expect(db.prepare("SELECT camp_id FROM pos_products WHERE sku = 'ROOM-SEA-2'").get().camp_id).toBe(own);
+    // The inherited FK edge landed intact on the resolved project.
+    expect(db.prepare("SELECT camp_id FROM rate_plans_new WHERE name = 'Season A'").get().camp_id).toBe(own);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('treats ANOTHER tenant’s live project id as unresolvable', async () => {
+    const db = buildImportDb();
+    await postImport(db, 't_overlap_b', overlappingManifest());
+    const foreign = tenantProjectId(db, 't_overlap_b');
+
+    // The probe is tenant-scoped (`WHERE tenant_id = ?`), so a real, live,
+    // non-deleted project row that merely belongs to a sibling tenant must not
+    // satisfy it — the exact leak the silent-200 variant allowed.
+    const res = await postImport(db, 't_overlap_a', {
+      products: [{ name: 'Sea View Room', sku: 'ROOM-SEA-1', basePrice: 220, capacity: 4, type: 'room', campId: foreign }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain(`references unknown camp "${foreign}"`);
+    expect(db.prepare('SELECT COUNT(*) c FROM pos_products WHERE tenant_id = ?').get('t_overlap_a').c).toBe(0);
+  });
+
+  it('treats a SOFT-DELETED project as unresolvable', async () => {
+    const db = buildImportDb();
+    await postImport(db, 't_overlap_a', overlappingManifest());
+    const own = tenantProjectId(db, 't_overlap_a');
+    db.prepare("UPDATE projects SET deleted_at = datetime('now') WHERE id = ?").run(own);
+
+    // `deleted_at IS NULL` is what makes the probe agree with the rooms guard
+    // (`FROM projects c3 … c3.deleted_at IS NULL`) and with the set
+    // `defaultCampId` is drawn from: a soft-deleted project is not attached.
+    const res = await postImport(db, 't_overlap_a', {
+      products: [{ name: 'Sea View Room', sku: 'ROOM-SEA-9', basePrice: 220, capacity: 4, type: 'room', campId: own }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain(`references unknown camp "${own}"`);
+    expect(db.prepare("SELECT COUNT(*) c FROM pos_products WHERE sku = 'ROOM-SEA-9'").get().c).toBe(0);
+  });
+
+  it('leaves a manifest that omits campId completely unchanged (success path)', async () => {
+    const db = buildImportDb();
+    const res = await postImport(db, 't_overlap_a', overlappingManifest());
+    expect(res.status).toBe(200);
+    const counts = (await res.json()).counts;
+    for (const section of ['products', 'rooms', 'ratePlans', 'mealCategories', 'meals', 'posUsers']) {
+      expect(counts[section]).toBeGreaterThan(0);
+    }
+
+    // Omitting campId must still fall back to the tenant default project, and
+    // the room/rate-plan guards must keep passing (they read the same project).
+    const own = tenantProjectId(db, 't_overlap_a');
+    expect(db.prepare('SELECT COUNT(*) c FROM pos_products WHERE camp_id = ?').get(own).c).toBe(2);
+    expect(db.prepare('SELECT COUNT(*) c FROM rooms_new WHERE camp_id = ?').get(own).c).toBe(1);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('chunks the probe so a manifest with MORE than 50 distinct campIds still 400s cleanly', async () => {
+    const db = buildImportDb();
+    // 120 distinct ids forces three chunks (50/50/20). The bound-parameter
+    // ceiling this guards is D1's "100 per query" (`too many SQL variables`),
+    // which local better-sqlite3 does NOT enforce (SQLite's own ceiling is
+    // 32766) — so this test proves the chunk loop really runs over the whole
+    // id set and still answers the documented 400, not that D1 would have
+    // thrown without it.
+    const products = Array.from({ length: 120 }, (_, i) => ({
+      name: `Bulk Room ${i}`,
+      sku: `BULK-${i}`,
+      basePrice: 100 + i,
+      capacity: 2,
+      type: 'room',
+      campId: `proj_bulk_${i}`,
+    }));
+    const res = await postImport(db, 't_overlap_a', { products });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      'Product "Bulk Room 0" references unknown camp "proj_bulk_0". ' +
+        'campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.'
+    );
+    expectNoRows(db);
+  });
+
   it('rejects an UNRESOLVABLE meal categoryName with a 400 before writing a single row', async () => {
     const db = buildImportDb();
     const manifest = overlappingManifest();
@@ -579,9 +736,7 @@ describe('0126 — overlapping manifests import without a uniqueness failure', (
     // unresolvable name bound NULL and surfaced as an opaque 500 AFTER the
     // product/room/rate-plan/category rows had already landed. Every table
     // this manifest touches must still be empty.
-    for (const table of ['projects', 'pos_products', 'rooms_new', 'rate_plans_new', 'meal_categories', 'meal_categories_lang', 'meals', 'meal_lang', 'pos_users']) {
-      expect({ table, rows: db.prepare(`SELECT COUNT(*) c FROM ${table}`).get().c }).toEqual({ table, rows: 0 });
-    }
+    expectNoRows(db);
   });
 
   it('resolves a categoryName against a PRE-EXISTING tenant category, not just declared ones', async () => {

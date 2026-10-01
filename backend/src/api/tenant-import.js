@@ -186,6 +186,22 @@ function generateMealId() {
 }
 
 /**
+ * Manifest sections that can carry a `campId` reference, with the label used
+ * in the pre-flight's 400 message. Only `products[]` accepts the key at the
+ * head schema — rooms/ratePlans/posUsers declare no `camp_id` field and zod's
+ * object default is `strip`, so a campId sent there never survives parsing
+ * (the `room.camp_id` read in the rooms section is dead for that reason).
+ * Listing them anyway keeps the pre-flight honest if a later schema revision
+ * adds one.
+ */
+const CAMP_ID_REFS = [
+  ['products', 'Product', (entry) => entry.name],
+  ['rooms', 'Room', (entry) => entry.name],
+  ['rate_plans', 'Rate plan', (entry) => entry.name],
+  ['pos_users', 'POS user', (entry) => entry.email || entry.username],
+];
+
+/**
  * Ensure a product exists in the `products` table (FK target) by mirroring
  * from `pos_products`. Best-effort: ignores errors.
  */
@@ -216,7 +232,61 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
     meal_categories: 0, meals: 0, pos_users: 0,
   };
 
-  // ── Pre-flight: every meal's categoryName must resolve ───────────
+  // ── Pre-flight 1: every campId reference must resolve ─────────────
+  // `camp_id` is the legacy alias of `project_id` and no constraint catches a
+  // bad value: at the 0124/0126 head `pos_products.camp_id` is a bare
+  // `camp_id TEXT` (only `project_id` carries the projects FK), so the import
+  // stored ANOTHER tenant's project id verbatim and answered 200 — a dangling
+  // cross-tenant id sitting in every POS report keyed off that column. Probe
+  // one manifest with a bogus campId and no ratePlans on a real 0126 replay:
+  // status 200, `pos_products.camp_id = 'proj_other_tenants_project'`. Add a
+  // ratePlans block — which inherits the id via `p.camp_id` into
+  // `rate_plans_new.camp_id`, a real `REFERENCES projects(id)` — and the same
+  // manifest instead dies on that FK as an opaque 500 "Failed to import tenant
+  // data", AFTER the project, branding, products and rooms were committed
+  // (the handler has no cross-section transaction: F-A17-02 chose "no D1
+  // rollback", R2 uploads only). Both outcomes are bad and neither names the
+  // field, so probe resolvability first and answer with a 400 that names the
+  // row and the camp — nothing is written at all.
+  //
+  // Resolvable = the live (not soft-deleted) projects the tenant owns, i.e.
+  // exactly the set `defaultCampId` is drawn from below. The DEFECT-3 project
+  // block needs no separate case: it updates the tenant's oldest live project
+  // (already in the set), and when the tenant owns none it mints a
+  // `proj_`+uuid the manifest has no key to name. Omitting campId stays legal
+  // everywhere — it falls back to `defaultCampId`/`resolvedProjectId`.
+  const campRefs = CAMP_ID_REFS.flatMap(([section, label, nameOf]) =>
+    (data[section] || [])
+      .filter((entry) => entry.camp_id)
+      .map((entry) => ({ label, name: nameOf(entry) || 'unnamed', campId: entry.camp_id }))
+  );
+  if (campRefs.length > 0) {
+    const distinct = [...new Set(campRefs.map((ref) => ref.campId))];
+    // Chunked because D1 caps BOUND PARAMETERS PER QUERY at 100 (`too many SQL
+    // variables at offset N`) — well under the products cap of 200, so a
+    // single `IN (…)` over every distinct id would trade this 400 for an
+    // opaque 500 on a large manifest. 50 ids + the tenant_id = 51 binds.
+    const resolvable = new Set();
+    for (let i = 0; i < distinct.length; i += 50) {
+      const chunk = distinct.slice(i, i + 50);
+      const { results: chunkProjects } = await env.DB.prepare(
+        `SELECT id FROM projects
+          WHERE tenant_id = ? AND deleted_at IS NULL
+            AND id IN (${chunk.map(() => '?').join(', ')})`
+      ).bind(tenantId, ...chunk).all();
+      for (const p of chunkProjects || []) resolvable.add(p.id);
+    }
+    const unknown = campRefs.find((ref) => !resolvable.has(ref.campId));
+    if (unknown) {
+      return fail(
+        400,
+        `${unknown.label} "${unknown.name}" references unknown camp "${unknown.campId}". ` +
+          'campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.'
+      );
+    }
+  }
+
+  // ── Pre-flight 2: every meal's categoryName must resolve ───────────
   // `meals.meal_category_id` is NOT NULL REFERENCES meal_categories(id)
   // (0111 head), so a name the map can't resolve used to bind NULL and blow
   // the meals batch as an opaque 500 "Failed to import tenant data" — AFTER
