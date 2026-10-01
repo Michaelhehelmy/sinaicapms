@@ -483,7 +483,7 @@ productsRoutes.get('/', async (c) => {
   const tenantId = getScope(c).tenantId;
   const marketplace = isMarketplaceTenant(tenantId);
   const select =
-    `SELECT p.id, p.tenant_id, p.category_id, p.sku, p.name, p.description, p.short_description,
+    `SELECT p.id, p.tenant_id, p.category_id, p.sku, p.name, p.type, p.description, p.short_description,
             p.selling_price AS base_price, p.capacity, p.image_url, p.images, p.is_active,
             p.camp_id, p.created_at, p.updated_at
      FROM pos_products p`;
@@ -513,6 +513,7 @@ productsRoutes.get('/', async (c) => {
     category_id: p.category_id ?? null,
     sku: p.sku,
     name: p.name,
+    type: p.type ?? null,
     description: p.description,
     short_description: p.short_description,
     base_price: p.base_price,

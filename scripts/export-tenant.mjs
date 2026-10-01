@@ -27,7 +27,6 @@
  *       1 on core-endpoint fetch failure / usage error.
  *
  * KNOWN LOSSES (see .opencode/audits/BLOCKED-manifest-roundtrip.md):
- * - products[].type: GET /api/products SELECT omits the column → unrecoverable.
  * - posUsers[].password: bcrypt one-way hash; never readable via any GET.
  * - rooms room_status/cleaning_status: readable but dropped by re-import.
  */
@@ -149,7 +148,10 @@ async function main() {
   } : {};
   if (!proj) warnings.push('no project found for tenant; exporting empty project block');
 
-  // ── products (type NOT returned by GET — recorded as lost) ──
+  // ── products ──
+  // DEFECT-2 fixed: GET /api/products selects p.type, so `type` is exported
+  // for every row and re-import keeps room|menu|buffet|retail. The guard
+  // below still fires if the column ever goes missing again.
   const productIdToName = new Map();
   for (const p of productsRaw) productIdToName.set(pick(p, 'id'), pick(p, 'name'));
   let typeMissing = 0;
@@ -168,7 +170,7 @@ async function main() {
       const v = pick(p, ...aks);
       if (v !== undefined && v !== null) o[mk] = v;
     }
-    // Include explicit type ONLY when the API returns it (today: never).
+    // Include explicit type when the API returns it.
     if (pick(p, 'type') !== undefined) o.type = pick(p, 'type');
     // Singular campId from the read-side campIds[] array.
     const campIds = pick(p, 'campIds', 'camp_ids', 'campId', 'camp_id');
