@@ -119,7 +119,7 @@ function resolveSample() {
 const INSERT_COLUMNS = {
   pos_products: ['id', 'tenant_id', 'organization_id', 'category_id', 'sku', 'name', 'description', 'short_description', 'selling_price', 'capacity', 'image_url', 'is_active', 'type', 'camp_id', 'project_id'],
   // INSERT ... SELECT guarded by projects/pos_products; bound[0..12] map to dest cols, trailing binds are WHERE/EXISTS guards.
-  rooms_new: ['id', 'camp_id', 'product_id', 'name', 'status', 'bed_type', 'max_guests', 'base_price', 'floor', 'notes', 'is_active', 'tenant_id', 'project_id'],
+  rooms_new: ['id', 'camp_id', 'product_id', 'name', 'status', 'bed_type', 'max_guests', 'base_price', 'floor', 'notes', 'is_active', 'tenant_id', 'project_id', 'room_status', 'cleaning_status'],
   // INSERT ... SELECT; camp_id comes from p.camp_id (not a bind), so dest col 3 is skipped when mapping binds.
   rate_plans_new: ['id', 'tenant_id', 'product_id', 'camp_id', 'name', 'price_per_night', 'start_date', 'end_date', 'season', 'min_stay', 'is_active', 'project_id'],
   meal_categories: ['id', 'tenant_id', 'position', 'project_id'],

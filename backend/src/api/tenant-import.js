@@ -118,6 +118,14 @@ const manifestSchema = z.object({
     base_price: z.number().optional(),
     notes: z.string().optional(),
     is_active: z.number().optional(),
+    // DEFECT-4: operational lifecycle columns. Readable via GET /api/rooms
+    // (`SELECT r.*`) but previously dropped here, so an exported manifest
+    // round-tripped every room back to the schema defaults. `room_status` has
+    // no DB CHECK; the enum mirrors the values the admin status endpoint
+    // accepts (camps.js PATCH /rooms/:id/status). `cleaning_status` is CHECKed
+    // by the schema itself, so the enum must match it exactly.
+    room_status: z.enum(['available', 'reserved', 'occupied', 'cleaning', 'out_of_service']).optional(),
+    cleaning_status: z.enum(['dirty', 'in_progress', 'clean', 'inspected']).optional(),
   })).max(200).optional(),
   rate_plans: z.array(z.object({
     id: z.string().optional(),
@@ -392,8 +400,8 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
         env.DB.prepare(
           // 0115: tenant_id is NOT NULL + FK — bind the import tenant (equals
           // c3.tenant_id by the WHERE clause below, so the guard is unchanged).
-          `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, tenant_id, project_id, created_at, updated_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+          `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, tenant_id, project_id, room_status, cleaning_status, created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
            FROM projects c3
            WHERE c3.id = ? AND c3.tenant_id = ? AND c3.deleted_at IS NULL
              AND EXISTS (SELECT 1 FROM pos_products p WHERE p.id = ? AND p.tenant_id = c3.tenant_id)`
@@ -404,6 +412,9 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
           room.floor !== undefined ? String(room.floor) : null,
           room.notes || null, room.is_active !== undefined ? room.is_active : 1,
           tenantId, resolvedProjectId,
+          // DEFECT-4: default to the schema defaults so an omitted field writes
+          // the same value the column would have had anyway.
+          room.room_status || 'available', room.cleaning_status || 'clean',
           campId, tenantId, productId
         )
       );
