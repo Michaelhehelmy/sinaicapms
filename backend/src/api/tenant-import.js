@@ -170,6 +170,22 @@ const manifestSchema = z.object({
 }).strip();
 
 /**
+ * Generate a meal id — Option 1 of the D3 uniqueness mission: RANDOM.
+ * `meals.id` is the GLOBAL primary key (it is the `meal_lang.meal_id` join key
+ * and 0111 left it as a bare PK, deliberately not tenant-scoped), so a
+ * deterministic or tenant-derived id would still collide the moment two tenants
+ * provision a menu from overlapping manifests. 48 random bits makes that
+ * negligible, keeps ids unguessable, and — unlike reusing a manifest id — can
+ * never leak another tenant's row identity. Length/prefix match the previous
+ * `meal_` + 12-hex-char form so nothing downstream has to widen.
+ */
+function generateMealId() {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return 'meal_' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * Ensure a product exists in the `products` table (FK target) by mirroring
  * from `pos_products`. Best-effort: ignores errors.
  */
@@ -499,9 +515,33 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
 
   // ── 6. Meals ─────────────────────────────────────────────────────
   if (data.menu?.meals && data.menu.meals.length > 0) {
+    // Explicit manifest ids are kept (round-trip parity: an exported manifest
+    // must re-import its own meal ids), but `meals.id` is the GLOBAL primary
+    // key — so a manifest id that already belongs to ANOTHER tenant can only
+    // ever collide. Probe the owners first and answer with a clear 4xx naming
+    // the meal, instead of letting the raw UNIQUE/PK error surface as a generic
+    // "Duplicate SKU, ID, or unique field" 409 (or a 500 on a batch rollback).
+    const explicitIds = data.menu.meals.map((m) => m.id).filter(Boolean);
+    if (explicitIds.length > 0) {
+      const { results: owners } = await env.DB.prepare(
+        `SELECT id, tenant_id FROM meals WHERE id IN (${explicitIds.map(() => '?').join(', ')})`
+      ).bind(...explicitIds).all();
+      for (const owner of owners) {
+        const meal = data.menu.meals.find((m) => m.id === owner.id);
+        if (owner.tenant_id !== tenantId) {
+          return fail(
+            400,
+            `Meal "${meal.name}" id "${owner.id}" already belongs to another tenant — ` +
+            'remove the explicit meal id to let the import generate a fresh one'
+          );
+        }
+        return fail(409, `Meal "${meal.name}" already exists in this tenant (duplicate id "${owner.id}")`);
+      }
+    }
+
     const mealStmts = [];
     for (const meal of data.menu.meals) {
-      const mid = meal.id || 'meal_' + crypto.randomUUID().slice(0, 12);
+      const mid = meal.id || generateMealId();
       let categoryId = meal.meal_category_id;
       if (!categoryId && meal.category_name) categoryId = categoryNameToId.get(meal.category_name);
       const imageUrl = await resolveImage(env, tenantId, meal.image_url, uploadedKeys);

@@ -63,8 +63,11 @@ function makeRoutingDb() {
 function validReservationBody(overrides = {}) {
   return {
     room_id: 'room_1',
-    check_in_date: '2026-10-01',
-    check_out_date: '2026-10-03',
+    // 2030 dates, never near-now: reservations.js rejects a check-in in the
+    // past with 400 BEFORE the capacity/overlap/409 logic runs, so a fixture
+    // that quietly expires turns this whole file red (date-rot, 2026-10-01).
+    check_in_date: '2030-10-01',
+    check_out_date: '2030-10-03',
     number_of_people: 2,
     guest_name: 'Jane Doe',
     guest_email: 'jane@example.com',
@@ -192,7 +195,7 @@ describe('GET /api/public/reservations (public reservation)', () => {
     expect(data.duplicate).toBe(false);
     expect(data.orderId).toBeTruthy();
 
-    // Room price: 500/night × 2 nights (2026-10-01 → 2026-10-03) = 1000.
+    // Room price: 500/night × 2 nights (2030-10-01 → 2030-10-03) = 1000.
     // Meal plan: 300 × 1. Stored total must be 1300, not 1600.
     const inserts = db.statements
       .filter(s => /insert into orders/i.test(s.sql))
