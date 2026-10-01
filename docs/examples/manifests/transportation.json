@@ -185,7 +185,7 @@
       "role": "manager"
     }
   ],
-  "_note": "EXAMPLE transportation manifest: schema-valid, FK-resolving, bilingual (EN/AR). Seats/trips are retail products; sleeper berths are room products so rooms+ratePlans model the overnight line (seasonal pricing via rate_plans). meal_chips shows the direct mealCategoryId path (pre-existing id or null — no error). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
+  "_note": "EXAMPLE transportation manifest: schema-valid, FK-resolving, bilingual (EN/AR). Seats/trips are retail products; sleeper berths are room products so rooms+ratePlans model the overnight line (seasonal pricing via rate_plans). meal_chips shows the direct mealCategoryId path (the placeholder id must already exist in the target tenant — a missing id violates meals.meal_category_id (NOT NULL + FK) and fails the import as a raw 500, not a silent null). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
   "identity": {
     "name": "Sinai Shuttle Co.",
     "subdomain": "sinaishuttle-full",

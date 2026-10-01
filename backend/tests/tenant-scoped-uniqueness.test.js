@@ -560,6 +560,77 @@ describe('0126 — overlapping manifests import without a uniqueness failure', (
     expect((await res.json()).error).toMatch(/already exist/i);
   });
 
+  it('rejects an UNRESOLVABLE meal categoryName with a 400 before writing a single row', async () => {
+    const db = buildImportDb();
+    const manifest = overlappingManifest();
+    // "Lunch" is declared by neither this manifest nor the (empty) tenant.
+    manifest.menu.categories = [{ name: 'Breakfast', position: 1 }];
+    manifest.menu.meals[0].categoryName = 'Lunch';
+
+    const res = await postImport(db, 't_overlap_a', manifest);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      'Meal "Eggs Benedict" references unknown category "Lunch". ' +
+        'Declare the category in menu.categories[] or remove categoryName.'
+    );
+
+    // Nothing was written: `meals.meal_category_id` is NOT NULL REFERENCES
+    // meal_categories(id) at the 0111 head, so before this pre-flight an
+    // unresolvable name bound NULL and surfaced as an opaque 500 AFTER the
+    // product/room/rate-plan/category rows had already landed. Every table
+    // this manifest touches must still be empty.
+    for (const table of ['projects', 'pos_products', 'rooms_new', 'rate_plans_new', 'meal_categories', 'meal_categories_lang', 'meals', 'meal_lang', 'pos_users']) {
+      expect({ table, rows: db.prepare(`SELECT COUNT(*) c FROM ${table}`).get().c }).toEqual({ table, rows: 0 });
+    }
+  });
+
+  it('resolves a categoryName against a PRE-EXISTING tenant category, not just declared ones', async () => {
+    const db = buildImportDb();
+    await postImport(db, 't_overlap_a', overlappingManifest());
+
+    // Second manifest declares no categories at all and points at the category
+    // the first import created — the name must still resolve, or a
+    // categoryName-only manifest could never address its own tenant's menu.
+    const manifest = overlappingManifest();
+    manifest.products = [];
+    manifest.rooms = [];
+    manifest.ratePlans = [];
+    manifest.posUsers = [];
+    manifest.menu = {
+      meals: [{ name: 'Later Breakfast', categoryName: 'Breakfast', price: 31 }],
+    };
+
+    const res = await postImport(db, 't_overlap_a', manifest);
+    expect(res.status).toBe(200);
+    expect((await res.json()).counts.meals).toBe(1);
+    const meal = db.prepare("SELECT m.meal_category_id FROM meals m JOIN meal_lang l ON l.meal_id = m.id AND l.lang = 'en' WHERE l.name = 'Later Breakfast'").get();
+    const cat = db.prepare("SELECT meal_category_id AS id FROM meal_categories_lang WHERE name = 'Breakfast' AND lang = 'en'").get();
+    expect(meal.meal_category_id).toBe(cat.id);
+  });
+
+  it('leaves a meal carrying an explicit mealCategoryId out of the name pre-flight', async () => {
+    const db = buildImportDb();
+    await postImport(db, 't_overlap_a', overlappingManifest());
+    const breakfast = db.prepare("SELECT meal_category_id AS id FROM meal_categories_lang WHERE name = 'Breakfast' AND lang = 'en'").get().id;
+
+    // No categoryName at all, so there is no name to resolve: the explicit id
+    // is bound verbatim and must sail through the pre-flight untouched (its
+    // own existence check is a separate blocker — the parity audit's D4).
+    const manifest = overlappingManifest();
+    manifest.products = [];
+    manifest.rooms = [];
+    manifest.ratePlans = [];
+    manifest.posUsers = [];
+    manifest.menu = {
+      meals: [{ name: 'Direct Id Meal', mealCategoryId: breakfast, price: 12 }],
+    };
+
+    const res = await postImport(db, 't_overlap_a', manifest);
+    expect(res.status).toBe(200);
+    const meal = db.prepare("SELECT m.meal_category_id FROM meals m JOIN meal_lang l ON l.meal_id = m.id AND l.lang = 'en' WHERE l.name = 'Direct Id Meal'").get();
+    expect(meal.meal_category_id).toBe(breakfast);
+  });
+
   it('rejects a same-tenant duplicate meal id with 409 before writing anything', async () => {
     const db = buildImportDb();
     await postImport(db, 't_overlap_a', overlappingManifest());

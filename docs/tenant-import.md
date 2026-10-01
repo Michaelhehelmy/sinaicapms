@@ -127,7 +127,7 @@ live in Notes. Required = Zod-required. All 8 top-level sections are
 | menu.meals | id | string | no | `meal_`+uuid12 | → `meals` + `meal_lang` (`lang='en'`) |
 | menu.meals | name | string min 1 | yes | — | — |
 | menu.meals | mealCategoryId | string | no | — | used verbatim, **no existence check** (blind — dangling id can 500, A.2 K4) |
-| menu.meals | categoryName | string | no | — | resolved via map; **unknown → null, no error** (asymmetric with rooms/ratePlans) |
+| menu.meals | categoryName | string | no | — | resolved against this manifest's `menu.categories[].name` **plus the categories the tenant already owns**; **unresolvable → 400 before any row is written** (symmetric with rooms/ratePlans) |
 | menu.meals | price | number min 0 | no | handler `\|\| 0` | — |
 | menu.meals | description | string | no | → null (into `meal_lang`) | — |
 | menu.meals | imageUrl | string | no | → null | resolveImage pipeline |
@@ -143,9 +143,18 @@ live in Notes. Required = Zod-required. All 8 top-level sections are
 | posUsers | employeeId | string | no | → null | — |
 | posUsers | storeId | number int | no | org's first `pos_stores` id, else null | stored verbatim, no existence check |
 
-Reference-resolution asymmetry (A.1 finding 4, handler-verified): unknown
-`productName` → 400 for rooms (:296–298) and ratePlans (:347–349); unknown
-`categoryName` → null with no error for meals (:414–415).
+Reference resolution (A.1 finding 4, handler-verified): unknown `productName`
+→ 400 for rooms and ratePlans; unknown `categoryName` → 400 for meals too
+(the meals pre-flight, `runImport` :219–251). The three name-resolved
+sections now behave the same way, and the meal check runs **before any DB
+write** — it cannot half-apply the way the old behavior did.
+`meals.meal_category_id` is `NOT NULL REFERENCES meal_categories(id)`, so an
+unresolvable name used to bind NULL and fail the meals batch as an opaque
+500 `Failed to import tenant data` *after* the project, branding, products,
+rooms, rate plans and meal categories were already written; that partial
+write no longer happens. A meal carrying an explicit `mealCategoryId` is
+skipped by the pre-flight — the id is bound verbatim, unvalidated.
+
 `rate_plans.camp_id` comes from the referenced product's camp (`p.camp_id`
 in the SELECT, :355–358) — no manifest key feeds it. Duplicate product names:
 last imported row wins the name map; imported names beat pre-existing ones
@@ -230,7 +239,10 @@ mirrors A.1 in the same wire order the handler uses: camelCase → deep
 `toSnake()` (same regex as `backend/src/utils/response.js`) → snake_case
 rules (all sections optional; caps 200/200/200/50/200/100; dangling rooms /
 ratePlans `product_name` → ERROR; dangling meals `category_name` → WARNING
-only; `rooms[].camp_id` accepted-but-stripped, never an error; unknown keys
+only — the CLI is deliberately lax there, but note the route is not: a
+dangling meal `category_name` is a 400 (see §2). So a green CLI run does not
+guarantee a 200 import on the meal category; `rooms[].camp_id`
+accepted-but-stripped, never an error; unknown keys
 stripped; no R2/KV — images are never resolved here):
 
 ```bash
@@ -333,9 +345,15 @@ Top-10 mistakes (every item handler-verified in A.2):
 4. **Referencing a `productName` that isn't imported or owned.** Rooms and
    ratePlans 400 on unknown names; pre-create the products or fix the names
    (dup names: last imported wins, A.2 U4).
-5. **Assuming an unknown `categoryName` fails.** It stores null silently —
-   the opposite asymmetry from (4). Prefer explicit `mealCategoryId` you have
-   verified, or accept the null.
+5. **Assuming an unknown `categoryName` fails quietly.** It does not: the
+   import now 400s with
+   `Meal "<name>" references unknown category "<categoryName>". Declare the category in menu.categories[] or remove categoryName.`
+   and writes nothing. (This paragraph previously claimed the opposite —
+   "stores null silently" — which was never true at head: the null
+   `meal_category_id` violated its NOT NULL constraint and 500'd the import.)
+   The mirror-image trap is item 5b: an explicit `mealCategoryId` is still
+   bound verbatim with **no** existence check, so a placeholder id fails as a
+   raw 500, not a 400.
 6. **Sending a junk `logoUrl` expecting null-or-keep.** Tenant logo/favicon/
    hero store the raw sent string verbatim on invalid input (A.2 F3).
    Validate URLs client-side or omit the field.

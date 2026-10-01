@@ -216,6 +216,40 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
     meal_categories: 0, meals: 0, pos_users: 0,
   };
 
+  // ── Pre-flight: every meal's categoryName must resolve ───────────
+  // `meals.meal_category_id` is NOT NULL REFERENCES meal_categories(id)
+  // (0111 head), so a name the map can't resolve used to bind NULL and blow
+  // the meals batch as an opaque 500 "Failed to import tenant data" — AFTER
+  // the project, branding, products, rooms, rate plans and meal categories
+  // had already been written. Probe resolvability first and answer with a
+  // 400 that names the meal and the category, so nothing is written at all.
+  //
+  // Resolvable = the categories THIS manifest declares (menu.categories[].name,
+  // keyed into the map below) plus the ones the tenant already owns. Meals
+  // carrying an explicit `meal_category_id` are untouched — that id is bound
+  // verbatim, so there is no name to resolve.
+  const manifestMeals = data.menu?.meals || [];
+  if (manifestMeals.length > 0) {
+    const resolvableNames = new Set((data.menu?.categories || []).map((c) => c.name));
+    const { results: ownedCats } = await env.DB.prepare(
+      `SELECT mcl.name FROM meal_categories mc
+       LEFT JOIN meal_categories_lang mcl ON mcl.meal_category_id = mc.id AND mcl.lang = 'en'
+       WHERE mc.tenant_id = ?`
+    ).bind(tenantId).all();
+    for (const c of ownedCats || []) if (c.name) resolvableNames.add(c.name);
+
+    for (const meal of manifestMeals) {
+      if (meal.meal_category_id || !meal.category_name) continue;
+      if (!resolvableNames.has(meal.category_name)) {
+        return fail(
+          400,
+          `Meal "${meal.name}" references unknown category "${meal.category_name}". ` +
+            'Declare the category in menu.categories[] or remove categoryName.'
+        );
+      }
+    }
+  }
+
   // Resolve POS org for this tenant (required for products + pos_users).
   const organizationId = await ensureTenantOrg(env, tenantId);
   if (!organizationId) {

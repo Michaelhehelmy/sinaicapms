@@ -185,7 +185,7 @@
       "role": "manager"
     }
   ],
-  "_note": "EXAMPLE supermarket-full manifest: schema-valid, FK-resolving, bilingual (EN/AR). Rooms model staff accommodation (supermarkets rarely sell stays); ratePlans model staff monthly rates + a bread subscription. meal_koshary shows the direct mealCategoryId path (needs a pre-existing category id, else null — no error). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
+  "_note": "EXAMPLE supermarket-full manifest: schema-valid, FK-resolving, bilingual (EN/AR). Rooms model staff accommodation (supermarkets rarely sell stays); ratePlans model staff monthly rates + a bread subscription. meal_koshary shows the direct mealCategoryId path (the placeholder id must already exist in the target tenant — a missing id violates meals.meal_category_id (NOT NULL + FK) and fails the import as a raw 500, not a silent null). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
   "identity": {
     "name": "Dahab Corner Market",
     "subdomain": "dahabmarket-full",

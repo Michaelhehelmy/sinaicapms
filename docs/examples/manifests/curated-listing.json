@@ -185,7 +185,7 @@
       "role": "admin"
     }
   ],
-  "_note": "EXAMPLE curated-listing manifest: schema-valid, FK-resolving, bilingual (EN/AR). 'curated-listing' is NOT a valid identity.type (Zod enum backend/src/api/tenant-import.js:15 + D1 CHECK backend/migrations/0001_core.sql:19) so identity uses type 'other' + businessType 'curated-listing'; rooms/ratePlans model partner reference listings, products mix room + retail. meal_tasting shows the direct mealCategoryId path (pre-existing id or null — no error). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
+  "_note": "EXAMPLE curated-listing manifest: schema-valid, FK-resolving, bilingual (EN/AR). 'curated-listing' is NOT a valid identity.type (Zod enum backend/src/api/tenant-import.js:15 + D1 CHECK backend/migrations/0001_core.sql:19) so identity uses type 'other' + businessType 'curated-listing'; rooms/ratePlans model partner reference listings, products mix room + retail. meal_tasting shows the direct mealCategoryId path (the placeholder id must already exist in the target tenant — a missing id violates meals.meal_category_id (NOT NULL + FK) and fails the import as a raw 500, not a silent null). campId/categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks. Passwords are example-only.",
   "identity": {
     "name": "Sinai Stays Directory",
     "subdomain": "sinaistays-full",
