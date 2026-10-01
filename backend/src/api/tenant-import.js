@@ -203,8 +203,9 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
   // tenant default instead of forking a second project row on every run.
   // Runs BEFORE the default-camp resolution below so products/rooms created
   // in this same import attach to the project this manifest just wrote.
-  // `projectId` stays null when the manifest has no project block — the
-  // downstream project_id binds (DEFECT-1) tolerate that.
+  // `projectId` stays null when the manifest has no project block —
+  // `resolvedProjectId` below then falls back to the tenant default and
+  // finally to NULL (never a throw).
   let projectId = null;
   if (data.project) {
     const p = data.project;
@@ -272,6 +273,14 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
   ).bind(tenantId).all();
   const defaultCampId = tenantProjects.length === 1 ? tenantProjects[0].id : null;
 
+  // DEFECT-1: the single resolved project every project_id-bearing write below
+  // binds. Precedence: the project this import just wrote/updated (DEFECT-3) →
+  // the tenant's sole live project (the existing camp_id fallback) → NULL.
+  // NULL is a legal value on every target column (`ON DELETE SET NULL`
+  // reference), so an unresolvable tenant degrades to project-less rows
+  // instead of throwing the whole import away.
+  const resolvedProjectId = projectId || defaultCampId || null;
+
   // ── 1. Tenant branding/content update ────────────────────────────
   if (data.tenant) {
     const t = data.tenant;
@@ -326,15 +335,15 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
 
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO pos_products (id, tenant_id, organization_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, camp_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+          `INSERT INTO pos_products (id, tenant_id, organization_id, category_id, sku, name, description, short_description, selling_price, capacity, image_url, is_active, type, camp_id, project_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
         ).bind(
           pid, tenantId, organizationId, item.category_id || null,
           item.sku || 'PROD-' + pid.toUpperCase(),
           item.name, item.description || null, item.short_description || null,
           item.base_price || 0, item.capacity || 1,
           imageUrl || null, item.is_active !== undefined ? item.is_active : 1,
-          item.type || 'retail', item.camp_id || defaultCampId
+          item.type || 'retail', item.camp_id || defaultCampId, resolvedProjectId
         )
       );
     }
@@ -383,8 +392,8 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
         env.DB.prepare(
           // 0115: tenant_id is NOT NULL + FK — bind the import tenant (equals
           // c3.tenant_id by the WHERE clause below, so the guard is unchanged).
-          `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, tenant_id, created_at, updated_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+          `INSERT INTO rooms_new (id, camp_id, product_id, name, status, bed_type, max_guests, base_price, floor, notes, is_active, tenant_id, project_id, created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
            FROM projects c3
            WHERE c3.id = ? AND c3.tenant_id = ? AND c3.deleted_at IS NULL
              AND EXISTS (SELECT 1 FROM pos_products p WHERE p.id = ? AND p.tenant_id = c3.tenant_id)`
@@ -394,7 +403,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
           room.base_price !== undefined ? room.base_price : null,
           room.floor !== undefined ? String(room.floor) : null,
           room.notes || null, room.is_active !== undefined ? room.is_active : 1,
-          tenantId,
+          tenantId, resolvedProjectId,
           campId, tenantId, productId
         )
       );
@@ -422,8 +431,8 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
       const rpid = rp.id || 'rp_' + crypto.randomUUID().slice(0, 12);
       rpStmts.push(
         env.DB.prepare(
-          `INSERT INTO rate_plans_new (id, tenant_id, product_id, camp_id, name, price_per_night, start_date, end_date, season, min_stay, is_active, created_at, updated_at)
-           SELECT ?, ?, ?, p.camp_id, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+          `INSERT INTO rate_plans_new (id, tenant_id, product_id, camp_id, name, price_per_night, start_date, end_date, season, min_stay, is_active, project_id, created_at, updated_at)
+           SELECT ?, ?, ?, p.camp_id, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
            FROM pos_products p
            WHERE p.id = ? AND p.tenant_id = ?`
         ).bind(
@@ -431,6 +440,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
           rp.start_date || null, rp.end_date || null,
           rp.season || 'all', rp.min_stay || 1,
           rp.is_active !== undefined ? rp.is_active : 1,
+          resolvedProjectId,
           productId, tenantId
         )
       );
@@ -453,8 +463,8 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
       categoryNameToId.set(cat.name, catId);
       catStmts.push(
         env.DB.prepare(
-          "INSERT INTO meal_categories (id, tenant_id, position, created_at) VALUES (?, ?, ?, datetime('now'))"
-        ).bind(catId, tenantId, cat.position || 0)
+          "INSERT INTO meal_categories (id, tenant_id, position, project_id, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
+        ).bind(catId, tenantId, cat.position || 0, resolvedProjectId)
       );
       catStmts.push(
         env.DB.prepare(
@@ -487,11 +497,12 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
 
       mealStmts.push(
         env.DB.prepare(
-          `INSERT INTO meals (id, tenant_id, meal_category_id, price, image_url, is_active, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+          `INSERT INTO meals (id, tenant_id, meal_category_id, price, image_url, is_active, project_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
         ).bind(
           mid, tenantId, categoryId || null, meal.price || 0,
-          imageUrl || null, meal.is_active !== undefined ? meal.is_active : 1
+          imageUrl || null, meal.is_active !== undefined ? meal.is_active : 1,
+          resolvedProjectId
         )
       );
       mealStmts.push(
@@ -521,14 +532,14 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
         env.DB.prepare(
           `INSERT INTO pos_users
             (organization_id, tenant_id, username, email, password_hash, first_name, last_name,
-             phone, role, department, employee_id, store_id, is_active, status,
+             phone, role, department, employee_id, store_id, project_id, is_active, status,
              created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', datetime('now'), datetime('now'))`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', datetime('now'), datetime('now'))`
         ).bind(
           organizationId, tenantId, user.username || user.email, user.email, passwordHash,
           user.first_name, user.last_name, user.phone || null,
           user.role || 'cashier', user.department || null,
-          user.employee_id || null, storeId ?? null
+          user.employee_id || null, storeId ?? null, resolvedProjectId
         )
       );
     }

@@ -296,6 +296,60 @@ describe('POST /api/tenants/import', () => {
     });
   });
 
+  // DEFECT-1: every project_id-bearing INSERT binds the resolved project.
+  // Real end-to-end proof (fresh local D1, zero NULL rows) lives in
+  // tests/tenant-import-project-id.test.js; these assert the bind positions.
+  describe('project_id binds (DEFECT-1)', () => {
+    /** Bound index of the project_id bind in each INSERT. */
+    const PROJECT_BIND = {
+      pos_products: 14,
+      rooms_new: 12,
+      rate_plans_new: 10,
+      meal_categories: 3,
+      meals: 6,
+      pos_users: 12,
+    };
+
+    it('binds the manifest project on every project_id-bearing INSERT', async () => {
+      await post(happyManifest);
+      for (const [table, index] of Object.entries(PROJECT_BIND)) {
+        const rows = findBatchWith(env.DB, `INSERT INTO ${table} `) || findBatchWith(env.DB, `INSERT INTO ${table}`);
+        expect(rows, `${table} INSERT`).toBeTruthy();
+        expect(rows[0].sql, `${table} names project_id`).toContain('project_id');
+        for (const row of rows) {
+          expect(row.bound[index], `${table}.project_id`).toBe('camp_1');
+        }
+      }
+    });
+
+    it('binds the tenant default project when the manifest has no project block', async () => {
+      await post({ ...happyManifest, project: undefined });
+      const products = findBatchWith(env.DB, 'INSERT INTO pos_products');
+      expect(products[0].bound[PROJECT_BIND.pos_products]).toBe('camp_1');
+      const cats = findBatchWith(env.DB, 'INSERT INTO meal_categories');
+      expect(cats[0].bound[PROJECT_BIND.meal_categories]).toBe('camp_1');
+    });
+
+    it('binds NULL — never throws — when no project is resolvable', async () => {
+      // happyPathQuery reports one live project; an empty result means the
+      // tenant has none, and with no `project` block in the manifest neither
+      // DEFECT-3 nor the tenant-default fallback can resolve one.
+      env.DB = makeDb({
+        query: (sql) => {
+          if (sql.includes('SELECT id FROM projects WHERE tenant_id')) return { results: [] };
+          return happyPathQuery(sql);
+        },
+      });
+      const res = await post({ ...happyManifest, project: undefined });
+      expect(res.status).toBe(200);
+      const products = findBatchWith(env.DB, 'INSERT INTO pos_products');
+      expect(products[0].sql).toContain('project_id');
+      expect(products[0].bound[PROJECT_BIND.pos_products]).toBeNull();
+      const cats = findBatchWith(env.DB, 'INSERT INTO meal_categories');
+      expect(cats[0].bound[PROJECT_BIND.meal_categories]).toBeNull();
+    });
+  });
+
   describe('base64 image resolution', () => {
     it('uploads a data-URI logo to R2 and stores the /api/media/ URL', async () => {
       const base64 = Buffer.from('fakepngbytes').toString('base64');
