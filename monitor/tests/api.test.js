@@ -5,6 +5,7 @@ import {
   getBearerToken,
   isAuthorizedToken,
   checkReportRateLimit,
+  clearPublicCache,
   REPORT_RATE_LIMIT,
 } from '../src/index.js';
 import { TARGETS } from '../src/targets.js';
@@ -195,6 +196,10 @@ function postReport(path, { token = REPORT_TOKEN, body = { message: 'help' }, ip
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
+  // The 20s public read cache lives on globalThis (per-isolate in production).
+  // Every test builds its own D1 stub, so a leftover entry would leak one
+  // test's rows into the next — clear it around every test.
+  clearPublicCache();
 });
 
 describe('constant-time token helpers', () => {

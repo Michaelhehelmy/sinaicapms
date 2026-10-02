@@ -18,7 +18,14 @@ Worker name: `campmaster-monitor` · entry `src/index.js` · route
   otherwise bookkeeping only (`alert_state` table).
 - **Public status API**: `GET /api/status` (overall ok/degraded/down +
   per-target up/last_status/last_response_ms/uptime_24h/last_error),
-  `GET /api/history?target=<name>&hours=<1–168, default 24>`.
+  `GET /api/history?target=<name>&hours=<1–168, default 24>`. Both are served
+  through a **20s in-memory TTL cache** (`withPublicCache` in `src/index.js`):
+  `/api/status` is one entry, `/api/history` is keyed by `target|hours`. The TTL
+  is shorter than the 5-minute cron, so the cache only collapses duplicate reads
+  and can never serve data older than one probe cycle. It is per-isolate and
+  **best-effort** (a cold isolate just queries), never KV — a write per public
+  read would burn the free plan's 1,000 writes/day quota. Failed queries are
+  never cached; the next request retries D1.
 - **Intake API**: `POST /report/error` + `POST /report/feedback` (Bearer
   `REPORT_TOKEN`, 60/min per-IP limit, 201 `{id, kind, status: "new"}`).
 - **Operator**: `POST /internal/check` (session cookie from 6-digit PIN
@@ -27,6 +34,8 @@ Worker name: `campmaster-monitor` · entry `src/index.js` · route
   sign in at `GET /login` with `DASHBOARD_PIN` (6 digits, on-screen keypad); dark mobile
   dashboard with status pill, per-target cards, sparklines, last-20 checks
   and last-20 reports, plus a Log out button posting to `POST /logout`).
+  The dashboard's client JS polls `/api/status` + `/api/history` every **60s**
+  (was 30s); "Check Now" re-runs the same refresh immediately.
   The old `?token=` bookmark is deleted — query tokens never authenticate.
 - **Schema** (`migrations/0001_init.sql`, D1 `campmaster-monitor-db`):
   `checks`, `reports`, `alert_state`.

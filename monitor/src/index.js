@@ -72,41 +72,110 @@ export async function runProbeCycle(env, fetchFn = fetch) {
   return settled;
 }
 
+// --- Public read cache (in-memory, 20s TTL) ---
+//
+// PERFORMANCE (2026-09-30): the dashboard polls /api/status once plus
+// /api/history once per card on every refresh, and each poll re-ran the same
+// D1 aggregates. Even on the 60s interval that is 1 + N reads per viewer per
+// minute, multiplied by however many dashboards are open. A short TTL collapses
+// every read inside one window onto a single D1 query and takes that fan-out
+// back out of the picture.
+//
+// 20s is deliberately shorter than the 5-minute probe cron, so the cache can
+// never serve data older than one full probe run — it only absorbs duplicate
+// reads and bursty multi-viewer traffic, it does not change what the dashboard
+// shows.
+//
+// Best-effort by design, and deliberately NOT KV: per-isolate Map on
+// globalThis, so a cold isolate simply queries (same trade-off as the report
+// rate limiter above). A KV write per public read would burn the free plan's
+// 1,000 writes/day quota, which is exactly the outage documented in AGENTS.md.
+//
+// Errors are NEVER cached: `producer` throws → nothing is stored, so the next
+// request retries D1 rather than pinning a transient failure for 20s.
+export const PUBLIC_CACHE_TTL_MS = 20_000;
+
+// Bound on the history fan-out (N targets * 3 window sizes); a dashboard that
+// asks for more still gets correct answers, just from D1.
+const PUBLIC_CACHE_MAX_ENTRIES = 256;
+
+function publicCacheStore() {
+  if (!globalThis.__monitorPublicCache) globalThis.__monitorPublicCache = new Map();
+  return globalThis.__monitorPublicCache;
+}
+
+// Drop every cached public read. Exported so tests can isolate themselves (each
+// test builds its own D1 stub) and so a deploy can never inherit a stale entry
+// from a recycled isolate.
+export function clearPublicCache() {
+  publicCacheStore().clear();
+}
+
+// Read-through cache. `key` is 'status' or `history:<target>|<hours>`.
+// Returns the cached payload when it is younger than TTL, otherwise awaits
+// `producer()` and stores the resolved value. Entries older than the TTL are
+// never returned (and are dropped on the next write).
+export async function withPublicCache(key, producer, now = Date.now()) {
+  const store = publicCacheStore();
+  const hit = store.get(key);
+  if (hit && now - hit.at < PUBLIC_CACHE_TTL_MS) return hit.value;
+
+  // Throws propagate to the route (500) with nothing written to the store.
+  const value = await producer();
+
+  if (store.size >= PUBLIC_CACHE_MAX_ENTRIES) {
+    for (const [k, entry] of store) {
+      if (now - entry.at >= PUBLIC_CACHE_TTL_MS) store.delete(k);
+    }
+    while (store.size >= PUBLIC_CACHE_MAX_ENTRIES) {
+      store.delete(store.keys().next().value);
+    }
+  }
+  store.set(key, { value, at: now });
+  return value;
+}
+
 // Public aggregate status across all targets.
 app.get('/api/status', async (c) => {
-  const latest = await db.getLatestPerTarget(c.env.DB);
-  const byTarget = new Map(latest.map((row) => [row.target, row]));
-  const lastCheck = await db.getLastCheckTime(c.env.DB);
-  const since = new Date(Date.now() - 24 * 3600 * 1000)
-    .toISOString()
-    .slice(0, 19)
-    .replace('T', ' ');
+  // Cache the finished payload, not the per-target query results: one entry for
+  // the whole aggregate, so concurrent viewers share a single D1 read.
+  const payload = await withPublicCache('status', async () => {
+    const latest = await db.getLatestPerTarget(c.env.DB);
+    const byTarget = new Map(latest.map((row) => [row.target, row]));
+    const lastCheck = await db.getLastCheckTime(c.env.DB);
+    const since = new Date(Date.now() - 24 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 19)
+      .replace('T', ' ');
 
-  const targets = [];
-  for (const t of TARGETS) {
-    const row = byTarget.get(t.name) ?? null;
-    targets.push({
-      name: t.name,
-      url: t.url,
-      up: row ? row.ok === 1 : false,
-      last_status: row?.status_code ?? null,
-      last_response_ms: row?.response_ms ?? null,
-      uptime_24h: await db.getUptimeSince(c.env.DB, t.name, since),
-      last_error: row?.error_message ?? null,
-    });
-  }
+    const targets = [];
+    for (const t of TARGETS) {
+      const row = byTarget.get(t.name) ?? null;
+      targets.push({
+        name: t.name,
+        url: t.url,
+        up: row ? row.ok === 1 : false,
+        last_status: row?.status_code ?? null,
+        last_response_ms: row?.response_ms ?? null,
+        uptime_24h: await db.getUptimeSince(c.env.DB, t.name, since),
+        last_error: row?.error_message ?? null,
+      });
+    }
 
-  const upCount = targets.filter((t) => t.up).length;
-  const overall = upCount === targets.length ? 'ok' : upCount === 0 ? 'down' : 'degraded';
-  return c.json({
-    overall,
-    checked_at: db.toIso(lastCheck),
-    targets,
+    const upCount = targets.filter((t) => t.up).length;
+    const overall = upCount === targets.length ? 'ok' : upCount === 0 ? 'down' : 'degraded';
+    return {
+      overall,
+      checked_at: db.toIso(lastCheck),
+      targets,
+    };
   });
+  return c.json(payload);
 });
 
 // Public per-target history. `target` is required; hours defaults to 24 (max 168).
 app.get('/api/history', async (c) => {
+  // Validate BEFORE the cache so a 400 is never stored under any key.
   const target = c.req.query('target');
   if (!target) return c.json({ error: 'target query param is required' }, 400);
   if (!TARGETS.some((t) => t.name === target)) return c.json({ error: 'unknown target' }, 400);
@@ -115,8 +184,13 @@ app.get('/api/history', async (c) => {
   if (Number.isNaN(hours)) hours = 24;
   hours = Math.min(Math.max(hours, 1), 168);
 
-  const checks = await db.getHistory(c.env.DB, target, hours, 500);
-  return c.json({ target, hours, checks });
+  // Keyed by the normalized target|hours so `/api/history?target=x&hours=07`
+  // and `?hours=7` share one entry.
+  const payload = await withPublicCache(`history:${target}|${hours}`, async () => {
+    const checks = await db.getHistory(c.env.DB, target, hours, 500);
+    return { target, hours, checks };
+  });
+  return c.json(payload);
 });
 
 // --- A.4 API + dashboard (append-only; A.3 routes/helpers above untouched) ---
@@ -420,8 +494,10 @@ async function getDashboardAggregate(env) {
 // Inline dark mobile dashboard HTML. Server-rendered: status pill, per-target
 // cards, last-20 checks + last-20 reports lists. Client JS refreshes the pill,
 // cards, and per-target sparklines from the PUBLIC /api/status + /api/history
-// endpoints every 30s (no token in the page JS); "Check Now" re-runs that same
-// refresh immediately instead of waiting for the interval.
+// endpoints every 60s (no token in the page JS); "Check Now" re-runs that same
+// refresh immediately instead of waiting for the interval. Both endpoints are
+// served from the 20s in-memory public cache, so a manual "Check Now" right
+// after a refresh is nearly free.
 function buildDashboardHtml({ overall, checked_at, targets, recentChecks, recentReports }) {
   const pillLabel = overall.toUpperCase();
   const cards = targets
@@ -571,7 +647,7 @@ async function refreshAll(){
   }
 }
 document.getElementById('check-now').addEventListener('click', refreshAll);
-setInterval(refreshAll, 30000);
+setInterval(refreshAll, 60000);
 refreshAll();
 })();
 </script>
