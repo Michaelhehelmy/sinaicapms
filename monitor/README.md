@@ -138,6 +138,15 @@ Targets live in code, not in the DB — no migration needed.
 Alert state for the new target is created automatically on the first cron
 evaluation (`alert_state` upsert).
 
+The array ships with one self-referential target — `self-check` →
+`https://status.sinaicamps.com/api/status`, `expect: 200`. It is the only
+target whose job is to watch the monitor: a Worker outage cannot deliver its
+own alert, so the `checks` row written by the run *after* the gap is the only
+durable record that it happened. `expect: 200` doubles as a standing check
+that `/api/status` stays public and unauthenticated — gate it behind the PIN
+and this target goes red instead of quietly logging you out of your own
+dashboard. Removing it is safe mechanically; you just lose that record.
+
 ## 7. Cron interval
 
 `[triggers] crons = [ "*/5 * * * *" ]` in `wrangler.toml` — the `scheduled`
