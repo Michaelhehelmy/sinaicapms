@@ -226,6 +226,37 @@ app.get('/api/history', async (c) => {
   return c.json(payload);
 });
 
+// --- Favicon ---
+//
+// INLINE BYTES, NOT AN ASSET BINDING: the monitor worker has no static assets
+// (no ASSETS binding in wrangler.toml — the dashboard HTML is a template
+// literal), so the alternative to these ~200 bytes inline is adding a Workers
+// Static Assets deployment for one icon.
+//
+// PUBLIC ON PURPOSE, like /api/status: browsers request /favicon.ico with no
+// cookies and often with no session at all, so gating it behind the PIN would
+// guarantee the 404 this route exists to remove. The bytes are the same on
+// every page and leak nothing (no host, no tenant, no probe data).
+//
+// Cache-Control is long (7 days) because the icon is immutable in practice: it
+// only changes when someone edits the constant below, and a wrong-but-cached
+// icon is a cosmetic problem, not an incident. `immutable` is deliberately NOT
+// set — the path is stable, so a browser must still be willing to revalidate
+// after a redeploy that actually changed the artwork.
+const FAVICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+  '<rect width="32" height="32" rx="7" fill="#0f172a"/>' +
+  '<path d="M4 17h5l3-8 5 14 3-6h8" fill="none" stroke="#38bdf8" stroke-width="2.5" ' +
+  'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+export const FAVICON_CACHE_CONTROL = 'public, max-age=604800';
+
+app.get('/favicon.ico', (c) => {
+  c.header('Content-Type', 'image/svg+xml; charset=utf-8');
+  c.header('Cache-Control', FAVICON_CACHE_CONTROL);
+  return c.body(FAVICON_SVG, 200);
+});
+
 // --- A.4 API + dashboard (append-only; A.3 routes/helpers above untouched) ---
 
 // Constant-time string compare over UTF-8 bytes (length folded into the diff
@@ -339,6 +370,7 @@ function buildLoginHtml() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — SinaiCamps Status</title>
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}
@@ -394,6 +426,7 @@ function buildUnconfiguredHtml() {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
 <title>Dashboard not configured</title></head>
 <body style="background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif">
 <div style="max-width:28rem;margin:4rem auto;padding:1rem">
@@ -574,6 +607,7 @@ function buildDashboardHtml({ overall, checked_at, targets, recentChecks, recent
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SinaiCamps Status</title>
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}

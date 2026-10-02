@@ -6,8 +6,10 @@ import {
   isAuthorizedToken,
   checkReportRateLimit,
   clearPublicCache,
+  FAVICON_CACHE_CONTROL,
   REPORT_RATE_LIMIT,
 } from '../src/index.js';
+import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
 
 // In-memory D1 stand-in covering every SQL shape used by db.js
@@ -315,6 +317,53 @@ describe('GET /api/history (public, target required)', () => {
     expect(body.hours).toBe(24);
     expect(body.checks).toHaveLength(2);
     expect(body.checks[0].checked_at).toContain('T');
+  });
+});
+
+describe('GET /favicon.ico (public, inline bytes)', () => {
+  it('200 with an svg body and a long-lived Cache-Control', async () => {
+    const env = envFor(new FakeDb());
+    const res = await app.request('/favicon.ico', {}, env);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('image/svg+xml');
+    expect(res.headers.get('cache-control')).toBe(FAVICON_CACHE_CONTROL);
+
+    // The bytes are the icon itself, not an HTML error page or a redirect.
+    const body = await res.text();
+    expect(body.startsWith('<svg')).toBe(true);
+    expect(body).toContain('</svg>');
+    // Tiny and inline: no asset binding, no base64 payload.
+    expect(body.length).toBeLessThan(1024);
+    expect(body).not.toContain('data:image');
+  });
+
+  it('is public: no PIN configured, no session cookie, no D1', async () => {
+    // An unconfigured dashboard (no DASHBOARD_PIN) still answers the icon, and
+    // answers it with zero D1 work -- browsers ask for it with no cookies.
+    const res = await app.request('/favicon.ico', {}, { DB: new FakeDb() });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('location')).toBeNull();
+    expect(await res.text()).toContain('<svg');
+  });
+
+  it('every rendered page declares it, so no page keeps the generic 404 icon', async () => {
+    const env = envFor(new FakeDb());
+
+    // Unconfigured page.
+    const unconfigured = await app.request('/', {}, { DB: new FakeDb() });
+    expect(unconfigured.status).toBe(500);
+    expect(await unconfigured.text()).toContain('rel="icon" href="/favicon.ico"');
+
+    // Login page.
+    const login = await app.request('/login', {}, env);
+    expect(login.status).toBe(200);
+    expect(await login.text()).toContain('rel="icon" href="/favicon.ico"');
+
+    // Dashboard, behind a real session cookie.
+    const value = await signSession(env.DASHBOARD_PIN, Date.now());
+    const dash = await app.request('/', { headers: { cookie: `${SESSION_COOKIE}=${value}` } }, env);
+    expect(dash.status).toBe(200);
+    expect(await dash.text()).toContain('rel="icon" href="/favicon.ico"');
   });
 });
 
