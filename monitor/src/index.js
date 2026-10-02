@@ -647,7 +647,24 @@ async function refreshAll(){
   }
 }
 document.getElementById('check-now').addEventListener('click', refreshAll);
-setInterval(refreshAll, 60000);
+// VISIBILITY-AWARE TIMER: a backgrounded tab still has its setInterval
+// running (browsers only throttle it to ~1/min, they do not stop it), so every
+// hidden dashboard kept hitting /api/status + N × /api/history for data nobody
+// is looking at. The interval is stopped while document.hidden and restarted on
+// visibilitychange, with one immediate refresh on return — a tab left open
+// overnight must show current numbers, not whatever it last rendered before the
+// tab was backgrounded. "Check Now" is unaffected: it is a user gesture, so it
+// refreshes even while hidden.
+var REFRESH_MS = 60000;
+var timer = null;
+function stopTimer(){ if (timer !== null) { clearInterval(timer); timer = null; } }
+function startTimer(){ if (timer === null) timer = setInterval(refreshAll, REFRESH_MS); }
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) { stopTimer(); return; }
+  startTimer();
+  refreshAll();
+});
+if (document.hidden) stopTimer(); else startTimer();
 refreshAll();
 })();
 </script>

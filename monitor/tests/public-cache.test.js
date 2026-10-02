@@ -372,7 +372,7 @@ describe('withPublicCache / clearPublicCache', () => {
 });
 
 describe('dashboard refresh interval', () => {
-  it('polls every 60s, not 30s', async () => {
+  it('polls every 60s, not 30s, and pauses while the tab is hidden', async () => {
     const db = new SpyDb();
     for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
     const env = envFor(db);
@@ -383,7 +383,12 @@ describe('dashboard refresh interval', () => {
 
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('setInterval(refreshAll, 60000)');
-    expect(html).not.toContain('setInterval(refreshAll, 30000)');
+    expect(html).toContain('var REFRESH_MS = 60000;');
+    expect(html).toContain('setInterval(refreshAll, REFRESH_MS)');
+    expect(html).not.toContain('30000');
+    // Visibility-aware: the interval is torn down on hide and re-armed on return.
+    expect(html).toContain("document.addEventListener('visibilitychange'");
+    expect(html).toContain('if (document.hidden) { stopTimer(); return; }');
+    expect(html).toContain('if (document.hidden) stopTimer(); else startTimer();');
   });
 });
