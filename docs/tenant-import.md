@@ -2,8 +2,9 @@
 
 `POST /api/tenants/import` provisions or fills a tenant from a single JSON
 manifest: branding, products, rooms, rate plans, menu, and POS users.
-Line references below point at `backend/src/api/tenant-import.js` (987 lines)
-unless noted. Provenance for each claim:
+Line references below point at `backend/src/api/tenant-import.js` (**1004
+lines**, re-read 2026-10-02 after migration 0127 landed) unless noted.
+Provenance for each claim:
 
 - **Handler** — `backend/src/api/tenant-import.js`, re-read 2026-10-02. The
   behavioural audits it is checked against are
@@ -20,7 +21,26 @@ unless noted. Provenance for each claim:
   audit it came from.
 - **Live behaviour** — the edge matrix re-ran the real route against a fresh
   local D1 at migration head 0126 and measured 7/7; its step table is quoted
-  in §7.
+  in §7. **0127 has since landed in the handler but is PENDING-APPLY** — see
+  the callout below.
+
+> ### ⚠️ 0127 is committed but NOT applied to any database
+>
+> `backend/migrations/0127_meals_tenant_composite_pk.sql` re-keys `meals` by
+> `(tenant_id, id)` and rebuilds `meal_lang` and `meal_schedules` to match. The
+> handler's **code half is already merged**, which means the two halves are
+> deployed on different schedules:
+>
+> - Before 0127 is applied, `meals.id` is still the global PK, so the
+>   tenant-scoped probe in §2's probe table finds nothing across tenants and a
+>   foreign meal id still hits the raw PK collision → generic 409.
+> - Every `meal_lang` INSERT now binds `tenant_id` (:707) — against a
+>   pre-0127 database that column does not exist.
+>
+> **Apply the migration before deploying the code**, and read the *applied
+> ledger* (`wrangler d1 migrations list --config backend/wrangler.toml
+> `--remote`), not the file count. Owner-only; `docs/RUNBOOK.md` §8 is the
+> drift gate.
 
 Wire rule: send **camelCase** (`logoUrl`, `basePrice`, `pricePerNight`,
 `mealCategoryId`, `firstName`, `productName`, `categoryName`, …). The route
@@ -180,7 +200,7 @@ Field census: `identity` 8 · `tenant` 20 · `project` 5 · `products` 12 ·
 | ratePlans | isActive | number | no | 1 | — |
 | menu.categories | name | string min 1 | yes | — | → `meal_categories` + `meal_categories_lang` (`lang='en'`); keys the categoryName→id map |
 | menu.categories | position | number | no | handler `\|\| 0` | — |
-| menu.meals | id | string | no | `meal_`+uuid12 | → `meals` + `meal_lang` (`lang='en'`) |
+| menu.meals | id | string | no | `meal_`+uuid12 (`generateMealId`) | → `meals` + `meal_lang` (`lang='en'`). **Reusable across tenants since 0127** (`meals` is keyed `(tenant_id, id)`); a same-tenant duplicate still 409s |
 | menu.meals | name | string min 1 | yes | — | — |
 | menu.meals | mealCategoryId | string | no | — | used verbatim, **no existence check** (blind — dangling id can 500, A.2 K4) |
 | menu.meals | categoryName | string | no | — | resolved against this manifest's `menu.categories[].name` **plus the categories the tenant already owns**; **unresolvable → 400 before any row is written** (symmetric with rooms/ratePlans) |
@@ -237,26 +257,37 @@ non-deleted project (:414–417): with 0 or 2+ projects, products import with
 
 Both reference probes interpolate their `IN (…)` list, so both are exposed to
 D1's **100 bound parameters per query** ceiling
-(`too many SQL variables at offset N`). They are not equal:
+(`too many SQL variables at offset N`). Both are chunked at **50 ids per
+statement**, and both `SET`-de-duplicate first so a manifest repeating an id
+does not spend binds twice:
 
-| Probe | Placeholder | Binds | Chunked? |
+| Probe | Placeholder | Binds per statement | Chunked? |
 |---|---|---|---|
-| `campId` resolvability (:273–302) | the **distinct** `campId` values across every section that accepts one | 50 ids + `tenant_id` = **51** per statement | **yes**, `for (i += 50)` — 200 products is the array cap, so a single `IN (…)` would have traded the clean 400 for an opaque 500 on a large manifest |
-| explicit `menu.meals[].id` ownership (:653–669) | every explicit meal id, **no de-duplication** | up to **200** | **no** — a manifest with >100 explicit meal ids carries a latent >100-bind exposure |
+| `campId` resolvability (:275–304) | the **distinct** `campId` values across every section that accepts one | 50 ids + `tenant_id` = **51** | yes, `for (i += 50)` — `products[]` caps at 200, so a single `IN (…)` would have traded the clean 400 for an opaque 500 on a large manifest |
+| explicit `menu.meals[].id` ownership (:668–684) | the **distinct** explicit meal ids | 50 ids + `tenant_id` = **51** | yes — `menu.meals` caps at 200, so a manifest authoring an id on every meal binds 201 values in one query |
 
-The second row is a **known latent limit, not a fixed defect**: the chunking
-was deliberately confined to the mission that owned the `campId` pre-flight,
-because changing the meal probe's behavior belongs to the meal-id mission.
-Note also that the two probes answer different codes on purpose — an id owned
-by another tenant is a **400** (`already belongs to another tenant`, remove the
-id), the same id twice in one tenant is a **409** (`already exists in this
-tenant`).
+> The second row **used to be un-chunked and un-deduplicated** (up to 200
+> binds), which was documented as a known latent exposure. Migration 0127 closed
+> both while reshaping the probe's scope — see below.
 
-`products[].id` gets **no** probe at all: a manifest shipping another tenant's
-explicit product id still falls through to the generic 409 (`One or more
-products already exist (duplicate SKU or ID)`). `meals.id` is the only
-identifier the handler probes, because it is the only one whose primary key is
-global *and* named in a clear error.
+The two probes also differ in **scope**, and 0127 is why:
+
+| | before 0127 | after 0127 |
+|---|---|---|
+| `meals.id` keying | global `id TEXT PRIMARY KEY` | `PRIMARY KEY (tenant_id, id)` |
+| explicit meal id owned by **another** tenant | `400` `already belongs to another tenant — remove the explicit meal id…` | **legal** — the same manifest may now load its meal ids into a second tenant, which is what parity finding D3 asked for |
+| explicit meal id owned by **this** tenant | `409 already exists in this tenant (duplicate id …)` | `409`, same message |
+| probe WHERE clause | `WHERE id IN (…)` (all tenants) | `WHERE tenant_id = ? AND id IN (…)` |
+
+The probe is tenant-scoped **on purpose**: asking "who owns this id" across all
+tenants would both re-introduce the cross-tenant collision 0127 removed **and**
+leak another tenant's existence through a 4xx.
+
+`products[].id` still gets **no** probe at all: a manifest shipping another
+tenant's explicit product id still falls through to the generic 409
+(`One or more products already exist (duplicate SKU or ID)`), because
+`pos_products.id` is still the global text primary key. That is the remaining
+half of parity D3.
 
 ## 3. Tenant-type matrix (A.3 — handler-verified, never assumed)
 
@@ -419,7 +450,8 @@ the current handler + exporter, not against A.6:
 | `rooms[].roomStatus` / `cleaningStatus` | **still not emitted** — the exporter only *counts* them into its lost-fields report | accepted + bound + persisted | ⚠️ **half-closed**: the import leg is fixed (they survive a hand-written or API-sourced manifest), but the exporter still drops them, so a full `export → import` cycle loses them. The import no longer "drops them" — the *exporter* does. |
 | `menu.categories[]` rows with no lang name | skipped with a warning | `name` is required | ❌ **drops by necessity** — `GET /api/meal-categories` returns `name: null` for legacy rows lacking `meal_categories_lang`, and there is nothing to import |
 | `project.type` | not emitted | accepted + bound | ⚠️ **exporter gap** — the import leg works; the exporter simply does not read `project_type` |
-| `products[].id`, `menu.meals[].id`, `rooms[].id`, `ratePlans[].id` | emitted verbatim | `meals[].id` is probed (400 cross-tenant / 409 same-tenant); the other three are not | ❌ **strip them for a cross-tenant copy** — these are global keys. Only `meals[].id` has a probe; a foreign `products[].id` still answers the generic 409. |
+| `menu.meals[].id` | emitted verbatim | probed, and **tenant-scoped** since 0127 — a same-tenant duplicate 409s, a foreign one is accepted | ✅ **reusable across tenants**; strip only for a **same**-tenant re-import |
+| `products[].id`, `rooms[].id`, `ratePlans[].id` | emitted verbatim | no probe at all | ❌ **still strip them for a cross-tenant copy** — these are global text primary keys. A foreign `products[].id` answers the generic 409 (`One or more products already exist (duplicate SKU or ID)`). |
 
 Known stale text (reported, not fixed here — the exporter is outside this
 document's scope): the `KNOWN LOSSES` header in
@@ -459,14 +491,15 @@ Status codes: 200 fill-mode import (`{ success, tenantId, counts }` with
 `counts = { products, rooms, ratePlans, mealCategories, meals, posUsers }`
 — the wire is camelCase because `jsonResponse` deep-converts via `toCamel`)
 · 201 create-mode (`{ …200, created }`) · 400 Zod / unknown `productName` /
-unknown `campId` / unknown `categoryName` / an explicit `meals[].id` owned by
-another tenant / bad-or-taken subdomain / taken admin email · 401 no tenant
+unknown `campId` / unknown `categoryName` / bad-or-taken subdomain / taken
+admin email · 401 no tenant
 context in fill mode · 403 truthy `identity` from a non-super-admin (only when
 the identity block itself is valid — else 400, §1) · 404 per-room/per-plan
 guard miss (no matching tenant camp/product) · 409 POS-org missing (only when
 `ensureTenantOrg` returns falsy — it auto-creates org+store+mapping with
 `INSERT OR IGNORE` in both modes, A.2 U10), or duplicate SKU/ID/email/username,
-or a same-tenant duplicate explicit `meals[].id` · 405 non-POST
+or a **same-tenant** duplicate explicit `meals[].id` (an explicit meal id
+owned by *another* tenant is legal again since 0127 — it is no longer a 400) · 405 non-POST
 (`Method not allowed`) · 500 thrown non-UNIQUE DB errors
 (`Failed to create products…` / `Failed to create POS users…`, else generic
 `Failed to import tenant data`) **plus the two atomicity messages** —
@@ -490,7 +523,12 @@ Measured live (edge matrix, 7/7, fresh local D1 at head 0126):
 | unresolvable meal `categoryName` | create | **400**, 0 product rows written |
 | unresolvable product `campId` | create | **400**, 0 product rows written |
 | tenant B handed tenant A's SKUs **and** POS emails/usernames verbatim | create | **201**, every count matches — the same catalogue + staff set genuinely loads into two tenants |
-| tenant B handed tenant A's explicit `products[].id` | create | **409** (see §6 — ids were *not* re-scoped) |
+| tenant B handed tenant A's explicit `products[].id` | create | **409** (see §6 — `pos_products.id` was *not* re-scoped) |
+
+The last two rows are the measured state **before** 0127; 0127 re-scoped
+`meals` only, which is why the meal half of that finding is now closed and the
+product half is not. The measured `meal_id`-crosses-tenants case now imports
+**201**, where the same manifest answered 400 before.
 
 Top-10 mistakes (every item handler-verified):
 

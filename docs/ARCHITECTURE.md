@@ -2,7 +2,13 @@
 
 > This document describes the **current** architecture. If it disagrees with prose elsewhere in the repo, trust this file (it is verified against code) and update the other prose.
 >
-> Verified against `8193650` on 2026-10-02. Where a number can rot (§7 test counts, §5 migration head), it is stated **with the commit that produced it** and with the rule for re-deriving it — so a stale number is visible rather than authoritative.
+> Verified against `dbcb382` on 2026-10-02. Where a number can rot (§7 test counts, §5 migration head), it is stated **with the commit that produced it** and with the rule for re-deriving it — so a stale number is visible rather than authoritative.
+
+> **File head ≠ applied ledger.** `0127_meals_tenant_composite_pk.sql` is
+> committed and its code half is merged, but the migration is **PENDING-APPLY**
+> on every database. A migration that re-keys a table and the code written
+> against its new column list are two halves that must be ordered, and the
+> wrong order fails at runtime rather than at boot.
 
 ## 1. The four-layer contract
 
@@ -72,10 +78,10 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 ## 5. Database & migrations
 
-- **D1 (SQLite)** — schema lives in `backend/migrations/`. At `8193650` that is
-  **39 top-level `.sql` files**, head
-  `0126_tenant_scoped_unique_sku_email.sql`. It is *not* a contiguous range:
-  `0001`–`0014`, then `0100`–`0126`.
+- **D1 (SQLite)** — schema lives in `backend/migrations/`. At `dbcb382` that is
+  **40 top-level `.sql` files**, head
+  `0127_meals_tenant_composite_pk.sql`. It is *not* a contiguous range:
+  `0001`–`0014`, then `0100`–`0127`.
 - **The head is "the highest-numbered file present", not "N files after 0001".**
   Two slots are deliberately absent and D1 does not require contiguity:
   `0109` is **reserved-but-absent** (documented in `0110`'s header — the slot
