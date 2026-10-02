@@ -134,10 +134,30 @@ class FakeDb {
       const fails = this.attempts.filter((r) => r.ip === ip && r.success === 0).length;
       return [{ fail_count: fails }];
     }
+    if (sql.includes('UNION ALL') && sql.includes('ORDER BY id DESC LIMIT 1')) {
+      // getLatestPerTarget: one branch per configured target, each a bounded
+      // `WHERE target = ? ORDER BY id DESC LIMIT 1` probe.
+      const rows = [];
+      for (const target of args) {
+        const newest = this.checks.filter((r) => r.target === target).pop();
+        if (newest) {
+          rows.push({
+            target: newest.target,
+            status_code: newest.status_code,
+            ok: newest.ok,
+            response_ms: newest.response_ms,
+            error_message: newest.error_message,
+            checked_at: newest.checked_at,
+          });
+        }
+      }
+      return rows;
+    }
     if (sql.includes('SELECT MAX(id)')) {
-      const newest = new Map();
-      for (const r of this.checks) newest.set(r.target, r);
-      return [...newest.values()];
+      throw new Error(
+        'FakeDb.all: legacy `SELECT MAX(id) ... GROUP BY target` last-per-target shape is gone; ' +
+          'getLatestPerTarget must use the per-target UNION ALL probe.',
+      );
     }
     if (sql.includes('SELECT MAX(checked_at)')) {
       const max = this.checks.reduce((m, r) => (!m || r.checked_at > m ? r.checked_at : m), null);

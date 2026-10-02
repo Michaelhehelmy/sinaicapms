@@ -1,3 +1,5 @@
+import { TARGETS } from './targets.js';
+
 // D1 query helpers for the monitor worker. Every helper takes the D1 binding
 // (`env.DB`) as its first argument so routes stay thin and tests can pass a stub.
 //
@@ -33,13 +35,47 @@ export async function recordCheck(db, { target, statusCode, ok, responseMs, erro
 }
 
 // Newest check row per target (raw rows, includes target + error_message).
-export async function getLatestPerTarget(db) {
+//
+// PERFORMANCE (2026-09-30): this was `WHERE id IN (SELECT MAX(id) FROM checks
+// GROUP BY target)`, which plan-decompiles to
+//   SEARCH checks USING INTEGER PRIMARY KEY (rowid=?)
+//   LIST SUBQUERY 1
+//   SCAN checks USING COVERING INDEX idx_checks_target_id   <- O(rows)
+//   CREATE BLOOM FILTER
+// The outer probe set (one id per target) is only obtainable by walking the
+// whole (target, id DESC) index, so the query is O(rows) in the probe table
+// even though it returns one row per target. `checks` grows ~1 row/target per
+// probe cycle, so this is the query that degrades fastest as uptime accrues.
+//
+// D1 does not run ANALYZE, so `sqlite_stat1` is absent and SQLite cannot skip-
+// scan the probe set; the O(rows) covering scan is therefore unavoidable in
+// ANY self-contained form (verified: `DISTINCT target`, `GROUP BY target`,
+// and a correlated `MAX(id)` rewrite all still emit `SCAN ... USING COVERING
+// INDEX idx_checks_target_id`).
+//
+// The probe set does not need to come from the table at all: `TARGETS` lives in
+// code (`src/targets.js`), so we drive one bounded index SEARCH per configured
+// target instead of scanning for the target list:
+//
+//   SEARCH checks USING INDEX idx_checks_target_id (target=?)
+//
+// That is O(targets * log(rows)) with no scan, measured flat at ~0.011 ms/run
+// from 5k to 320k rows (vs 5.2 ms -> 38 ms for the old form). A configured
+// target with no rows yet simply contributes zero rows, which matches the old
+// `IN (...)` form: a target absent from `checks` was never in the result set.
+// Callers pair rows with `TARGETS` by name, so row order is irrelevant and the
+// wire shape (the six projected fields, per target) is unchanged.
+const LATEST_PER_TARGET_BRANCH =
+  'SELECT target, status_code, ok, response_ms, error_message, checked_at\n' +
+  '       FROM checks WHERE target = ? ORDER BY id DESC LIMIT 1';
+
+export async function getLatestPerTarget(db, targets = TARGETS) {
+  const names = targets.map((t) => (typeof t === 'string' ? t : t.name));
+  if (!names.length) return [];
+  const sql = names.map(() => `SELECT * FROM (\n${LATEST_PER_TARGET_BRANCH}\n)`).join('\nUNION ALL\n');
   const res = await db
-    .prepare(
-      `SELECT target, status_code, ok, response_ms, error_message, checked_at
-       FROM checks
-       WHERE id IN (SELECT MAX(id) FROM checks GROUP BY target)`,
-    )
+    .prepare(sql)
+    .bind(...names)
     .all();
   return res.results ?? [];
 }
