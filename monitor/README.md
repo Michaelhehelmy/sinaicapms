@@ -16,6 +16,15 @@ Worker name: `campmaster-monitor` · entry `src/index.js` · route
 - **Alerting**: last 3 checks all fail + not already alerting → `down`
   webhook; last 3 checks all ok + currently alerting → `recovery` webhook;
   otherwise bookkeeping only (`alert_state` table).
+- **Retention** (`runRetention` in `src/index.js`, at the end of every cron
+  run): deletes `checks` rows older than **14 days**, `reports` older than
+  **30 days**, and any `alert_state` row whose target has no check inside the
+  14-day window (i.e. a target dropped from `TARGETS`). Without this the probe
+  table grows one row per target every 5 minutes forever. The 14-day floor
+  sits well above the widest window the API exposes (`/api/history` clamps
+  `hours` to 168), so retention can never blank a rendered chart. Each step is
+  **best-effort** — a failing prune is logged and skipped, never allowed to
+  fail the cron that produces the alerts.
 - **Public status API**: `GET /api/status` (overall ok/degraded/down +
   per-target up/last_status/last_response_ms/uptime_24h/last_error),
   `GET /api/history?target=<name>&hours=<1–168, default 24>`. Both are served
@@ -132,7 +141,8 @@ evaluation (`alert_state` upsert).
 ## 7. Cron interval
 
 `[triggers] crons = [ "*/5 * * * *" ]` in `wrangler.toml` — the `scheduled`
-handler (`runProbeCycle` → `evaluateAlerts`) runs **every 5 minutes**.
+handler (`runProbeCycle` → `evaluateAlerts` → `clearOldLoginAttempts` →
+`runRetention`) runs **every 5 minutes**.
 Change the expression and redeploy to adjust.
 
 ## 8. Telegram / Slack alerts

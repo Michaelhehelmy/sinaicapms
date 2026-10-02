@@ -233,3 +233,93 @@ export async function clearOldLoginAttempts(db) {
     .prepare(`DELETE FROM login_attempts WHERE attempted_at < datetime('now', '-1 hour')`)
     .run();
 }
+
+// --- Retention policy (unbounded-growth guard for the cron-written tables) ---
+//
+// `checks` gains one row per target every 5 minutes and nothing ever removed
+// one, so the probe table grew forever — the growth that made FIX A/B/C query
+// work necessary in the first place. Retention is the other half of that fix:
+// bound the table so the indexed reads stay cheap, instead of only making each
+// read cheaper.
+//
+// WINDOWS ARE BOUNDED BY WHAT THE DASHBOARD RENDERS, not by taste:
+//   - `/api/history` clamps `hours` to 1–168 (`src/index.js`) and uptime is a
+//     24h window, so the widest thing any reader can ask for is 7 days. A
+//     14-day floor on `checks` can therefore never blank a rendered window —
+//     there is always at least a week of headroom above the largest query.
+//   - `reports` has no time-windowed UI (the dashboard shows the newest 20 by
+//     id), so it can afford a much longer 30-day window before pruning.
+export const CHECKS_RETENTION_DAYS = 14;
+export const REPORTS_RETENTION_DAYS = 30;
+
+// Both prune windows are BOUND parameters, never interpolated SQL (same
+// pattern as `getHistory`), so the constants above are the single source of
+// truth and the statements stay injection-free by construction.
+const checksWindow = () => `-${CHECKS_RETENTION_DAYS} days`;
+
+// Delete probe rows older than the retention window.
+//
+// Plan: `SEARCH checks USING INDEX idx_checks_checked_at (checked_at<?)` —
+// this predicate depends on FIX A's SINGLE-COLUMN index. `0001_init`'s
+// `idx_checks_target_checked` cannot serve it, because `target` is
+// unconstrained here and leads that index, so the delete degrades to a full
+// table scan without `idx_checks_checked_at`.
+//
+// Strict `<`, so a row exactly at the cutoff survives; the next run re-evaluates
+// it against a moved `now`. `checks` is never truncated by a fixed LIMIT, which
+// would make the amount of work per run depend on how far behind it had fallen.
+export async function pruneOldChecks(db) {
+  return db
+    .prepare(`DELETE FROM checks WHERE checked_at < datetime('now', ?)`)
+    .bind(checksWindow())
+    .run();
+}
+
+// Delete intake reports older than the retention window. Strict `<`, same
+// boundary semantics as `pruneOldChecks`.
+//
+// Plan: `SCAN reports` — the only reports index is
+// `idx_reports_status_created (status, created_at)` and `status` is
+// unconstrained here, so this is a full scan of a small, slowly-growing
+// user-intake table (one row per submitted report, not per probe run). A
+// dedicated `created_at` index would fix the plan and is deliberately NOT
+// added: it is another write on every intake row, for a table two orders of
+// magnitude smaller than `checks`. Revisit if report volume ever grows to
+// where a 5-minute scan is measurable.
+export async function pruneOldReports(db) {
+  return db
+    .prepare(`DELETE FROM reports WHERE created_at < datetime('now', ?)`)
+    .bind(`-${REPORTS_RETENTION_DAYS} days`)
+    .run();
+}
+
+// Delete `alert_state` rows whose target has no check inside the checks
+// retention window — i.e. state for a target that is no longer probed.
+//
+// Two things make this safe to run every cron tick:
+//   - `evaluateAlerts` upserts a row for every CURRENT `TARGETS` entry BEFORE
+//     this runs, and the probe cycle has just written a fresh `checks` row for
+//     each of them, so every live target is definitionally "recently checked"
+//     and can never be pruned.
+//   - The window is the SAME 14 days `pruneOldChecks` uses, so the rule reads
+//     the table in its post-prune state: any check old enough to have been
+//     deleted cannot also vouch for an alert_state row. That keeps the two
+//     steps from disagreeing and makes the whole retention pass idempotent.
+//
+// Plan: `SCAN alert_state` + a correlated `SEARCH c USING COVERING INDEX
+// idx_checks_target_checked_desc (target=? AND checked_at>?)`. The outer scan
+// is bounded by the number of configured targets (one row per target, PRIMARY
+// KEY), not by table age, so it does not grow the way `checks` did.
+export async function pruneStaleAlertState(db) {
+  return db
+    .prepare(
+      `DELETE FROM alert_state
+       WHERE NOT EXISTS (
+         SELECT 1 FROM checks c
+         WHERE c.target = alert_state.target
+           AND c.checked_at >= datetime('now', ?)
+       )`,
+    )
+    .bind(checksWindow())
+    .run();
+}

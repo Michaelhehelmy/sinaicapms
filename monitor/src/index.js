@@ -836,15 +836,52 @@ export async function evaluateAlerts(env, probeResults, fetchFn = fetch) {
   return outcomes;
 }
 
-// Cron entry: probe every target, store the rows, then evaluate alerts,
-// then prune old login_attempts rows (keeps the 5-min PIN gate table small).
+// Cron retention pass: prune probe rows, intake reports, and alert state that
+// no longer has a probed target. Called from `scheduled()` after the probe rows
+// are written and the alert transitions have been evaluated, so a live target
+// has a fresh check row by the time the stale-state rule reads the table.
+//
+// BEST-EFFORT BY DESIGN, one try/catch PER STEP — the same posture as
+// `sendAlert()` (which returns `{skipped:true}` instead of throwing for a dead
+// webhook). A maintenance problem must never escalate into a monitoring
+// outage: this same cron is what produces the alert that would REPORT a broken
+// D1, so letting a prune failure reject out of `scheduled()` would silence the
+// monitor during exactly the incident it exists to catch. Per-step rather than
+// one wrapper, so a failing step cannot skip the remaining ones.
+export async function runRetention(env) {
+  const steps = [
+    ['checks', db.pruneOldChecks],
+    ['reports', db.pruneOldReports],
+    ['alert_state', db.pruneStaleAlertState],
+  ];
+  const deleted = {};
+  for (const [name, prune] of steps) {
+    try {
+      const res = await prune(env.DB);
+      deleted[name] = res?.meta?.changes ?? null;
+    } catch (err) {
+      console.error('monitor retention step failed', name, err?.message ?? err);
+      deleted[name] = null;
+    }
+  }
+  return deleted;
+}
+
+// Cron entry: probe every target, store the rows, then evaluate alerts, then
+// prune old login_attempts rows (keeps the 5-min PIN gate table small) and the
+// retention pass (bounds `checks`/`reports`/orphaned `alert_state`).
 // Runs every 5 minutes via the [triggers] crons schedule in wrangler.toml.
-// Probe/alert/target logic above is untouched — only the cleanup DELETE
-// is added here.
+// Probe/alert/target logic above is untouched — only the cleanup DELETEs
+// are added here.
+//
+// `clearOldLoginAttempts` keeps its original unwrapped behaviour (a throw
+// there still rejects `scheduled()`); changing that failure mode is a separate
+// call from this task's retention policy, so it is left alone deliberately.
 async function scheduled(event, env, ctx) {
   const results = await runProbeCycle(env);
   await evaluateAlerts(env, results);
   await db.clearOldLoginAttempts(env.DB);
+  await runRetention(env);
 }
 
 export default { fetch: app.fetch, scheduled };
