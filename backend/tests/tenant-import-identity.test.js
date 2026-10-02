@@ -12,6 +12,8 @@
  *   M4  admin email collision          400 (and only AFTER the subdomain gate passes)
  *   M5  mid-products failure           rollback of a half-built tenant (5th product, dup SKU)
  *   M6  identity-only (no data rows)   201, shell only, counts all zero, login works
+ *   S1-S3  status preservation         a deliberate 409/404/schema-400 that lands
+ *                                      AFTER the shell survives the rollback intact
  *
  * Why a real replayed D1 rather than a statement-inspection mock: every claim
  * here is a ROW COUNT on the migrated schema, with `foreign_keys = ON`, so
@@ -23,9 +25,11 @@
  *
  * Status expectations follow the saga's own documented rule (tenant-import.js
  * route wrapper): a rejection that lands BEFORE the first write keeps its
- * precise 4xx, anything that fails after the shell exists is answered with the
- * rolled-back 500 that quotes the original reason. M2/M3/M4 are the former,
- * M5 the latter. Assertions are stated as the contract, not fitted to output.
+ * precise 4xx, anything that fails while a batch is being written is answered
+ * with the rolled-back 500 that quotes the original reason. M2/M3/M4/S1-S3 are
+ * the former (S1-S3 after the shell exists — they must survive the undo
+ * verbatim), M5 the latter. Assertions are stated as the contract, not fitted
+ * to output.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
@@ -81,13 +85,24 @@ function buildFreshDb() {
  * `batch()` is one real transaction, so it is all-or-nothing exactly like D1's
  * and the handler's `meta.changes === 0` guards read true `changes`.
  *
+ * `failOn` injects a D1-style runtime failure on the first statement whose SQL
+ * contains the fragment (the rollback suite's idiom) — S1 needs it to reach
+ * the unprovisioned-POS-org 409, whose only trigger is `ensureTenantOrg`
+ * failing to find or create an org.
+ *
  * The tape is what lets "nothing was written" be asserted PROVABLY — the row
  * counts alone cannot tell "rejected before provisioning" apart from "provisioned
  * then rolled back", and those two states deserve different answers.
  */
-function makeD1(db) {
+function makeD1(db, { failOn = null } = {}) {
   const tape = [];
   const record = (sql) => tape.push(sql.replace(/\s+/g, ' ').trim());
+  const fire = (sql, params) => {
+    if (failOn && sql.includes(failOn)) {
+      throw new Error(`D1_ERROR: injected failure on "${failOn}"`);
+    }
+    return db.prepare(sql).run(...params);
+  };
   return {
     prepare(sql) {
       return {
@@ -97,6 +112,9 @@ function makeD1(db) {
           sql, params,
           async all() {
             record(sql);
+            if (failOn && sql.includes(failOn)) {
+              throw new Error(`D1_ERROR: injected failure on "${failOn}"`);
+            }
             return { results: db.prepare(sql).all(...params) };
           },
           async first() {
@@ -105,7 +123,7 @@ function makeD1(db) {
           },
           async run() {
             record(sql);
-            return { success: true, meta: { changes: db.prepare(sql).run(...params).changes } };
+            return { success: true, meta: { changes: fire(sql, params).changes } };
           },
         }),
       };
@@ -114,7 +132,7 @@ function makeD1(db) {
       return db.transaction(() =>
         statements.map(({ sql, params }) => {
           record(sql);
-          return { success: true, meta: { changes: db.prepare(sql).run(...params).changes } };
+          return { success: true, meta: { changes: fire(sql, params).changes } };
         }),
       )();
     },
@@ -218,6 +236,8 @@ describe('tenant import — identity provisioning path (fresh local D1)', () => 
   let app;
   let superToken;
   let baseline;
+  /** Options for the next `makeD1` — the D1-failure injector (S1). */
+  let dbOptions = {};
 
   beforeEach(async () => {
     db = buildFreshDb();
@@ -228,8 +248,9 @@ describe('tenant import — identity provisioning path (fresh local D1)', () => 
       scopeOptions: IMPORT_SCOPE_OPTIONS,
     });
     superToken = await signAdminToken(SUPER_ADMIN, JWT_SECRET);
+    dbOptions = {};
     env = {
-      DB: makeD1(db),
+      DB: makeD1(db, dbOptions),
       MEDIA_BUCKET: { put: vi.fn().mockResolvedValue({}), delete: vi.fn().mockResolvedValue({}) },
       JWT_SECRET,
     };
@@ -237,6 +258,12 @@ describe('tenant import — identity provisioning path (fresh local D1)', () => 
       TRACKED_TABLES.map((t) => [t, count(`SELECT COUNT(*) AS c FROM ${t}`)]),
     );
   });
+
+  /** Rebuild the D1 adapter with new options — keeps `env.DB.tape` readable. */
+  const rebuildDb = (options) => {
+    dbOptions = options;
+    env.DB = makeD1(db, options);
+  };
 
   /** POST as super-admin with NO tenant hint (the only role identity mode accepts). */
   const post = (manifest) =>
@@ -608,5 +635,110 @@ describe('tenant import — identity provisioning path (fresh local D1)', () => 
     }
     expectNoOrphanFks();
     expect(deletes()).toEqual([]);
+  });
+
+  // ── Status preservation through the saga ───────────────────────────
+  // M2 is pre-write, so it says nothing about what happens to a rejection that
+  // lands AFTER the shell exists — and in identity mode the shell always
+  // exists by the time the data import runs. These three pin the other half of
+  // the contract: the undo replay runs in full, and the caller's own 4xx comes
+  // back unchanged instead of as `Import failed: …rolled back.`
+
+  it('S1 — keeps a deliberate 409 through the rollback: an unprovisioned POS org', async () => {
+    // The one 409 a brand-new tenant can actually reach. Every other collision
+    // is unreachable here by construction — the tenant was created seconds ago,
+    // so it owns no meal id, no SKU and no admin email to collide with — and the
+    // batch-time collisions (duplicate SKU, duplicate POS-user email) are
+    // mid-write failures that M5 pins as the rolled-back 500 on purpose. This
+    // one fires from `ensureTenantOrg` returning null, which happens when D1
+    // rejects the org INSERT, so that is what is injected.
+    rebuildDb({ failOn: 'INSERT OR IGNORE INTO pos_organizations' });
+
+    const res = await post({
+      ...fullManifest,
+      identity: identityOf({ subdomain: 'nopos', email: 'owner@nopos.test' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('Tenant is not provisioned for POS');
+    expect(body.error).not.toContain(ROLLED_BACK_MESSAGE);
+
+    // It really went THROUGH the saga: the shell was committed and then undone,
+    // in children-before-parents order, leaving no rows at all.
+    expect(insertsInto('tenants')).toHaveLength(1);
+    expect(insertsInto('admins')).toHaveLength(1);
+    expect(deletes().at(-1)).toMatch(/^DELETE FROM tenants /);
+    expectBaseline();
+    expectNoShell('nopos', 'owner@nopos.test');
+    expectNoOrphanFks();
+  });
+
+  it('S2 — keeps a guarded 404 through the rollback: a room whose product the tenant guard rejects', async () => {
+    // The rooms INSERT…SELECT carries `EXISTS (SELECT 1 FROM pos_products p
+    // WHERE p.id = ? AND p.tenant_id = c3.tenant_id)`, so naming a product the
+    // new tenant does not own matches zero rows. Products/branding were already
+    // committed by then, so this is the shape the saga exists for — but it is a
+    // deliberate rejection (the guard declined the write), so the caller keeps
+    // the 404 that names the room.
+    const manifest = {
+      ...fullManifest,
+      identity: identityOf({ subdomain: 'roomguard', email: 'owner@roomguard.test' }),
+      rooms: [
+        { id: 'room_guard_1', name: 'Guarded Room', productId: 'prod_owned_by_somebody_else', maxGuests: 2 },
+      ],
+    };
+
+    const res = await post(manifest);
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe(
+      'Room "Guarded Room" failed: camp or product not found for this tenant',
+    );
+    expect(body.error).not.toContain(ROLLED_BACK_MESSAGE);
+
+    // Products really were written before the guard fired — the 404 is not
+    // another pre-write rejection wearing a rollback's clothes.
+    expect(ran('INSERT INTO pos_products')).toBe(true);
+    expect(insertsInto('tenants')).toHaveLength(1);
+    expect(deletes().at(-1)).toMatch(/^DELETE FROM tenants /);
+    expectBaseline();
+    expectNoShell('roomguard', 'owner@roomguard.test');
+    expectNoOrphanFks();
+  });
+
+  it('S3 — keeps the manifest-schema 400 through the rollback', async () => {
+    // The manifest schema is parsed INSIDE importTenantManifest, i.e. after the
+    // shell exists, so this 400 reaches the saga with a non-empty undo log —
+    // exactly the path that used to answer 500 `Import failed: base price must
+    // be at least 0.. All partial data has been rolled back.` (doubled period
+    // included). The structured `errors` array has to survive it too, or a
+    // caller cannot tell WHICH field to fix.
+    const manifest = {
+      ...fullManifest,
+      identity: identityOf({ subdomain: 'schemabad', email: 'owner@schemabad.test' }),
+      products: [{ name: 'Impossible Tent', basePrice: -5 }],
+    };
+
+    const res = await post(manifest);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('base price must be at least 0');
+    expect(body.errors).toEqual([
+      { field: 'products.0.basePrice', message: 'base price must be at least 0' },
+    ]);
+    expect(body.error).not.toContain(ROLLED_BACK_MESSAGE);
+
+    expect(insertsInto('tenants')).toHaveLength(1);
+    expect(ran('INSERT INTO pos_products')).toBe(false); // rejected before the data sections
+    expect(deletes().at(-1)).toMatch(/^DELETE FROM tenants /);
+    expectBaseline();
+    expectNoShell('schemabad', 'owner@schemabad.test');
+    expectNoOrphanFks();
   });
 });

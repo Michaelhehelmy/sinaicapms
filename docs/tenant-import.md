@@ -93,10 +93,30 @@ it is **not** the same contract.
 
 | | Create mode (identity) | Fill mode (no identity) |
 |---|---|---|
-| Undo log | `created[]` threaded from the route into `runImport` (:239–243) | **none passed** — `importTenantManifest(env, tenantId, toSnake(payload))` with no log (:968) |
+| Undo log | `created[]` threaded from the route into `runImport` | **none passed** — `importTenantManifest(env, tenantId, toSnake(payload))` with no log |
 | On failure after ≥1 row committed | reverse-order tenant-scoped DELETEs, then `500 Import failed: <reason>. All partial data has been rolled back. You can retry with a corrected manifest.` | `500 Import failed: <reason>. Partial data may remain in the tenant. Re-run with the same manifest to retry, or clean up manually.` + a `console.error` naming the tenant |
+| On a **deliberate rejection** after ≥1 row committed | reverse-order tenant-scoped DELETEs, then the caller's **own 4xx/409, message and `errors` array unchanged** (stamped with a module-private `Symbol`; see the note below) | same response, verbatim (no saga at all) |
 | On failure before any row | the caller's own precise 4xx/409 is returned **unchanged** | same |
 | DELETEs issued | reverse of `created[]` (tenants last) | **never** |
+
+> **Why a deliberate rejection keeps its status.** The undo log's length cannot
+> be the test for "did this request write anything?": in create mode the shell
+> (tenant / admin / POS org / project) is committed *before* the data import
+> runs, so the log is never empty by then and every pre-flight 4xx used to be
+> rewritten as the rolled-back 500 (status lost, and the message mangled —
+> `…categoryName.` became `…categoryName..` — because the reason is quoted into
+> a template that ends in its own period). So the handler stamps the rejections
+> it authored on purpose (schema 400, unresolvable `campId` / `productName` /
+> `categoryName`, a guarded INSERT…SELECT that matched no row, a same-tenant
+> duplicate `meals[].id`, a missing POS org) and the saga hands them back after
+> the undo. A batch that blew up **while writing** — duplicate SKU / POS-user
+> email — is not stamped: committed state was undone, and the caller has to be
+> told, so those still answer `500 Import failed: … rolled back.` One deliberate
+> rejection is worth catching even earlier: `unresolvableMealCategory` also runs
+> in the route *before* the shell, so a bad `categoryName` writes nothing at all
+> and issues no DELETE (identical answer either side of the shell — a tenant id
+> that has not been INSERTed owns no meal categories). The `campId` probe cannot
+> move there: the shell creates the project its references resolve against.
 
 Why create mode can be exact and fill mode cannot: the tenant is brand-new, so
 every row carrying that `tenant_id` **is this request's work** — the
@@ -541,7 +561,9 @@ owned by *another* tenant is legal again since 0127 — it is no longer a 400) �
 (`Failed to create products…` / `Failed to create POS users…`, else generic
 `Failed to import tenant data`) **plus the two atomicity messages** —
 `Import failed: <reason>. All partial data has been rolled back. You can retry
-with a corrected manifest.` (create mode, after rows were committed) and
+with a corrected manifest.` (create mode, thrown error or a mid-write batch
+failure only — a deliberate 4xx keeps its own status, message and `errors`
+through the undo, §1a) and
 `Import failed: <reason>. Partial data may remain in the tenant. Re-run with
 the same manifest to retry, or clean up manually.` (fill mode, thrown error
 only — a deterministic 4xx keeps its own status and message). Admin panel

@@ -241,6 +241,43 @@ const CAMP_ID_REFS = [
 ];
 
 /**
+ * DELIBERATE REJECTION vs UNEXPECTED FAILURE — the distinction the identity
+ * saga needs in order to answer honestly.
+ *
+ * Two very different things leave this handler, and in identity mode the route
+ * wrapper has just committed a tenant shell that it must undo before replying:
+ *
+ *  - A DELIBERATE REJECTION is a 4xx authored HERE, in place of the write it
+ *    would have made: a schema failure, a reference that cannot resolve, an id
+ *    that is already taken, a guarded INSERT…SELECT that matched no row. It
+ *    names the exact thing the caller has to change, so it IS the actionable
+ *    answer — and it is the very response the existing-tenant branch hands back
+ *    verbatim (that branch is not a saga, so it rewrites nothing; see its own
+ *    comment). Undoing the shell must not disguise it as a server error: the
+ *    caller would lose the status code AND get a mangled message, because the
+ *    rolled-back 500 quotes the reason into a template that ends in its own
+ *    period (`…categoryName.. All partial data has been rolled back.`).
+ *  - An UNEXPECTED FAILURE is a BATCH that blew up mid-write (a duplicate SKU or
+ *    POS-user email firing inside the atomic batch) or a thrown R2/D1 error.
+ *    Writes were attempted and committed-then-undone state exists, so the
+ *    caller has to be told the import was rolled back: that 500 is the saga's
+ *    entire reason to exist.
+ *
+ * The signal is a module-private Symbol stamped onto the Response, so the
+ * distinction never reaches the wire (a header would) and cannot be faked by a
+ * raw D1 error — that is a THROW, never a Response. Nothing else has to know
+ * about it: the wrapper reads the stamp and otherwise behaves exactly as before.
+ */
+const DELIBERATE_REJECTION = Symbol('tenant-import.deliberate-rejection');
+
+/** Stamp an authored 4xx as a deliberate rejection (kept off the wire). */
+const markDeliberate = (res) => {
+  res[DELIBERATE_REJECTION] = true;
+  return res;
+};
+const isDeliberateRejection = (res) => Boolean(res?.[DELIBERATE_REJECTION]);
+
+/**
  * Ensure a product exists in the `products` table (FK target) by mirroring
  * from `pos_products`. Best-effort: ignores errors.
  */
@@ -256,6 +293,52 @@ async function ensureProductInProductsTable(DB, tenantId, productId) {
 }
 
 /**
+ * PRE-FLIGHT 2: every meal's categoryName must resolve. Returns the 400 message
+ * for the first meal whose name cannot be resolved, or null when they all can.
+ *
+ * `meals.meal_category_id` is NOT NULL REFERENCES meal_categories(id) (0111
+ * head), so a name the map can't resolve used to bind NULL and blow the meals
+ * batch as an opaque 500 "Failed to import tenant data" — AFTER the project,
+ * branding, products, rooms, rate plans and meal categories had already been
+ * written. Probe resolvability first and answer with a 400 that names the meal
+ * and the category, so nothing is written at all.
+ *
+ * Resolvable = the categories THIS manifest declares (menu.categories[].name,
+ * keyed into the map inside runImport) plus the ones the tenant already owns.
+ * Meals carrying an explicit `meal_category_id` are untouched — that id is bound
+ * verbatim, so there is no name to resolve.
+ *
+ * Extracted from runImport (and run there too, for the existing-tenant branch)
+ * so the identity route can call it BEFORE it commits the tenant shell. That is
+ * sound for this probe and ONLY this probe: a tenant id that has not been
+ * INSERTed owns no meal categories, and provisioning the shell creates none, so
+ * the answer is identical on either side of the shell. The campId probe does
+ * not qualify — the shell creates the very project its references resolve
+ * against — so it stays inside runImport.
+ */
+async function unresolvableMealCategory(env, tenantId, data) {
+  const manifestMeals = data.menu?.meals || [];
+  if (manifestMeals.length === 0) return null;
+
+  const resolvableNames = new Set((data.menu?.categories || []).map((c) => c.name));
+  const { results: ownedCats } = await env.DB.prepare(
+    `SELECT mcl.name FROM meal_categories mc
+     LEFT JOIN meal_categories_lang mcl ON mcl.meal_category_id = mc.id AND mcl.lang = 'en'
+     WHERE mc.tenant_id = ?`
+  ).bind(tenantId).all();
+  for (const c of ownedCats || []) if (c.name) resolvableNames.add(c.name);
+
+  for (const meal of manifestMeals) {
+    if (meal.meal_category_id || !meal.category_name) continue;
+    if (!resolvableNames.has(meal.category_name)) {
+      return `Meal "${meal.name}" references unknown category "${meal.category_name}". ` +
+        'Declare the category in menu.categories[] or remove categoryName.';
+    }
+  }
+  return null;
+}
+
+/**
  * Core import body — extracted so `importTenantManifest` can roll back partial
  * R2 uploads on ANY failure (F-A17-02 / Wave 3.6b). Deterministic error paths
  * return `fail(status, message)` (which deletes every tracked key); thrown
@@ -264,6 +347,13 @@ async function ensureProductInProductsTable(DB, tenantId, productId) {
  * generic-500 contract. `fail` is deliberately not used before the first R2
  * upload (schema 400, unprovisioned-org 409) — nothing to roll back yet.
  * Accepts a parsed (already toSnake'd) manifest payload.
+ *
+ * `fail` and `reject` differ ONLY in the stamp they leave on the response:
+ * `reject` builds a DELIBERATE rejection (a probe that declined to write — see
+ * DELIBERATE_REJECTION above), `fail` a failure raised while a batch was being
+ * written. Both roll R2 uploads back identically; the identity saga reads the
+ * stamp to decide whether to keep the caller's 4xx or replace it with the
+ * rolled-back 500.
  *
  * `created` is the SAGA UNDO LOG, threaded from IDENTITY mode only. Every
  * section that commits rows pushes `{ table, column: 'tenant_id', value }` AFTER
@@ -275,7 +365,7 @@ async function ensureProductInProductsTable(DB, tenantId, productId) {
  * and nothing can be deleted, because those rows belong to a tenant that
  * predates the request.
  */
-async function runImport(env, tenantId, data, uploadedKeys, fail, created = null) {
+async function runImport(env, tenantId, data, uploadedKeys, fail, reject, created = null) {
   /** Record one committed section on the undo log (no-op without a log). */
   const track = (table) => {
     if (created) created.push({ table, column: 'tenant_id', value: tenantId });
@@ -328,7 +418,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
     );
     const unknown = campRefs.find((ref) => !resolvable.has(ref.campId));
     if (unknown) {
-      return fail(
+      return reject(
         400,
         `${unknown.label} "${unknown.name}" references unknown camp "${unknown.campId}". ` +
           'campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.'
@@ -337,43 +427,16 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
   }
 
   // ── Pre-flight 2: every meal's categoryName must resolve ───────────
-  // `meals.meal_category_id` is NOT NULL REFERENCES meal_categories(id)
-  // (0111 head), so a name the map can't resolve used to bind NULL and blow
-  // the meals batch as an opaque 500 "Failed to import tenant data" — AFTER
-  // the project, branding, products, rooms, rate plans and meal categories
-  // had already been written. Probe resolvability first and answer with a
-  // 400 that names the meal and the category, so nothing is written at all.
-  //
-  // Resolvable = the categories THIS manifest declares (menu.categories[].name,
-  // keyed into the map below) plus the ones the tenant already owns. Meals
-  // carrying an explicit `meal_category_id` are untouched — that id is bound
-  // verbatim, so there is no name to resolve.
-  const manifestMeals = data.menu?.meals || [];
-  if (manifestMeals.length > 0) {
-    const resolvableNames = new Set((data.menu?.categories || []).map((c) => c.name));
-    const { results: ownedCats } = await env.DB.prepare(
-      `SELECT mcl.name FROM meal_categories mc
-       LEFT JOIN meal_categories_lang mcl ON mcl.meal_category_id = mc.id AND mcl.lang = 'en'
-       WHERE mc.tenant_id = ?`
-    ).bind(tenantId).all();
-    for (const c of ownedCats || []) if (c.name) resolvableNames.add(c.name);
-
-    for (const meal of manifestMeals) {
-      if (meal.meal_category_id || !meal.category_name) continue;
-      if (!resolvableNames.has(meal.category_name)) {
-        return fail(
-          400,
-          `Meal "${meal.name}" references unknown category "${meal.category_name}". ` +
-            'Declare the category in menu.categories[] or remove categoryName.'
-        );
-      }
-    }
-  }
+  // See `unresolvableMealCategory` above for why this exists. It cannot run
+  // before the shell in every mode — hence the identity route runs it too, on
+  // the parsed payload, before it provisions anything.
+  const unresolvedCategory = await unresolvableMealCategory(env, tenantId, data);
+  if (unresolvedCategory) return reject(400, unresolvedCategory);
 
   // Resolve POS org for this tenant (required for products + pos_users).
   const organizationId = await ensureTenantOrg(env, tenantId);
   if (!organizationId) {
-    return errorResponse('Tenant is not provisioned for POS', 409);
+    return markDeliberate(errorResponse('Tenant is not provisioned for POS', 409));
   }
 
   // ── 0. Project block (DEFECT-3: was parsed then dropped) ──────────
@@ -528,6 +591,11 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
     try {
       await env.DB.batch(stmts);
     } catch (e) {
+      // `fail`, NOT `reject`: this is a batch that blew up MID-WRITE, so the
+      // identity saga has real committed state to undo (shell, branding,
+      // project) and the caller must be told the import was rolled back. The
+      // 409 is still the honest status — it just does not survive the saga as
+      // itself; see DELIBERATE_REJECTION.
       if (e?.message?.includes('UNIQUE constraint failed')) {
         return fail(409, 'One or more products already exist (duplicate SKU or ID)');
       }
@@ -555,7 +623,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
       let productId = room.product_id;
       if (!productId && room.product_name) productId = productNameToId.get(room.product_name);
       if (!productId) {
-        return fail(400, `Room "${room.name}" references unknown product: ${room.product_name || 'no product_id'}`);
+        return reject(400, `Room "${room.name}" references unknown product: ${room.product_name || 'no product_id'}`);
       }
       await ensureProductInProductsTable(env.DB, tenantId, productId);
 
@@ -596,7 +664,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
     const results = await env.DB.batch(roomStmts);
     for (let i = 0; i < results.length; i++) {
       if (results[i]?.meta?.changes === 0) {
-        return fail(404, `Room "${data.rooms[i].name}" failed: camp or product not found for this tenant`);
+        return reject(404, `Room "${data.rooms[i].name}" failed: camp or product not found for this tenant`);
       }
     }
     counts.rooms = data.rooms.length;
@@ -610,7 +678,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
       let productId = rp.product_id;
       if (!productId && rp.product_name) productId = productNameToId.get(rp.product_name);
       if (!productId) {
-        return fail(400, `Rate plan "${rp.name}" references unknown product: ${rp.product_name || 'no product_id'}`);
+        return reject(400, `Rate plan "${rp.name}" references unknown product: ${rp.product_name || 'no product_id'}`);
       }
       await ensureProductInProductsTable(env.DB, tenantId, productId);
 
@@ -634,7 +702,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
     const results = await env.DB.batch(rpStmts);
     for (let i = 0; i < results.length; i++) {
       if (results[i]?.meta?.changes === 0) {
-        return fail(404, `Rate plan "${data.rate_plans[i].name}" failed: product not found for this tenant`);
+        return reject(404, `Rate plan "${data.rate_plans[i].name}" failed: product not found for this tenant`);
       }
     }
     counts.rate_plans = data.rate_plans.length;
@@ -706,7 +774,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
       );
       const taken = data.menu.meals.find((m) => m.id && owned.has(m.id));
       if (taken) {
-        return fail(409, `Meal "${taken.name}" already exists in this tenant (duplicate id "${taken.id}")`);
+        return reject(409, `Meal "${taken.name}" already exists in this tenant (duplicate id "${taken.id}")`);
       }
     }
 
@@ -773,6 +841,9 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
     try {
       await env.DB.batch(userStmts);
     } catch (e) {
+      // `fail`, NOT `reject` — same reason as the products batch above: the
+      // failure landed mid-write, so the identity saga answers with the
+      // rolled-back 500 rather than the bare 409.
       if (e?.message?.includes('UNIQUE constraint failed')) {
         return fail(409, 'One or more POS users already exist (duplicate email or username)');
       }
@@ -806,8 +877,11 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
  * a row of a pre-existing tenant.
  */
 export async function importTenantManifest(env, tenantId, payload, created = null) {
+  // A schema rejection is DELIBERATE by definition — nothing has been written
+  // and nothing will be — so it keeps its status through the identity saga
+  // instead of being dressed up as a rolled-back server error.
   const parsed = manifestSchema.safeParse(payload);
-  if (!parsed.success) return validationError(parsed);
+  if (!parsed.success) return markDeliberate(validationError(parsed));
   const data = parsed.data;
 
   /** Every R2 key this import has PUT successfully — rolled back on failure. */
@@ -825,9 +899,14 @@ export async function importTenantManifest(env, tenantId, payload, created = nul
     await rollbackUploads();
     return errorResponse(message, status);
   };
+  /** `fail` for a DELIBERATE rejection — same R2 rollback, keeps its status. */
+  const reject = async (status, message) => {
+    await rollbackUploads();
+    return markDeliberate(errorResponse(message, status));
+  };
 
   try {
-    return await runImport(env, tenantId, data, uploadedKeys, fail, created);
+    return await runImport(env, tenantId, data, uploadedKeys, fail, reject, created);
   } catch (e) {
     await rollbackUploads();
     throw e; // route wrapper maps UNIQUE→409, anything else→generic 500
@@ -889,6 +968,27 @@ tenantImportRoutes.post('/', async (c) => {
       }
 
       const newTenantId = 'tenant_' + crypto.randomUUID().slice(0, 12);
+
+      // ── Pre-write validation ─────────────────────────────────────
+      // Everything below this line creates rows for a tenant that did not exist
+      // when the request arrived, so a rejection that CAN be made now must be:
+      // `unresolvableMealCategory` is a pure read over this manifest plus the
+      // tenant's own meal categories, and a tenant id that has not been
+      // INSERTed owns none — provisioning the shell creates none either, so
+      // the answer is identical on both sides of the shell (see its doc). The
+      // campId probe cannot move here (the shell creates the project its
+      // references resolve against); it is caught later, and the saga hands its
+      // 400 back untouched because it is a deliberate rejection too.
+      //
+      // Running it here is what makes this rejection genuinely pre-write —
+      // nothing INSERTed, therefore nothing to DELETE — instead of a rolled-back
+      // 500, which is what the pre-flight exists to prevent.
+      const importPayload = { ...rawPayload };
+      delete importPayload.identity;
+      const snakePayload = toSnake(importPayload);
+      const unresolvedCategory = await unresolvableMealCategory(c.env, newTenantId, snakePayload);
+      if (unresolvedCategory) return markDeliberate(errorResponse(unresolvedCategory, 400));
+
       const adminId = 'adm_' + crypto.randomUUID().slice(0, 12);
       const hashedPassword = await hashPassword(id.password);
 
@@ -971,16 +1071,34 @@ tenantImportRoutes.post('/', async (c) => {
 
         // 5. Run data import (strips identity block automatically via schema).
         //    The shared `created` log continues here, so the data sections land
-        //    on it ahead of the shell and roll back ahead of it too.
-        const importPayload = { ...rawPayload };
-        delete importPayload.identity;
-        const result = await importTenantManifest(c.env, newTenantId, toSnake(importPayload), created);
+        //    on it ahead of the shell and roll back ahead of it too. The payload
+        //    was already stripped + toSnake'd by the pre-write validation above.
+        const result = await importTenantManifest(c.env, newTenantId, snakePayload, created);
 
-        // Import failed. An empty log means the failure landed BEFORE the first
-        // INSERT (or inside the import's own schema pre-flight), so there is
-        // nothing to undo and the caller's precise 4xx is the most useful answer.
+        // Import failed. Three shapes, and only the third earns a 500:
+        //
+        //  - An EMPTY undo log means the failure landed before the first INSERT,
+        //    so there is nothing to undo and the caller's own response stands.
+        //  - A DELIBERATE REJECTION (schema 400, unresolvable camp/product/category,
+        //    guarded INSERT…SELECT that matched no row, meal id already taken,
+        //    unprovisioned POS org) already says exactly what to fix, and is the
+        //    very answer the existing-tenant branch returns verbatim. Undo the
+        //    shell and hand it back untouched — rewriting it into the
+        //    rolled-back 500 threw away the status code AND mangled the message
+        //    (the reason is quoted into a template that ends in its own period,
+        //    so `…categoryName.` became `…categoryName..`). The old
+        //    `created.length === 0` test could not tell this apart from a real
+        //    rollback: it is false the moment the shell exists, and in identity
+        //    mode the shell ALWAYS exists by the time the data import runs.
+        //  - Anything else failed WHILE WRITING (a duplicate SKU / POS-user
+        //    email firing inside a batch, a thrown R2/D1 error). Committed state
+        //    was undone, so the caller has to be told: the rolled-back 500.
         if (result.status >= 400) {
           if (created.length === 0) return result;
+          if (isDeliberateRejection(result)) {
+            await rollbackCreated();
+            return result;
+          }
           const reason = await responseReason(result);
           await rollbackCreated();
           return rolledBack(reason);
