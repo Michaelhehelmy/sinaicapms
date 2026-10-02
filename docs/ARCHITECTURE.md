@@ -1,6 +1,8 @@
 # SinaiCamps — Architecture
 
 > This document describes the **current** architecture. If it disagrees with prose elsewhere in the repo, trust this file (it is verified against code) and update the other prose.
+>
+> Verified against `8193650` on 2026-10-02. Where a number can rot (§7 test counts, §5 migration head), it is stated **with the commit that produced it** and with the rule for re-deriving it — so a stale number is visible rather than authoritative.
 
 ## 1. The four-layer contract
 
@@ -29,7 +31,7 @@ SinaiCamps is built as **four isolated layers** connected by a strict, one-direc
 
 1. The frontend **never** imports or queries D1/KV directly — it only talks to `/api/*` on the Worker.
 2. The API client in `app/src/lib/api.ts` is the single frontend↔backend contract (see `API_CONTRACT.md`).
-3. CORS is handled **only** by `hono/cors` in `backend/src/index.js` — response helpers must not set CORS headers.
+3. CORS is handled **only** by the global `hono/cors` mount in `backend/src/index.js` (an **async** origin allowlist, not an array — see §4) — no route, response helper or Durable Object may set `Access-Control-*` itself.
 4. `pos_users.name` is a **generated column** (`first_name || ' ' || last_name`): INSERT with `first_name`/`last_name` only.
 5. `pos_users.organization_id` is `INTEGER NOT NULL` — every INSERT must include it.
 
@@ -51,9 +53,9 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 ## 3. Frontend (app/)
 
 - **Astro 7** pages under `app/src/pages/` — static prerendering by default, zone-aware.
-- **React 19 islands** only where interactivity is required (`client:*` directives). Audited 2026-09-22 (F-A20-02): **17 directive sites** — 8× `client:only="react"` full-page hosts with no SSR fallback (AdminShell, PosShell ×2, OnboardingWizard, RegisterPage, SignupPage, ForgotPasswordPage, ResetPasswordPage; cannot defer), 7× `client:visible` deferred content islands (`CampBooking` rooms section, `MarketplaceDirectory`, the 4 storefront islands `ShopCatalog`/`StorefrontCart`/`StorefrontCheckout`/`StorefrontConfirmation`, debug-gated `DebugFeedbackWidget` — see fix below), 2× `client:load` above-fold primary content (`ReservationSummary` booking form, `TenantMenu` — the page purpose, must hydrate immediately). (A raw `grep client:` reports 23 hits; 6 are code-comment mentions, not directives.) Discipline: default `client:visible` for content islands; `client:load` only for above-fold primary interactive content; `client:only` only for full-page SPA hosts; add islands sparingly.
-- **Widget fix 2026-09-22 (real bug, walkthrough):** `DebugFeedbackWidget` moved `client:visible` → `client:load` (PublicLayout only; Admin/PosShell mount it directly). SSR renders null until the debug flag/session resolves, so a visibility-gated island never intersected and never hydrated — the public ?debug=1 button could never appear. New count: 6× visible / 3× load.
-- **TanStack Query** for all admin data (`useQueryHooks`, `useAdminData`). The admin SPA was fully migrated off raw `fetch` — no `window.*` cross-file globals remain.
+- **React 19 islands** only where interactivity is required (`client:*` directives). Audited 2026-09-22 (F-A20-02), re-counted 2026-10-02: **17 directive sites** — 8× `client:only="react"` full-page hosts with no SSR fallback (`admin/[...rest]`→AdminShell, `pos/login`, `pos/[...rest]`→PosShell ×2, `onboarding`→OnboardingWizard, `register`, `signup`, `forgot-password`, `reset-password`; cannot defer), 6× `client:visible` deferred content islands (`TenantLanding`'s `CampBooking` rooms section, `marketplace.astro`'s `MarketplaceDirectory`, and the 4 storefront islands `ShopCatalog`/`StorefrontCart`/`StorefrontCheckout`/`StorefrontConfirmation`), 3× `client:load` above-fold primary content (`BookPage`'s `ReservationSummary` booking form, `MenuPage`'s `TenantMenu`, and `PublicLayout`'s debug-gated `DebugFeedbackWidget`). (A raw `grep client:` over `app/src` reports 23 hits; 6 are code-comment mentions inside `Storefront*.tsx` / `PosShell.tsx` / `AdminShell.tsx`, not directives.) Discipline: default `client:visible` for content islands; `client:load` only for above-fold primary interactive content; `client:only` only for full-page SPA hosts; add islands sparingly.
+- **Widget fix 2026-09-22 (real bug, walkthrough):** `DebugFeedbackWidget` moved `client:visible` → `client:load` (PublicLayout only; Admin/PosShell mount it directly). SSR renders null until the debug flag/session resolves, so a visibility-gated island never intersected and never hydrated — the public `?debug=1` button could never appear. This is why the split is **6 visible / 3 load** and not 7/2.
+- **TanStack Query** for all admin data (`useQueryHooks`, `useAdminData`, `usePosQueries`). The admin SPA was fully migrated off raw `fetch` — verified 2026-10-02: zero `window.*` data globals anywhere under `components/admin/` or `components/pos/`. The **public marketplace** components are the exception and are not part of that migration: `CampsSection.astro` still sets/reads `window.__API_BASE` and `window.__SSR_RENDERED` (`MarketplaceHome.astro` reads `__API_BASE`) and `gallery.astro` uses `window.__galleryImages` — each set and read **inside its own file**, so none of them is a cross-file channel.
 - **Design system**: 20 primitives in `app/src/components/ui/` (see `COMPONENT_CATALOG.md`), Tailwind CSS v4 tokens, `cn()` util.
 - **Images**: `astro.config.mjs` uses `sharpImageService()` with `image.remotePatterns: [{ protocol: 'https' }]`. `SafeImage.astro` normalizes URLs, runs `getImage`, and falls back to a plain `<img>` on any error so pages never 500 on remote fetch failure.
 - **i18n**: there is NO i18n system — the frontend is hard-coded English LTR (deliberate decision; see `DEVELOPER_ROADMAP.md`).
@@ -63,15 +65,54 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 - **Hono on Cloudflare Workers** (`backend/src/index.js`): CORS, routes, middleware, auth catch-all.
 - Route modules: `backend/src/api/` (camps, categories, tenants, orders, …) + `backend/src/routes/pos/` (POS: auth, products, cart, shifts, …).
-- **Auth**: JWT (`env.JWT_SECRET` — no fallback, throws immediately if unset), role hierarchy admin > staff; POS uses a separate `pos_token`.
-- **RBAC / rate limiting**: `backend/src/middleware/`. Rate limiter keys on `cf-connecting-ip` only (not spoofable) and **fails closed** (429 on KV error). `RATE_LIMIT_KV_ENABLED="false"` forces the in-memory fallback — see `MIGRATION_GUIDE.md` for the KV free-plan quota reason.
+- **Auth**: JWT (`env.JWT_SECRET` — no fallback, throws immediately if unset); POS uses a separate `pos_token` realm. The frontend role ladder is `ROLE_HIERARCHY` in `app/src/lib/rbac.ts` — `super_admin` 100 > `admin` 80 > `manager` 50 > `cashier` 30, and `roleAtLeast()` treats any unknown role (including undefined) as failing.
+- **RBAC / rate limiting**: `backend/src/middleware/`. The limiter is a ~20-entry ordered policy table keyed `${cf-connecting-ip}:${path}` (first match wins) with per-entry env dials, plus a tenant-scoped second layer on 7 prefixes; it keys on `cf-connecting-ip` only (not spoofable) and **fails closed** (429 on KV error). `RATE_LIMIT_KV_ENABLED="false"` forces the in-memory fallback — see `MIGRATION_GUIDE.md` for the KV free-plan quota reason and `security-guide.md` for the full policy table.
+- **CORS is an async allowlist, not an array** — wildcard regexes plus a 5-minute-cached tenant custom-domain lookup (`backend/src/index.js:123–141`). See `security-guide.md`.
 - **Responses**: `jsonResponse` / `cachedJsonResponse` / `errorResponse` in `backend/src/utils/response.js`. All data is camelCased (`toCamel`) on the way out; the registry (`routes/registry.js`) documents the contract.
 
 ## 5. Database & migrations
 
-- **D1 (SQLite)** — schema lives in `backend/migrations/` (currently **37 migrations**: `0001`–`0014` + `0100`–`0123` minus reserved-but-absent `0109`; latest `0123_storefront_order_items_fk_pos_products.sql`).
-- One numbered `.sql` file per migration (plus `legacy/` and `SCHEMA_DIRECTION_PLAN.md`), applied in order via `wrangler d1 migrations apply` (see `MIGRATION_GUIDE.md` and the `db-migration` skill).
-- KV holds **only** rate-limit state (`RATE_LIMIT_KV`); `KV_CACHE` is bound but never written — public-read caching uses `Cache-Control` headers via `cachedJsonResponse` (no KV writes, free-plan safe). R2 (`MEDIA_BUCKET` = `campmaster-media`) holds uploads (wired in staging + prod). SSE is broadcast through the `BROADCASTER` Durable Object (admin inbox/orders).
+- **D1 (SQLite)** — schema lives in `backend/migrations/`. At `8193650` that is
+  **39 top-level `.sql` files**, head
+  `0126_tenant_scoped_unique_sku_email.sql`. It is *not* a contiguous range:
+  `0001`–`0014`, then `0100`–`0126`.
+- **The head is "the highest-numbered file present", not "N files after 0001".**
+  Two slots are deliberately absent and D1 does not require contiguity:
+  `0109` is **reserved-but-absent** (documented in `0110`'s header — the slot
+  belonged to a workstream that would have added cascading deletes, and it was
+  skipped so no later migration consumes it), and `0125` was verified free and
+  deliberately skipped when the D3 mission took `0126`. A gap in the ledger is
+  normal and is not drift; §8's parity check is what actually proves the ledger
+  matches the files.
+- `legacy/` (99 files, incl. the never-applied `0076_sanitize_user_data.sql`)
+  and `SCHEMA_DIRECTION_PLAN.md` sit alongside but are **excluded** from the
+  lineage — `scripts/check-deploy-parity.sh` inventories top-level `*.sql` only.
+- One numbered `.sql` file per migration, applied in order via `wrangler d1
+  migrations apply` (see `MIGRATION_GUIDE.md` and the `db-migration` skill).
+- KV holds **only** rate-limit state (`RATE_LIMIT_KV`); `KV_CACHE` is bound but
+  never written — public-read caching uses `Cache-Control` headers via
+  `cachedJsonResponse` (no KV writes, free-plan safe). R2 (`MEDIA_BUCKET` =
+  `campmaster-media`) holds uploads (wired in staging + prod). SSE is broadcast
+  through the `BROADCASTER` Durable Object (admin inbox/orders).
+
+### 5a. The second Worker: `monitor/`
+
+`campmaster-monitor` is a **separate Worker with its own bindings** and is not
+part of the four-layer contract above — it reads the public API, it does not
+call `/api/*` with a tenant JWT, and it never touches `campmaster-db`.
+
+| Item | Value |
+|---|---|
+| Worker | `campmaster-monitor` (`monitor/wrangler.toml`) |
+| D1 | `campmaster-monitor-db`, `migrations_dir = migrations` |
+| Cron | `*/5 * * * *` — a scheduled handler that probes the configured targets |
+| Targets | 6 public URLs, listed **in code** (`monitor/src/targets.js`), not in the DB — including a **self-check** against `status.sinaicamps.com/api/status`, which doubles as a standing assertion that `/api/status` stays public and unauthenticated |
+| Retention | cron-written tables are pruned (`checks` 14d, `reports` 30d, orphaned `alert_state`) |
+
+It exists because the free-tier KV/D1 write quotas make a KV-backed health
+cache impossible (§5), so its short TTLs are **per-isolate, in-memory** and
+best-effort: a cold isolate simply queries. Adding a monitor deployment is a
+separate decision from the app's deploy path — `deploy.sh` does **not** ship it.
 
 ## 6. Deployment
 
@@ -80,11 +121,31 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 
 ## 7. Tests
 
-Four suites — see `TESTING.md` for exact counts and commands:
+**Five** suites. Counts are stated with the run that produced them, because a
+bare number rots silently:
 
-| Suite | Location | Count |
-| --- | --- | --- |
-| Backend unit | `backend/` | 2610 tests / 115 files (see TESTING.md) |
-| Frontend unit | `app/` | 3561 tests / 149 files (see TESTING.md) |
-| Root integration | repo root | 255 tests (see TESTING.md) |
-| E2E (Playwright) | `tests/e2e/` | see TESTING.md for gate counts |
+| Suite | Command | Files | Tests | Last verified |
+| --- | --- | --- | --- | --- |
+| Backend unit | `cd backend && npx vitest run` | **124** | **2701** | `3f66503` (`saga-rollback`) |
+| Frontend unit | `cd app && npx vitest run` | **154** | **3611** | `09ff710` (`tenant-name-escape`) |
+| Monitor unit | `cd monitor && npx vitest run` | **7** | **72** | `921e871` (`perf-d-retention`) |
+| Root integration | `npx vitest run --config vitest.integration.config.ts` | **37** | **255** registered | 2026-09-28; see the caveat below |
+| E2E (Playwright) | `CI=true npx playwright test` | **96** specs, 8 projects | not re-run for this pass | see below |
+
+Two honest caveats, because the alternative is a number that looks verified
+and is not:
+
+- **E2E has no current gate number.** The last full gate recorded in
+  `AGENT_LOGBOOK.md` is 919 passed / 0 failed / 15 env-skipped (2026-09-06,
+  per-project). `tests/e2e/` now holds 96 spec files across 8 Playwright
+  projects (`marketplace`, `tenant`, `admin`, `auth`, `cross-cutting`, `pos`,
+  `public`, `routing`). Run the gate; do not quote a remembered number, and do
+  not debug on a stale server (`docs/RUNBOOK.md` §8).
+- **The root integration suite is environment-dependent and currently red in a
+  bare workspace**: `tests/globalSetup.ts` boots `wrangler dev` and never
+  applies migrations, so a fresh `.wrangler/state` is a blank DB and the suite
+  500s on `no such table`. That is pre-existing and documented, not a
+  regression — confirm with `git stash` before attributing it to your diff.
+
+`docs/TESTING.md` carries the day-to-day commands; it is refreshed separately
+and its counts lag this file.
