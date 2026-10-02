@@ -327,6 +327,32 @@ describe('public cache never stores errors', () => {
     expect(db.prepareCount).toBe(0);
   });
 
+  it('validation runs BEFORE the cache lookup: a 400 neither writes nor evicts', async () => {
+    const db = new SpyDb();
+    db.seedCheck('marketplace', { ok: true });
+
+    // Warm ONE valid entry, then attack it with rejected requests.
+    await get('/api/history?target=marketplace&hours=24', db);
+    const warm = db.prepareCount;
+    expect(warm).toBeGreaterThan(0);
+
+    for (const bad of ['/api/history', '/api/history?target=nope', '/api/history?target=nope&hours=24']) {
+      expect((await get(bad, db)).status).toBe(400);
+    }
+    // A rejected request must not have consulted D1 ...
+    expect(db.prepareCount).toBe(warm);
+    // ... nor evicted/overwritten the entry it collided with: the valid key is
+    // still a hit. (A validation 400 stored under any key would surface here.)
+    vi.setSystemTime(T0 + 1_000);
+    expect((await get('/api/history?target=marketplace&hours=24', db)).status).toBe(200);
+    expect(db.prepareCount).toBe(warm);
+
+    // The valid_targets hint is the payload of the 400 -- it must not leak into
+    // a cached 200 either.
+    const body = await get('/api/history?target=marketplace&hours=24', db).then((r) => r.json());
+    expect(Object.keys(body).sort()).toEqual(['checks', 'hours', 'target']);
+  });
+
   it('withPublicCache propagates the error and stores nothing', async () => {
     let calls = 0;
     const boom = async () => {

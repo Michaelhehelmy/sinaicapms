@@ -199,10 +199,19 @@ app.get('/api/status', async (c) => {
 
 // Public per-target history. `target` is required; hours defaults to 24 (max 168).
 app.get('/api/history', async (c) => {
-  // Validate BEFORE the cache so a 400 is never stored under any key.
+  // Validate BEFORE the cache so a 400 is never stored under any key, and so an
+  // unknown target costs zero D1 work instead of joining the cached fan-out.
+  //
+  // A rejected request echoes `valid_targets`: the caller was asking for one
+  // target out of a known, code-declared set, so the actionable answer is the
+  // set itself. Without it the only response to a typo is "unknown target",
+  // which forces the caller to enumerate TARGETS out of band to recover (and
+  // previously produced an empty `checks` array, indistinguishable from "this
+  // target was never probed").
   const target = c.req.query('target');
-  if (!target) return c.json({ error: 'target query param is required' }, 400);
-  if (!TARGETS.some((t) => t.name === target)) return c.json({ error: 'unknown target' }, 400);
+  const valid_targets = TARGETS.map((t) => t.name);
+  if (!target) return c.json({ error: 'target query param is required', valid_targets }, 400);
+  if (!valid_targets.includes(target)) return c.json({ error: 'unknown target', valid_targets }, 400);
 
   let hours = parseInt(c.req.query('hours') ?? '24', 10);
   if (Number.isNaN(hours)) hours = 24;

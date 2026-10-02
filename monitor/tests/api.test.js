@@ -277,6 +277,33 @@ describe('GET /api/history (public, target required)', () => {
     expect((await app.request('/api/history?target=nope', {}, envFor(db))).status).toBe(400);
   });
 
+  it('every 400 lists the valid targets, and never the rejected one', async () => {
+    const db = new FakeDb();
+    const names = TARGETS.map((t) => t.name);
+
+    const missing = await app.request('/api/history', {}, envFor(db));
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).valid_targets).toEqual(names);
+
+    // Case/near-miss spellings are the realistic typo, and all must be rejected
+    // the same way -- with the same recovery hint.
+    for (const bad of ['nope', 'Marketplace', 'marketplace ', 'api-meals-2', '', ' ']) {
+      const res = await app.request(`/api/history?target=${encodeURIComponent(bad)}`, {}, envFor(db));
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.valid_targets).toEqual(names);
+      if (bad) expect(body.valid_targets).not.toContain(bad);
+      expect(typeof body.error).toBe('string');
+    }
+
+    // Every name in the list is actually accepted (the list cannot drift into
+    // advertising targets that 400).
+    for (const name of names) {
+      const res = await app.request(`/api/history?target=${encodeURIComponent(name)}`, {}, envFor(db));
+      expect(res.status).toBe(200);
+    }
+  });
+
   it('200 shape for a known target', async () => {
     const db = new FakeDb();
     db.seedCheck('marketplace', { ok: true });
