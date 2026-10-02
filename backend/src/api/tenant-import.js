@@ -225,8 +225,23 @@ async function ensureProductInProductsTable(DB, tenantId, productId) {
  * generic-500 contract. `fail` is deliberately not used before the first R2
  * upload (schema 400, unprovisioned-org 409) — nothing to roll back yet.
  * Accepts a parsed (already toSnake'd) manifest payload.
+ *
+ * `created` is the SAGA UNDO LOG, threaded from IDENTITY mode only. Every
+ * section that commits rows pushes `{ table, column: 'tenant_id', value }` AFTER
+ * its write succeeds, so the caller can reverse-order DELETE exactly what this
+ * request wrote. In identity mode the tenant is brand-new (the provisioning
+ * shell created it in the same request), so every row carrying this tenant_id
+ * IS this request's work — that is what makes the tenant-scoped delete exact
+ * rather than approximate. Existing-tenant mode passes null: nothing is tracked
+ * and nothing can be deleted, because those rows belong to a tenant that
+ * predates the request.
  */
-async function runImport(env, tenantId, data, uploadedKeys, fail) {
+async function runImport(env, tenantId, data, uploadedKeys, fail, created = null) {
+  /** Record one committed section on the undo log (no-op without a log). */
+  const track = (table) => {
+    if (created) created.push({ table, column: 'tenant_id', value: tenantId });
+  };
+
   const counts = {
     products: 0, rooms: 0, rate_plans: 0,
     meal_categories: 0, meals: 0, pos_users: 0,
@@ -484,6 +499,10 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
       return fail(500, 'Failed to create products: ' + (e?.message || String(e)));
     }
     counts.products = data.products.length;
+    // Undo log: pos_products has NO FK to tenants (only project_id SET NULL),
+    // so it would survive the tenant delete as an orphan — and rooms_new holds
+    // a RESTRICT edge on it, so it must be dropped AFTER rooms/rate plans.
+    track('pos_products');
   }
 
   // Also index existing tenant products for product_name references.
@@ -546,6 +565,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
       }
     }
     counts.rooms = data.rooms.length;
+    track('rooms_new');
   }
 
   // ── 4. Rate plans → rate_plans_new ───────────────────────────────
@@ -583,6 +603,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
       }
     }
     counts.rate_plans = data.rate_plans.length;
+    track('rate_plans_new');
   }
 
   // ── 5. Meal categories ───────────────────────────────────────────
@@ -605,6 +626,10 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
     }
     await env.DB.batch(catStmts);
     counts.meal_categories = data.menu.categories.length;
+    // Before `meals` on the log: meals.meal_category_id CASCADEs from here, and
+    // reverse order drops the meals first either way — but keeping creation
+    // order means "children before parents" stays true by construction.
+    track('meal_categories');
   }
 
   // Index existing categories for category_name references on meals.
@@ -668,6 +693,7 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
     }
     await env.DB.batch(mealStmts);
     counts.meals = data.menu.meals.length;
+    track('meals');
   }
 
   // ── 7. POS users ─────────────────────────────────────────────────
@@ -707,6 +733,9 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
       return fail(500, 'Failed to create POS users: ' + (e?.message || String(e)));
     }
     counts.pos_users = data.pos_users.length;
+    // pos_users has NO tenant FK and holds NO ACTION edges on pos_stores /
+    // pos_organizations, so leaving rows behind would block both deletes below.
+    track('pos_users');
   }
 
   return jsonResponse({ success: true, tenant_id: tenantId, counts });
@@ -724,8 +753,13 @@ async function runImport(env, tenantId, data, uploadedKeys, fail) {
  * "or" option — two-phase upload-then-insert-with-cleanup — was chosen; no D1
  * rollback was authorized). Thrown errors are rethrown after rollback so the
  * route wrapper keeps its UNIQUE→409 / generic-500 contract.
+ *
+ * `created` is the caller-owned saga undo log (see runImport). It is an
+ * optional, out-parameter: identity mode passes an array and deletes from it
+ * on failure; existing-tenant mode omits it, so this function can never delete
+ * a row of a pre-existing tenant.
  */
-export async function importTenantManifest(env, tenantId, payload) {
+export async function importTenantManifest(env, tenantId, payload, created = null) {
   const parsed = manifestSchema.safeParse(payload);
   if (!parsed.success) return validationError(parsed);
   const data = parsed.data;
@@ -747,10 +781,24 @@ export async function importTenantManifest(env, tenantId, payload) {
   };
 
   try {
-    return await runImport(env, tenantId, data, uploadedKeys, fail);
+    return await runImport(env, tenantId, data, uploadedKeys, fail, created);
   } catch (e) {
     await rollbackUploads();
     throw e; // route wrapper maps UNIQUE→409, anything else→generic 500
+  }
+}
+
+/**
+ * Best-effort read of an error Response's own message, for the saga wrapper's
+ * 500 (which must quote the ORIGINAL reason without consuming the response it
+ * may still have to return verbatim). Falls back to the status code.
+ */
+async function responseReason(res) {
+  try {
+    const body = await res.clone().json();
+    return body?.error || body?.message || `HTTP ${res.status}`;
+  } catch (_) {
+    return `HTTP ${res.status}`;
   }
 }
 
@@ -798,50 +846,134 @@ tenantImportRoutes.post('/', async (c) => {
       const adminId = 'adm_' + crypto.randomUUID().slice(0, 12);
       const hashedPassword = await hashPassword(id.password);
 
-      // 1. Create tenant
-      await c.env.DB.prepare(
-        `INSERT INTO tenants (id, subdomain, name, type, business_type, email, status, onboarding_status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', 'completed', datetime('now'), datetime('now'))`
-      ).bind(newTenantId, id.subdomain, id.name, id.type, id.business_type || id.type, id.email).run();
+      // ── Saga undo log ────────────────────────────────────────────
+      // Everything below this line creates rows for a tenant that did not
+      // exist when the request arrived, so every row is this request's to undo.
+      // Each entry is pushed only AFTER its INSERT resolves, and the rollback
+      // walks the log in reverse, which yields "children before parents" for
+      // free: the FK edges that force the order are pos_users →(NO ACTION)
+      // pos_stores/pos_organizations, rooms_new →(RESTRICT) pos_products,
+      // projects →(NO ACTION) tenants and admins →(SET NULL) tenants.
+      const created = [];
+      const track = (table, column, value) => {
+        if (value !== null && value !== undefined) created.push({ table, column, value });
+      };
+      const rollbackCreated = async () => {
+        for (const step of [...created].reverse()) {
+          try {
+            await c.env.DB.prepare(`DELETE FROM ${step.table} WHERE ${step.column} = ?`)
+              .bind(step.value)
+              .run();
+          } catch (e) {
+            // Best-effort per step: a blocked/failed delete is logged and the
+            // rest of the log still runs — a half-finished rollback must not
+            // hide the failure that caused it.
+            console.error(
+              `tenant-import rollback: ${step.table}.${step.column}=${step.value} not deleted:`,
+              e?.message,
+            );
+          }
+        }
+        created.length = 0;
+      };
+      const rolledBack = (reason) =>
+        errorResponse(
+          `Import failed: ${reason}. All partial data has been rolled back. ` +
+            'You can retry with a corrected manifest.',
+          500,
+        );
 
-      // 2. Create admin (active — super-admin provisioning)
-      await c.env.DB.prepare(
-        `INSERT INTO admins (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'admin', ?, ?, 1, datetime('now'), datetime('now'))`
-      ).bind(adminId, newTenantId, id.email, hashedPassword, id.first_name, id.last_name).run();
+      try {
+        // 1. Create tenant
+        await c.env.DB.prepare(
+          `INSERT INTO tenants (id, subdomain, name, type, business_type, email, status, onboarding_status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', 'completed', datetime('now'), datetime('now'))`
+        ).bind(newTenantId, id.subdomain, id.name, id.type, id.business_type || id.type, id.email).run();
+        track('tenants', 'id', newTenantId);
 
-      // 3. POS org + store + mapping
-      const organizationId = await ensureTenantOrg(c.env, newTenantId);
+        // 2. Create admin (active — super-admin provisioning)
+        await c.env.DB.prepare(
+          `INSERT INTO admins (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'admin', ?, ?, 1, datetime('now'), datetime('now'))`
+        ).bind(adminId, newTenantId, id.email, hashedPassword, id.first_name, id.last_name).run();
+        track('admins', 'id', adminId);
 
-      // 4. Default project
-      const projectSlug = id.subdomain.replace(/[^a-z0-9-]/g, '-').slice(0, 60);
-      const projectId = 'proj_' + crypto.randomUUID().slice(0, 12);
-      await c.env.DB.prepare(
-        `INSERT INTO projects (id, tenant_id, name, slug, project_type, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))`
-      ).bind(projectId, newTenantId, id.name, projectSlug, id.type).run();
+        // 3. POS org + store + mapping. ensureTenantOrg is idempotent and does
+        //    not report what it created, so probe the mapping first: only an org
+        //    this request provisioned is ours to delete.
+        const { results: priorMapping } = await c.env.DB.prepare(
+          'SELECT organization_id FROM tenant_org_mapping WHERE tenant_id = ?'
+        ).bind(newTenantId).all();
+        const organizationId = await ensureTenantOrg(c.env, newTenantId);
+        if (organizationId && priorMapping.length === 0) {
+          const { results: orgStores } = await c.env.DB.prepare(
+            'SELECT id FROM pos_stores WHERE organization_id = ?'
+          ).bind(organizationId).all();
+          track('pos_organizations', 'id', organizationId);
+          for (const store of orgStores) track('pos_stores', 'id', store.id);
+          track('tenant_org_mapping', 'tenant_id', newTenantId);
+        }
 
-      // 5. Run data import (strips identity block automatically via schema)
-      const importPayload = { ...rawPayload };
-      delete importPayload.identity;
-      const result = await importTenantManifest(c.env, newTenantId, toSnake(importPayload));
+        // 4. Default project
+        const projectSlug = id.subdomain.replace(/[^a-z0-9-]/g, '-').slice(0, 60);
+        const projectId = 'proj_' + crypto.randomUUID().slice(0, 12);
+        await c.env.DB.prepare(
+          `INSERT INTO projects (id, tenant_id, name, slug, project_type, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))`
+        ).bind(projectId, newTenantId, id.name, projectSlug, id.type).run();
+        track('projects', 'id', projectId);
 
-      // If import returned an error response, clean up partial provisioning
-      if (result.status >= 400) {
-        return result;
+        // 5. Run data import (strips identity block automatically via schema).
+        //    The shared `created` log continues here, so the data sections land
+        //    on it ahead of the shell and roll back ahead of it too.
+        const importPayload = { ...rawPayload };
+        delete importPayload.identity;
+        const result = await importTenantManifest(c.env, newTenantId, toSnake(importPayload), created);
+
+        // Import failed. An empty log means the failure landed BEFORE the first
+        // INSERT (or inside the import's own schema pre-flight), so there is
+        // nothing to undo and the caller's precise 4xx is the most useful answer.
+        if (result.status >= 400) {
+          if (created.length === 0) return result;
+          const reason = await responseReason(result);
+          await rollbackCreated();
+          return rolledBack(reason);
+        }
+
+        const importData = await result.json();
+        return jsonResponse({
+          ...importData,
+          created: { tenantId: newTenantId, adminId, organizationId },
+        }, 201);
+      } catch (e) {
+        // Same rule for thrown R2/DB errors: nothing written → rethrow so the
+        // outer catch keeps its UNIQUE→409 contract; something written → roll
+        // back and report the rolled-back 500.
+        if (created.length === 0) throw e;
+        const reason = e?.message || String(e);
+        await rollbackCreated();
+        return rolledBack(reason);
       }
-
-      const importData = await result.json();
-      return jsonResponse({
-        ...importData,
-        created: { tenantId: newTenantId, adminId, organizationId },
-      }, 201);
     }
 
     // ── Existing-tenant import mode ───────────────────────────────
     const tenantId = scope.tenantId;
     if (!tenantId) return errorResponse('Unauthorized: missing tenant context', 401);
-    return await importTenantManifest(c.env, tenantId, toSnake(rawPayload));
+    // Deliberately NOT a saga: these rows belong to a tenant that predates the
+    // request, so there is no undo log to replay and nothing may be deleted. A
+    // thrown error therefore leaves partial data behind and says so, instead of
+    // pretending the import was undone. Deterministic 4xx/409 responses keep
+    // their own status and message — they are the caller's actionable feedback.
+    try {
+      return await importTenantManifest(c.env, tenantId, toSnake(rawPayload));
+    } catch (e) {
+      console.error(`tenant-import: partial data may remain for tenant ${tenantId}:`, e?.message);
+      return errorResponse(
+        `Import failed: ${e?.message || String(e)}. Partial data may remain in the tenant. ` +
+          'Re-run with the same manifest to retry, or clean up manually.',
+        500,
+      );
+    }
   } catch (e) {
     if (e?.message?.includes('UNIQUE constraint failed')) {
       return errorResponse('Duplicate SKU, ID, or unique field', 409);
