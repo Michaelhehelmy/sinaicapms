@@ -484,7 +484,7 @@ the current handler + exporter, not against A.6:
 | `products[].type` | emits `type` when `GET /api/products` returns it — **fixed**: that SELECT now names `p.type` | accepted + bound | ✅ **round-trips** (`room`/`menu`/`buffet`/`retail` survive; untyped products still default `retail` on the *import* side only when the manifest omits it) |
 | `project{name,location,capacity,status}` | emits all four | **written** by section 0 | ✅ **round-trips** — it was import-inert when A.6 recorded the loss |
 | `posUsers[].password` | never emitted | required, bcrypt-hashed | ❌ **drops, by design** — bcrypt is one-way and no GET returns plaintext; without `--jwt` the exporter emits `posUsers: []` (with a JWT it emits the rows, still without passwords). Re-importing a hash would double-hash it. Proven live: import `rt6pass123` → 200 → export `[]`. |
-| `rooms[].roomStatus` / `cleaningStatus` | **still not emitted** — the exporter only *counts* them into its lost-fields report | accepted + bound + persisted | ⚠️ **half-closed**: the import leg is fixed (they survive a hand-written or API-sourced manifest), but the exporter still drops them, so a full `export → import` cycle loses them. The import no longer "drops them" — the *exporter* does. |
+| `rooms[].roomStatus` / `cleaningStatus` | **emitted** — both keys are in the exporter's rooms mapping | accepted + bound + persisted | ✅ **round-trips** — closed on both legs. The exporter used to *read* both columns (`GET /api/rooms` is `SELECT r.*`), count them, and then discard them while advertising the loss in three places, so every exported room silently came back `available` / `clean`. A canary now reports them only if the read side stops returning the columns. Verified by a real local export run over HTTP (`backend/tests/tenant-export-room-status.test.js`). |
 | `menu.categories[]` rows with no lang name | skipped with a warning | `name` is required | ❌ **drops by necessity** — `GET /api/meal-categories` returns `name: null` for legacy rows lacking `meal_categories_lang`, and there is nothing to import |
 | `project.type` | not emitted | accepted + bound | ⚠️ **exporter gap** — the import leg works; the exporter simply does not read `project_type` |
 | `menu.meals[].id` | emitted verbatim | probed, and **tenant-scoped** since 0127 — a same-tenant duplicate 409s, a foreign one is accepted | ✅ **reusable across tenants**; strip only for a **same**-tenant re-import |
@@ -618,11 +618,12 @@ Top-10 mistakes (every item handler-verified):
 7. **Sending `""` to clear a tenant field.** Text fields bind with `||` into
    `COALESCE`, so empty string counts as omitted and the old value is kept —
    the import cannot clear a field to empty (only `capacity` uses `??`).
-8. **Expecting `products[].type` to be lost on export→import.** It is not —
-   `GET /api/products` selects `p.type` and the exporter emits it, so
-   `room`/`menu`/`buffet`/`retail` survive a round trip (A.6 loss 1, closed).
-   The one that still drops is `rooms[].roomStatus`/`cleaningStatus` — the
-   *import* persists them, but the **exporter** never emits them (§6).
+8. **Expecting `products[].type` or `rooms[].roomStatus`/`cleaningStatus` to
+   be lost on export→import.** Neither is. `GET /api/products` selects
+   `p.type`, and the exporter emits it, so
+   `room`/`menu`/`buffet`/`retail` survive a round trip; the exporter likewise
+   emits both room lifecycle columns, so a reserved/dirty room comes back
+   reserved/dirty (A.6 losses 1 and 3, both closed — §6).
 9. **Assuming create-mode imports are all-or-nothing (or that fill-mode ones
    are).** Both halves were once wrong in opposite directions. Create mode is
    a **saga**: any failure after the first INSERT rolls the shell back and

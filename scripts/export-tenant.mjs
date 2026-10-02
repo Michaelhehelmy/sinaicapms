@@ -28,7 +28,9 @@
  *
  * KNOWN LOSSES (see .opencode/audits/BLOCKED-manifest-roundtrip.md):
  * - posUsers[].password: bcrypt one-way hash; never readable via any GET.
- * - rooms room_status/cleaning_status: readable but dropped by re-import.
+ *   (rooms[].roomStatus/cleaningStatus was the third entry and is GONE: the
+ *   import schema gained both fields, so they now round-trip. The canary below
+ *   re-reports them if the read side ever stops returning the columns.)
  */
 
 const DEFAULT_LOCAL_BASE = 'http://127.0.0.1:8787';
@@ -183,6 +185,12 @@ async function main() {
   }
 
   // ── rooms (resolve productName for readability; handler prefers productId) ──
+  // roomStatus/cleaningStatus are emitted because the import schema accepts
+  // both (DEFECT-4); they were previously read, counted, and then DROPPED,
+  // which round-tripped every room back to the schema defaults and made this
+  // exporter advertise a loss that no longer existed. `roomStatusRows` is kept
+  // ONLY as a canary — see below — because a silent disappearance of the
+  // columns would otherwise look exactly like "every room is available/clean".
   let roomStatusRows = 0;
   const rooms = roomsRaw.map((r) => {
     const o = {};
@@ -192,20 +200,27 @@ async function main() {
       ['basePrice', 'basePrice', 'base_price'], ['status', 'status'],
       ['bedType', 'bedType', 'bed_type'], ['notes', 'notes'],
       ['isActive', 'isActive', 'is_active'],
+      ['roomStatus', 'roomStatus', 'room_status'],
+      ['cleaningStatus', 'cleaningStatus', 'cleaning_status'],
     ]) {
       const v = pick(r, ...aks);
       if (v !== undefined && v !== null) o[mk] = v;
     }
     const pid = pick(r, 'productId', 'product_id');
     if (pid && productIdToName.has(pid)) o.productName = productIdToName.get(pid);
-    // Read-side extras the import schema drops on re-import (aggregated below).
-    const roomStatus = pick(r, 'roomStatus', 'room_status');
-    const cleaningStatus = pick(r, 'cleaningStatus', 'cleaning_status');
-    if (roomStatus !== undefined || cleaningStatus !== undefined) roomStatusRows += 1;
+    // Canary only — both values are emitted above. Counts rows where the read
+    // side actually returned either column.
+    if (pick(r, 'roomStatus', 'room_status') !== undefined ||
+        pick(r, 'cleaningStatus', 'cleaning_status') !== undefined) {
+      roomStatusRows += 1;
+    }
     return o;
   });
-  if (roomStatusRows > 0) {
-    lostFields.push(`rooms[].roomStatus/cleaningStatus (${roomStatusRows}/${roomsRaw.length} rows readable via GET, no import field)`);
+  if (roomsRaw.length > 0 && roomStatusRows === 0) {
+    lostFields.push(
+      `rooms[].roomStatus/cleaningStatus (0/${roomsRaw.length} rows returned either column — ` +
+      'the read side stopped sending them; rooms will re-import at the schema defaults)',
+    );
   }
 
   // ── ratePlans ──
