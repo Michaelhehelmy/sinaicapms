@@ -2,22 +2,39 @@
 
 `POST /api/tenants/import` provisions or fills a tenant from a single JSON
 manifest: branding, products, rooms, rate plans, menu, and POS users.
-Sources of truth for everything below are the read-only audits
-`docs/audit-2026-09-30-tenant-manifest-schema.md` (A.1, 85 leaf fields),
-`docs/audit-2026-09-30-tenant-manifest-gaps.md` (A.2),
-`docs/audit-2026-09-30-tenant-manifest-types.md` (A.3), and
-`.opencode/audits/BLOCKED-manifest-roundtrip.md` (A.6) — all verified
-against `backend/src/api/tenant-import.js` (619 lines). Line references
-below point at that handler unless noted.
+Line references below point at `backend/src/api/tenant-import.js` (987 lines)
+unless noted. Provenance for each claim:
+
+- **Handler** — `backend/src/api/tenant-import.js`, re-read 2026-10-02. The
+  behavioural audits it is checked against are
+  `docs/audit-2026-09-30-tenant-manifest-schema.md` (A.1 field census),
+  `docs/audit-2026-09-30-tenant-manifest-gaps.md` (A.2),
+  `docs/audit-2026-09-30-tenant-manifest-types.md` (A.3),
+  `docs/audit-2026-09-30-tenant-import-parity.md` (round-trip parity),
+  `.opencode/audits/BLOCKED-manifest-roundtrip.md` (A.6),
+  `docs/audit-2026-10-02-tenant-import-edge-cases.md` (edge matrix, 7/7).
+- **A.1 counted 85 leaf fields against the schema as it stood on 2026-09-30.**
+  The handler now declares **88**: `project.type` plus
+  `rooms.roomStatus` / `rooms.cleaningStatus` were added afterwards. §2's
+  table is the 88-field version; A.1's number is kept only where it names the
+  audit it came from.
+- **Live behaviour** — the edge matrix re-ran the real route against a fresh
+  local D1 at migration head 0126 and measured 7/7; its step table is quoted
+  in §7.
 
 Wire rule: send **camelCase** (`logoUrl`, `basePrice`, `pricePerNight`,
 `mealCategoryId`, `firstName`, `productName`, `categoryName`, …). The route
 runs the body through `toSnake()` and validates snake_case Zod schemas
-(`identitySchema` :12–21, `manifestSchema` :64–160, both `.strip()` — unknown
+(`identitySchema` :13–22, `manifestSchema` :65–170, both `.strip()` — unknown
 keys are silently dropped, never errors). Zod failure answers
 400 `{ success:false, error, errors:[{field,message}] }`.
 Mount: `backend/src/index.js:244-251`, roles `super_admin` + `admin`.
 Gate: `cd backend && npx vitest run tests/tenant-import-smoke.test.js` (4 its).
+Full import coverage is **7 suites / 106 tests** — `tenant-import` (53),
+`tenant-scoped-uniqueness` (25), `tenant-import-room-status` (8),
+`tenant-import-project-id` (7), `tenant-import-export-type` (5),
+`tenant-import-smoke` (4), `tenant-import-rollback` (4); run them with
+`cd backend && npx vitest run tests/tenant-import`.
 
 Array caps (Zod `.max()`, A.1): products 200 · rooms 200 · rate_plans 200 ·
 menu.categories 50 · menu.meals 200 · pos_users 100.
@@ -29,8 +46,8 @@ key — not by URL, not by flag:
 
 | Mode | Caller | What the handler does |
 |---|---|---|
-| **Create** (`identity` present) | must be `super_admin`, else 403 | Validates identity (:532–533) → checks role (:536–538) → INSERTs tenant row + bcrypt admin (`role='admin'`, `is_active=1`) + org/store/mapping via `ensureTenantOrg` + default `projects` row built from identity fields (name/slug/type) → imports the remaining sections → **201** `{ …, created:{ tenantId, adminId, organizationId } }` |
-| **Fill** (no `identity`) | tenant `admin` or `super_admin` | Imports into `scope.tenantId` → **200** `{ success, tenantId, counts }` |
+| **Create** (`identity` present) | must be `super_admin`, else 403 | Validates identity (:816–817) → checks role (:820–822) → INSERTs tenant row + bcrypt admin (`role='admin'`, `is_active=1`) + org/store/mapping via `ensureTenantOrg` + default `projects` row built from identity fields (name/slug/type) → imports the remaining sections → **201** `{ …, created:{ tenantId, adminId, organizationId } }`. Any failure after the first INSERT **rolls the whole shell back** (saga — see §1a). |
+| **Fill** (no `identity`) | tenant `admin` or `super_admin` | Imports into `scope.tenantId` → **200** `{ success, tenantId, counts }`. Never rolls back (§1a). |
 
 Ordering trap (A.2 F2): identity **validation runs before the role check**.
 A malformed `identity` block from a non-super-admin returns 400
@@ -40,7 +57,7 @@ block itself is schema-valid. Keep identity-mode manifests in separate files
 from fill-mode manifests — any truthy `identity` flips a tenant-admin call
 into creation mode and it fails.
 
-`identity` fields (Zod :12–21): `name` (required), `subdomain` (required —
+`identity` fields (Zod :13–22): `name` (required), `subdomain` (required —
 regex `/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/`, i.e. 1 char or 3–63 chars;
 **2-char subdomains are rejected**; uniqueness-checked, 400 if taken), `type`
 (enum `camp|supermarket|transportation|other`, Zod default `camp`),
@@ -49,11 +66,47 @@ regex `/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/`, i.e. 1 char or 3–63 chars;
 (optional string; stored as `tenants.business_type` via
 `business_type || type`).
 
-## 2. Full schema table (A.1 — 85 leaf fields)
+## 1a. Atomicity: a saga in create mode, nothing in fill mode
+
+This is the single most consequential difference between the two modes, and
+it is **not** the same contract.
+
+| | Create mode (identity) | Fill mode (no identity) |
+|---|---|---|
+| Undo log | `created[]` threaded from the route into `runImport` (:239–243) | **none passed** — `importTenantManifest(env, tenantId, toSnake(payload))` with no log (:968) |
+| On failure after ≥1 row committed | reverse-order tenant-scoped DELETEs, then `500 Import failed: <reason>. All partial data has been rolled back. You can retry with a corrected manifest.` | `500 Import failed: <reason>. Partial data may remain in the tenant. Re-run with the same manifest to retry, or clean up manually.` + a `console.error` naming the tenant |
+| On failure before any row | the caller's own precise 4xx/409 is returned **unchanged** | same |
+| DELETEs issued | reverse of `created[]` (tenants last) | **never** |
+
+Why create mode can be exact and fill mode cannot: the tenant is brand-new, so
+every row carrying that `tenant_id` **is this request's work** — the
+tenant-scoped delete is exact rather than approximate. Fill mode's rows belong
+to a tenant that predates the request, so there is nothing safe to delete.
+
+Rollback order is dictated by the real FK actions at the 0126 head (verified
+with `PRAGMA foreign_key_list`, not assumed): `pos_users` →(NO ACTION)
+`pos_stores`/`pos_organizations`; `rooms_new` →(RESTRICT) `pos_products`;
+`pos_stores` →(NO ACTION) `pos_organizations`; `projects` →(NO ACTION)
+`tenants`; `admins` →(SET NULL) `tenants`; and **`pos_products` has no FK to
+`tenants` at all** (only `project_id SET NULL`), so it would silently survive
+a tenant delete as an orphan — it is deleted explicitly, after rooms and rate
+plans. Each delete is best-effort in its own `try`/`catch`: a blocked step
+logs `tenant-import rollback: …` and the rest of the log still runs.
+
+`ensureTenantOrg` is idempotent and does not report what it created, so the
+route probes `tenant_org_mapping` **before** calling it and only tracks
+org/store/mapping when there was no prior mapping — otherwise a pre-existing
+org would be deleted out from under a live tenant.
+
+## 2. Full schema table (88 leaf fields at the current handler)
 
 `Default` = Zod-level default (almost always none); handler runtime fallbacks
 live in Notes. Required = Zod-required. All 8 top-level sections are
 `.optional()` — `{}` parses (no-op import, still needs a POS org or 409).
+Field census: `identity` 8 · `tenant` 20 · `project` 5 · `products` 12 ·
+`rooms` 13 · `ratePlans` 10 · `menu.categories` 2 · `menu.meals` 8 ·
+`posUsers` 10 = **88** (A.1's 85 predates `project.type`,
+`rooms.roomStatus` and `rooms.cleaningStatus`).
 
 | Section | Wire field (camelCase) | Type | Req | Default / fallback | Notes |
 |---|---|---|---|---|---|
@@ -85,10 +138,11 @@ live in Notes. Required = Zod-required. All 8 top-level sections are
 | tenant | activities | JSON-encoded string | no | keep existing | stored verbatim as string |
 | tenant | capacity | number | no | keep existing | `??` (so 0 stores correctly; text fields use `\|\|`, see §6 pitfall 7) |
 | tenant | menuConfig | JSON-encoded string | no | keep existing | stored verbatim as string |
-| project | name | string min 1 (when present) | no | — | **validated but never read** — inert in both modes (A.1 finding 2); create mode builds the project from identity fields |
-| project | location | string | no | — | same inert note |
-| project | capacity | number min 0 | no | — | same inert note |
-| project | status | enum active/inactive/planning/completed | no | — | same inert note |
+| project | name | string min 1 (when present) | no | — | **written** (section 0, :344–411): updates the tenant's oldest live project, or INSERTs `proj_`+uuid12 when the tenant owns none |
+| project | type | enum camp/supermarket/transportation/other | no | handler `'camp'` | → `projects.project_type`, assigned directly (NOT COALESCEd) — added after A.1 |
+| project | location | string | no | COALESCE (never blanks an existing value) | same section 0 |
+| project | capacity | number min 0 | no | COALESCE | same section 0 |
+| project | status | enum active/inactive/planning/completed | no | handler `'active'` | assigned directly, not COALESCEd |
 | products | id | string | no | `prod_`+uuid12 | duplicate ID → 409 |
 | products | name | string min 1 | yes | — | keys the productName→id map used by rooms/ratePlans refs |
 | products | sku | string | no | `PROD-`+PID upper | duplicate SKU → 409 |
@@ -112,6 +166,8 @@ live in Notes. Required = Zod-required. All 8 top-level sections are
 | rooms | basePrice | number (no min) | no | → null when omitted | unlike products/meals, which default 0 |
 | rooms | notes | string | no | → null | — |
 | rooms | isActive | number | no | 1 | — |
+| rooms | roomStatus | enum available/reserved/occupied/cleaning/out_of_service | no | handler `'available'` | → `rooms_new.room_status`; **no DB CHECK**, so this enum is a policy choice mirroring the values `PATCH /api/rooms/:id/status` accepts. Added after A.1. |
+| rooms | cleaningStatus | enum dirty/in_progress/clean/inspected | no | handler `'clean'` | → `rooms_new.cleaning_status`; **CHECKed by the schema**, so the enum must match it exactly — wider is a 500, narrower silently rejects a legal value. Added after A.1. |
 | ratePlans | id | string | no | `rp_`+uuid12 | lands in `rate_plans_new` via guarded INSERT…SELECT |
 | ratePlans | productId | string | no | — | must be tenant's product or per-plan 404 |
 | ratePlans | productName | string | no | — | **unknown → 400** |
@@ -145,7 +201,7 @@ live in Notes. Required = Zod-required. All 8 top-level sections are
 
 Reference resolution (A.1 finding 4, handler-verified): unknown `productName`
 → 400 for rooms and ratePlans; unknown `categoryName` → 400 for meals too
-(the meals pre-flight, `runImport` :219–251). The three name-resolved
+(the meals pre-flight, `runImport` :316–336). The three name-resolved
 sections now behave the same way, and the meal check runs **before any DB
 write** — it cannot half-apply the way the old behavior did.
 `meals.meal_category_id` is `NOT NULL REFERENCES meal_categories(id)`, so an
@@ -171,25 +227,50 @@ mints a `proj_`+uuid that no manifest key can name. `campId` is accepted on
 `products[]` only — see mistake #3 for the rooms key.
 
 `rate_plans.camp_id` comes from the referenced product's camp (`p.camp_id`
-in the SELECT, :355–358) — no manifest key feeds it. Duplicate product names:
+in the SELECT, :585–588) — no manifest key feeds it. Duplicate product names:
 last imported row wins the name map; imported names beat pre-existing ones
-(:249–288). `defaultCampId` is null unless the tenant owns exactly one
-non-deleted project (:200–203): with 0 or 2+ projects, products import with
+(:471–514). `defaultCampId` is null unless the tenant owns exactly one
+non-deleted project (:414–417): with 0 or 2+ projects, products import with
 `camp_id` null silently while every room 404s.
+
+### Probe caps — the two `IN (…)` probes and the D1 bind ceiling
+
+Both reference probes interpolate their `IN (…)` list, so both are exposed to
+D1's **100 bound parameters per query** ceiling
+(`too many SQL variables at offset N`). They are not equal:
+
+| Probe | Placeholder | Binds | Chunked? |
+|---|---|---|---|
+| `campId` resolvability (:273–302) | the **distinct** `campId` values across every section that accepts one | 50 ids + `tenant_id` = **51** per statement | **yes**, `for (i += 50)` — 200 products is the array cap, so a single `IN (…)` would have traded the clean 400 for an opaque 500 on a large manifest |
+| explicit `menu.meals[].id` ownership (:653–669) | every explicit meal id, **no de-duplication** | up to **200** | **no** — a manifest with >100 explicit meal ids carries a latent >100-bind exposure |
+
+The second row is a **known latent limit, not a fixed defect**: the chunking
+was deliberately confined to the mission that owned the `campId` pre-flight,
+because changing the meal probe's behavior belongs to the meal-id mission.
+Note also that the two probes answer different codes on purpose — an id owned
+by another tenant is a **400** (`already belongs to another tenant`, remove the
+id), the same id twice in one tenant is a **409** (`already exists in this
+tenant`).
+
+`products[].id` gets **no** probe at all: a manifest shipping another tenant's
+explicit product id still falls through to the generic 409 (`One or more
+products already exist (duplicate SKU or ID)`). `meals.id` is the only
+identifier the handler probes, because it is the only one whose primary key is
+global *and* named in a clear error.
 
 ## 3. Tenant-type matrix (A.3 — handler-verified, never assumed)
 
-`runImport` (:187–477) contains **zero branches on tenant type** — the only
-`type` writes on the import path are the product-column INSERT (:259/:267)
-and the create-mode tenant/project writes (:567–569/:584–586). Consequence:
-every data section behaves byte-identically for every tenant; the type value
-only matters at create-mode provisioning. `restaurant-only` and
-`curated-listing` match **zero** hits repo-wide (`git grep`) — they exist on
-no enum anywhere.
+`runImport` (:239–742) contains **zero branches on tenant type** — the only
+`type` writes on the import path are the product-column INSERT (:488), the
+project-column INSERTs (:392/:404) and the create-mode tenant/project writes
+(:891/:923). Consequence: every data section behaves byte-identically for
+every tenant; the type value only matters at create-mode provisioning.
+`restaurant-only` and `curated-listing` match **zero** hits repo-wide
+(`git grep`) — they exist on no enum anywhere.
 
 Identity `type` verdict (pre-table): `camp` (also the Zod default), 
 `supermarket`, `transportation` accepted; `restaurant-only` and
-`curated-listing` are **TI — 400 `validationError`** at :532–533 (before the
+`curated-listing` are **TI — 400 `validationError`** at :816–817 (before the
 super-admin check) with a second barrier behind it, the D1
 `CHECK (type IN ('camp','supermarket','transportation','other'))`
 (`0001_core.sql:19`). Omitted → `camp`. (Wider enums elsewhere —
@@ -199,7 +280,7 @@ handler is narrower; bare `restaurant` 400s here too.)
 | Section | camp | supermarket | transportation | restaurant-only | curated-listing |
 |---|---|---|---|---|---|
 | tenant | O | O | O | O† | O† |
-| project | I | I | I | I† | I† |
+| project | O | O | O | O† | O† |
 | products | O | O | O | O† | O† |
 | rooms | O | O | O | O† | O† |
 | ratePlans | O | O | O | O† | O† |
@@ -208,20 +289,21 @@ handler is narrower; bare `restaurant` 400s here too.)
 | posUsers | O | O | O | O† | O† |
 
 Legend: **O** = optional, accepted and processed identically for every type
-(all sections `.optional()`); **I** = schema-valid but never read
-(`data.project` has zero references in the handler); **M** = mandatory —
-**zero cells**, stated explicitly. **†** = fill-mode path only: the tenant's
-type value never reaches the handler there (`scope.tenantId` at :606–608,
-zero type reads in `runImport`), so these cells restate the identical rules,
-not an assumption. 40 cells: O = 35, I = 5 (project row), in-matrix TI = 0
-(TI lives in the identity pre-table: 2 values), M = 0.
-Per-section evidence (branch reads): tenant COALESCE :206–245; products
-defaults `base_price||0 / capacity||1 / type||'retail' / camp_id||defaultCampId`
-:261–267; rooms guard :312–337 with `room.camp_id` :302 dead (key stripped by
-`.strip()` — rooms always land in `defaultCampId`); ratePlans guard :353–374;
-categories/meals inserts :384–394/:421 with no type predicate; posUsers
-`role||'cashier'`, store fallback :441–447, GENERATED-name insert :451–462,
-dup 409 :468–470.
+(all sections `.optional()`); **I** = schema-valid but never read — **zero
+cells since the `project` block became a real writer** (it was 5/40 at A.3
+time; see §2 `project` rows and mistake #2); **M** = mandatory — **zero
+cells**, stated explicitly. **†** = fill-mode path only: the tenant's
+type value never reaches the handler there (`scope.tenantId` at :960, zero
+type reads in `runImport`), so these cells restate the identical rules, not an
+assumption. 40 cells: O = 40, I = 0, in-matrix TI = 0 (TI lives in the
+identity pre-table: 2 values), M = 0.
+Per-section evidence (branch reads): tenant COALESCE :434–466; project
+upsert/insert :352–410; products defaults `base_price||0 / capacity||1 /
+type||'retail' / camp_id||defaultCampId` :483–489; rooms guard :538–566 with
+`room.camp_id` :528 dead (key stripped by `.strip()` — rooms always land in
+`defaultCampId`); ratePlans guard :583–604; categories/meals inserts
+:617–625/:680–692 with no type predicate; posUsers `role||'cashier'`, store
+fallback :703–709, GENERATED-name insert :714–724, dup 409 :730–731.
 
 ## 4. Example manifests
 
@@ -238,16 +320,22 @@ backend was reachable at build time):
 | `transportation.json` | Transport operator: fleet-as-products + staff | `type: 'transportation'` |
 | `curated-listing.json` | Listing-only showcase | `type: 'other'` + `businessType: 'curated-listing'` |
 
-Each file covers 84 of the 85 A.1 leaf fields — every one except
-`products[].campId`, which is deliberately absent: these five files use
-create mode, whose project id is a `proj_`+uuid minted at provisioning time
-that no manifest can name, so any shipped value would be a guaranteed 400
-(see §2 and mistake #3b) — resolves rooms/ratePlans through
+Each file covers **84 of the 88** leaf fields (measured 2026-10-02 against
+the schema's key census, not asserted by hand). The four it omits are all
+deliberate:
+
+| Omitted | Why |
+|---|---|
+| `products[].campId` | these five files use create mode, whose project id is a `proj_`+uuid minted at provisioning time that no manifest can name, so any shipped value is a guaranteed 400 (§2, mistake #3b) |
+| `rooms[].roomStatus`, `rooms[].cleaningStatus` | added to the schema after A.4 was authored; a fresh tenant's rooms are `available`/`clean` anyway, which is what an omitted field binds |
+| `project.type` | added to the schema after A.4 was authored; omitting it binds the handler default `'camp'` |
+
+They resolve rooms/ratePlans through
 both `productName` and `productId`, meals through `categoryName` and direct
-`mealCategoryId`, and uses https-only image URLs (no R2 involved). The older
+`mealCategoryId`, and use https-only image URLs (no R2 involved). The older
 `docs/examples/tenant-manifest.example.json` remains the minimal fill-mode
-sample (no `identity`; its `project` and `images` blocks are inert/stripped —
-documented, not gaps). The A.4 files carry a stripped `_note` explaining the
+sample — 69 of 88 leaf fields (no `identity` at all; its `project` and
+`images` blocks are documented as such, not gaps). The A.4 files carry a stripped `_note` explaining the
 `type: 'other'` + `businessType` workaround and the
 campId/categoryId/storeId placeholder guidance.
 
@@ -296,36 +384,67 @@ node scripts/export-tenant.mjs acaciacamp --staging --jwt "$TOKEN" --out /tmp/ac
 npm run validate-manifest -- /tmp/acacia-export.json   # export → validate is the round-trip check
 ```
 
+## 6. Export CLI + what round-trips vs what drops
+
+`scripts/export-tenant.mjs` (zero-dep, read-only; A.6) rebuilds an A.1-shaped
+manifest (tenant/project/products/rooms/ratePlans/menu/posUsers — **never**
+`identity`, export cannot provision) from live GETs. Reads only: public
+tenant/projects/products/rooms/rateplans/meal-categories/meals with
+`x-tenant-id`, plus authed `GET /api/pos-users` when a JWT is supplied. No
+POST/PUT/DELETE, no KV, no R2:
+
+```bash
+node scripts/export-tenant.mjs acaciacamp --staging --out /tmp/acacia-export.json
+node scripts/export-tenant.mjs acaciacamp --out /tmp/acacia-local.json   # local :8787 default
+node scripts/export-tenant.mjs acaciacamp --staging --jwt "$TOKEN" --out /tmp/acacia-full.json
+npm run validate-manifest -- /tmp/acacia-export.json   # export → validate is the round-trip check
+```
+
 Round-trip evidence (A.6, staging `acaciacamp` reads only, file to /tmp never
 committed): export exit 0
 `{products:4, rooms:2, ratePlans:1, mealCategories:2, meals:2, posUsers:0}` +
-validate exit 0 VALID. Five fields do **not** survive a round trip (no fix —
-recorded in `.opencode/audits/BLOCKED-manifest-roundtrip.md`):
+validate exit 0 VALID.
 
-1. `products[].type` — `GET /api/products` SELECT (`camps.js:484-490`) omits
-   the column although values exist; re-import defaults to `retail`, so a
-   `type=room` product round-trips as `retail` (4/4 staging, 42/42 local).
-2. `posUsers[].password` — bcrypt is one-way; no GET returns plaintext, so
-   export always emits `posUsers: []` without a JWT note (re-importing hashes
-   would double-hash). Proven live: import `rt6pass123` → 200 → export `[]`.
-3. `rooms[].roomStatus / cleaningStatus` — readable via `GET /api/rooms` but
-   the import schema has no such fields; dropped on re-import.
-4. `menu.categories[]` rows without a lang name — `GET /api/meal-categories`
-   returns `name: null` for legacy rows lacking `meal_categories_lang`;
-   import requires `name`, so the exporter skips them with a warning.
-5. `project{}` — export-readable but import-inert (A.1 finding 2).
+### The round-trip ledger as of 2026-10-02
 
-Blocking note (A.6 B1): on a D1 ledger at/after
-`0107_enforce_not_null_other_tables` / `0108_add_meals_project_id`, the
-handler's products/categories/meals INSERTs (which never bind `project_id`,
-then-NOT NULL without default) 500 — `posUsers`-only imports still 200.
-Whether staging/prod enforce those migrations is unknown (Cloudflare API
-unreachable from the audit sandbox); check the remote ledger before a bulk
-import.
+A round trip has **three** legs — export reads, the manifest carries, import
+writes — and a field is only closed when all three name it. Re-checked against
+the current handler + exporter, not against A.6:
+
+| Field | Export | Import | Verdict |
+|---|---|---|---|
+| `products[].type` | emits `type` when `GET /api/products` returns it — **fixed**: that SELECT now names `p.type` | accepted + bound | ✅ **round-trips** (`room`/`menu`/`buffet`/`retail` survive; untyped products still default `retail` on the *import* side only when the manifest omits it) |
+| `project{name,location,capacity,status}` | emits all four | **written** by section 0 | ✅ **round-trips** — it was import-inert when A.6 recorded the loss |
+| `posUsers[].password` | never emitted | required, bcrypt-hashed | ❌ **drops, by design** — bcrypt is one-way and no GET returns plaintext; without `--jwt` the exporter emits `posUsers: []` (with a JWT it emits the rows, still without passwords). Re-importing a hash would double-hash it. Proven live: import `rt6pass123` → 200 → export `[]`. |
+| `rooms[].roomStatus` / `cleaningStatus` | **still not emitted** — the exporter only *counts* them into its lost-fields report | accepted + bound + persisted | ⚠️ **half-closed**: the import leg is fixed (they survive a hand-written or API-sourced manifest), but the exporter still drops them, so a full `export → import` cycle loses them. The import no longer "drops them" — the *exporter* does. |
+| `menu.categories[]` rows with no lang name | skipped with a warning | `name` is required | ❌ **drops by necessity** — `GET /api/meal-categories` returns `name: null` for legacy rows lacking `meal_categories_lang`, and there is nothing to import |
+| `project.type` | not emitted | accepted + bound | ⚠️ **exporter gap** — the import leg works; the exporter simply does not read `project_type` |
+| `products[].id`, `menu.meals[].id`, `rooms[].id`, `ratePlans[].id` | emitted verbatim | `meals[].id` is probed (400 cross-tenant / 409 same-tenant); the other three are not | ❌ **strip them for a cross-tenant copy** — these are global keys. Only `meals[].id` has a probe; a foreign `products[].id` still answers the generic 409. |
+
+Known stale text (reported, not fixed here — the exporter is outside this
+document's scope): the `KNOWN LOSSES` header in
+`scripts/export-tenant.mjs` still lists *"rooms room_status/cleaning_status:
+readable but dropped by re-import"*, and its `typeMissing` guard still says
+*"GET /api/products SELECT omits the column"* on the line that now only fires
+if the DEFECT-2 fix regresses. The `typeMissing` / `roomStatusRows` counters
+themselves are worth keeping — they are canaries that re-fire the moment a
+column goes missing again — but their message text is now wrong.
+
+**Superseded blocking note (A.6 B1).** A.6 warned that on a ledger at/after
+`0107`/`0108` the products/categories/meals INSERTs 500 because they never
+bind `project_id`. **That is no longer true at the 0126 head**: all six
+project_id-bearing INSERTs now bind one resolved value
+(`resolvedProjectId` = the project this import wrote → the tenant's sole live
+project → NULL), and 0111 rebuilt those five columns back to **nullable**
+(`ON DELETE SET NULL` and `NOT NULL` contradict, so `NOT NULL` could not
+survive). A NULL bind degrades to project-less rows instead of throwing. The
+0110-era failure the workspace DB was stranded on is real history, not the
+current contract — `backend/tests/tenant-import-project-id.test.js` asserts
+both the zero-NULL path and the graceful NULL path against a real replay.
 
 ## 7. Images, errors, and the top-10 mistakes
 
-Image rule (`resolveImage` :38–58): `data:image/(jpg|jpeg|png|webp|gif);
+Image rule (`resolveImage` :39–59): `data:image/(jpg|jpeg|png|webp|gif);
 base64,…` ≤ 8 MB → R2 `MEDIA_BUCKET` → stored `/api/media/…` URL (keys
 tracked in `uploadedKeys` and best-effort deleted if the import later fails —
 R2 rolls back, D1 rows do not, A.2 U1); `http(s)` / `/api/media/` pass
@@ -337,31 +456,60 @@ through; anything else resolves null **for product/meal images only**
 meal `imageUrl`. Never any KV write (free-plan 1,000 writes/day quota).
 
 Status codes: 200 fill-mode import (`{ success, tenantId, counts }` with
-`counts = { products, rooms, ratePlans, mealCategories, meals, posUsers }`)
+`counts = { products, rooms, ratePlans, mealCategories, meals, posUsers }`
+— the wire is camelCase because `jsonResponse` deep-converts via `toCamel`)
 · 201 create-mode (`{ …200, created }`) · 400 Zod / unknown `productName` /
-bad-or-taken subdomain / taken admin email · 401 no tenant context in
-fill mode · 403 truthy `identity` from a non-super-admin (only when the
-identity block itself is valid — else 400, §1) · 404 per-room/per-plan guard
-miss (no matching tenant camp/product) · 409 POS-org missing (only when
+unknown `campId` / unknown `categoryName` / an explicit `meals[].id` owned by
+another tenant / bad-or-taken subdomain / taken admin email · 401 no tenant
+context in fill mode · 403 truthy `identity` from a non-super-admin (only when
+the identity block itself is valid — else 400, §1) · 404 per-room/per-plan
+guard miss (no matching tenant camp/product) · 409 POS-org missing (only when
 `ensureTenantOrg` returns falsy — it auto-creates org+store+mapping with
-`INSERT OR IGNORE` in both modes, A.2 U10) or duplicate SKU/ID/email/username
-· 405 non-POST (`Method not allowed`) · 500 thrown non-UNIQUE DB errors
+`INSERT OR IGNORE` in both modes, A.2 U10), or duplicate SKU/ID/email/username,
+or a same-tenant duplicate explicit `meals[].id` · 405 non-POST
+(`Method not allowed`) · 500 thrown non-UNIQUE DB errors
 (`Failed to create products…` / `Failed to create POS users…`, else generic
-`Failed to import tenant data`). Admin panel entry: top-level **Import** nav
+`Failed to import tenant data`) **plus the two atomicity messages** —
+`Import failed: <reason>. All partial data has been rolled back. You can retry
+with a corrected manifest.` (create mode, after rows were committed) and
+`Import failed: <reason>. Partial data may remain in the tenant. Re-run with
+the same manifest to retry, or clean up manually.` (fill mode, thrown error
+only — a deterministic 4xx keeps its own status and message). Admin panel
+entry: top-level **Import** nav
 tab (`AdminApp.tsx` id `'import'` — not inside Settings, A.2 F4), with
 paste / Load-from-file / per-section-counts preview / Import /
 counts-breakdown toast (`TenantImportPanel.tsx`).
 
-Top-10 mistakes (every item handler-verified in A.2):
+Measured live (edge matrix, 7/7, fresh local D1 at head 0126):
+
+| Manifest | Mode | Status |
+|---|---|---|
+| `camp-full.json` | create | **201**, all six counts match the manifest |
+| the same manifest again | create | **400** `This subdomain is already taken` — the uniqueness probe fires before any write |
+| the same manifest again | fill | **409** `One or more products already exist (duplicate SKU or ID)` — the tenant-scoped `(tenant_id, sku)` arbiter, and the tenant's product count stays unchanged |
+| unresolvable meal `categoryName` | create | **400**, 0 product rows written |
+| unresolvable product `campId` | create | **400**, 0 product rows written |
+| tenant B handed tenant A's SKUs **and** POS emails/usernames verbatim | create | **201**, every count matches — the same catalogue + staff set genuinely loads into two tenants |
+| tenant B handed tenant A's explicit `products[].id` | create | **409** (see §6 — ids were *not* re-scoped) |
+
+Top-10 mistakes (every item handler-verified):
 
 1. **Shipping `identity` inside a tenant-admin manifest.** Any truthy
    `identity` flips into create mode and fails — keep the two manifest kinds
    in separate files.
-2. **Expecting the `project` block to set the camp.** Validated, never read,
-   inert in both modes (A.2 F1/A1). Create the camp in the Camps panel first;
-   in create mode the project comes from identity fields.
+2. **Expecting the `project` block to be ignored.** It is **not** — that was
+   true when A.2/A.1 were written (DEFECT-3, LOST-ON-IMPORT) and is false
+   now. The block upserts the tenant's **oldest live** project (or mints
+   `proj_`+uuid12 when the tenant owns none), runs **before** the default-camp
+   resolution, and the products/rooms written later in the same import attach
+   to it. It is a re-import-idempotent update, not a fork; omitted
+   `name`/`slug`/`location`/`capacity` are COALESCEd so they never blank an
+   existing value, and `project_type`/`status` are assigned directly with
+   `'camp'`/`'active'` defaults. In create mode the identity block commits a
+   project *first*, so the manifest's block updates that same row (one INSERT
+   + one UPDATE, never two projects).
 3. **Sending `rooms[].campId` to place rooms.** No `camp_id` in the rooms Zod
-   object + `.strip()` means the key never survives; the `:302` read is dead
+   object + `.strip()` means the key never survives; the `:528` read is dead
    — rooms always land in `defaultCampId` (A.1 finding 3).
 3b. **Sending an unverified `products[].campId`.** The import now 400s with
    `Product "<name>" references unknown camp "<campId>". campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.`
@@ -391,11 +539,18 @@ Top-10 mistakes (every item handler-verified in A.2):
 7. **Sending `""` to clear a tenant field.** Text fields bind with `||` into
    `COALESCE`, so empty string counts as omitted and the old value is kept —
    the import cannot clear a field to empty (only `capacity` uses `??`).
-8. **Expecting `products[].type` to survive export→import.** The products GET
-   omits the column; re-import defaults `retail` (A.6 loss 1).
-9. **Assuming all-or-nothing.** Per-section `DB.batch` calls, no
-   cross-section transaction — a later section's failure leaves earlier
-   sections' rows behind (only R2 uploads roll back, A.2 K6/U1).
+8. **Expecting `products[].type` to be lost on export→import.** It is not —
+   `GET /api/products` selects `p.type` and the exporter emits it, so
+   `room`/`menu`/`buffet`/`retail` survive a round trip (A.6 loss 1, closed).
+   The one that still drops is `rooms[].roomStatus`/`cleaningStatus` — the
+   *import* persists them, but the **exporter** never emits them (§6).
+9. **Assuming create-mode imports are all-or-nothing (or that fill-mode ones
+   are).** Both halves were once wrong in opposite directions. Create mode is
+   a **saga**: any failure after the first INSERT rolls the shell back and
+   answers "All partial data has been rolled back" (§1a). Fill mode is
+   deliberately **not**: a thrown error leaves earlier sections committed and
+   says so. Per-section `DB.batch` calls with no cross-section transaction is
+   still the mechanism underneath both; only the undo log differs.
 10. **Looking for Tenant Import under Settings.** It is the top-level Import
-    tab (A.2 F4). Bonus: non-POST callers get 405, and the subdomain 400 text
-    says "3-63 chars" while 1-char subdomains actually pass (A.2 U8/U9).
+     tab (A.2 F4). Bonus: non-POST callers get 405, and the subdomain 400 text
+     says "3-63 chars" while 1-char subdomains actually pass (A.2 U8/U9).
