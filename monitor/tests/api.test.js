@@ -248,6 +248,9 @@ describe('GET /api/status (public aggregate)', () => {
     const body = await res.json();
     expect(body.overall).toBe('ok');
     expect(typeof body.checked_at).toBe('string');
+    // Top-level only: `cached` reports whether THIS response came out of the
+    // 20s read cache. The per-target rows below must NOT gain the key.
+    expect(body.cached).toBe(false);
     expect(body.targets).toHaveLength(TARGETS.length);
     for (const row of body.targets) {
       expect(Object.keys(row).sort()).toEqual(

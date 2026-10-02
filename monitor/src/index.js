@@ -115,10 +115,29 @@ export function clearPublicCache() {
 // Returns the cached payload when it is younger than TTL, otherwise awaits
 // `producer()` and stores the resolved value. Entries older than the TTL are
 // never returned (and are dropped on the next write).
+//
+// Thin wrapper over withPublicCacheInfo: endpoints that do not care WHERE the
+// payload came from use this; /api/status uses the *Info form so it can report
+// it (see the `cached` flag below).
 export async function withPublicCache(key, producer, now = Date.now()) {
+  const { value } = await withPublicCacheInfo(key, producer, now);
+  return value;
+}
+
+// Same read-through cache, but also reports whether the returned payload was a
+// HIT (`cached: true`) or was just produced from D1 (`cached: false`).
+//
+// The hit/miss answer is deliberately NOT part of the stored value: it describes
+// one HTTP response, not the data, so it is computed per call and merged into
+// the response by the caller. Storing it would be a self-invalidating flag -- the
+// `false` written by the miss that populated the entry would be replayed by
+// every subsequent hit inside the TTL, telling viewers the payload was freshly
+// queried when it was not, and the `true` written by a hit would pin the entry
+// as fresh past its TTL.
+export async function withPublicCacheInfo(key, producer, now = Date.now()) {
   const store = publicCacheStore();
   const hit = store.get(key);
-  if (hit && now - hit.at < PUBLIC_CACHE_TTL_MS) return hit.value;
+  if (hit && now - hit.at < PUBLIC_CACHE_TTL_MS) return { value: hit.value, cached: true };
 
   // Throws propagate to the route (500) with nothing written to the store.
   const value = await producer();
@@ -132,14 +151,14 @@ export async function withPublicCache(key, producer, now = Date.now()) {
     }
   }
   store.set(key, { value, at: now });
-  return value;
+  return { value, cached: false };
 }
 
 // Public aggregate status across all targets.
 app.get('/api/status', async (c) => {
   // Cache the finished payload, not the per-target query results: one entry for
   // the whole aggregate, so concurrent viewers share a single D1 read.
-  const payload = await withPublicCache('status', async () => {
+  const { value: aggregate, cached } = await withPublicCacheInfo('status', async () => {
     const latest = await db.getLatestPerTarget(c.env.DB);
     const byTarget = new Map(latest.map((row) => [row.target, row]));
     const lastCheck = await db.getLastCheckTime(c.env.DB);
@@ -170,7 +189,12 @@ app.get('/api/status', async (c) => {
       targets,
     };
   });
-  return c.json(payload);
+  // `cached` describes THIS response (served from the 20s window vs queried
+  // just now), so an operator watching the dashboard can see the cache working
+  // -- and, more usefully, can tell a stale-looking pill apart from a stale
+  // backend. It is merged here, outside the cached value, for the reason in
+  // withPublicCacheInfo's comment.
+  return c.json({ ...aggregate, cached });
 });
 
 // Public per-target history. `target` is required; hours defaults to 24 (max 168).

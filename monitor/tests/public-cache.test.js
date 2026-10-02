@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   app,
   withPublicCache,
+  withPublicCacheInfo,
   clearPublicCache,
   PUBLIC_CACHE_TTL_MS,
 } from '../src/index.js';
@@ -145,8 +146,14 @@ describe('GET /api/status — 20s TTL cache', () => {
 
     expect(second.status).toBe(200);
     expect(db.prepareCount).toBe(afterFirst);
-    // Served from cache: byte-identical payload, not a re-query.
-    expect(await second.json()).toEqual(await first.json());
+    // Served from cache: the DATA is byte-identical, not a re-query. The
+    // per-response `cached` flag is the one key that must differ (false on the
+    // miss, true on the hit) -- it is not part of the cached value.
+    const { cached: coldFlag, ...coldPayload } = await first.json();
+    const { cached: warmFlag, ...warmPayload } = await second.json();
+    expect(coldFlag).toBe(false);
+    expect(warmFlag).toBe(true);
+    expect(warmPayload).toEqual(coldPayload);
   });
 
   it('re-queries D1 once the TTL expires (never serves past TTL)', async () => {
@@ -367,6 +374,110 @@ describe('withPublicCache / clearPublicCache', () => {
 
     clearPublicCache();
     expect(await withPublicCache('k', producer, T0)).toBe(2);
+    expect(calls).toBe(2);
+  });
+});
+
+describe('GET /api/status — `cached` flag reports THIS response', () => {
+  it('false on a cold read, true inside the TTL, false again once it expires', async () => {
+    const db = new SpyDb();
+    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+
+    const cold = await get('/api/status', db).then((r) => r.json());
+    expect(cold.cached).toBe(false);
+    const afterCold = db.prepareCount;
+    expect(afterCold).toBeGreaterThan(0);
+
+    vi.setSystemTime(T0 + 5_000);
+    const warm = await get('/api/status', db).then((r) => r.json());
+    expect(warm.cached).toBe(true);
+    expect(db.prepareCount).toBe(afterCold);
+
+    vi.setSystemTime(T0 + PUBLIC_CACHE_TTL_MS);
+    const expired = await get('/api/status', db).then((r) => r.json());
+    expect(expired.cached).toBe(false);
+    expect(db.prepareCount).toBeGreaterThan(afterCold);
+  });
+
+  it('the flag is NOT frozen into the cached payload (the self-invalidating trap)', async () => {
+    const db = new SpyDb();
+    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+
+    const cold = await get('/api/status', db).then((r) => r.json());
+    // The value stored under 'status' carries no `cached` key of its own...
+    expect(Object.hasOwn(cold, 'cached')).toBe(true);
+    const stored = await withPublicCacheInfo('status', () => {
+      throw new Error('producer must not run for a live entry');
+    }, T0 + 1_000);
+    expect(stored.cached).toBe(true);
+    // ...so the value the cache replays is the pure aggregate, and the flag is
+    // recomputed per response. Had the producer returned `{cached:false}` and it
+    // been stored, this second read would report `false` while replaying a cache
+    // entry (and a `true` stored by a hit would survive past the TTL).
+    expect(Object.hasOwn(stored.value, 'cached')).toBe(false);
+    expect(Object.keys(stored.value).sort()).toEqual(['checked_at', 'overall', 'targets']);
+  });
+
+  it('concurrent viewers inside one window: one miss, the rest hits', async () => {
+    const db = new SpyDb();
+    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+
+    await get('/api/status', db);
+    const afterFirst = db.prepareCount;
+    const bodies = await Promise.all(
+      Array.from({ length: 5 }, () => get('/api/status', db).then((r) => r.json())),
+    );
+    expect(db.prepareCount).toBe(afterFirst);
+    // Every one of them truthfully reports where its own bytes came from.
+    for (const b of bodies) expect(b.cached).toBe(true);
+    // And the flag does not leak into the per-target rows.
+    for (const row of bodies[0].targets) expect(Object.hasOwn(row, 'cached')).toBe(false);
+  });
+
+  it('clearPublicCache makes the next read report cached:false again', async () => {
+    const db = new SpyDb();
+    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+
+    expect((await get('/api/status', db).then((r) => r.json())).cached).toBe(false);
+    expect((await get('/api/status', db).then((r) => r.json())).cached).toBe(true);
+
+    clearPublicCache();
+    expect((await get('/api/status', db).then((r) => r.json())).cached).toBe(false);
+  });
+});
+
+describe('withPublicCacheInfo', () => {
+  it('reports hit/miss per call and leaves withPublicCache value-identical', async () => {
+    let calls = 0;
+    const producer = async () => {
+      calls += 1;
+      return { n: calls };
+    };
+
+    expect(await withPublicCacheInfo('k', producer, T0)).toEqual({ value: { n: 1 }, cached: false });
+    expect(await withPublicCacheInfo('k', producer, T0 + 1)).toEqual({ value: { n: 1 }, cached: true });
+    expect(await withPublicCacheInfo('k', producer, T0 + PUBLIC_CACHE_TTL_MS - 1)).toEqual({
+      value: { n: 1 },
+      cached: true,
+    });
+    expect(await withPublicCacheInfo('k', producer, T0 + PUBLIC_CACHE_TTL_MS)).toEqual({
+      value: { n: 2 },
+      cached: false,
+    });
+    expect(calls).toBe(2);
+
+    // Same key, different wrapper: withPublicCache unwraps to the bare value.
+    expect(await withPublicCache('other', producer, T0)).toEqual({ n: 3 });
+  });
+
+  it('a throwing producer reports nothing and is not cached', async () => {
+    let calls = 0;
+    const boom = async () => {
+      calls += 1;
+      throw new Error('nope');
+    };
+    await expect(withPublicCacheInfo('k', boom, T0)).rejects.toThrow('nope');
+    await expect(withPublicCacheInfo('k', boom, T0 + 1_000)).rejects.toThrow('nope');
     expect(calls).toBe(2);
   });
 });
