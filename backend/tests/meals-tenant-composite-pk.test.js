@@ -555,16 +555,21 @@ const portableManifest = () => ({
   ],
 });
 
-const postImport = (sqlite, tenantId, body) =>
-  mountRouter(tenantImportRoutes, {
+const postImportWithEnv = (sqlite, env, body) => {
+  const tenantId = env.__tenantId;
+  return mountRouter(tenantImportRoutes, {
     tenantId,
     user: { role: 'admin', tenantId },
     basePath: '/tenants/import',
   }).request(
     'http://localhost/tenants/import',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    importEnv(sqlite),
+    env,
   );
+};
+
+const postImport = (sqlite, tenantId, body) =>
+  postImportWithEnv(sqlite, { ...importEnv(sqlite), __tenantId: tenantId }, body);
 
 function buildImportDb() {
   const db = replayTo0126();
@@ -654,5 +659,145 @@ describe('0127 — a manifest with explicit meal ids loads into two tenants', ()
     expect(dup.status).toBe(409);
     expect((await dup.json()).error).toContain('meal_bulk_119');
     expect(db.prepare('SELECT COUNT(*) c FROM meals WHERE id LIKE ?').get('meal_new_%').c).toBe(0);
+  });
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. WAVE 8 ITEM 4 — the id probes batch, so a cap-sized manifest never 500s
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * D1 caps BOUND PARAMETERS PER QUERY at 100 (Cloudflare D1 limits, verified
+ * 2026-10-02) and fails with `too many SQL variables at offset N` past it. Both
+ * `IN (…)` probes in the import handler therefore batch through
+ * `probeIdsInBatches`, and these tests pin that at the manifest caps
+ * themselves — 200 meals, 200 products — because a probe that is merely
+ * *usually* small enough is exactly the bug.
+ *
+ * Local better-sqlite3's own ceiling is 32,766 variables, so nothing here would
+ * fail without the batching. What is actually proven is the two failure modes
+ * an off-by-one in the batch size produces, both of which are silent: the
+ * batching loop walks the WHOLE id set (a collision/unresolvable id in the
+ * FINAL batch is still found), and the batch size is derived from D1's ceiling
+ * rather than written as a literal that can drift when an array cap is raised.
+ */
+describe('Wave 8 item 4 — id probes batch across the full manifest cap', () => {
+  const CAP = 200; // menu.meals / products array cap in the Zod manifest schema
+
+  /** A D1 shim that counts how many statements each probe issued. */
+  function countingEnv(sqlite) {
+    const counted = [];
+    const env = importEnv(sqlite);
+    const inner = env.DB;
+    env.DB = {
+      ...inner,
+      prepare: (sql) => {
+        // Match ONLY the batching probes. `SELECT id FROM projects WHERE
+        // tenant_id = ?` also runs once for `defaultCampId`, so keying on the
+        // table name would count an unrelated statement.
+        if (/id IN \(/.test(sql)) counted.push(sql.replace(/\s+/g, ' ').slice(0, 60));
+        return inner.prepare(sql);
+      },
+    };
+    return { env, counted };
+  }
+
+  const importWith = (sqlite, tenantId, body) => {
+    const { env, counted } = countingEnv(sqlite);
+    env.__tenantId = tenantId;
+    return postImportWithEnv(sqlite, env, body).then((res) => ({ res, counted }));
+  };
+
+  it('derives the batch size from D1\'s 100-bind ceiling instead of a literal', () => {
+    const src = readFileSync(join(import.meta.dirname, '..', 'src', 'api', 'tenant-import.js'), 'utf8');
+    expect(src).toContain('const D1_MAX_BIND_PARAMS = 100;');
+    expect(src).toContain('D1_MAX_BIND_PARAMS - fixedBinds - IN_PROBE_HEADROOM');
+    // Both probes must route through the one helper (definition + 2 call sites)
+    // and no probe may reintroduce a hand-rolled slice loop with a literal step.
+    expect((src.match(/probeIdsInBatches\(/g) || [])).toHaveLength(3);
+    expect(src).not.toMatch(/for \(let i = 0; i < \w+\.length; i \+= \d+\)/);
+    // The derived size must leave room for the tenant_id bind plus headroom.
+    expect(100 - 1 - 5).toBe(94);
+  });
+
+  it('batches 200 DISTINCT meal ids across several statements and finds the last-batch collision', async () => {
+    const db = buildImportDb();
+    // Seed ONLY the id that will sit in the final batch, so the 409 can only be
+    // produced by a probe that actually walked every batch.
+    const LAST = `meal_cap_${CAP - 1}`;
+    const seeded = await postImport(db, 't_overlap_a', {
+      menu: { categories: [{ name: 'Bulk', position: 1 }], meals: [{ id: LAST, name: 'Seeded', categoryName: 'Bulk', price: 10 }] },
+    });
+    expect(seeded.status).toBe(200);
+
+    const { res, counted } = await importWith(db, 't_overlap_a', {
+      menu: {
+        categories: [{ name: 'Bulk2', position: 1 }],
+        meals: Array.from({ length: CAP }, (_, i) => ({
+          id: `meal_cap_${i}`, name: `Cap ${i}`, categoryName: 'Bulk2', price: 10,
+        })),
+      },
+    });
+    // 200 ids + tenant_id = 201 binds — 3 batches at the derived size of 94.
+    expect(counted.length).toBeGreaterThan(1);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain(LAST);
+    // Nothing partial: the colliding meal is found BEFORE the meals batch.
+    expect(db.prepare("SELECT COUNT(*) c FROM meals WHERE id LIKE 'meal\\_cap2%' ESCAPE '\\'").get().c).toBe(0);
+  });
+
+  it('de-duplicates repeated ids so 200 entries naming ONE id cost a single batch', async () => {
+    const db = buildImportDb();
+    const { res, counted } = await importWith(db, 't_overlap_a', {
+      menu: {
+        categories: [{ name: 'Bulk', position: 1 }],
+        // 200 entries, ONE id: without the Set() collapse this would be 200
+        // binds across 3 batches for a question with a one-element answer.
+        meals: Array.from({ length: CAP }, (_, i) => ({
+          id: 'meal_same', name: `Same ${i}`, categoryName: 'Bulk', price: 10,
+        })),
+      },
+    });
+    expect(counted).toHaveLength(1);
+    // The de-dup is about BIND BUDGET only, never about permitting duplicates.
+    // A manifest that repeats one id WITHIN ITSELF is a different case the
+    // pre-flight structurally cannot see: the probe asks the DATABASE who owns
+    // an id, and a duplicate that exists only inside the payload has not been
+    // written yet. So this still fails — at the meals batch, as the generic
+    // 500 the existing-tenant path documents — rather than as the precise 409
+    // the pre-flight gives for an id already committed. Pinned here so the
+    // limitation is visible instead of implied; see the logbook fold.
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toMatch(/Import failed/);
+    // No row-count assertion here on purpose: this suite's D1 shim runs `batch()`
+    // statement-by-statement, whereas real D1 batches are all-or-nothing, so a
+    // partial-write count would describe the harness rather than the handler.
+  });
+
+  it('400s an unresolvable campId sitting in the LAST batch of 200 distinct ids', async () => {
+    const db = buildImportDb();
+    // 199 REAL live projects, so every campId except the final one resolves and
+    // the only unknown is the one a short-circuiting probe would never reach.
+    for (let i = 0; i < CAP - 1; i++) {
+      db.prepare("INSERT INTO projects (id, tenant_id, name, slug) VALUES (?, 't_overlap_a', ?, ?)")
+        .run(`proj_real_${i}`, `Real ${i}`, `real-${i}`);
+    }
+    const { res, counted } = await importWith(db, 't_overlap_a', {
+      products: Array.from({ length: CAP }, (_, i) => ({
+        name: `Bulk Room ${i}`,
+        sku: `BULK-${i}`,
+        basePrice: 100 + i,
+        capacity: 2,
+        type: 'room',
+        campId: i === CAP - 1 ? 'proj_never_owned' : `proj_real_${i}`,
+      })),
+    });
+    expect(counted.length).toBeGreaterThan(1);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      'Product "Bulk Room 199" references unknown camp "proj_never_owned". ' +
+        'campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.',
+    );
+    // The pre-flight still runs before the first write.
+    expect(db.prepare('SELECT COUNT(*) c FROM pos_products').get().c).toBe(0);
+    expect(db.prepare("SELECT COUNT(*) c FROM pos_products WHERE sku LIKE 'BULK-%'").get().c).toBe(0);
   });
 });

@@ -257,18 +257,49 @@ non-deleted project (:414–417): with 0 or 2+ projects, products import with
 
 Both reference probes interpolate their `IN (…)` list, so both are exposed to
 D1's **100 bound parameters per query** ceiling
-(`too many SQL variables at offset N`). Both are chunked at **50 ids per
-statement**, and both `SET`-de-duplicate first so a manifest repeating an id
-does not spend binds twice:
+(`too many SQL variables at offset N`). Both go through one helper,
+`probeIdsInBatches`, which derives the batch size from that ceiling
+(`100 − fixedBinds − 5` headroom = **94 ids + `tenant_id` = 95 binds**) instead
+of hard-coding a step. Deriving it is the point: a literal `i += 50` keeps
+working until someone raises an array cap, and then the probe silently drifts
+back over the ceiling. Both callers `SET`-de-duplicate first, so a manifest
+repeating an id does not spend binds twice:
 
-| Probe | Placeholder | Binds per statement | Chunked? |
+| Probe | Placeholder | Binds per statement | Batched? |
 |---|---|---|---|
-| `campId` resolvability (:275–304) | the **distinct** `campId` values across every section that accepts one | 50 ids + `tenant_id` = **51** | yes, `for (i += 50)` — `products[]` caps at 200, so a single `IN (…)` would have traded the clean 400 for an opaque 500 on a large manifest |
-| explicit `menu.meals[].id` ownership (:668–684) | the **distinct** explicit meal ids | 50 ids + `tenant_id` = **51** | yes — `menu.meals` caps at 200, so a manifest authoring an id on every meal binds 201 values in one query |
+| `campId` resolvability | the **distinct** `campId` values across every section that accepts one | 94 ids + `tenant_id` = **95** | yes — `products[]` caps at 200, so a single `IN (…)` would have traded the clean 400 for an opaque 500 on a large manifest |
+| explicit `menu.meals[].id` ownership | the **distinct** explicit meal ids | 94 ids + `tenant_id` = **95** | yes — `menu.meals` caps at 200, so a manifest authoring an id on every meal binds 201 values in one query |
 
-> The second row **used to be un-chunked and un-deduplicated** (up to 200
+> The second row **used to be un-batched and un-deduplicated** (up to 200
 > binds), which was documented as a known latent exposure. Migration 0127 closed
 > both while reshaping the probe's scope — see below.
+
+#### Why the array caps stay at 200 (the "or 1000" question, answered)
+
+The natural follow-up to "the probe batches" is "so raise the caps". **Don't,
+and the probe was never the binding constraint.** Cloudflare's published D1
+limits (verified 2026-10-02) give **100 bound parameters per query** *and*
+**1,000 queries per Worker invocation on Paid / 50 on Free**. This repo runs on
+the **Free** plan. The write path is where a large manifest breaks, not the
+read probe:
+
+- `menu.meals` emits **2 statements per meal** into a single `DB.batch()`, so
+  the current cap of 200 already means up to **400 statements** in one
+  invocation — against a Free ceiling of **50**.
+- Raising `menu.meals` to 1000 would mean **2,000** statements in one batch.
+
+So the caps are already unreachable on Free for the write path, and raising
+them makes it strictly worse. Making 1000 work is a *batching* change (split
+the meal writes into several `DB.batch()` calls, which also needs a partial
+progress story because there is no cross-section transaction — F-A17-02),
+not a probe change. That is a separate piece of work and is **not** done here.
+
+> **Known limitation, measured:** a manifest that repeats one `menu.meals[].id`
+> **within itself** is invisible to the probe — it asks the *database* who owns
+> an id, and a duplicate that exists only in the payload has not been written
+> yet. Such a manifest passes the pre-flight and fails the meals `batch()` as
+> the generic `500 Import failed: …`, not the precise 409. Pinned by a test
+> rather than left implied.
 
 The two probes also differ in **scope**, and 0127 is why:
 

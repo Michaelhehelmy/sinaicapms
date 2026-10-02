@@ -22,6 +22,43 @@ const identitySchema = z.object({
 }).strip();
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+/**
+ * D1 caps BOUND PARAMETERS PER QUERY at **100** (Cloudflare D1 limits, verified
+ * 2026-10-02; exceeding it fails with `too many SQL variables at offset N`).
+ * Every `IN (…)` probe below therefore has to batch, or a large-but-legal
+ * manifest trades a precise 4xx for an opaque 500.
+ *
+ * `fixedBinds` is the number of non-`IN` placeholders the statement already
+ * carries (both probes bind `tenant_id`), and `reserve` is headroom for a bind
+ * added later. The chunk size is DERIVED from the ceiling rather than written
+ * as a literal, so raising an array cap above 200 can never silently push a
+ * probe back over 100 binds.
+ */
+const D1_MAX_BIND_PARAMS = 100;
+const IN_PROBE_HEADROOM = 5;
+const inProbeChunkSize = (fixedBinds = 1) =>
+  D1_MAX_BIND_PARAMS - fixedBinds - IN_PROBE_HEADROOM;
+
+/**
+ * Run `query(chunk, offset)` over `ids` in ceiling-derived batches and return
+ * the union of every batch's `results[].id`. `query` receives the batch plus
+ * its starting offset so a caller can report which slice it is on.
+ *
+ * Deduplication is the CALLER's job — this batches, it does not de-duplicate —
+ * because only the caller knows whether two equal ids are meaningful (a
+ * manifest repeating one id) or not.
+ */
+async function probeIdsInBatches(DB, ids, fixedBinds, query) {
+  const size = inProbeChunkSize(fixedBinds);
+  const found = new Set();
+  for (let i = 0; i < ids.length; i += size) {
+    const chunk = ids.slice(i, i + size);
+    const { results } = await query(chunk, i);
+    for (const row of results || []) found.add(row.id);
+  }
+  return found;
+}
 const ALLOWED_IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
 const IMAGE_CONTENT_TYPE = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
@@ -279,20 +316,16 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
   );
   if (campRefs.length > 0) {
     const distinct = [...new Set(campRefs.map((ref) => ref.campId))];
-    // Chunked because D1 caps BOUND PARAMETERS PER QUERY at 100 (`too many SQL
-    // variables at offset N`) — well under the products cap of 200, so a
-    // single `IN (…)` over every distinct id would trade this 400 for an
-    // opaque 500 on a large manifest. 50 ids + the tenant_id = 51 binds.
-    const resolvable = new Set();
-    for (let i = 0; i < distinct.length; i += 50) {
-      const chunk = distinct.slice(i, i + 50);
-      const { results: chunkProjects } = await env.DB.prepare(
+    // Batched (see `probeIdsInBatches`): the products cap is 200 and every
+    // entry may carry a DISTINCT campId, so a single `IN (…)` over all of them
+    // would bind 201 values and trade this precise 400 for an opaque D1 500.
+    const resolvable = await probeIdsInBatches(env.DB, distinct, 1, (chunk) =>
+      env.DB.prepare(
         `SELECT id FROM projects
           WHERE tenant_id = ? AND deleted_at IS NULL
             AND id IN (${chunk.map(() => '?').join(', ')})`
-      ).bind(tenantId, ...chunk).all();
-      for (const p of chunkProjects || []) resolvable.add(p.id);
-    }
+      ).bind(tenantId, ...chunk).all()
+    );
     const unknown = campRefs.find((ref) => !resolvable.has(ref.campId));
     if (unknown) {
       return fail(
@@ -659,22 +692,18 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
     // all tenants would re-introduce the cross-tenant collision 0127 removed,
     // and would leak another tenant's existence through a 4xx.
     //
-    // CHUNKED (50 ids per statement) because D1 caps BOUND PARAMETERS PER
-    // QUERY at 100 (`too many SQL variables at offset N`). `menu.meals` is
-    // capped at 200 entries by the schema, so a manifest that authors an id on
-    // every meal binds 201 values in one query — trading this clear 409 for an
-    // opaque 500. `SET`-de-duplicated first so a manifest repeating one id
-    // does not spend binds twice.
+    // BATCHED (see `probeIdsInBatches`): `menu.meals` is capped at 200 entries
+    // by the schema, so a manifest that authors an id on every meal would bind
+    // 201 values in one statement and trade this clear 409 for an opaque D1
+    // 500 (`too many SQL variables at offset N`). `SET`-de-duplicated first so
+    // a manifest repeating one id does not spend binds twice.
     const explicitIds = [...new Set(data.menu.meals.map((m) => m.id).filter(Boolean))];
     if (explicitIds.length > 0) {
-      const owned = new Set();
-      for (let i = 0; i < explicitIds.length; i += 50) {
-        const chunk = explicitIds.slice(i, i + 50);
-        const { results: owners } = await env.DB.prepare(
+      const owned = await probeIdsInBatches(env.DB, explicitIds, 1, (chunk) =>
+        env.DB.prepare(
           `SELECT id FROM meals WHERE tenant_id = ? AND id IN (${chunk.map(() => '?').join(', ')})`
-        ).bind(tenantId, ...chunk).all();
-        for (const owner of owners) owned.add(owner.id);
-      }
+        ).bind(tenantId, ...chunk).all()
+      );
       const taken = data.menu.meals.find((m) => m.id && owned.has(m.id));
       if (taken) {
         return fail(409, `Meal "${taken.name}" already exists in this tenant (duplicate id "${taken.id}")`);
