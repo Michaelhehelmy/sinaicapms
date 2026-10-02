@@ -4,7 +4,7 @@ A full-stack serverless SaaS platform for managing summer camps, wilderness lodg
 
 **Production:** [sinaicamps.com](https://sinaicamps.com) · **Repo:** [Michaelhehelmy/campmaster](https://github.com/Michaelhehelmy/campmaster) (private)
 
-**Docs:** [Architecture](docs/ARCHITECTURE.md) · [API Contract](docs/API_CONTRACT.md) · [Component Catalog](docs/COMPONENT_CATALOG.md) · [Migration Guide](docs/MIGRATION_GUIDE.md) · [Quick Start](docs/QUICK_START.md) · [Testing](docs/TESTING.md) · [Developer Roadmap](docs/DEVELOPER_ROADMAP.md) · [Performance Baseline](docs/PERF_BASELINE.md)
+**Docs:** [Architecture](docs/ARCHITECTURE.md) · [API Contract](docs/API_CONTRACT.md) · [Runbook](docs/RUNBOOK.md) · [Security Guide](docs/security-guide.md) · [Tenant Import](docs/tenant-import.md) · [Component Catalog](docs/COMPONENT_CATALOG.md) · [Migration Guide](docs/MIGRATION_GUIDE.md) · [Quick Start](docs/QUICK_START.md) · [Testing](docs/TESTING.md) · [Developer Roadmap](docs/DEVELOPER_ROADMAP.md) · [Performance Baseline](docs/PERF_BASELINE.md)
 
 ---
 
@@ -45,7 +45,7 @@ SinaiCamps is built as **four independent layers that are isolated from each oth
 │       worker may query it │   │     • KV_CACHE (bound; read   │
 │     • Migrations only via │   │       caching via Cache-      │
 │       backend/migrations/ │   │       Control headers)        │
-│     • 99 numbered files   │   │     • R2 MEDIA_BUCKET (uploads│
+│     • 40 numbered files   │   │     • R2 MEDIA_BUCKET (uploads│
 └───────────────────────────┘   │       — media images)         │
                                 │     • Never read by frontend  │
                                 └───────────────────────────────┘
@@ -55,7 +55,7 @@ SinaiCamps is built as **four independent layers that are isolated from each oth
 
 | Layer | What it does | What it is NOT allowed to do | How it connects |
 |---|---|---|---|
-| **1. Frontend** (`app/`) | Render UI, collect input, call API, zone routing | ❌ Never import backend code · ❌ Never query D1/KV · ❌ Never hold secrets | → API via `app/src/lib/api.ts` (unified typed client, 100+ functions) over HTTP JSON |
+| **1. Frontend** (`app/`) | Render UI, collect input, call API, zone routing | ❌ Never import backend code · ❌ Never query D1/KV · ❌ Never hold secrets | → API via `app/src/lib/api.ts` (unified typed client, ~290 exported functions) over HTTP JSON |
 | **2. API + Backend** (`backend/`) | Auth, business logic, validation, data access, rate limiting, SSE | ❌ Never render UI · ❌ Never expose D1/KV/R2 bindings to the outside | → D1 via `env.DB` binding (prepared statements) · → KV via `RATE_LIMIT_KV`/`KV_CACHE` · → R2 via `MEDIA_BUCKET` · → Durable Object `BROADCASTER` |
 | **3. Database** (Cloudflare D1) | Persist all data (SQLite at the edge) | ❌ No public access — reachable only inside the Worker runtime | ← backend only, via `.prepare().bind().all()` |
 | **4. Cache / Rate Limiting** (Cloudflare KV + R2) | Distributed rate-limit state + media storage | ❌ Not an API surface · ❌ Never a source of truth | ← backend only, via Worker bindings |
@@ -63,7 +63,7 @@ SinaiCamps is built as **four independent layers that are isolated from each oth
 ### How they are physically connected
 
 - **Frontend ↔ Backend**: Both live as Workers on the same zone (`sinaicamps.com`). Cloudflare **Worker routes** send `/api/*` to the `campmaster-backend` Worker; everything else is served by the `campmaster-marketplace` Worker (Astro SSR, built with `@astrojs/cloudflare`). The frontend Worker calls the backend through the `API_BACKEND` **service binding** (not a same-zone `fetch()`, which Cloudflare rejects with error 1042), resolved in `app/src/middleware/tenant.ts` from the `cloudflare:workers` `env`. In dev, Astro's dev server proxies `/api/*` to `wrangler dev` on `:8787`. The API client (`app/src/lib/api.ts`) is the single shared contract — one function per endpoint, typed responses (`app/src/lib/api-types.ts` regenerated from `backend/openapi.json`).
-- **Backend ↔ Database**: D1 binding `env.DB` (`campmaster-db`) declared in `backend/wrangler.toml`. Every schema change is a numbered migration in `backend/migrations/` (currently **99**, head `0099_normalize_marketplace_payouts_ids.sql`) applied with `wrangler d1 migrations apply`. No ORM — parameterized SQL.
+- **Backend ↔ Database**: D1 binding `env.DB` (`campmaster-db`) declared in `backend/wrangler.toml`. Every schema change is a numbered migration in `backend/migrations/` — currently **40** top-level `.sql` files, head `0127_meals_tenant_composite_pk.sql`, applied with `wrangler d1 migrations apply`. The head is the **highest-numbered file present**, not "N files after 0001": `0109` is reserved-but-absent and `0125` was deliberately skipped. `legacy/` (99 files) is excluded from the lineage. **Check the applied ledger, not the file count** — a migration can be committed and not yet applied (§Deployment). No ORM — parameterized SQL.
 - **Backend ↔ KV / R2 / DO**: `RATE_LIMIT_KV` (rate limiting), `KV_CACHE` (bound; read caching is done with `Cache-Control` headers on public responses — no KV writes), `MEDIA_BUCKET` (R2 uploads), and `BROADCASTER` (Durable Object for SSE) — all declared in `backend/wrangler.toml`. Rate limiting is **KV-backed with an in-memory fallback** (see [Rate Limiting & KV](#rate-limiting--kv-free-plan-warning)).
 - **Tenant isolation is enforced twice**: `app/src/middleware/tenant.ts` resolves the tenant/zone for rendering, and `backend/src/middleware/` re-validates tenant context + JWT on every API call. The frontend can never bypass the backend's checks.
 
@@ -76,10 +76,10 @@ sinaicamps/
 ├── app/                        Layer 1 — Unified frontend (Astro + React + Tailwind)
 │   └── src/
 │       ├── components/         React components
-│       │   ├── admin/          Admin dashboard panels (18 panels + SPA host)
-│       │   ├── pos/            POS terminal views (8 views)
+│       │   ├── admin/          Admin dashboard panels (29 nav panels + SPA host)
+│       │   ├── pos/            POS terminal (8 rendered views + CartPanel/ProjectPicker/ReceiptModal)
 │       │   ├── public/         Public components (ZoneGuard, TenantLanding, CampsSection…)
-│       │   ├── ui/             Shared UI primitives (26 components)
+│       │   ├── ui/             Shared UI primitives (20 components)
 │       │   ├── feedback/       Toast notifications
 │       │   ├── forms/          Form components
 │       │   └── tables/         Table components
@@ -92,14 +92,14 @@ sinaicamps/
 │       │   ├── admin/[...rest]/  Admin SPA host
 │       │   └── pos/[...rest]/    POS SPA host
 │       ├── lib/                Shared modules
-│       │   ├── api.ts          Unified API client (100+ functions) — THE contract
+│       │   ├── api.ts          Unified API client (~290 exported functions) — THE contract
 │       │   ├── api-types.ts    Generated response/request types (from openapi.json)
 │       │   ├── routeZones.ts   Zone model (marketplace | tenant) — single source of truth
 │       │   ├── auth.tsx        React auth context + role hierarchy
 │       │   ├── sse.ts          SSE client (admin inbox/orders via Durable Object)
 │       │   ├── theme.ts / posUrl.ts / plausible.ts
 │       │   └── utils.ts        escHtml, formatCurrency, cn, …
-│       ├── hooks/              React hooks (useAdminData, useApiError, useQueryHooks,
+│       ├── hooks/              React hooks (useAdminData, usePosQueries, useQueryHooks,
 │       │                       useSseInbox, useSseOrders)
 │       ├── middleware/         Astro middleware (tenant resolution, zone)
 │       └── styles/             Global Tailwind CSS
@@ -112,14 +112,18 @@ sinaicamps/
 │       ├── middleware/         Auth, RBAC, rate limiting, tenant
 │       ├── services/           Business logic
 │       └── utils/              Response helpers, error handling
-│   └── migrations/             Layer 3 — D1 schema migrations (99 numbered files)
+│   └── migrations/             Layer 3 — D1 schema migrations (40 numbered files)
 │
-├── tests/                      All test suites
-│   ├── unit/                   Backend unit tests
-│   ├── pos/                    POS integration tests
+├── monitor/                   Separate Worker — public health probe + dashboard
+│                               (campmaster-monitor, own campmaster-monitor-db, 5-min cron)
+│                               Unit tests: cd monitor && npx vitest run
+│
+├── tests/                      Root integration + E2E suites
+│   ├── core/ tenant/ security/ superadmin/   Root integration areas
 │   ├── e2e/                    Playwright E2E specs (marketplace, tenant, admin, pos,
-│   │                           auth, cross-cutting, routing, production)
-│   └── *.test.js               Integration tests
+│   │                           auth, cross-cutting, public, routing) — 96 specs
+│   ├── globalSetup.ts          Boots wrangler dev for integration + E2E
+│   └── *.test.js               Root integration tests
 │
 ├── docs/                       Architecture, API contract, component catalog, guides
 ├── deploy.sh                   Single-command deployment
@@ -133,13 +137,14 @@ sinaicamps/
 
 | Layer | Technology |
 |-------|-----------|
-| **1. Frontend** | Astro 7.3.1 + React 19.2.x + Tailwind CSS v4 (TypeScript); `sharpImageService()` image pipeline with `SafeImage.astro` |
-| **2. API / Backend** | Hono on Cloudflare Workers (JavaScript); SSE via Durable Object `BROADCASTER` |
+| **1. Frontend** | Astro 7.3.1 (`^7.3.1`) + React 19.2 (`^19.2.8`) + Tailwind CSS v4 (`^4.3.3`) (TypeScript); `sharpImageService()` image pipeline with `SafeImage.astro` |
+| **2. API / Backend** | Hono `^4.13.7` on Cloudflare Workers (JavaScript); Zod `^3.25.76`; SSE via Durable Object `BROADCASTER` |
 | **3. Database** | Cloudflare D1 (SQLite) — `campmaster-db` (+ isolated `campmaster-db-staging`) |
 | **4. Cache / Rate Limiting** | Cloudflare KV (`RATE_LIMIT_KV`, `KV_CACHE`) + R2 (`MEDIA_BUCKET`) |
+| **Ops** | Separate Worker `campmaster-monitor` (`monitor/`) — public health probes on a 5-min cron, own `campmaster-monitor-db` |
 | **Auth** | JWT (HS256) + bcrypt password hashing; POS uses a separate `pos_token` |
-| **Unit Tests** | Vitest (backend 2610 · frontend 3561 · integration 255) — UNVERIFIABLE, counts drift |
-| **E2E Tests** | Playwright (566 total — 552 gate passing · 14 env-skipped in CI mode) — UNVERIFIABLE, counts drift |
+| **Unit Tests** | Vitest — backend 2701 / frontend 3611 / monitor 72 (see §Run Tests for the run that produced each) |
+| **E2E Tests** | Playwright — 96 specs across 8 projects; the gate is re-run, not recalled (see §Run Tests) |
 | **Deployment** | Cloudflare Workers (frontend `campmaster-marketplace` + API `campmaster-backend`) via `deploy.sh` (`--staging` supported) |
 
 ---
@@ -171,14 +176,14 @@ Custom domains (e.g. `acaciacamp.com`) resolve to their tenant zone automaticall
 - JSON-LD `Campground` structured data
 
 ### Admin Dashboard (`/admin`)
-- Hash-routed React SPA with **18 management panels** (TanStack Query for all data — zero raw `fetch` data loads)
-- Camps, Rooms, Rate Plans, Reservations/Orders, Staff, Inventory, Meals, Planning, Reports, Settings, Super Admin mode
+- Hash-routed React SPA with **29 management panels** (TanStack Query for all data — zero raw `fetch` data loads)
+- The 29 nav panels: Dashboard, Projects, Rooms, Rate Plans, Orders, Cash Desk, Folios, Inbox, Booking Calendar, Meals, Menu Planner, Menu Page, Planning, Reports, Analytics, Low Stock, Promotions, Services, Service Bookings, Staff, Financials, HR & Payroll, Supply Chain, CRM, Storefront, AI & Intelligence, Billing, Import, Settings — some gated by role (Super Admin mode)
 - Live updates via SSE (inbox + orders) through the `BROADCASTER` Durable Object
 
 ### POS Terminal (`/pos`)
 - React SPA (hosted inside the unified app at `/pos`), tenant-zone only — `sinaicamps.com/pos` is a branded 404 by zone design
 - Products, Orders, Customers, Inventory, Staff, Reports, Shifts; cashier shift open/close; cart/checkout with local payment methods (e-wallet, Instapay, cash — recorded pending, manager verifies)
-- Role-based access (cashier, staff, manager, admin) via `pos_token`
+- Role-based access via `pos_token` — the ladder is `ROLE_HIERARCHY` (`app/src/lib/rbac.ts`): `super_admin` 100 > `admin` 80 > `manager` 50 > `cashier` 30, and an unknown role always fails
 
 ### Internationalization (status)
 - The frontend is **intentionally hard-coded English LTR**. Arabic RTL was planned (T11) and **cancelled** as a deliberate product decision — there is no `app/src/i18n/`, no locale middleware, no `sc_lang` cookie. See `docs/DEVELOPER_ROADMAP.md` for the reasoning.
@@ -220,18 +225,32 @@ npm run dev        # http://localhost:4321 (Astro default), proxies /api/* → :
 ### 3. Run Tests
 
 ```bash
-# Backend unit + POS integration tests (2610 tests / 115 files) — UNVERIFIABLE, counts drift
+# Backend unit + POS integration tests — 124 files / 2701 tests (run that produced
+# the number: 3f66503, 2026-10-02)
 cd backend && npx vitest run
 
-# Frontend app unit tests (3561 tests / 149 files) — UNVERIFIABLE, counts drift
+# Frontend app unit tests — 154 files / 3611 tests (09ff710)
 cd app && npx vitest run
 
-# Root integration tests (255 tests / 37 files) — UNVERIFIABLE, counts drift
-npx vitest run
+# Monitor unit tests — 7 files / 72 tests (921e871)
+cd monitor && npx vitest run
 
-# E2E tests (566 total — 552 gate passing · 14 env-skipped in CI mode; boots wrangler dev + astro dev) — UNVERIFIABLE
+# Root integration tests — 37 files / 255 registered. NOTE: globalSetup boots
+# wrangler dev WITHOUT applying migrations, so a fresh .wrangler/state is a blank
+# DB and this suite 500s on "no such table". Pre-existing; confirm with git stash
+# before blaming your diff.
+npx vitest run --config vitest.integration.config.ts
+
+# E2E — 96 specs, 8 projects; boots wrangler dev + astro dev. The last recorded
+# full gate is 919 passed / 0 failed / 15 env-skipped (2026-09-06). There is no
+# current number: run the gate rather than quoting a remembered one, and never
+# debug against a stale server (docs/RUNBOOK.md §8).
 CI=true npx playwright test
 ```
+
+Each count above is stated with the run that produced it, so a stale one is
+visible instead of authoritative. `docs/TESTING.md` and `docs/ARCHITECTURE.md`
+carry the same table.
 
 ---
 
@@ -252,6 +271,20 @@ CI=true npx playwright test
 | `backend/` | Cloudflare **Worker** `campmaster-backend` | `sinaicamps.com/api/*` + `*.sinaicamps.com/api/*` (Worker routes) |
 | `app/` (build) | Cloudflare **Worker** `campmaster-marketplace` (Astro SSR via `@astrojs/cloudflare`) | everything else on the zone + custom domains |
 | D1 migrations | `campmaster-db` (remote) | only reachable inside the Worker |
+
+> **A committed migration is not an applied migration.** `backend/migrations/`
+> is ahead of the remote ledger whenever a schema change is committed for a
+> later deploy — as `0127_meals_tenant_composite_pk.sql` currently is. Read the
+> ledger (`npx wrangler d1 migrations list --config backend/wrangler.toml
+> --remote`), not the file count, and **apply a migration before deploying code
+> that depends on its new shape**: the code half of a table rebuild is written
+> against the post-migration column list, so the wrong order fails at runtime,
+> not at boot. §Drift detection in [`docs/RUNBOOK.md`](docs/RUNBOOK.md) §8 is
+> the gate for this.
+
+Record **both** Worker version ids after every deploy (`campmaster-backend`
+**and** `campmaster-marketplace`) — only the backend has a scripted rollback.
+[`docs/RUNBOOK.md`](docs/RUNBOOK.md) §4a and §6.
 
 **Output URLs:**
 - Frontend / marketplace: `https://sinaicamps.com`
@@ -310,7 +343,7 @@ CRUD for `/api/camps/*`, `/api/rooms/*`, `/api/rateplans/*`, `/api/reservations/
 
 ## Database
 
-One Cloudflare D1 database (`campmaster-db`, **99 numbered migrations** in `backend/migrations/`, head `0099_normalize_marketplace_payouts_ids.sql`). Only the backend Worker touches it. Key tables:
+One Cloudflare D1 database (`campmaster-db`, **40 numbered migrations** in `backend/migrations/`, head `0127_meals_tenant_composite_pk.sql`). Only the backend Worker touches it. Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -330,10 +363,11 @@ Gotchas and migration workflow: [`docs/MIGRATION_GUIDE.md`](docs/MIGRATION_GUIDE
 
 ## Rate Limiting & KV (Free-Plan Warning)
 
-- Rate limiting is distributed by default via the `RATE_LIMIT_KV` namespace (1 KV write per request).
+- Rate limiting is distributed by default via the `RATE_LIMIT_KV` namespace (1 KV write per request), keyed `${cf-connecting-ip}:${path}` from a ~20-entry policy table matched in declaration order (first hit wins), with a second tenant-scoped layer on 7 prefixes. Full table: [`docs/security-guide.md`](docs/security-guide.md).
 - The Cloudflare **free plan caps KV writes at 1,000/day** — sustained API traffic exhausts it, and the limiter fails **closed** (`429 Rate limit check failed`) until the quota resets. This hit production on 2026-08-03.
-- A toggle `RATE_LIMIT_KV_ENABLED` (`backend/wrangler.toml` `[vars]`) switches to the **in-memory per-isolate fallback** (zero KV writes). It is currently set to `"false"`; set it to `"true"` only after upgrading to **Workers Paid** (1M writes/day) or otherwise eliminating the quota constraint.
-- `KV_CACHE` is bound but **never written** — read caching for public marketplace responses is done with `Cache-Control` headers (`cachedJsonResponse` in `backend/src/utils/response.js`), which costs no KV writes.
+- A toggle `RATE_LIMIT_KV_ENABLED` (`backend/wrangler.toml` `[vars]`, and `[env.staging.vars]`) switches to the **in-memory per-isolate fallback** (zero KV writes). It is currently `"false"` in both environments; set it to `"true"` only after upgrading to **Workers Paid** (1M writes/day) or otherwise eliminating the quota constraint.
+- `KV_CACHE` is bound but **never written** — read caching for public marketplace responses is done with `Cache-Control` headers (`cachedJsonResponse` in `backend/src/utils/response.js`), which costs no KV writes. This is why the monitor Worker (§Architecture) also caches in memory instead of in KV.
+- **D1 has a separate daily free-tier ceiling** (row reads). Unlike the KV one it does not fail the API — it refuses *operator* read commands (`wrangler d1 … --remote`) with `code: 7500` until the window resets at midnight UTC. Triage: [`docs/RUNBOOK.md`](docs/RUNBOOK.md) §9a.
 
 ---
 
