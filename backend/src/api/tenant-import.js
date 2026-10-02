@@ -170,13 +170,15 @@ const manifestSchema = z.object({
 }).strip();
 
 /**
- * Generate a meal id — Option 1 of the D3 uniqueness mission: RANDOM.
- * `meals.id` is the GLOBAL primary key (it is the `meal_lang.meal_id` join key
- * and 0111 left it as a bare PK, deliberately not tenant-scoped), so a
- * deterministic or tenant-derived id would still collide the moment two tenants
- * provision a menu from overlapping manifests. 48 random bits makes that
- * negligible, keeps ids unguessable, and — unlike reusing a manifest id — can
- * never leak another tenant's row identity. Length/prefix match the previous
+ * Generate a meal id — RANDOM.
+ *
+ * 0127 (pending-apply) re-keys `meals` by (tenant_id, id), so an explicitly
+ * authored manifest id is now legal to reuse across tenants and this
+ * generator is only the FALLBACK for a meal that carries no `id`. 48 random
+ * bits keeps generated ids unguessable, keeps them globally distinct (so the
+ * export→import round-trip never mints two meals that later collide in a
+ * report keyed off id alone), and — unlike reusing a manifest id — can never
+ * leak another tenant's row identity. Length/prefix match the historical
  * `meal_` + 12-hex-char form so nothing downstream has to widen.
  */
 function generateMealId() {
@@ -645,26 +647,37 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
   // ── 6. Meals ─────────────────────────────────────────────────────
   if (data.menu?.meals && data.menu.meals.length > 0) {
     // Explicit manifest ids are kept (round-trip parity: an exported manifest
-    // must re-import its own meal ids), but `meals.id` is the GLOBAL primary
-    // key — so a manifest id that already belongs to ANOTHER tenant can only
-    // ever collide. Probe the owners first and answer with a clear 4xx naming
-    // the meal, instead of letting the raw UNIQUE/PK error surface as a generic
-    // "Duplicate SKU, ID, or unique field" 409 (or a 500 on a batch rollback).
-    const explicitIds = data.menu.meals.map((m) => m.id).filter(Boolean);
+    // must re-import its own meal ids). 0127 keys `meals` by (tenant_id, id),
+    // so the ONLY id collision that can still fail this batch is a SAME-tenant
+    // one — the same manifest may legitimately load its meal ids into a second
+    // tenant now, which is what parity finding D3 asked for. Probe for a
+    // same-tenant owner and answer with a 409 naming the meal, instead of
+    // letting the raw UNIQUE/PK error surface as a generic "Duplicate SKU, ID,
+    // or unique field" 409 (or a 500 on a batch rollback).
+    //
+    // The probe is TENANT-SCOPED on purpose: asking "who owns this id" across
+    // all tenants would re-introduce the cross-tenant collision 0127 removed,
+    // and would leak another tenant's existence through a 4xx.
+    //
+    // CHUNKED (50 ids per statement) because D1 caps BOUND PARAMETERS PER
+    // QUERY at 100 (`too many SQL variables at offset N`). `menu.meals` is
+    // capped at 200 entries by the schema, so a manifest that authors an id on
+    // every meal binds 201 values in one query — trading this clear 409 for an
+    // opaque 500. `SET`-de-duplicated first so a manifest repeating one id
+    // does not spend binds twice.
+    const explicitIds = [...new Set(data.menu.meals.map((m) => m.id).filter(Boolean))];
     if (explicitIds.length > 0) {
-      const { results: owners } = await env.DB.prepare(
-        `SELECT id, tenant_id FROM meals WHERE id IN (${explicitIds.map(() => '?').join(', ')})`
-      ).bind(...explicitIds).all();
-      for (const owner of owners) {
-        const meal = data.menu.meals.find((m) => m.id === owner.id);
-        if (owner.tenant_id !== tenantId) {
-          return fail(
-            400,
-            `Meal "${meal.name}" id "${owner.id}" already belongs to another tenant — ` +
-            'remove the explicit meal id to let the import generate a fresh one'
-          );
-        }
-        return fail(409, `Meal "${meal.name}" already exists in this tenant (duplicate id "${owner.id}")`);
+      const owned = new Set();
+      for (let i = 0; i < explicitIds.length; i += 50) {
+        const chunk = explicitIds.slice(i, i + 50);
+        const { results: owners } = await env.DB.prepare(
+          `SELECT id FROM meals WHERE tenant_id = ? AND id IN (${chunk.map(() => '?').join(', ')})`
+        ).bind(tenantId, ...chunk).all();
+        for (const owner of owners) owned.add(owner.id);
+      }
+      const taken = data.menu.meals.find((m) => m.id && owned.has(m.id));
+      if (taken) {
+        return fail(409, `Meal "${taken.name}" already exists in this tenant (duplicate id "${taken.id}")`);
       }
     }
 
@@ -686,9 +699,13 @@ async function runImport(env, tenantId, data, uploadedKeys, fail, created = null
         )
       );
       mealStmts.push(
+        // 0127: `meal_lang` carries `tenant_id` as the first column of its
+        // composite PK (tenant_id, meal_id, lang) and its FK to `meals` is the
+        // pair — omitting tenant_id here binds NULL into a NOT NULL column and
+        // the whole batch aborts.
         env.DB.prepare(
-          `INSERT INTO meal_lang (meal_id, lang, name, description) VALUES (?, 'en', ?, ?)`
-        ).bind(mid, meal.name, meal.description || null)
+          `INSERT INTO meal_lang (tenant_id, meal_id, lang, name, description) VALUES (?, ?, 'en', ?, ?)`
+        ).bind(tenantId, mid, meal.name, meal.description || null)
       );
     }
     await env.DB.batch(mealStmts);

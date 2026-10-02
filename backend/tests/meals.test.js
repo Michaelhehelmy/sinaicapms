@@ -275,9 +275,16 @@ describe('mealsRoutes', () => {
       const data = await res.json();
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
-      // Phase 3 cascade: meal_schedules + meal_lang are removed before the meal row.
-      expect(sqls.some((s) => s.includes('DELETE FROM meal_schedules WHERE meal_id'))).toBe(true);
-      expect(sqls.some((s) => s.includes('DELETE FROM meal_lang WHERE meal_id'))).toBe(true);
+      // Phase 3 cascade: meal_schedules + meal_lang are removed before the meal
+      // row. 0127: both deletes are TENANT-SCOPED — `meals` is keyed by
+      // (tenant_id, id) and `meal_id` alone is only unique within a tenant, so
+      // an unqualified delete would wipe a sibling tenant's rows for the same
+      // logical meal id. Assert the qualifier AND the bind order, because a
+      // missing `tenant_id` bind shifts the meal_id bind silently.
+      const schedDelete = sqls.find((s) => s.includes('DELETE FROM meal_schedules'));
+      expect(schedDelete).toBe('DELETE FROM meal_schedules WHERE tenant_id = ? AND meal_id = ?');
+      const langDelete = sqls.find((s) => s.includes('DELETE FROM meal_lang'));
+      expect(langDelete).toBe('DELETE FROM meal_lang WHERE tenant_id = ? AND meal_id = ?');
     });
 
     it('returns 404 when not found', async () => {

@@ -74,8 +74,11 @@ function buildTenantCascadeStmts(env, tid) {
     env.DB.prepare("DELETE FROM admins WHERE tenant_id = ?").bind(tid),
     env.DB.prepare("DELETE FROM categories WHERE tenant_id = ?").bind(tid),
     env.DB.prepare("DELETE FROM meal_categories WHERE tenant_id = ?").bind(tid),
-    env.DB.prepare("DELETE FROM meal_schedules WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid),
-    env.DB.prepare("DELETE FROM meal_lang WHERE meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid),
+    // 0127: `meals` is keyed (tenant_id, id), so the subquery MUST be
+    // tenant-qualified or it would match — and cascade-delete — a sibling
+    // tenant's rows for the same logical meal id.
+    env.DB.prepare("DELETE FROM meal_schedules WHERE tenant_id = ? AND meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid, tid),
+    env.DB.prepare("DELETE FROM meal_lang WHERE tenant_id = ? AND meal_id IN (SELECT id FROM meals WHERE tenant_id = ?)").bind(tid, tid),
     env.DB.prepare("DELETE FROM meals WHERE tenant_id = ?").bind(tid),
   ];
 }

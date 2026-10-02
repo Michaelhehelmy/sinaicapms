@@ -267,8 +267,14 @@ describe('POST /api/tenants/import', () => {
       const langs = findBatchWith(env.DB, 'INSERT INTO meal_lang');
       expect(langs).toBeTruthy();
       expect(langs[0].sql).toContain("'en'"); // lang is a literal in the SQL
-      expect(langs[0].bound[1]).toBe('Mixed Grill'); // name
-      expect(langs[0].bound[2]).toBeNull(); // description
+      // 0127: `meal_lang` gained `tenant_id` as its leading PK column, so the
+      // binds are tenant_id, meal_id, name, description (lang is the 'en'
+      // literal in the SQL). The meal_id bind must equal the meals insert's id
+      // — a shifted index here is a silent mis-join, not a type error.
+      expect(langs[0].bound[0]).toBe(tenantId); // tenant_id
+      expect(langs[0].bound[1]).toBe(meals[0].bound[0]); // meal_id == meals.id
+      expect(langs[0].bound[2]).toBe('Mixed Grill'); // name
+      expect(langs[0].bound[3]).toBeNull(); // description
     });
 
     it('creates POS users with first_name/last_name (generated name) and resolved org', async () => {

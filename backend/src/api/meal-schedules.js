@@ -46,6 +46,11 @@ export async function handleMealSchedulesRoute(request, env, tenantId) {
       }
     }
 
+    // Both meal joins key on the PAIR (tenant_id, meal_id): 0127 re-keys
+    // `meals` by (tenant_id, id) and puts the matching `tenant_id` on
+    // `meal_lang`. Un-qualifying either predicate would attach a sibling
+    // tenant's meal row / meal name once two tenants share a logical meal id,
+    // which is exactly the case 0127 enables.
     let query = `
       SELECT ms.id, ms.tenant_id, ms.project_id, ms.camp_id, c.name AS camp_name,
               ms.date, ms.meal_id, ml.name AS meal_name,
@@ -53,8 +58,8 @@ export async function handleMealSchedulesRoute(request, env, tenantId) {
               p.name AS project_name
        FROM meal_schedules ms
        LEFT JOIN projects c ON c.id = ms.camp_id
-       LEFT JOIN meals m ON m.id = ms.meal_id
-       LEFT JOIN meal_lang ml ON ml.meal_id = m.id AND ml.lang = 'en'
+       LEFT JOIN meals m ON m.tenant_id = ms.tenant_id AND m.id = ms.meal_id
+       LEFT JOIN meal_lang ml ON ml.tenant_id = ms.tenant_id AND ml.meal_id = m.id AND ml.lang = 'en'
        LEFT JOIN projects p ON p.id = ms.project_id
        WHERE ms.tenant_id = ?
     `;

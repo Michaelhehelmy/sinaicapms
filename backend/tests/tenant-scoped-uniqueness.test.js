@@ -551,19 +551,40 @@ describe('0126 — overlapping manifests import without a uniqueness failure', (
     expect(db.prepare('SELECT COUNT(*) c FROM meal_lang').get().c).toBe(2);
   });
 
-  it('rejects a manifest meal id owned by ANOTHER tenant with a clear 400', async () => {
+it('admits a manifest meal id owned by ANOTHER tenant (0127 re-keyed meals)', async () => {
+    // This suite's replay applies EVERY migration except 0126 — which, since
+    // 0127 landed in the directory, means its DB is now at the 0127 head. That
+    // is deliberate and load-bearing here: 0127 re-keys `meals` by
+    // (tenant_id, id), so an explicit meal id owned by a sibling tenant is a
+    // REUSABLE id rather than a collision.
+    //
+    // The 400 "already belongs to another tenant" this test used to assert is
+    // GONE by design — it was the pre-0127 guard that made a legitimately
+    // portable manifest unusable, and re-asserting it would pin the parity-D3
+    // blocker back in place. `backend/tests/meals-tenant-composite-pk.test.js`
+    // owns the full post-0127 contract; this test stays as the 0126-suite-side
+    // regression guard that 0126's own arbiters (sku/email/username) still hold
+    // while the identifier arbiter is now tenant-scoped.
     const db = buildImportDb();
     await postImport(db, 't_overlap_a', overlappingManifest());
     const stolen = db.prepare('SELECT id FROM meals WHERE tenant_id = ?').get('t_overlap_a').id;
 
     const manifest = overlappingManifest();
+    // Fresh SKUs + no staff, so the MEAL id is the only arbiter in play.
+    manifest.products[0].sku = 'ROOM-SEA-2';
+    manifest.products[1].sku = 'BUFFET-PM';
+    manifest.posUsers = [];
     manifest.menu.meals[0].id = stolen;
     const res = await postImport(db, 't_overlap_b', manifest);
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toMatch(/already belongs to another tenant/);
-    expect(body.error).toContain(stolen);
-    expect(db.prepare('SELECT COUNT(*) c FROM meals WHERE tenant_id = ?').get('t_overlap_b').c).toBe(0);
+    expect(res.status).toBe(200);
+    expect(db.prepare('SELECT COUNT(*) c FROM meals WHERE id = ?').get(stolen).c).toBe(2);
+    expect(db.prepare('SELECT COUNT(*) c FROM meals WHERE tenant_id = ?').get('t_overlap_b').c).toBe(1);
+
+    // 0126's own arbiters are untouched by 0127: the SAME tenant repeating the
+    // SKU is still the legacy 409.
+    const again = await postImport(db, 't_overlap_b', manifest);
+    expect(again.status).toBe(409);
+    expect((await again.json()).error).toMatch(/already exist/i);
   });
 
   it('still returns the legacy 409 when the SAME tenant re-imports a duplicate SKU', async () => {

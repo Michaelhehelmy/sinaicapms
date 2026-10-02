@@ -63,12 +63,18 @@ function foreignProjectError() {
 // P2: shared SELECT — legacy columns byte-identical, plus additive
 // `m.project_id` (wire `projectId`) and `p.name AS project_name`
 // (wire `projectName`) for grouping/filtering. No renames, no removals.
+//
+// The meal_lang join keys on the PAIR (tenant_id, meal_id): 0127 re-keys
+// `meals` by (tenant_id, id) and puts the matching `tenant_id` on `meal_lang`.
+// A bare `ml.meal_id = m.id` becomes ambiguous the moment two tenants own the
+// same logical meal id — exactly what 0127 enables — and would return another
+// tenant's meal name. Never un-qualify that predicate.
 const MEALS_SELECT = `SELECT m.id, m.tenant_id, m.project_id, m.meal_category_id, m.price, m.image_url, m.is_active, m.created_at,
-            ml.name, ml.description,
-            mc.id AS category_id, mcl.name AS category_name,
-            p.name AS project_name
+             ml.name, ml.description,
+             mc.id AS category_id, mcl.name AS category_name,
+             p.name AS project_name
      FROM meals m
-     LEFT JOIN meal_lang ml ON ml.meal_id = m.id AND ml.lang = 'en'
+     LEFT JOIN meal_lang ml ON ml.tenant_id = m.tenant_id AND ml.meal_id = m.id AND ml.lang = 'en'
      LEFT JOIN meal_categories mc ON mc.id = m.meal_category_id
      LEFT JOIN meal_categories_lang mcl ON mcl.meal_category_id = mc.id AND mcl.lang = 'en'
      LEFT JOIN projects p ON p.id = m.project_id`;
@@ -144,9 +150,9 @@ mealsRoutes.post('/', async (c) => {
     ).run();
 
     await c.env.DB.prepare(
-      `INSERT INTO meal_lang (meal_id, lang, name, description)
-       VALUES (?, 'en', ?, ?)`
-    ).bind(mid, name, description || null).run();
+      `INSERT INTO meal_lang (tenant_id, meal_id, lang, name, description)
+       VALUES (?, ?, 'en', ?, ?)`
+    ).bind(tenantId, mid, name, description || null).run();
 
     return jsonResponse({ id: mid, success: true });
   } catch (e) {
@@ -208,9 +214,9 @@ mealsRoutes.post('/bulk', async (c) => {
       );
       stmts.push(
         c.env.DB.prepare(
-          `INSERT INTO meal_lang (meal_id, lang, name, description)
-           VALUES (?, 'en', ?, ?)`
-        ).bind(mid, item.name, item.description || null)
+          `INSERT INTO meal_lang (tenant_id, meal_id, lang, name, description)
+           VALUES (?, ?, 'en', ?, ?)`
+        ).bind(tenantId, mid, item.name, item.description || null)
       );
     }
 
@@ -279,12 +285,16 @@ mealsRoutes.put('/:id', async (c) => {
     // P-M1 fix: Use UPSERT instead of SELECT + conditional INSERT/UPDATE
     if (name !== undefined || description !== undefined) {
       await c.env.DB.prepare(
-        `INSERT INTO meal_lang (meal_id, lang, name, description)
-         VALUES (?, 'en', ?, ?)
-         ON CONFLICT(meal_id, lang) DO UPDATE SET
+        // 0127: `meal_lang`'s PK is (tenant_id, meal_id, lang) — the
+        // conflict target MUST name all three columns or SQLite raises
+        // "ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE
+        // constraint" at runtime.
+        `INSERT INTO meal_lang (tenant_id, meal_id, lang, name, description)
+         VALUES (?, ?, 'en', ?, ?)
+         ON CONFLICT(tenant_id, meal_id, lang) DO UPDATE SET
            name = COALESCE(excluded.name, meal_lang.name),
            description = COALESCE(excluded.description, meal_lang.description)`
-      ).bind(mid, name || null, description || null).run();
+      ).bind(tenantId, mid, name || null, description || null).run();
     }
 
     return jsonResponse({ success: true });
@@ -306,13 +316,17 @@ mealsRoutes.delete('/:id', async (c) => {
     if (ownershipCheck.length === 0) return errorResponse('Meal not found', 404);
 
     // Phase 3 cascade: schedules must go before the meal row (no FK ON DELETE).
+    // 0127: both deletes are TENANT-SCOPED. `meal_id` alone is no longer a
+    // unique meal identifier — it is only unique WITHIN a tenant — so an
+    // unqualified delete would silently wipe a sibling tenant's schedules and
+    // translations for the same logical id.
     await c.env.DB.prepare(
-      "DELETE FROM meal_schedules WHERE meal_id = ?"
-    ).bind(mid).run();
+      "DELETE FROM meal_schedules WHERE tenant_id = ? AND meal_id = ?"
+    ).bind(tenantId, mid).run();
 
     await c.env.DB.prepare(
-      "DELETE FROM meal_lang WHERE meal_id = ?"
-    ).bind(mid).run();
+      "DELETE FROM meal_lang WHERE tenant_id = ? AND meal_id = ?"
+    ).bind(tenantId, mid).run();
 
     await c.env.DB.prepare(
       "DELETE FROM meals WHERE tenant_id = ? AND id = ?"

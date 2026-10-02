@@ -125,7 +125,9 @@ const INSERT_COLUMNS = {
   meal_categories: ['id', 'tenant_id', 'position', 'project_id'],
   meal_categories_lang: ['meal_category_id', 'lang', 'name'],
   meals: ['id', 'tenant_id', 'meal_category_id', 'price', 'image_url', 'is_active', 'project_id'],
-  meal_lang: ['meal_id', 'lang', 'name', 'description'],
+  // 0127: `meal_lang` gained `tenant_id` as its leading PK column; `lang` is
+  // still the 'en' SQL literal, so it is not a bind.
+  meal_lang: ['tenant_id', 'meal_id', 'name', 'description'],
   pos_users: ['organization_id', 'tenant_id', 'username', 'email', 'password_hash', 'first_name', 'last_name', 'phone', 'role', 'department', 'employee_id', 'store_id', 'project_id'],
 };
 
@@ -181,7 +183,7 @@ function makeStatefulDb() {
       return true;
     }
     if (sql.includes('INSERT INTO meal_lang')) {
-      ensure('meal_lang').push({ meal_id: b[0], lang: 'en', name: b[1], description: b[2] ?? null });
+      ensure('meal_lang').push({ ...zip(INSERT_COLUMNS.meal_lang, b), lang: 'en' });
       return true;
     }
     if (sql.includes('INSERT INTO pos_users')) {
@@ -390,8 +392,10 @@ describe('T4 smoke: POST /api/tenants/import (docs sample via in-memory D1)', ()
     const meals = await db.prepare('SELECT id, meal_category_id, price FROM meals').all();
     expect(meals.results).toHaveLength(EXPECTED_COUNTS.meals);
     expect(meals.results.every((r) => r.meal_category_id)).toBe(true); // category reference resolved
-    const mealLang = await db.prepare("SELECT meal_id, name FROM meal_lang WHERE lang = 'en'").all();
+    const mealLang = await db.prepare("SELECT tenant_id, meal_id, name FROM meal_lang WHERE lang = 'en'").all();
     expect(mealLang.results.map((r) => r.name)).toEqual(['Mixed Grill', 'Fresh Juice']);
+    // 0127: every translation row is stamped with the importing tenant.
+    expect(mealLang.results.every((r) => r.tenant_id)).toBe(true);
 
     // POS users (first/last name split; generated name column is a DB concern)
     const users = await db.prepare('SELECT organization_id, email, first_name, last_name, role, store_id FROM pos_users').all();
