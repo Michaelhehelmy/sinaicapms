@@ -146,7 +146,7 @@
       {
         "id": "meal_chips",
         "name": "Chips & Dates Pack / سناكس وتمر",
-        "mealCategoryId": "mcat_existing_snacks",
+        "categoryName": "Snacks / سناكس",
         "price": 45,
         "description": "Chips plus Sinai dates pack. / شيبسي مع تمر سيناوي.",
         "imageUrl": "https://cdn.example.com/sinai-shuttle/menu/snack-pack.jpg",
@@ -182,7 +182,7 @@
       "role": "manager"
     }
   ],
-  "_note": "EXAMPLE transportation manifest: schema-valid, FK-resolving, bilingual (EN/AR). Seats/trips are retail products; sleeper berths are room products so rooms+ratePlans model the overnight line (seasonal pricing via rate_plans). meal_chips shows the direct mealCategoryId path (the placeholder id must already exist in the target tenant — a missing id violates meals.meal_category_id (NOT NULL + FK) and fails the import as a raw 500, not a silent null). categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks (storeId then falls back to the org's first store). campId is omitted throughout: these files use identity/create mode, which mints a random project id that no manifest can name, and an unresolvable campId is now rejected with a 400 before a single row is written -- set it only to a project the target tenant already owns. Passwords are example-only.",
+  "_note": "EXAMPLE transportation manifest: schema-valid, FK-resolving, bilingual (EN/AR). Seats/trips are retail products; sleeper berths are room products so rooms+ratePlans model the overnight line (seasonal pricing via rate_plans). every meal resolves via categoryName against this file's own menu.categories[] — the direct mealCategoryId path is deliberately NOT demonstrated here because these files use identity/create mode, where the handler MINTS each category id as mcat_<uuid12> at import time, so no manifest can name one. The direct path is only usable in existing-tenant mode against a category that tenant already owns, and it is UNVALIDATED: a dangling id violates meals.meal_category_id (NOT NULL + FK) and fails the meals batch as a raw 500, not a silent null. categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks (storeId then falls back to the org's first store). campId is omitted throughout: these files use identity/create mode, which mints a random project id that no manifest can name, and an unresolvable campId is now rejected with a 400 before a single row is written -- set it only to a project the target tenant already owns. Passwords are example-only.",
   "identity": {
     "name": "Sinai Shuttle Co.",
     "subdomain": "sinaishuttle-full",

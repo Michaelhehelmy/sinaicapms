@@ -158,6 +158,12 @@ those two fixes moved the *meal-category* and *campId* failures forward to befor
 first data write, so the residue is now "tenant shell only" instead of "tenant + partial
 catalogue". The shell is strictly smaller than before; it is not gone.
 
+> **SUPERSEDED (2026-10-02, Wave 8 item 3):** the shipped `mcat_existing_*`
+> placeholder has been REMOVED from all five `docs/examples/manifests/*.json`
+> files, which now resolve every meal through `categoryName` against their own
+> `menu.categories[]`. The finding below is kept as the measurement that produced
+> the fix; the examples no longer exhibit the condition. The blind
+> `mealCategoryId` path in the handler itself is unchanged.
 ### 3.3 The shipped `mealCategoryId` placeholder still cannot bootstrap a fresh tenant
 
 `camp-full.json` / `supermarket-full.json` carry `mealCategoryId: "mcat_existing_*"`.

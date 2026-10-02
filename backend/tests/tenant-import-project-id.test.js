@@ -316,3 +316,72 @@ describe('DEFECT-1: tenant-import binds project_id (fresh local D1)', () => {
     }
   });
 });
+/**
+ * Wave 8 item 3 — the shipped A.4 example manifests must not carry the
+ * `mcat_existing_*` placeholder any more.
+ *
+ * The placeholder named a `meal_categories` row that exists in no database. On
+ * a fresh tenant (the create/identity mode every A.4 file uses) it cannot
+ * resolve, and because `meals.meal_category_id` is `NOT NULL REFERENCES
+ * meal_categories(id)`, a meal bound to it fails the meals batch as a raw 500
+ * — not a silent null. Measured in
+ * `docs/audit-2026-09-30-tenant-import-parity.md` §D4 and re-measured in §3.3
+ * of the 2026-10-02 edge-case audit, whose harness had to rewrite the id
+ * before any example would import.
+ *
+ * A shipping example that 500s on the tenant it is meant to bootstrap is worse
+ * than not demonstrating a path, and the path is undemonstrable in create mode
+ * anyway: `tenant-import.js` MINTS each category id as `mcat_<uuid12>` at
+ * import time, so no manifest can name one before the import runs.
+ */
+describe('Wave 8: A.4 examples carry no unresolvable meal-category placeholder', () => {
+  const manifestsDir = join(import.meta.dirname, '..', '..', 'docs', 'examples', 'manifests');
+  const files = readdirSync(manifestsDir).filter((f) => f.endsWith('.json')).sort();
+  expect(files.length).toBeGreaterThanOrEqual(5);
+
+  it('no example ships a mealCategoryId at all', () => {
+    for (const f of files) {
+      const manifest = JSON.parse(readFileSync(join(manifestsDir, f), 'utf8'));
+      const meals = manifest.menu?.meals ?? [];
+      expect(meals.length, `${f} should still exercise the meals section`).toBeGreaterThan(0);
+      for (const meal of meals) {
+        // The specific placeholder…
+        expect(meal.mealCategoryId, `${f} must not name a category by id`).toBeUndefined();
+        // …and the whole blind-id path, which create mode cannot satisfy.
+        expect(Object.keys(meal), `${f} meal ${meal.name}`).not.toContain('mealCategoryId');
+      }
+    }
+  });
+
+  it('every meal still resolves against its OWN file categories (no dangling name)', () => {
+    for (const f of files) {
+      const manifest = JSON.parse(readFileSync(join(manifestsDir, f), 'utf8'));
+      const names = (manifest.menu?.categories ?? []).map((c) => c.name);
+      expect(names.length, `${f} should still declare categories`).toBeGreaterThan(0);
+      for (const meal of manifest.menu.meals) {
+        expect(
+          names,
+          `${f}: meal "${meal.name}" categoryName ${JSON.stringify(meal.categoryName)} is not in this file's categories[]`,
+        ).toContain(meal.categoryName);
+      }
+    }
+  });
+
+  it('the mcat_existing_* string survives nowhere in the examples or the guide', () => {
+    // A grep-level guard, because the placeholder was previously spread across
+    // five JSON files plus prose in two dated audits and the guide; a per-file
+    // JSON assert would not catch a new mention in a sixth place.
+    const docsDir = join(import.meta.dirname, '..', '..', 'docs');
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, entry.name);
+        if (entry.isDirectory()) { walk(p); continue; }
+        if (!/\.(json|md)$/.test(entry.name)) continue;
+        if (readFileSync(p, 'utf8').includes('mcat_existing_')) offenders.push(p);
+      }
+    };
+    walk(join(docsDir, 'examples'));
+    expect(offenders).toEqual([]);
+  });
+});

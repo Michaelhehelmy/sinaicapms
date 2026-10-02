@@ -146,7 +146,7 @@
       {
         "id": "meal_grill",
         "name": "Mixed Grill / مشويات مشكلة",
-        "mealCategoryId": "mcat_existing_grills",
+        "categoryName": "Grills / مشويات",
         "price": 310,
         "description": "Charcoal mixed grill. / مشويات مشكلة على الفحم.",
         "imageUrl": "https://cdn.example.com/bedouin-table/menu/grill.jpg",
@@ -182,7 +182,7 @@
       "role": "manager"
     }
   ],
-  "_note": "EXAMPLE restaurant-only manifest: schema-valid, FK-resolving, bilingual (EN/AR). 'restaurant-only' is NOT a valid identity.type (Zod enum backend/src/api/tenant-import.js:15 + D1 CHECK backend/migrations/0001_core.sql:19) so identity uses type 'other' + businessType 'restaurant-only'; the restaurant core is menu+posUsers while rooms (dining cabins) + ratePlans (weekend/friday pricing) keep the file schema-complete. meal_grill shows the direct mealCategoryId path (the placeholder id must already exist in the target tenant — a missing id violates meals.meal_category_id (NOT NULL + FK) and fails the import as a raw 500, not a silent null). categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks (storeId then falls back to the org's first store). campId is omitted throughout: these files use identity/create mode, which mints a random project id that no manifest can name, and an unresolvable campId is now rejected with a 400 before a single row is written -- set it only to a project the target tenant already owns. Passwords are example-only.",
+  "_note": "EXAMPLE restaurant-only manifest: schema-valid, FK-resolving, bilingual (EN/AR). 'restaurant-only' is NOT a valid identity.type (Zod enum backend/src/api/tenant-import.js:15 + D1 CHECK backend/migrations/0001_core.sql:19) so identity uses type 'other' + businessType 'restaurant-only'; the restaurant core is menu+posUsers while rooms (dining cabins) + ratePlans (weekend/friday pricing) keep the file schema-complete. every meal resolves via categoryName against this file's own menu.categories[] — the direct mealCategoryId path is deliberately NOT demonstrated here because these files use identity/create mode, where the handler MINTS each category id as mcat_<uuid12> at import time, so no manifest can name one. The direct path is only usable in existing-tenant mode against a category that tenant already owns, and it is UNVALIDATED: a dangling id violates meals.meal_category_id (NOT NULL + FK) and fails the meals batch as a raw 500, not a silent null. categoryId/storeId placeholders must match the target tenant or be omitted for handler fallbacks (storeId then falls back to the org's first store). campId is omitted throughout: these files use identity/create mode, which mints a random project id that no manifest can name, and an unresolvable campId is now rejected with a 400 before a single row is written -- set it only to a project the target tenant already owns. Passwords are example-only.",
   "identity": {
     "name": "Bedouin Table Restaurant",
     "subdomain": "bedouintable-full",

@@ -202,7 +202,7 @@ Field census: `identity` 8 · `tenant` 20 · `project` 5 · `products` 12 ·
 | menu.categories | position | number | no | handler `\|\| 0` | — |
 | menu.meals | id | string | no | `meal_`+uuid12 (`generateMealId`) | → `meals` + `meal_lang` (`lang='en'`). **Reusable across tenants since 0127** (`meals` is keyed `(tenant_id, id)`); a same-tenant duplicate still 409s |
 | menu.meals | name | string min 1 | yes | — | — |
-| menu.meals | mealCategoryId | string | no | — | used verbatim, **no existence check** (blind — dangling id can 500, A.2 K4) |
+| menu.meals | mealCategoryId | string | no | — | used verbatim, **no existence check** (blind — dangling id 500s, A.2 K4). **No A.4 example ships this key any more**: create mode mints each category id as `mcat_<uuid12>` at import time, so no manifest can name one. See §2, mistake #5b |
 | menu.meals | categoryName | string | no | — | resolved against this manifest's `menu.categories[].name` **plus the categories the tenant already owns**; **unresolvable → 400 before any row is written** (symmetric with rooms/ratePlans) |
 | menu.meals | price | number min 0 | no | handler `\|\| 0` | — |
 | menu.meals | description | string | no | → null (into `meal_lang`) | — |
@@ -362,8 +362,14 @@ deliberate:
 | `project.type` | added to the schema after A.4 was authored; omitting it binds the handler default `'camp'` |
 
 They resolve rooms/ratePlans through
-both `productName` and `productId`, meals through `categoryName` and direct
-`mealCategoryId`, and use https-only image URLs (no R2 involved). The older
+both `productName` and `productId`, meals through `categoryName` only, and use
+https-only image URLs (no R2 involved). (The files previously carried a
+`mealCategoryId: "mcat_existing_*"` placeholder on one meal each to
+demonstrate the direct-id path. It was removed: the id it named exists in no
+database, create mode cannot produce a knowable category id, and shipping an
+example that 500s on a fresh tenant is worse than not demonstrating a path
+that only existing-tenant mode can use. The path itself is unchanged — see
+the `mealCategoryId` row in §2 and mistake #5b.) The older
 `docs/examples/tenant-manifest.example.json` remains the minimal fill-mode
 sample — 69 of 88 leaf fields (no `identity` at all; its `project` and
 `images` blocks are documented as such, not gaps). The A.4 files carry a stripped `_note` explaining the
@@ -570,7 +576,11 @@ Top-10 mistakes (every item handler-verified):
    `meal_category_id` violated its NOT NULL constraint and 500'd the import.)
    The mirror-image trap is item 5b: an explicit `mealCategoryId` is still
    bound verbatim with **no** existence check, so a placeholder id fails as a
-   raw 500, not a 400.
+   raw 500, not a 400. That trap is no longer *shipped* — the A.4 examples
+   were fixed to use `categoryName` (Wave 8) because create mode mints the
+   category id (`mcat_<uuid12>`) and no manifest can name it — but the blind
+   spot in the handler is unchanged, so a hand-written manifest can still hit
+   it. Prefer `categoryName`, which is validated and 400s cleanly.
 6. **Sending a junk `logoUrl` expecting null-or-keep.** Tenant logo/favicon/
    hero store the raw sent string verbatim on invalid input (A.2 F3).
    Validate URLs client-side or omit the field.
