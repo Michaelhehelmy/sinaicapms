@@ -6,6 +6,11 @@
 //   - a single number (e.g. 200) — that exact status is healthy
 //   - an array (e.g. [200, 204]) — any listed status is healthy
 //   - 401 — the endpoint requires auth; a 200 would mean auth was bypassed
+//
+// A redirect that is FOLLOWED and lands on `expect` is healthy (see
+// `redirect: 'follow'` + the failure message in `probeTarget`); a chain that
+// ends on some other 3xx is not. See the note on the removed self-check target
+// below for the one target that must never be added back from in here.
 
 export const TARGETS = [
   { name: 'marketplace', url: 'https://sinaicamps.com/', expect: 200, timeoutMs: 10000 },
@@ -13,23 +18,32 @@ export const TARGETS = [
   { name: 'acacia', url: 'https://acaciacamp.com/', expect: 200, timeoutMs: 10000 },
   { name: 'michaelshouse', url: 'https://michaelshouse.sinaicamps.com/', expect: 200, timeoutMs: 10000 },
   { name: 'api-meals', url: 'https://sinaicamps.com/api/meals', expect: 200, timeoutMs: 10000 },
-  // SELF-CHECK: the monitor probes its own public status endpoint. It is DATA
-  // for the cron cycle -- it is never probed by hand from a workstation, and
-  // adding it here changes no code path beyond TARGETS.length.
+  // NO SELF-CHECK TARGET, ON PURPOSE (removed 2026-10-03).
   //
-  // Why it earns a slot: an outage of the monitor itself cannot alert anyone.
-  // Everything above is a DOWN signal delivered by this worker; if this worker
-  // is unreachable, the delivery path is dead with it and the dashboard shows
-  // nothing at all. The `checks` row written by the run AFTER a self-inflicted
-  // outage is the only durable record that the gap happened, and a monitor
-  // that has never gone dark cannot prove it would come back.
+  // There used to be a sixth entry here: `self-check` ->
+  // https://status.sinaicamps.com/api/status, `expect: 200`. Its argument was
+  // sound — an outage of the monitor itself cannot deliver its own alert, so the
+  // run object written *after* the gap is the only durable evidence it happened.
   //
-  // `expect: 200` is a second, cheaper assertion on the same request: it is
-  // also a standing regression test that /api/status stays PUBLIC and
-  // UNAUTHENTICATED. If a future change put the PIN or the session check in
-  // front of it, this target goes red instead of silently logging the operator
-  // out of their own dashboard.
-  { name: 'self-check', url: 'https://status.sinaicamps.com/api/status', expect: 200, timeoutMs: 10000 },
+  // IT ALSO MANUFACTURED FALSE POSITIVES, WHICH COST MORE THAN IT PROVED. The
+  // monitor probes its own hostname from inside the same Cloudflare zone, and a
+  // Worker fetching a Worker through that zone is not the same request a browser
+  // makes: the edge returns 522 to the worker-to-worker hop. That is an artifact
+  // of WHERE the probe runs, not a statement about whether the site is up, and it
+  // is indistinguishable on the dashboard from a real outage — the one property a
+  // status board cannot afford. Three consecutive 522s would also have fired a
+  // real down alert, and `self-check` would have been the row naming itself: the
+  // monitor paging about itself, with no way to tell the alert from the cause.
+  //
+  // An operator still wants to know when the panel is unreachable, and the honest
+  // way to get that is from OUTSIDE this zone — an external uptime check, or a
+  // browser hitting the URL — because that is the request the "is it up?" question
+  // is actually about. Re-adding the target from inside here re-adds the 522.
+  //
+  // Mechanically, dropping the name retires its state on the next FULL run:
+  // `evaluateAlerts` prunes alert-state entries for targets no longer configured,
+  // and `state/history/self-check.json` + its `summary` entry are simply no longer
+  // read or written (they are small, and `state/` is deliberately never swept).
 ];
 
 // True when an observed status code counts as healthy for the given expect rule.

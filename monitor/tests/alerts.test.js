@@ -27,7 +27,9 @@ import { makeR2, webhookCollector, ringEntry } from './helpers/fake-r2.js';
 
 // Three of the configured target names — `evaluateAlerts` evaluates every target
 // it is given against the real TARGETS list, so these have to exist in it.
-const TARGET_NAMES = ['marketplace', 'api-meals', 'self-check'];
+// (`acacia` stands in for the removed `self-check`: a live third name, so a
+// target that is NOT configured cannot slip through this suite unnoticed.)
+const TARGET_NAMES = ['marketplace', 'api-meals', 'acacia'];
 
 const T = (target, ok, extra = {}) => ({ name: target, url: `https://${target}.test/`, ok: ok ? 1 : 0, statusCode: ok ? 200 : 500, responseMs: 12, errorMessage: ok ? null : 'boom', ...extra });
 

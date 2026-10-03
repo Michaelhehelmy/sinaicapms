@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { probeTarget, PROBE_USER_AGENT } from '../src/index.js';
-import { matchesExpect } from '../src/targets.js';
+import { TARGETS, matchesExpect } from '../src/targets.js';
 
 // probeTarget(target, fetchFn): hard-timeout probe that never throws —
 // network failures, timeouts, and non-2xx handling all fold into the row.
@@ -190,5 +190,55 @@ describe('matchesExpect (what counts as healthy)', () => {
     expect(matchesExpect(204, [200, 204])).toBe(true);
     expect(matchesExpect(301, [200, 204])).toBe(false);
     expect(matchesExpect(200, [])).toBe(false);
+  });
+});
+
+describe('TARGETS (what the cron probes)', () => {
+  it('probes the five production hosts, in order, and nothing else', () => {
+    // The list IS the probe set — there is no DB and no migration, so an entry
+    // here is a standing claim that the cron spends a request on. Asserted in
+    // order because the order is what an operator reads in the run object and in
+    // the dashboard's per-target cards.
+    expect(TARGETS.map((t) => t.name)).toEqual([
+      'marketplace',
+      'api-public',
+      'acacia',
+      'michaelshouse',
+      'api-meals',
+    ]);
+    expect(TARGETS).toHaveLength(5);
+    for (const t of TARGETS) {
+      expect(t).toMatchObject({ expect: 200, timeoutMs: 10000 });
+      expect(t.url.startsWith('https://')).toBe(true);
+    }
+  });
+
+  it('has NO self-check target — a worker-to-worker probe of this zone returns 522', () => {
+    // Removed 2026-10-03. See the note in src/targets.js: the monitor probing
+    // its own hostname from inside the same Cloudflare zone gets a 522 from the
+    // edge, which is an artifact of where the probe runs rather than a statement
+    // about the site, and on the dashboard it is indistinguishable from a real
+    // outage. Both halves are asserted: the name is gone, and no target URL
+    // points back at the monitor's own host — re-adding it under another name
+    // would smuggle the same false positive back in.
+    expect(TARGETS.map((t) => t.name)).not.toContain('self-check');
+    expect(TARGETS.map((t) => t.url)).not.toContain('https://status.sinaicamps.com/api/status');
+    for (const t of TARGETS) {
+      expect(t.url).not.toMatch(/^https:\/\/status\.sinaicamps\.com/);
+    }
+  });
+
+  it('keeps every target that survived the removal (names, URLs and pins intact)', () => {
+    // The removal must be the removal and nothing else: a typo'd host or a
+    // flipped `expect` here would turn a dashboard change into an outage.
+    const byName = Object.fromEntries(TARGETS.map((t) => [t.name, t.url]));
+    expect(byName).toEqual({
+      marketplace: 'https://sinaicamps.com/',
+      'api-public': 'https://sinaicamps.com/api/tenants/public',
+      acacia: 'https://acaciacamp.com/',
+      michaelshouse: 'https://michaelshouse.sinaicamps.com/',
+      'api-meals': 'https://sinaicamps.com/api/meals',
+    });
+    expect(new Set(TARGETS.map((t) => t.name)).size).toBe(TARGETS.length);
   });
 });

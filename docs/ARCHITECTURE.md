@@ -112,7 +112,7 @@ call `/api/*` with a tenant JWT, and it never touches `campmaster-db`.
 | Worker | `campmaster-monitor` (`monitor/wrangler.toml`) |
 | D1 | `campmaster-monitor-db`, `migrations_dir = migrations` |
 | Cron | `*/5 * * * *` — a scheduled handler that probes the configured targets |
-| Targets | 6 public URLs, listed **in code** (`monitor/src/targets.js`), not in the DB — including a **self-check** against `status.sinaicamps.com/api/status`, which doubles as a standing assertion that `/api/status` stays public and unauthenticated |
+| Targets | 5 public URLs, listed **in code** (`monitor/src/targets.js`), not in the DB. **No self-check target**: a Worker fetching a Worker through the same zone is answered with 522 at the edge, so the monitor probing its own hostname reported a false outage — watch the panel from outside the zone instead (see the comment in `monitor/src/targets.js`) |
 | Retention | cron-written tables are pruned (`checks` 14d, `reports` 30d, orphaned `alert_state`) |
 
 It exists because the free-tier KV/D1 write quotas make a KV-backed health

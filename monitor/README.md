@@ -219,8 +219,11 @@ adding a target is a one-line edit plus a deploy.
    `{ name: '<id>', url: 'https://…', expect: 200, timeoutMs: 10000 }`.
    `expect` is the healthy status: a single number, an array of numbers,
    or `401` for endpoints that require auth (a 200 there would mean auth
-   was bypassed).
-2. Run `cd monitor && npx vitest run` (tests pin probe/alert behavior).
+   was bypassed). Redirects are followed, so a redirect that lands on
+   `expect` is healthy.
+2. Run `cd monitor && npx vitest run` (tests pin probe/alert behavior **and**
+   the target list itself — adding an entry is a deliberate act and the suite
+   fails until the list assertion is updated).
 3. Run `wrangler deploy` from `monitor/`.
 
 Alert state for the new target is created automatically on the first cron
@@ -228,14 +231,16 @@ evaluation (`state/alert_state.json` gains the entry, `state/history/<name>.json
 and the `state/summary.json` rollup follow), and the first full run drops the
 entry again if the target is removed from `TARGETS`.
 
-The array ships with one self-referential target — `self-check` →
-`https://status.sinaicamps.com/api/status`, `expect: 200`. It is the only
-target whose job is to watch the monitor: a Worker outage cannot deliver its
-own alert, so the `checks/<date>/<HH-MM>.json` object written by the run *after*
-the gap is the only durable record that it happened. `expect: 200` doubles as a standing check
-that `/api/status` stays public and unauthenticated — gate it behind the PIN
-and this target goes red instead of quietly logging you out of your own
-dashboard. Removing it is safe mechanically; you just lose that record.
+**Do not add a target pointing at `status.sinaicamps.com` — or at any host this
+worker already serves.** That is not a policy about *this* dashboard's old
+`self-check` entry; it is about the request. A Worker fetching a Worker through
+the same Cloudflare zone is not the request a browser makes, and the edge
+answers it with **522**. The worker-to-worker hop therefore reports a false
+outage for a healthy site, three times in a row, in a row that names itself —
+which is the one failure mode a status board cannot have. If you want to know
+whether the panel is reachable, watch it from **outside** this zone (an external
+uptime checker, or a browser); that is the request the "is it up?" question is
+about. The full argument is in the comment in `src/targets.js`.
 
 ## 7. Cron interval
 

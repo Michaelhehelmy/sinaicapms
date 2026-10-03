@@ -143,7 +143,7 @@ describe('storage key layout', () => {
     // document outside `state/history/`.
     expect(historyKey('marketplace')).toBe('state/history/marketplace.json');
     expect(historyKey('api-meals')).toBe('state/history/api-meals.json');
-    expect(historyKey('self-check').startsWith(`${STATE_PREFIX}/history/`)).toBe(true);
+    expect(historyKey('acacia')).toBe('state/history/acacia.json');
     // Undated and undeletable by the age sweep, like the other state documents.
     expect(historyKey('marketplace')).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     for (const bad of ['', '  ', 'Marketplace', '../alert_state', 'a/b', 'a.json', null, undefined]) {
