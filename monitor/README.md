@@ -15,9 +15,24 @@ no KV. `src/storage.js` owns the whole layout; nothing in `src/` builds a query.
 
 - **Cron probe** (`scheduled` in `src/index.js`): every run probes every entry
   in `TARGETS` (`src/targets.js`) with a per-target timeout (default 10 s,
-  `User-Agent: campmaster-monitor/1.0`), then writes **one object for the whole
+  `User-Agent: SinaiCamps-Monitor/1.0 (https://status.sinaicamps.com)`), then
+  writes **one object for the whole
   run** — `checks/<YYYY-MM-DD>/<HH-MM>.json`, holding `{run_at, results[]}` for
   all five targets — and evaluates alert transitions (`evaluateAlerts`).
+  Every outbound probe goes through the one `probeTarget` helper, so the cron and
+  `POST /internal/check` identify themselves identically.
+- **What a probe records** (`probeTarget`): redirects are **followed**
+  (`redirect: 'follow'`, stated explicitly because the health rule depends on
+  it), so the status judged is the one the host *finally* returned — a
+  `301` that lands on `200` is **UP**. A probe that comes back with any other
+  status writes a human-readable `error_message`
+  (`expected HTTP 200, got HTTP 522`, plus the final URL when a chain was
+  followed) **and** logs one `monitor probe failed: target=… url=… status=…
+  redirected=… final_url=… error=…` line. Timeouts, DNS failures and refused
+  connections behave as before: `status_code: null` with the exception text as
+  the message. So `last_error` is now non-null for **every** failure mode —
+  that field is what the dashboard card renders, and it used to be `null` for
+  exactly the case that is hardest to explain (the host answered, wrongly).
 - **Alerting**: 3 consecutive failed runs + not already alerting → `down`
   webhook; a healthy run while alerting → `recovery` webhook; otherwise
   bookkeeping only. The counter lives in `state/alert_state.json`
@@ -289,5 +304,15 @@ wrangler secret put ALERT_WEBHOOK_URL
 - No alerts arriving but status shows down: webhook secret missing
   (silent skip by design) or the 3-consecutive-failure threshold not yet
   reached — check `consecutive_failures` in `state/alert_state.json`.
+- A target is red with no explanation: it cannot be, any more. Every failure
+  mode writes `error_message` (a status mismatch says what was expected and
+  what came back, plus the final URL if a redirect was followed; a timeout or
+  DNS failure says that), and that string is `last_error` on `/api/status` and
+  in the down webhook. If `last_error` is empty the run predates 2026-10-03 —
+  check the `checked_at` of the run object in `checks/<date>/<HH-MM>.json`.
+- Probes are identifiable in host logs as
+  `SinaiCamps-Monitor/1.0 (https://status.sinaicamps.com)`; a `3xx` on a target
+  pinned to `200` means the redirect chain ended before the expected status
+  (e.g. a loop), not that the redirect was refused — redirects are followed.
 - Never commit secrets, `.env` files, or token values; never add KV
   writes (free-plan quota).

@@ -1154,6 +1154,92 @@ describe('POST /internal/check (tokened manual probe)', () => {
     expect(bucket.keys()).toEqual([]);
   });
 
+  it('a 404 probe reaches /api/status as a NON-NULL last_error — the incident regression', async () => {
+    // The 2026-10-03 false-positive investigation was undiagnosable from the
+    // dashboard alone because a status mismatch persisted `error_message: null`:
+    // the card showed a red dot and a bare `404`, with nothing saying what the
+    // target expected or that the request was redirected. This walks the whole
+    // chain the operator reads — real probe → real run object → real aggregate →
+    // the public payload the dashboard renders.
+    const realFetch = globalThis.fetch;
+    const errors = [];
+    vi.spyOn(console, 'error').mockImplementation((...a) => errors.push(a.join(' ')));
+    clearPublicCache();
+    globalThis.fetch = async (url) =>
+      String(url).endsWith('/api/meals')
+        ? { status: 404, redirected: false, url: String(url) }
+        : { status: 200, redirected: true, url: String(url) };
+    try {
+      const bucket = makeR2();
+      const res = await app.request(
+        '/internal/check',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', authorization: `Bearer ${REPORT_TOKEN}` },
+          body: JSON.stringify({ target: 'api-meals' }),
+        },
+        envFor({ MONITOR_BUCKET: bucket }),
+      );
+      expect(res.status).toBe(200);
+
+      // The stored row — the durable record — carries the reason.
+      const [key] = bucket.keys().filter((k) => k.startsWith('checks/'));
+      const stored = bucket.read(key).results[0];
+      expect(stored).toMatchObject({ name: 'api-meals', status_code: 404, ok: 0 });
+      expect(stored.error_message).toContain('expected HTTP 200');
+      expect(stored.error_message).toContain('404');
+
+      // And the public aggregate the dashboard polls surfaces it as `last_error`.
+      clearPublicCache();
+      const status = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
+      const body = await status.json();
+      const card = body.targets.find((t) => t.name === 'api-meals');
+      expect(card).toMatchObject({ up: false, last_status: 404 });
+      expect(card.last_error).toContain('expected HTTP 200');
+      expect(body.overall).toBe('down');
+
+      // One log line for the one failed probe, naming url + status + redirect.
+      const failures = errors.filter((l) => l.includes('monitor probe failed'));
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toContain('target=api-meals');
+      expect(failures[0]).toContain('status=404');
+    } finally {
+      globalThis.fetch = realFetch;
+      clearPublicCache();
+    }
+  });
+
+  it('a 301→200 probe is recorded UP, so a redirect is not read as an outage', async () => {
+    // The healthy mirror of the case above: the host answered with a hop and the
+    // hop landed on the expected status. `redirect: 'follow'` is what makes this
+    // true, so it is asserted through the real route rather than on the helper.
+    const realFetch = globalThis.fetch;
+    clearPublicCache();
+    globalThis.fetch = async (url) => ({
+      status: 200,
+      redirected: true,
+      url: `${String(url)}?landed=1`,
+    });
+    try {
+      const bucket = makeR2();
+      const res = await app.request(
+        '/internal/check',
+        { method: 'POST', headers: { authorization: `Bearer ${REPORT_TOKEN}` } },
+        envFor({ MONITOR_BUCKET: bucket }),
+      );
+      expect(res.status).toBe(200);
+      clearPublicCache();
+      const body = await (await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }))).json();
+      expect(body.overall).toBe('ok');
+      for (const t of body.targets) {
+        expect(t).toMatchObject({ up: true, last_status: 200, last_error: null });
+      }
+    } finally {
+      globalThis.fetch = realFetch;
+      clearPublicCache();
+    }
+  });
+
   it('a failing ring write is logged and still returns the outcomes the operator asked for', async () => {
     globalThis.fetch = async () => ({ status: 200, ok: true });
     const bucket = makeR2({ failOn: { put: 'state/history/' } });

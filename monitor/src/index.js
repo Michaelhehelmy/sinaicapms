@@ -50,8 +50,78 @@ app.use(
   }),
 );
 
+// The User-Agent every outbound probe identifies itself with.
+//
+// SENT ON EVERY PROBE, NOT JUST THE CRON: `probeTarget` is the single funnel
+// for both callers (the `scheduled` cycle and `POST /internal/check`, single- or
+// all-target), so one constant here covers both and there is no second code path
+// that can quietly go out unidentified. The URL is in the string on purpose — a
+// host told "your monitor says I am down" can be pointed at the panel that
+// produced the claim without asking anyone which project it is.
+//
+// NOT the same value the alert webhook sends (`campmaster-monitor/1.0`, in
+// `sendAlert`): that is an outbound POST to a chat endpoint, not a probe, its
+// header is already in operators' filters, and renaming it is not part of this
+// change.
+//
+// Exported (like PUBLIC_CACHE_TTL_MS and friends) so the suite asserts the value
+// that ships instead of restating a magic string on both sides of the assertion.
+export const PROBE_USER_AGENT = 'SinaiCamps-Monitor/1.0 (https://status.sinaicamps.com)';
+
+// One-sentence explanation of a probe that came back with a status the target
+// does not expect, for the row's `error_message`.
+//
+// WHY THIS EXISTS (2026-10-03): a status MISMATCH used to record
+// `error_message: null` and log nothing at all. `error_message` is exactly what
+// `/api/status.last_error` renders on the dashboard card and what the down
+// webhook quotes, so a red target with an unexplained 522 — or a 404 from a path
+// that moved — was indistinguishable from every other unexplained failure: the
+// status code was there, the sentence saying what was expected was not. A
+// timeout or a DNS failure always carried a message, so the ONE case an operator
+// most often has to reason about (the host answered, with the wrong answer) was
+// the only case that said nothing.
+function describeStatusMismatch(target, res) {
+  const expected = Array.isArray(target.expect) ? target.expect.join('|') : target.expect;
+  const parts = [`expected HTTP ${expected}, got HTTP ${res?.status}`];
+  const finalUrl = res?.url ?? null;
+  if (res?.redirected === true && finalUrl && finalUrl !== target.url) {
+    // Redirects ARE followed (see `redirect: 'follow'` below), so landing on the
+    // expected status through a hop is UP — this clause only appears when the
+    // chain was followed and still missed, which is the case worth naming.
+    parts.push(`after redirect to ${finalUrl}`);
+  } else if (Number(res?.status) >= 300 && Number(res?.status) < 400) {
+    parts.push('redirect chain ended before the expected status');
+  }
+  return parts.join(' ').slice(0, 500);
+}
+
+// One log line per FAILED probe, whichever way it failed: a mismatch has no
+// exception to print and a network failure has no status to print, so this
+// prints whichever of the two it has and is called from both paths.
+//
+// The persisted `error_message` is the record that survives the run; this line
+// is the one an operator sees in `wrangler tail` while the incident is still
+// open. Both were missing for a status mismatch, which is why the 2026-10-03
+// false-positive investigation had nothing but a bare `last_status` to work
+// from. Field order is fixed so a log grep is a log grep.
+function logProbeFailure(target, row, res) {
+  console.error(
+    `monitor probe failed: target=${target.name} url=${target.url} ` +
+      `status=${row.statusCode ?? 'none'} redirected=${res?.redirected === true} ` +
+      `final_url=${res?.url ?? target.url} error=${row.errorMessage ?? 'unknown'}`,
+  );
+}
+
 // Probe one target with a hard timeout. Never throws — network failures,
 // timeouts, and non-2xx handling all fold into the returned row.
+//
+// REDIRECTS ARE FOLLOWED, EXPLICITLY. `redirect: 'follow'` is also the fetch
+// default, so stating it changes no behaviour today — it is here because the
+// `ok` rule below DEPENDS on it: with a followed redirect the response we hold
+// is the FINAL one, so a 301 that lands on 200 is `status: 200` and counts UP.
+// Written out, that contract is asserted in tests instead of being a property of
+// a default nobody is looking at. A terminal 3xx (chain exhausted) is still a
+// mismatch and lands in `describeStatusMismatch`.
 export async function probeTarget(target, fetchFn = fetch) {
   const timeoutMs = target.timeoutMs ?? 10000;
   const controller = new AbortController();
@@ -61,23 +131,32 @@ export async function probeTarget(target, fetchFn = fetch) {
     const res = await fetchFn(target.url, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { 'User-Agent': 'campmaster-monitor/1.0' },
+      headers: { 'User-Agent': PROBE_USER_AGENT },
     });
     const responseMs = Date.now() - started;
     const statusCode = res.status;
-    return {
+    // Judged on the FOLLOWED response: `matchesExpect` sees the status the host
+    // finally returned, not the hop that led there. `redirected`/`url` are read
+    // from the same response purely for the failure log and the message, so a
+    // double that omits them (tests, older runtimes) still probes correctly.
+    const ok = matchesExpect(statusCode, target.expect) ? 1 : 0;
+    const row = {
       statusCode,
-      ok: matchesExpect(statusCode, target.expect) ? 1 : 0,
+      ok,
       responseMs,
-      errorMessage: null,
+      errorMessage: ok ? null : describeStatusMismatch(target, res),
     };
+    if (!ok) logProbeFailure(target, row, res);
+    return row;
   } catch (err) {
-    return {
+    const row = {
       statusCode: null,
       ok: 0,
       responseMs: Date.now() - started,
       errorMessage: String(err?.message || err).slice(0, 500),
     };
+    logProbeFailure(target, row, null);
+    return row;
   } finally {
     clearTimeout(timer);
   }
