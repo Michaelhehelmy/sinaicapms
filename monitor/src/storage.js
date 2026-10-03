@@ -6,6 +6,8 @@
 // rewrite of 2026-09-30 (FIX A/B/C). R2 stores each cron run as ONE immutable
 // object instead, so there is no table to grow, no index to maintain, and the
 // retention policy becomes "delete the object" rather than "DELETE FROM ...".
+// Phase 6 (2026-10-03) moved the LAST relational holdout — the PIN brute-force
+// counter — onto the same bucket, so this worker now binds R2 and nothing else.
 //
 // LAYOUT (all keys live in the single `MONITOR_BUCKET` bucket):
 //
@@ -16,6 +18,7 @@
 //   state/alert_state.json             { <target>: { last_state, consecutive_failures, updated_at } }
 //   state/summary.json                 rolling 24h per-target { okCount, totalCount }
 //   state/history/<target>.json        rolling per-target check ring (the /api/history read path)
+//   state/login_attempts/<ipHash>.json per-IP PIN brute-force counter (POST /login)
 //
 // LEXICOGRAPHIC ORDER IS THE SORT ORDER, AND THAT IS THE POINT: R2 `list()`
 // returns keys in UTF-8 byte order, so `checks/2026-10-03/23-55.json` sorts
@@ -34,12 +37,12 @@ export const STATE_PREFIX = 'state';
 
 // Intake kinds. The KEY uses the plural (`errors`, `feedback`) because a
 // prefix is a collection name, while the stored document keeps the singular
-// `kind` (`error`, `feedback`) it had as a D1 row value — the two are related
-// but not identical, so they are named separately instead of derived ad hoc.
+// `kind` (`error`, `feedback`) it always had — the two are related but not
+// identical, so they are named separately instead of derived ad hoc.
 export const REPORT_KINDS = ['errors', 'feedback'];
 
-// Retention windows, carried over verbatim from the D1 policy in `db.js` and
-// bounded by the same reason: `/api/history` clamps `hours` to 168 (7 days), so
+// Retention windows, carried over verbatim from the previous row-based policy
+// and bounded by the same reason: `/api/history` rejects `hours` above 48, so
 // a 14-day floor on checks can never blank a rendered window, and `reports` has
 // no time-windowed UI so it can afford 30 days.
 export const CHECKS_RETENTION_DAYS = 14;
@@ -138,10 +141,10 @@ export function alertStateKey() {
 }
 
 // Rolling 24h uptime rollup, one document, rewritten in place every run.
-// Owner-approved addition over a literal port of the D1 queries: without it
-// `/api/status` would have to fan out across 24h of per-minute objects (288
-// reads at a 5-minute cadence) on every cached miss, purely to compute
-// `uptime_24h` for 5 targets.
+// Owner-approved addition over a literal port of the old aggregate queries:
+// without it `/api/status` would have to fan out across 24h of per-minute
+// objects (288 reads at a 5-minute cadence) on every cached miss, purely to
+// compute `uptime_24h` for 5 targets.
 export function summaryKey() {
   return `${STATE_PREFIX}/summary.json`;
 }
@@ -179,10 +182,105 @@ export function historyKey(target) {
   return `${STATE_PREFIX}/history/${name}.json`;
 }
 
+// --- PIN brute-force counters (phase 6) -----------------------------------
+//
+// The gate used to be one row per POST /login, pruned hourly by the cron. That
+// is the last thing this worker needed a relational store for, so it became one
+// object per IP inside the same bucket:
+//
+//   state/login_attempts/<ipHash>.json
+//     { ip_hash, fails: [<iso>, …], window_start, locked_until, updated_at,
+//       last_success_at }
+//
+// `fails` is a LIST of at most `LOGIN_FAIL_LIMIT` failure timestamps inside the
+// 5-minute window, not a bare integer, and that is deliberate: the old gate
+// counted failures whose timestamp was `>= now - 5 minutes` — a SLIDING window.
+// A counter plus a window anchor would restart the budget at the anchor even
+// while its failures were still inside the window, so an attacker who spaced
+// five guesses across four minutes would get five more the moment the anchor
+// expired, rather than being limited to one guess per five minutes. The list is
+// bounded by the limit itself, so the document cannot grow.
+//
+// `window_start` (oldest retained failure) and `locked_until` (`window_start`
+// + the window, once the limit is reached) are DERIVED from `fails` and stored
+// for the same reason the alert-state document stores `consecutive_failures`:
+// the state a human reads must not have to be re-derived by hand, and a sweep
+// can age a document without reading it.
+
+// Sub-collection of `state/` holding the per-IP gate counters.
+export const LOGIN_ATTEMPTS_PREFIX = 'login_attempts';
+
+// How long an untouched counter document is kept. NOTHING reads a counter older
+// than the gate window (5 minutes), so this is purely a bound on how many
+// documents accumulate: one per IP that logs in, swept by the daily cron pass
+// alongside `checks/` and `reports/`. The daily cadence is inherited from the
+// sweep (which runs at UTC hour 0), so a document lives at most ~48h here.
+export const LOGIN_ATTEMPTS_RETENTION_DAYS = 1;
+
+// Domain separator mixed into the hash below, so this value can never collide
+// with another hash this worker might derive from the same secret.
+const IP_HASH_NAMESPACE = 'login-gate:';
+
+// 128 bits of HMAC-SHA256(secret, `${IP_HASH_NAMESPACE}${ip}`), hex.
+//
+// KEYED, NOT A BARE DIGEST, AND THAT IS THE POINT. The counter document is
+// filed under this value, so an unsalted SHA-256 of an IPv4 address would be
+// reversible in practice: the whole IPv4 space is 2^32 and SHA-256 is fast, so
+// anybody who could list `state/login_attempts/` could recover the raw client
+// addresses the hashing exists to protect. With the PIN as the HMAC key the
+// mapping is only known to a worker that holds the secret.
+//
+// The secret is the dashboard PIN: `POST /login` returns 500 when it is missing
+// or malformed BEFORE the gate is consulted, so the gate can never be reached
+// without one, and this migration needs no new owner secret. Rotating the PIN
+// therefore resets every counter — the conservative direction for a security
+// secret, and the same instant that already invalidates every session cookie.
+const IP_HASH_HEX_CHARS = 32;
+
+async function hmacHex(secret, message) {
+  const enc = new TextEncoder();
+  // WebCrypto rejects a zero-length HMAC key outright, so an unset secret is a
+  // loud throw here rather than a hash keyed by nothing.
+  if (!secret) throw new Error('ipHash requires a secret');
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(String(secret)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Hash a client IP into the filename stem. Never returns (or stores) the raw
+// address. Deterministic, so the same IP always reaches the same counter.
+export async function ipHash(ip, secret) {
+  const full = await hmacHex(secret, `${IP_HASH_NAMESPACE}${String(ip ?? '')}`);
+  return full.slice(0, IP_HASH_HEX_CHARS);
+}
+
+// `state/login_attempts/` — the listing prefix the retention sweep uses to age
+// counter documents out.
+export function loginAttemptsPrefix() {
+  return `${STATE_PREFIX}/${LOGIN_ATTEMPTS_PREFIX}/`;
+}
+
+// `state/login_attempts/<ipHash>.json` from an ALREADY HASHED value, so the key
+// builder stays a pure function (and testable without WebCrypto) while the raw
+// address never reaches the key layer. The closed character set is enforced
+// because the value is caller-supplied: a `/` or `..` would file the document
+// outside `state/login_attempts/`.
+export function loginAttemptsKey(ipHashValue) {
+  const hash = String(ipHashValue ?? '').trim().toLowerCase();
+  if (!/^[0-9a-f]{8,64}$/.test(hash)) throw new Error(`invalid login ip hash: ${ipHashValue}`);
+  return `${loginAttemptsPrefix()}${hash}.json`;
+}
+
 // True when an object's `uploaded` timestamp is strictly older than
 // `now - days`. Strict `<`, so an object exactly at the cutoff survives and the
-// next sweep re-evaluates it against a moved clock — same boundary semantics
-// the D1 `DELETE ... WHERE ts < ?` prunes had.
+// next sweep re-evaluates it against a moved clock — the same boundary
+// semantics the previous `DELETE ... WHERE ts < ?` prunes had.
 //
 // `uploaded` is whatever R2 hands back: a Date (real bucket) or an ISO string
 // (a test double, or a value that round-tripped through JSON). Both are

@@ -11,30 +11,31 @@ persist = true
 [triggers]
 crons = [ "*/5 * * * *" ]
 
-# NOTE (2026-10-03): the D1 binding below is now ONLY `login_attempts` — the PIN
-# brute-force counter, which is the one thing the worker still reads AND writes in
-# D1 (see `src/db.js`, whose entire remaining scope is those three helpers).
+# NOTE (2026-10-03, phase 6): there is NO relational binding on this worker any
+# more, and no `migrations/`. Probe runs, intake reports, alert state, the
+# uptime rollup, the per-target history rings AND the per-IP PIN brute-force
+# counter are all objects in the single bucket below (`src/storage.js` owns the
+# layout). The database that used to hold `checks`/`reports`/`login_attempts`
+# still exists in the account — Cloudflare keeps it until somebody deletes it,
+# and deleting a Cloudflare resource is the owner's call, not this repo's.
+# OWNER ACTION 2 in README.md: deploy, verify one cron cycle, then delete it.
 #
-# Everything else — probe runs, alert state, the uptime rollup, the per-target
-# history rings and the intake reports, plus every public read endpoint — is R2
-# (`src/storage.js` for the object layout: checks/, reports/, state/history/).
-# The `checks` and `reports` TABLES still exist in this database and are written
-# by nothing; they are dropped with this binding in the final phase, along with
-# migrations/, once login_attempts has moved.
+# Object storage for the whole worker: probe history, intake reports, and the
+# small mutable state documents. One bucket so the retention sweep has a single
+# place to look; keys are namespaced by prefix instead of by table:
+#   checks/<YYYY-MM-DD>/<HH-MM>.json              one object per cron run
+#   reports/<errors|feedback>/<date>/<ts>-<id>.json   one per intake report
+#   state/alert_state.json                        per-target alert state
+#   state/summary.json                            rolling 24h uptime rollup
+#   state/history/<target>.json                   rolling per-target check ring
+#   state/login_attempts/<ipHash>.json            per-IP PIN gate counter
+# `MONITOR_BUCKET` is the binding name used across src/.
 #
-# Do not delete this block until login_attempts has moved: doing it now would
-# 500 every POST /login (the PIN gate reads its 5-min budget from this table)
-# and the cron's prune step.
-[[d1_databases]]
-binding = "DB"
-database_name = "campmaster-monitor-db"
-database_id = "81de335f-a729-4511-a9e8-57a6882c6932"
-migrations_dir = "migrations"
-
-# Object storage for probe history, intake reports, and the small mutable state
-# documents. One bucket for the whole worker so the retention sweep has a single
-# place to look; keys are namespaced by prefix instead (`checks/`, `reports/`,
-# `state/`). `MONITOR_BUCKET` is the binding name used across src/.
+# FREE-PLAN COST NOTE: R2 bills storage, and Class A operations (list/write),
+# not reads — one cron run is ~8 writes (1 run object + 1 alert state + 1
+# summary + 5 rings), so a full day of 5-minute probes is ~2,300 writes against
+# the free tier's 1,000,000/month, and the daily sweep is a handful of listings.
+# Nothing here touches KV, whose free plan allows only 1,000 writes/day.
 [[r2_buckets]]
 binding = "MONITOR_BUCKET"
 bucket_name = "campmaster-monitor-media"

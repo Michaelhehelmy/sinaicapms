@@ -28,121 +28,33 @@ import {
   webhookCollector,
 } from './helpers/fake-r2.js';
 
-// In-memory D1 stand-in covering the ONE SQL shape db.js still has: the
-// `login_attempts` PIN gate.
-//
-// The probe tables and the reports table are deliberately NOT implemented. Phase
-// 3 moved the status/history/dashboard reads to R2 and phase 5 moved the reports
-// list, and a stub that still answered them would quietly let a query back in —
-// against tables nothing writes any more. The assertions below throw on all
-// three, so a reintroduced query fails here instead of passing against a stale
-// stub and reading nothing in production.
-class FakeStmt {
-  constructor(db, sql) {
-    this.db = db;
-    this.sql = sql;
-    this.args = [];
-  }
-  bind(...args) {
-    this.args = args;
-    return this;
-  }
-  async run() {
-    return this.db.execRun(this.sql, this.args);
-  }
-  async all() {
-    return { results: this.db.execAll(this.sql, this.args) };
-  }
-  async first() {
-    const rows = this.db.execAll(this.sql, this.args);
-    return rows[0] ?? null;
-  }
-}
+// PHASE 6: there is no database double in this file any more, and that is the
+// strongest possible guard — `env` below has no `DB` key at all, so a handler
+// that reached for the old binding would throw on `undefined` and 500 instead of
+// quietly passing against a stub that still answered it. `noDatabase` makes the
+// failure a named one. Every route here is proved to be served entirely from the
+// object bucket by its response, not by what a fake store declined to answer.
 
-class FakeDb {
-  constructor() {
-    this.reports = [];
-    this.attempts = [];
-    this.prepared = [];
-    this.reportSeq = 0;
-    this.tick = 0;
-  }
-  prepare(sql) {
-    this.prepared.push(sql);
-    return new FakeStmt(this, sql);
-  }
-  seedReport(row) {
-    this.reportSeq += 1;
-    this.tick += 1;
-    this.reports.push({
-      id: this.reportSeq,
-      kind: 'error',
-      message: 'seeded',
-      page_url: null,
-      contact: null,
-      status: 'new',
-      created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
-      ...row,
-    });
-    return this.reports[this.reports.length - 1];
-  }
-  execRun(sql, args) {
-    if (
-      sql.startsWith('INSERT INTO checks') ||
-      sql.startsWith('INSERT INTO alert_state') ||
-      sql.startsWith('INSERT INTO reports')
-    ) {
-      throw new Error(`FakeDb.run: ${sql} — every write moved to R2 (phases 2 and 4)`);
-    }
-    if (sql.startsWith('INSERT INTO login_attempts')) {
-      const [ip, success] = args;
-      this.tick += 1;
-      this.attempts.push({
-        id: this.attempts.length + 1,
-        ip,
-        success,
-        attempted_at: `2026-09-29 00:02:${String(this.tick).padStart(2, '0')}`,
-      });
-      return { success: true };
-    }
-    if (sql.startsWith('DELETE FROM login_attempts')) {
-      this.attempts = [];
-      return { success: true };
-    }
-    throw new Error(`FakeDb.run: unhandled SQL: ${sql}`);
-  }
-  execAll(sql, args) {
-    if (sql.includes('FROM login_attempts')) {
-      const [ip] = args;
-      const fails = this.attempts.filter((r) => r.ip === ip && r.success === 0).length;
-      return [{ fail_count: fails }];
-    }
-    if (
-      sql.includes('FROM checks') ||
-      sql.includes('FROM alert_state') ||
-      sql.includes('FROM reports')
-    ) {
-      throw new Error(`FakeDb.all: ${sql} — read from R2 instead (phases 3 and 5)`);
-    }
-    if (sql.includes('FROM reports')) {
-      throw new Error(`FakeDb.all: ${sql} — reports are read from R2 via GET /api/reports (phase 5)`);
-    }
-    throw new Error(`FakeDb.all: unhandled SQL: ${sql}`);
-  }
+function noDatabase(extra = {}) {
+  return {
+    get DB() {
+      throw new Error('the monitor worker has no DB binding (phase 6)');
+    },
+    ...extra,
+  };
 }
 
 const REPORT_TOKEN = 'test-report-secret';
 const DASHBOARD_PIN = '123456';
-// The worker always has BOTH bindings. Phase 3 made the R2 bucket the source for
-// the public reads too, so a test that wants to assert on them passes its own
-// double in (the default is a fresh empty bucket = "nothing has ever run").
-const envFor = (db, extra = {}) => ({
-  DB: db,
-  MONITOR_BUCKET: extra.MONITOR_BUCKET ?? makeR2(),
-  REPORT_TOKEN,
-  DASHBOARD_PIN,
-  ...extra,
-});
+// The worker binds ONE storage resource. A test that wants data in it passes its
+// own double in; the default is a fresh empty bucket = "nothing has ever run".
+const envFor = (extra = {}) =>
+  noDatabase({
+    MONITOR_BUCKET: extra.MONITOR_BUCKET ?? makeR2(),
+    REPORT_TOKEN,
+    DASHBOARD_PIN,
+    ...extra,
+  });
 
 // A bucket holding one healthy run for every target, a fully-up rollup, and one
 // history-ring entry each: the smallest fixture that renders a dashboard as OK
@@ -166,7 +78,6 @@ function postReport(
     ip = '10.9.0.1',
     bucket = makeR2(),
     headers: extra = {},
-    db = new FakeDb(),
     env = {},
     executionCtx,
   } = {},
@@ -176,7 +87,7 @@ function postReport(
   return app.request(
     path,
     { method: 'POST', headers, body: JSON.stringify(body) },
-    envFor(db, { MONITOR_BUCKET: bucket, ...env }),
+    envFor({ MONITOR_BUCKET: bucket, ...env }),
     executionCtx,
   );
 }
@@ -234,7 +145,7 @@ describe('constant-time token helpers', () => {
 describe('GET /api/status (public aggregate, read from R2)', () => {
   it('returns {overall, checked_at, targets[]} with one row per target', async () => {
     const bucket = okBucket();
-    const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+    const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.overall).toBe('ok');
@@ -264,7 +175,7 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
       { name: TARGETS[1].name, ok: false },
       ...TARGETS.slice(2).map((t) => ({ name: t.name, ok: true })),
     ]);
-    const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+    const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
     const body = await res.json();
     expect(['degraded', 'down']).toContain(body.overall);
   });
@@ -274,7 +185,7 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
     // `up: false` with null details, so the dashboard shows six cards reading
     // "never checked" instead of vanishing. Returning `targets: []` here would
     // look like a working monitor with nothing to say.
-    const res = await app.request('/api/status', {}, envFor(new FakeDb()));
+    const res = await app.request('/api/status', {}, envFor());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.overall).toBe('down');
@@ -297,7 +208,7 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-03T00:02:00.000Z'));
     try {
-      const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+      const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
       const body = await res.json();
       expect(body.overall).toBe('ok');
       expect(body.checked_at).toBe(yesterday.toISOString());
@@ -330,7 +241,7 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-03T12:01:00.000Z'));
     try {
-      const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+      const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
       const body = await res.json();
       expect(body.checked_at).toBe('2026-10-03T12:00:00.000Z');
       expect(body.overall).toBe('degraded');
@@ -359,30 +270,29 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
     seedAlertState(bucket, {
       [TARGETS[0].name]: { last_state: 'up', consecutive_failures: 1, updated_at: '2026-10-03T12:00:00.000Z' },
     });
-    const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+    const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
     const body = await res.json();
     expect(body.targets.find((t) => t.name === TARGETS[0].name).up).toBe(false);
     expect(body.targets.find((t) => t.name === TARGETS[0].name).last_status).toBe(503);
   });
 
-  it('reads no D1 probe table at all', async () => {
-    // Any SQL against `checks` throws in the stub; a 200 here is the proof the
-    // read path is entirely R2.
-    const db = new FakeDb();
-    const res = await app.request('/api/status', {}, envFor(db, { MONITOR_BUCKET: okBucket() }));
+  it('answers from the bucket with no database binding in the env at all', async () => {
+    // `noDatabase` throws on `.DB`, so a read path that still wanted a query
+    // would 500 here. A 200 IS the proof the aggregate is entirely object-backed.
+    const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: okBucket() }));
     expect(res.status).toBe(200);
   });
 });
 
 describe('GET /api/history (public, target required, read from R2)', () => {
   it('400 when target missing or unknown', async () => {
-    const env = envFor(new FakeDb());
+    const env = envFor();
     expect((await app.request('/api/history', {}, env)).status).toBe(400);
     expect((await app.request('/api/history?target=nope', {}, env)).status).toBe(400);
   });
 
   it('every 400 lists the valid targets, and never the rejected one', async () => {
-    const env = envFor(new FakeDb());
+    const env = envFor();
     const names = TARGETS.map((t) => t.name);
 
     const missing = await app.request('/api/history', {}, env);
@@ -419,7 +329,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
     const res = await app.request(
       '/api/history?target=marketplace&hours=24',
       {},
-      envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+      envFor({ MONITOR_BUCKET: bucket }),
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -450,7 +360,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
     vi.setSystemTime(at);
     try {
       const body = await app
-        .request('/api/history?target=marketplace&hours=24', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }))
+        .request('/api/history?target=marketplace&hours=24', {}, envFor({ MONITOR_BUCKET: bucket }))
         .then((r) => r.json());
       expect(body.checks.map((c) => c.checked_at)).toEqual([
         '2026-10-02T13:00:00.000Z',
@@ -458,7 +368,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
       ]);
       // A wider window brings the older samples back, from the same object.
       const wider = await app
-        .request('/api/history?target=marketplace&hours=48', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }))
+        .request('/api/history?target=marketplace&hours=48', {}, envFor({ MONITOR_BUCKET: bucket }))
         .then((r) => r.json());
       expect(wider.checks).toHaveLength(4);
     } finally {
@@ -472,7 +382,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
     const res = await app.request(
       `/api/history?target=marketplace&hours=${HISTORY_MAX_WINDOW_HOURS + 1}`,
       {},
-      envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+      envFor({ MONITOR_BUCKET: bucket }),
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -486,14 +396,14 @@ describe('GET /api/history (public, target required, read from R2)', () => {
         await app.request(
           `/api/history?target=marketplace&hours=${HISTORY_MAX_WINDOW_HOURS}`,
           {},
-          envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+          envFor({ MONITOR_BUCKET: bucket }),
         )
       ).status,
     ).toBe(200);
   });
 
   it('an empty bucket answers an empty list, not an error', async () => {
-    const res = await app.request('/api/history?target=marketplace&hours=24', {}, envFor(new FakeDb()));
+    const res = await app.request('/api/history?target=marketplace&hours=24', {}, envFor());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.checks).toEqual([]);
@@ -509,7 +419,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
     const res = await app.request(
       '/api/history?target=marketplace&hours=24',
       {},
-      envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+      envFor({ MONITOR_BUCKET: bucket }),
     );
     const body = await res.json();
     expect(body.checks).toHaveLength(288);
@@ -522,7 +432,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
     const bucket = makeR2();
     seedRing(bucket, 'marketplace', Array.from({ length: 520 }, (_, i) => ringEntry(at, i)));
     const body = await app
-      .request('/api/history?target=marketplace&hours=48', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }))
+      .request('/api/history?target=marketplace&hours=48', {}, envFor({ MONITOR_BUCKET: bucket }))
       .then((r) => r.json());
     expect(body.checks).toHaveLength(500);
     // Newest survive: the cut is at the FRONT of the oldest-first list.
@@ -533,7 +443,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
 describe('GET /api/reports (public, newest-first per kind)', () => {
   const NOW = '2026-10-03T12:00:00.000Z';
   const at = (iso) => new Date(iso);
-  const env = (bucket) => envFor(new FakeDb(), { MONITOR_BUCKET: bucket });
+  const env = (bucket) => envFor({ MONITOR_BUCKET: bucket });
 
   // Five reports across today and yesterday, out of insertion order on purpose:
   // the listing must sort by KEY, not by anything the bucket remembers.
@@ -728,7 +638,7 @@ describe('GET /api/reports (public, newest-first per kind)', () => {
 
 describe('GET /favicon.ico (public, inline bytes)', () => {
   it('200 with an svg body and a long-lived Cache-Control', async () => {
-    const env = envFor(new FakeDb());
+    const env = envFor();
     const res = await app.request('/favicon.ico', {}, env);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('image/svg+xml');
@@ -746,17 +656,17 @@ describe('GET /favicon.ico (public, inline bytes)', () => {
   it('is public: no PIN configured, no session cookie, no D1', async () => {
     // An unconfigured dashboard (no DASHBOARD_PIN) still answers the icon, and
     // answers it with zero D1 work -- browsers ask for it with no cookies.
-    const res = await app.request('/favicon.ico', {}, { DB: new FakeDb() });
+    const res = await app.request('/favicon.ico', {}, noDatabase());
     expect(res.status).toBe(200);
     expect(res.headers.get('location')).toBeNull();
     expect(await res.text()).toContain('<svg');
   });
 
   it('every rendered page declares it, so no page keeps the generic 404 icon', async () => {
-    const env = envFor(new FakeDb());
+    const env = envFor();
 
     // Unconfigured page.
-    const unconfigured = await app.request('/', {}, { DB: new FakeDb() });
+    const unconfigured = await app.request('/', {}, noDatabase());
     expect(unconfigured.status).toBe(500);
     expect(await unconfigured.text()).toContain('rel="icon" href="/favicon.ico"');
 
@@ -898,10 +808,12 @@ describe('POST /report/* (tokened intake)', () => {
   });
 
   it('never inserts a D1 reports row', async () => {
-    // The stub throws on the intake INSERT (see FakeDb), so a 201 here is the
-    // proof the intake path is entirely R2.
-    const res = await postReport('/report/error', { body: { message: 'no d1' } });
+    // `envFor` has no database binding (see noDatabase), so a 201 here is the
+    // proof the intake path is entirely object-backed — and it stored an object.
+    const bucket = makeR2();
+    const res = await postReport('/report/error', { body: { message: 'no rows' }, bucket });
     expect(res.status).toBe(201);
+    expect(bucket.keys().filter((k) => k.startsWith('reports/errors/'))).toHaveLength(1);
   });
 
   it('a failing bucket write is a 500, not a silent 201', async () => {
@@ -1032,8 +944,7 @@ describe('POST /report/* (tokened intake)', () => {
   });
 
   it('61st request in a minute → 429', async () => {
-    const db = new FakeDb();
-    const env = envFor(db);
+    const env = envFor();
     const ip = '10.9.9.9';
     let res;
     for (let i = 0; i < REPORT_RATE_LIMIT; i++) {
@@ -1071,7 +982,7 @@ describe('POST /report/* (tokened intake)', () => {
 
 describe('POST /internal/check (tokened manual probe)', () => {
   it('401 without token', async () => {
-    const res = await app.request('/internal/check', { method: 'POST' }, envFor(new FakeDb()));
+    const res = await app.request('/internal/check', { method: 'POST' }, envFor());
     expect(res.status).toBe(401);
   });
 
@@ -1083,14 +994,13 @@ describe('POST /internal/check (tokened manual probe)', () => {
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${REPORT_TOKEN}` },
         body: JSON.stringify({ target: 'nope' }),
       },
-      envFor(new FakeDb()),
+      envFor(),
     );
     expect(res.status).toBe(400);
   });
 
   it('200 probes all targets and returns outcomes', async () => {
     globalThis.fetch = async () => ({ status: 200, ok: true });
-    const db = new FakeDb();
     const bucket = makeR2();
     const res = await app.request(
       '/internal/check',
@@ -1098,7 +1008,7 @@ describe('POST /internal/check (tokened manual probe)', () => {
         method: 'POST',
         headers: { authorization: `Bearer ${REPORT_TOKEN}` },
       },
-      { ...envFor(db), MONITOR_BUCKET: bucket },
+      envFor({ MONITOR_BUCKET: bucket }),
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -1120,7 +1030,6 @@ describe('POST /internal/check (tokened manual probe)', () => {
 
   it('200 probes a single target when scoped', async () => {
     globalThis.fetch = async () => ({ status: 200, ok: true });
-    const db = new FakeDb();
     const bucket = makeR2();
     const res = await app.request(
       '/internal/check',
@@ -1129,7 +1038,7 @@ describe('POST /internal/check (tokened manual probe)', () => {
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${REPORT_TOKEN}` },
         body: JSON.stringify({ target: 'marketplace' }),
       },
-      { ...envFor(db), MONITOR_BUCKET: bucket },
+      envFor({ MONITOR_BUCKET: bucket }),
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -1149,7 +1058,7 @@ describe('POST /internal/check (tokened manual probe)', () => {
 
 describe('readRecentChecks (dashboard table, merged from the rings)', () => {
   const at = new Date('2026-10-03T12:00:00.000Z');
-  const env = (bucket) => envFor(new FakeDb(), { MONITOR_BUCKET: bucket });
+  const env = (bucket) => envFor({ MONITOR_BUCKET: bucket });
 
   it('merges every target newest-first and honours the limit', async () => {
     const bucket = makeR2();
@@ -1175,18 +1084,16 @@ describe('readRecentChecks (dashboard table, merged from the rings)', () => {
 
 describe('GET / dashboard (cookie-session HTML)', () => {
   it('302 to /login without cookie; ?token= no longer authenticates', async () => {
-    const db = new FakeDb();
-    const bare = await app.request('/', {}, envFor(db));
+    const bare = await app.request('/', {}, envFor());
     expect(bare.status).toBe(302);
     expect(bare.headers.get('location')).toContain('/login');
-    const queryToken = await app.request('/?token=wrong', {}, envFor(db));
+    const queryToken = await app.request('/?token=wrong', {}, envFor());
     expect(queryToken.status).toBe(302);
   });
 
   it('200 HTML contains status-pill, dark bg, Check Now, lists', async () => {
-    const db = new FakeDb();
     const bucket = okBucket();
-    const env = envFor(db, { MONITOR_BUCKET: bucket });
+    const env = envFor({ MONITOR_BUCKET: bucket });
     const login = await app.request(
       '/login',
       {
@@ -1220,11 +1127,13 @@ describe('GET / dashboard (cookie-session HTML)', () => {
     expect(html).toContain('4321');
   });
 
-  it('renders the reports list as TABS the client fetches, and no longer from D1', async () => {
-    const db = new FakeDb();
-    db.seedReport({ message: 'seeded in D1' });
+  it('renders the reports list as TABS the client fetches, and no longer server-side', async () => {
     const bucket = okBucket();
-    const env = envFor(db, { MONITOR_BUCKET: bucket });
+    // A report IS in the bucket — the endpoint can serve it — and the page still
+    // does not render it. Proving the list is client-fetched therefore needs a
+    // report that EXISTS, not one that a fake store declined to answer.
+    seedIntake(bucket, 'errors', '2026-10-03T12:00:00.000Z', { message: 'seeded in the bucket' });
+    const env = envFor({ MONITOR_BUCKET: bucket });
     const value = await signSession(env.DASHBOARD_PIN, Date.now());
     const res = await app.request('/', { headers: { cookie: `${SESSION_COOKIE}=${value}` } }, env);
     expect(res.status).toBe(200);
@@ -1245,16 +1154,17 @@ describe('GET / dashboard (cookie-session HTML)', () => {
     // panel an operator opens it to see.
     expect(html).toContain('if (reportTabsLoaded[kind] && !force) return;');
     expect(html).toContain("openReportTab(open.getAttribute('data-report-tab'), true)");
-    // The D1 row is NOT on the page: the endpoint reads R2 now, and a leftover
-    // server-rendered list would be a second copy of the data to keep in step.
-    expect(html).not.toContain('seeded in D1');
-    // No reports query on a page render at all.
-    expect(db.prepared).toEqual([]);
+    // The stored report is NOT on the page: it is fetched per tab, and a
+    // leftover server-rendered list would be a second copy of the data to keep
+    // in step (and would re-introduce the escaping question this page avoids).
+    expect(html).not.toContain('seeded in the bucket');
+    // No reports read at all on a page render.
+    expect(bucket.calls.get.filter((k) => k.startsWith('reports/'))).toEqual([]);
   });
 
   it('never hands report text to an HTML parser', async () => {
     const bucket = okBucket();
-    const env = envFor(new FakeDb(), { MONITOR_BUCKET: bucket });
+    const env = envFor({ MONITOR_BUCKET: bucket });
     const value = await signSession(env.DASHBOARD_PIN, Date.now());
     const html = await (
       await app.request('/', { headers: { cookie: `${SESSION_COOKIE}=${value}` } }, env)
@@ -1273,7 +1183,6 @@ describe('GET / dashboard (cookie-session HTML)', () => {
   });
 
   it('accepts session cookie too and escapes report content', async () => {
-    const db = new FakeDb();
     const bucket = makeR2();
     const at = new Date('2026-10-03T12:00:00.000Z');
     // The probe error string is operator-adjacent data (a probe URL can carry a
@@ -1283,7 +1192,7 @@ describe('GET / dashboard (cookie-session HTML)', () => {
       { name: TARGETS[0].name, ok: false, errorMessage: '<img src=x>' },
       ...TARGETS.slice(1).map((t) => ({ name: t.name, ok: true })),
     ]);
-    const env = envFor(db, { MONITOR_BUCKET: bucket });
+    const env = envFor({ MONITOR_BUCKET: bucket });
     await app.request(
       '/report/error',
       {

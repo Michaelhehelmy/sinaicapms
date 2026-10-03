@@ -11,98 +11,29 @@ import {
   timingSafeEqual,
   buildSessionCookie,
 } from '../src/auth.js';
-import { makeR2, seedRun } from './helpers/fake-r2.js';
+import { makeR2, seedRun, gateDocs, gateKey, readGate } from './helpers/fake-r2.js';
 
 // Cookie-session dashboard auth: 6-digit PIN login issues a signed
 // `monitor_session` cookie; GET / requires it; POST /internal/check
 // accepts it OR Bearer REPORT_TOKEN. The old `?token=` bookmark is deleted
-// and the PIN never appears in a URL. Brute-force budget is D1-backed:
-// 5 failed attempts per 5 minutes per IP (login_attempts table), then 429.
-
-// In-memory D1 stand-in covering the ONE SQL shape db.js still has: the
-// `login_attempts` PIN gate. The probe tables and the reports table are
-// deliberately not implemented — phases 3-5 moved those reads to R2, and a stub
-// that still answered them would let a query back in unnoticed.
-class FakeStmt {
-  constructor(db, sql) {
-    this.db = db;
-    this.sql = sql;
-    this.args = [];
-  }
-  bind(...args) {
-    this.args = args;
-    return this;
-  }
-  async run() {
-    return this.db.execRun(this.sql, this.args);
-  }
-  async all() {
-    return { results: this.db.execAll(this.sql, this.args) };
-  }
-  async first() {
-    const rows = this.db.execAll(this.sql, this.args);
-    return rows[0] ?? null;
-  }
-}
-
-class FakeDb {
-  constructor() {
-    this.attempts = [];
-    this.tick = 0;
-  }
-  prepare(sql) {
-    return new FakeStmt(this, sql);
-  }
-  execRun(sql, args) {
-    if (
-      sql.startsWith('INSERT INTO checks') ||
-      sql.startsWith('INSERT INTO alert_state') ||
-      sql.startsWith('INSERT INTO reports')
-    ) {
-      throw new Error(`FakeDb.run: ${sql} — every write moved to R2 (phases 2 and 4)`);
-    }
-    if (sql.startsWith('INSERT INTO login_attempts')) {
-      const [ip, success] = args;
-      this.tick += 1;
-      this.attempts.push({
-        id: this.attempts.length + 1,
-        ip,
-        success,
-        attempted_at: `2026-09-29 00:02:${String(this.tick).padStart(2, '0')}`,
-      });
-      return { success: true };
-    }
-    if (sql.startsWith('DELETE FROM login_attempts')) {
-      this.attempts = [];
-      return { success: true };
-    }
-    throw new Error(`FakeDb.run: unhandled SQL: ${sql}`);
-  }
-  execAll(sql, args) {
-    if (sql.includes('FROM login_attempts')) {
-      const [ip] = args;
-      const fails = this.attempts.filter((r) => r.ip === ip && r.success === 0).length;
-      return [{ fail_count: fails }];
-    }
-    if (sql.includes('FROM checks') || sql.includes('FROM alert_state')) {
-      throw new Error(`FakeDb.all: ${sql} — probe history and alert state moved to R2`);
-    }
-    if (sql.includes('FROM reports')) {
-      throw new Error(`FakeDb.all: ${sql} — reports are read from R2 via GET /api/reports (phase 5)`);
-    }
-    throw new Error(`FakeDb.all: unhandled SQL: ${sql}`);
-  }
-}
+// and the PIN never appears in a URL.
+//
+// BRUTE-FORCE BUDGET (unchanged contract, new storage — phase 6): 5 failed
+// attempts per 5 minutes per IP, then 429 `rate limit exceeded`. It was one row
+// per POST; it is now one object per IP at `state/login_attempts/<ipHash>.json`
+// holding the failure timestamps inside the window. Every assertion about the
+// STATUS, the message text and the per-IP isolation below is byte-for-byte what
+// it was against the attempt table; only the bookkeeping assertions moved, from
+// "one row was inserted" to "one counter document holds N failure timestamps" —
+// which is the same fact about a store that has no rows any more.
 
 const REPORT_TOKEN = 'test-report-secret';
 const DASHBOARD_PIN = '123456';
-// The worker always has BOTH bindings. `MONITOR_BUCKET` is here because the
-// probe write path moved off D1 in migration phase 2 and, since phase 3, the
-// dashboard's status and "Recent checks" blocks are read from it too — a request
-// without it 500s. This file is about the PIN gate, so a test that renders the
-// page passes its own bucket in when it needs data in it.
-const envFor = (db, extra = {}) => ({
-  DB: db,
+// The worker binds ONE storage resource: the object bucket. There is no database
+// binding in `env` at all any more, so a route that reached for one would throw
+// rather than silently read a stale table — and these tests would fail instead
+// of passing against a stub.
+const envFor = (extra = {}) => ({
   MONITOR_BUCKET: extra.MONITOR_BUCKET ?? makeR2(),
   REPORT_TOKEN,
   DASHBOARD_PIN,
@@ -115,7 +46,7 @@ function cookieHeader(setCookie) {
   return pair.trim();
 }
 
-async function loginCookie(db, env, ip = '10.99.1.4', extraBody = {}) {
+async function loginCookie(bucket, env, ip = '10.99.1.4', extraBody = {}) {
   const res = await app.request(
     '/login',
     {
@@ -127,7 +58,7 @@ async function loginCookie(db, env, ip = '10.99.1.4', extraBody = {}) {
       },
       body: JSON.stringify({ pin: DASHBOARD_PIN, ...extraBody }),
     },
-    env,
+    { ...env, MONITOR_BUCKET: bucket },
   );
   expect(res.status).toBe(302);
   const setCookie = res.headers.get('set-cookie');
@@ -140,9 +71,9 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-describe('monitor PIN login (signed session cookie + D1 gate)', () => {
+describe('monitor PIN login (signed session cookie + R2 gate)', () => {
   it('1: GET /login renders the keypad form (10 digits, noscript, reduced-motion, no PIN bytes)', async () => {
-    const res = await app.request('/login', {}, envFor(new FakeDb()));
+    const res = await app.request('/login', {}, envFor());
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
@@ -183,11 +114,12 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
         headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '10.99.1.2' },
         body: JSON.stringify({ pin: DASHBOARD_PIN }),
       },
-      envFor(new FakeDb()),
+      envFor(),
     );
     expect(noCsrf.status).toBe(400);
     expect((await noCsrf.json()).error).toMatch(/csrf/i);
 
+    const bucket = makeR2();
     const badJson = await app.request(
       '/login',
       {
@@ -195,14 +127,17 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
         headers: { 'Content-Type': 'application/json', origin: ORIGIN, 'cf-connecting-ip': '10.99.1.22' },
         body: '{not-json',
       },
-      envFor(new FakeDb()),
+      envFor({ MONITOR_BUCKET: bucket }),
     );
     expect(badJson.status).toBe(400);
+    // A malformed body is not an ATTEMPT: nothing is counted against the IP, or
+    // an attacker could lock an operator out with garbage instead of guesses.
+    expect(gateDocs(bucket)).toEqual([]);
   });
 
-  it('3: POST /login 401 Wrong PIN with tries left; 400 when PIN missing; non-6-digit rejected; always-insert', async () => {
-    const db = new FakeDb();
-    const env = envFor(db);
+  it('3: POST /login 401 Wrong PIN with tries left; 400 when PIN missing; non-6-digit rejected; always-records', async () => {
+    const bucket = makeR2();
+    const env = envFor({ MONITOR_BUCKET: bucket });
     const wrong = await app.request(
       '/login',
       {
@@ -217,10 +152,18 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
     const wrongBody = await wrong.json();
     expect(wrongBody.error).toContain('Wrong PIN');
     expect(wrongBody.error).toContain('4 tries left');
-    // Failure inserts exactly one attempt row (outcome bit only).
-    expect(db.attempts).toHaveLength(1);
-    expect(db.attempts[0]).toMatchObject({ ip: '10.99.1.3', success: 0 });
-    expect(JSON.stringify(db.attempts)).not.toContain('000000');
+    // A failure records exactly one timestamp against this IP alone.
+    const gate = await readGate(bucket, '10.99.1.3', DASHBOARD_PIN);
+    expect(gate.fails).toHaveLength(1);
+    expect(gate.locked_until).toBeNull();
+    expect(gate.window_start).toBe(gate.fails[0]);
+    expect(gate.last_success_at).toBeNull();
+    expect(gateDocs(bucket)).toHaveLength(1);
+    // Neither the PIN nor the raw address is anywhere in the bucket.
+    const dump = JSON.stringify([...bucket.store.entries()]);
+    expect(dump).not.toContain('000000');
+    expect(dump).not.toContain('10.99.1.3');
+    expect(bucket.keys()[0]).not.toContain('10.99.1.3');
 
     const second = await app.request(
       '/login',
@@ -233,6 +176,7 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
     );
     expect(second.status).toBe(401);
     expect((await second.json()).error).toContain('3 tries left');
+    expect((await readGate(bucket, '10.99.1.3', DASHBOARD_PIN)).fails).toHaveLength(2);
 
     // Non-6-digit input counts as a wrong attempt (401, never 500).
     const short = await app.request(
@@ -246,6 +190,7 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
     );
     expect(short.status).toBe(401);
     expect((await short.json()).error).toMatch(/wrong pin/i);
+    expect((await readGate(bucket, '10.99.1.31', DASHBOARD_PIN)).fails).toHaveLength(1);
 
     const missing = await app.request(
       '/login',
@@ -257,10 +202,14 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
       env,
     );
     expect(missing.status).toBe(400);
+    // No pin in the body ⇒ no attempt recorded for that IP either, so exactly
+    // the two IPs that actually guessed (`.1.3` and `.1.31`) hold a document.
+    expect(gateDocs(bucket)).toHaveLength(2);
+    expect(await readGate(bucket, '10.99.1.33', DASHBOARD_PIN)).toBeUndefined();
   });
 
   it('4: POST /login success sets 12h cookie with exact flags (≤4KB) and 302 to /; 90d window edges', async () => {
-    const db = new FakeDb();
+    const bucket = makeR2();
     const res = await app.request(
       '/login',
       {
@@ -268,7 +217,7 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
         headers: { 'Content-Type': 'application/json', origin: ORIGIN, 'cf-connecting-ip': '10.99.1.4' },
         body: JSON.stringify({ pin: DASHBOARD_PIN }),
       },
-      envFor(db),
+      envFor({ MONITOR_BUCKET: bucket }),
     );
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('/');
@@ -282,9 +231,11 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
     expect(SESSION_DEFAULT_MAX_AGE).toBe(43200);
     expect(SESSION_TRUSTED_MAX_AGE).toBe(7776000);
     expect(setCookie.length).toBeLessThanOrEqual(4096);
-    // Success inserts exactly one attempt row with the success bit.
-    expect(db.attempts).toHaveLength(1);
-    expect(db.attempts[0]).toMatchObject({ ip: '10.99.1.4', success: 1 });
+    // A success is recorded too (the attempt table stored the success bit), as a
+    // success STAMP — and it does not fabricate failures.
+    const gate = await readGate(bucket, '10.99.1.4', DASHBOARD_PIN);
+    expect(gate.fails).toEqual([]);
+    expect(gate.last_success_at).not.toBeNull();
     const value = cookieHeader(setCookie).split('=')[1];
     expect(await verifySession(value, DASHBOARD_PIN)).toBe(true);
     // Session window edges (90d trusted bound, constant-time).
@@ -309,8 +260,7 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
   });
 
   it('5: trust-device flag picks Max-Age 7776000 vs 43200 (JSON + form)', async () => {
-    const db = new FakeDb();
-    const env = envFor(db);
+    const env = envFor();
     const trusted = await app.request(
       '/login',
       {
@@ -349,13 +299,12 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
   });
 
   it('6: GET / with valid cookie renders the dashboard with logout link', async () => {
-    const db = new FakeDb();
     // `>OK</div>` is only true when the status block finds a healthy run, so the
-    // bucket has to hold one (the aggregate no longer reads D1 — phase 3).
+    // bucket has to hold one (the aggregate reads the bucket).
     const bucket = makeR2();
     seedRun(bucket, new Date(), TARGETS.map((t) => ({ name: t.name, ok: true })));
-    const env = envFor(db, { MONITOR_BUCKET: bucket });
-    const cookie = await loginCookie(db, env, '10.99.1.5');
+    const env = envFor({ MONITOR_BUCKET: bucket });
+    const cookie = await loginCookie(bucket, env, '10.99.1.5');
     const res = await app.request('/', { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
@@ -367,8 +316,7 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
   });
 
   it('7: GET / without cookie redirects to /login and ?pin=/ ?token= never authenticate', async () => {
-    const db = new FakeDb();
-    const env = envFor(db);
+    const env = envFor();
     const bare = await app.request('/', {}, env);
     expect(bare.status).toBe(302);
     expect(bare.headers.get('location')).toContain('/login');
@@ -390,22 +338,23 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
   });
 
   it('8: authed GET /login redirects to /', async () => {
-    const db = new FakeDb();
-    const env = envFor(db);
-    const cookie = await loginCookie(db, env, '10.99.1.7');
+    const bucket = makeR2();
+    const env = envFor({ MONITOR_BUCKET: bucket });
+    const cookie = await loginCookie(bucket, env, '10.99.1.7');
     const res = await app.request('/login', { headers: { cookie } }, env);
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('/');
   });
 
   it('9: POST /logout clears the cookie with Max-Age=0 (CSRF required, cookie only)', async () => {
-    const db = new FakeDb();
-    const env = envFor(db);
+    const bucket = makeR2();
+    const env = envFor({ MONITOR_BUCKET: bucket });
     const noCsrf = await app.request('/logout', { method: 'POST' }, env);
     expect(noCsrf.status).toBe(400);
 
-    const cookie = await loginCookie(db, env, '10.99.1.8');
-    const attemptsBefore = db.attempts.length;
+    const cookie = await loginCookie(bucket, env, '10.99.1.8');
+    const key = await gateKey('10.99.1.8', DASHBOARD_PIN);
+    const gateBefore = JSON.stringify(bucket.read(key));
     const res = await app.request(
       '/logout',
       { method: 'POST', headers: { origin: ORIGIN, cookie } },
@@ -419,15 +368,15 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
     expect(cleared).toContain('Secure');
     expect(cleared).toContain('SameSite=Strict');
     expect(cleared).toContain('Path=/');
-    // Logout clears the cookie only — attempt rows are untouched.
-    expect(db.attempts.length).toBe(attemptsBefore);
+    // Logout clears the cookie only — the gate counter is untouched.
+    expect(JSON.stringify(bucket.read(key))).toBe(gateBefore);
   });
 
   it('10: POST /internal/check accepts session cookie or Bearer REPORT_TOKEN, rejects neither', async () => {
     globalThis.fetch = async () => ({ status: 200, ok: true });
-    const db = new FakeDb();
-    const env = envFor(db);
-    const cookie = await loginCookie(db, env, '10.99.1.9');
+    const bucket = makeR2();
+    const env = envFor({ MONITOR_BUCKET: bucket });
+    const cookie = await loginCookie(bucket, env, '10.99.1.9');
 
     const viaCookie = await app.request('/internal/check', { method: 'POST', headers: { cookie } }, env);
     expect(viaCookie.status).toBe(200);
@@ -435,23 +384,23 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
     const viaBearer = await app.request(
       '/internal/check',
       { method: 'POST', headers: { authorization: `Bearer ${REPORT_TOKEN}` } },
-      envFor(new FakeDb()),
+      envFor(),
     );
     expect(viaBearer.status).toBe(200);
 
-    const denied = await app.request('/internal/check', { method: 'POST' }, envFor(new FakeDb()));
+    const denied = await app.request('/internal/check', { method: 'POST' }, envFor());
     expect(denied.status).toBe(401);
   });
 
-  it('11: D1 gate 5 fails/5min/IP then 429 verbatim (per-IP); unconfigured PIN 500s', async () => {
+  it('11: gate 5 fails/5min/IP then 429 verbatim (per-IP); unconfigured PIN 500s', async () => {
     expect(isPinConfigured({ DASHBOARD_PIN })).toBe(true);
     expect(isPinConfigured({})).toBe(false);
     expect(isPinConfigured({ DASHBOARD_PIN: '12345' })).toBe(false);
     expect(isPinConfigured({ DASHBOARD_PIN: 'abcdef' })).toBe(false);
     expect(isPinConfigured({ DASHBOARD_PIN: '1234567' })).toBe(false);
 
-    const db = new FakeDb();
-    const env = envFor(db);
+    const bucket = makeR2();
+    const env = envFor({ MONITOR_BUCKET: bucket });
     const ip = '10.99.9.77';
     const wants = ['4 tries left', '3 tries left', '2 tries left', '1 tries left', '0 tries left'];
     for (let i = 0; i < 5; i++) {
@@ -467,8 +416,13 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
       expect(res.status).toBe(401);
       expect((await res.json()).error).toContain(wants[i]);
     }
-    expect(db.attempts.filter((r) => r.ip === ip)).toHaveLength(5);
-    // 6th attempt — even the correct PIN — hits the gate and still inserts.
+    const gate = await readGate(bucket, ip, DASHBOARD_PIN);
+    expect(gate.fails).toHaveLength(5);
+    // The window is pinned by the OLDEST failure, and `locked_until` is the
+    // moment the budget frees up again.
+    expect(gate.window_start).toBe(gate.fails[0]);
+    expect(Date.parse(gate.locked_until) - Date.parse(gate.window_start)).toBe(5 * 60_000);
+    // 6th attempt — even the correct PIN — hits the gate and is still recorded.
     const limited = await app.request(
       '/login',
       {
@@ -480,10 +434,17 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
     );
     expect(limited.status).toBe(429);
     expect(await limited.json()).toEqual({ error: 'rate limit exceeded' });
-    expect(db.attempts.filter((r) => r.ip === ip)).toHaveLength(6);
-    // A different IP is unaffected (per-IP gate) and successes insert rows.
-    const otherDb = new FakeDb();
-    const otherEnv = envFor(otherDb);
+    // Already spent: nothing is appended, so a hammering client cannot grow the
+    // document, and the correct PIN was NOT recorded as a success.
+    const after = await readGate(bucket, ip, DASHBOARD_PIN);
+    expect(after.fails).toEqual(gate.fails);
+    expect(after.last_success_at).toBeNull();
+    expect(after.locked_until).toBe(gate.locked_until);
+    expect(gateDocs(bucket)).toHaveLength(1);
+
+    // A different IP is unaffected (per-IP gate) and its success is recorded.
+    const otherBucket = makeR2();
+    const otherEnv = envFor({ MONITOR_BUCKET: otherBucket });
     const other = await app.request(
       '/login',
       {
@@ -494,10 +455,16 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
       otherEnv,
     );
     expect(other.status).toBe(302);
-    expect(otherDb.attempts).toHaveLength(1);
+    const otherGate = await readGate(otherBucket, '10.99.9.78', DASHBOARD_PIN);
+    expect(otherGate.fails).toEqual([]);
+    expect(otherGate.last_success_at).not.toBeNull();
+    // Two IPs never share a document: the key is derived from the address.
+    expect(await gateKey('10.99.9.77', DASHBOARD_PIN)).not.toBe(
+      await gateKey('10.99.9.78', DASHBOARD_PIN),
+    );
 
     // Unconfigured PIN (missing or not 6 digits) blocks login + dashboard.
-    for (const badEnv of [{ DB: new FakeDb(), REPORT_TOKEN }, { DB: new FakeDb(), REPORT_TOKEN, DASHBOARD_PIN: '12345' }]) {
+    for (const badEnv of [{ REPORT_TOKEN }, { REPORT_TOKEN, DASHBOARD_PIN: '12345' }]) {
       const loginPage = await app.request('/login', {}, badEnv);
       expect(loginPage.status).toBe(500);
       expect(await loginPage.text()).toMatch(/pin not configured/i);

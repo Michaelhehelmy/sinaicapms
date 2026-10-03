@@ -6,35 +6,58 @@ error/feedback reports, and serves a mobile status dashboard.
 Worker name: `campmaster-monitor` · entry `src/index.js` · route
 `status.sinaicamps.com` (see `wrangler.toml`).
 
+**Storage: one Cloudflare R2 bucket, no database.** As of 2026-10-03 every
+piece of state lives in objects (`MONITOR_BUCKET` = `campmaster-monitor-media`)
+and the worker binds nothing else — no database binding, no `migrations/`,
+no KV. `src/storage.js` owns the whole layout; nothing in `src/` builds a query.
+
 ## 1. What it does
 
 - **Cron probe** (`scheduled` in `src/index.js`): every run probes every entry
   in `TARGETS` (`src/targets.js`) with a per-target timeout (default 10 s,
-  `User-Agent: campmaster-monitor/1.0`), writes one `checks` row per target
-  (`src/db.js` `recordCheck`), then evaluates alert transitions
-  (`evaluateAlerts`).
-- **Alerting**: last 3 checks all fail + not already alerting → `down`
-  webhook; last 3 checks all ok + currently alerting → `recovery` webhook;
-  otherwise bookkeeping only (`alert_state` table).
-- **Retention** (`runRetention` in `src/index.js`, at the end of every cron
-  run): deletes `checks` rows older than **14 days**, `reports` older than
-  **30 days**, and any `alert_state` row whose target has no check inside the
-  14-day window (i.e. a target dropped from `TARGETS`). Without this the probe
-  table grows one row per target every 5 minutes forever. The 14-day floor
-  sits well above the widest window the API exposes (`/api/history` clamps
-  `hours` to 168), so retention can never blank a rendered chart. Each step is
-  **best-effort** — a failing prune is logged and skipped, never allowed to
-  fail the cron that produces the alerts.
+  `User-Agent: campmaster-monitor/1.0`), then writes **one object for the whole
+  run** — `checks/<YYYY-MM-DD>/<HH-MM>.json`, holding `{run_at, results[]}` for
+  all five targets — and evaluates alert transitions (`evaluateAlerts`).
+- **Alerting**: 3 consecutive failed runs + not already alerting → `down`
+  webhook; a healthy run while alerting → `recovery` webhook; otherwise
+  bookkeeping only. The counter lives in `state/alert_state.json`
+  (`{ <target>: { last_state, consecutive_failures, updated_at } }`), so "3 in a
+  row" is one object read and one write, not a history scan. **Recovery fires on
+  the first healthy run after a down** (owner's chosen rule: the retraction of a
+  human-visible claim should land as soon as the claim stops being true).
+- **Storage layout** (one bucket, namespaced by prefix; `src/storage.js` is the
+  single source of truth for every key):
+  | Key | Contents |
+  | --- | --- |
+  | `checks/<YYYY-MM-DD>/<HH-MM>.json` | one object per cron run, one result per target |
+  | `reports/<errors\|feedback>/<date>/<HH-MM-SS>-<id>.json` | one immutable object per intake report |
+  | `state/alert_state.json` | per-target alert state |
+  | `state/summary.json` | rolling 24h pre-summed `{okCount, totalCount}` per target |
+  | `state/history/<target>.json` | rolling per-target check ring (`/api/history`) |
+  | `state/login_attempts/<ipHash>.json` | per-IP PIN brute-force counter |
+  Fixed-width, zero-padded, **UTC** stamps are the whole trick: R2 lists keys in
+  byte order, so "newest" = "last key in the listing", with no timestamp parsing.
+- **Retention** (`runRetention` in `src/index.js`, daily at **UTC hour 0**):
+  lists `checks/`, both report collections and the gate counters, and deletes
+  what is over-age by the listing's own `uploaded` — probe runs after **14
+  days**, intake reports after **30 days**, gate counters untouched for **1 day**.
+  `state/` is otherwise never swept: the alert state, the rollup and the rings
+  are rewritten in place, and an old version of them is exactly the state that
+  must survive a quiet period. The 14-day floor sits well above the widest window
+  the API exposes (`/api/history` rejects `hours` above 48), so retention can
+  never blank a rendered chart. Each step is **best-effort** — a failing sweep
+  is logged and skipped, never allowed to fail the cron that produces the alerts.
 - **Public status API**: `GET /api/status` (overall ok/degraded/down +
   per-target up/last_status/last_response_ms/uptime_24h/last_error),
-  `GET /api/history?target=<name>&hours=<1–168, default 24>`. Both are served
+  `GET /api/history?target=<name>&hours=<1–48, default 24>`,
+  `GET /api/reports?kind=<errors|feedback>&limit=&offset=`. All three are served
   through a **20s in-memory TTL cache** (`withPublicCache` in `src/index.js`):
-  `/api/status` is one entry, `/api/history` is keyed by `target|hours`. The TTL
-  is shorter than the 5-minute cron, so the cache only collapses duplicate reads
-  and can never serve data older than one probe cycle. It is per-isolate and
-  **best-effort** (a cold isolate just queries), never KV — a write per public
-  read would burn the free plan's 1,000 writes/day quota. Failed queries are
-  never cached; the next request retries D1.
+  `/api/status` is one entry, the other two are keyed by every parameter that
+  changes the answer. The TTL is shorter than the 5-minute cron, so the cache
+  only collapses duplicate reads and can never serve data older than one probe
+  cycle. It is per-isolate and **best-effort** (a cold isolate just reads the
+  bucket), never KV — a write per public read would burn the free plan's 1,000
+  writes/day quota. Failed reads are never cached; the next request retries.
 - **Intake API**: `POST /report/error` + `POST /report/feedback` (Bearer
   `REPORT_TOKEN`, 60/min per-IP limit, 201 `{id, kind, status: "new"}`).
 - **Operator**: `POST /internal/check` (session cookie from 6-digit PIN
@@ -42,14 +65,12 @@ Worker name: `campmaster-monitor` · entry `src/index.js` · route
   `{"target": "<name>"}` probes one) and `GET /` (session cookie only —
   sign in at `GET /login` with `DASHBOARD_PIN` (6 digits, on-screen keypad); dark mobile
   dashboard with status pill, per-target cards, sparklines, last-20 checks
-  and last-20 reports, plus a Log out button posting to `POST /logout`).
+  and a reports panel, plus a Log out button posting to `POST /logout`).
   The dashboard's client JS polls `/api/status` + `/api/history` every **60s**
   (was 30s); "Check Now" re-runs the same refresh immediately.
   The old `?token=` bookmark is deleted — query tokens never authenticate.
-- **Schema** (`migrations/0001_init.sql`, D1 `campmaster-monitor-db`):
-  `checks`, `reports`, `alert_state`.
-- **Tests**: `tests/` (`alerts`, `check-logic`, `auth`, `api`) —
-  `cd monitor && npx vitest run`.
+- **Tests**: `tests/` (`storage`, `retention`, `alerts`, `api`, `auth`,
+  `public-cache`, `check-logic`) — `cd monitor && npx vitest run`.
 
 ## 2. Owner setup (run from `monitor/`)
 
@@ -59,27 +80,62 @@ Secrets are set via `wrangler secret put` only — never in `wrangler.toml`
 ```bash
 cd monitor
 
-# 1. Create the D1 database, then paste the returned database_id into
-#    wrangler.toml ([[d1_databases]] binding DB, database_name
-#    "campmaster-monitor-db", migrations_dir "migrations").
-wrangler d1 create campmaster-monitor-db
+# 1. Create the object bucket (already done for this worker:
+#    campmaster-monitor-media). For a fresh worker:
+wrangler r2 bucket create campmaster-monitor-media
 
-# 2. Apply the schema (0001_init.sql: checks, reports, alert_state).
-wrangler d1 migrations apply campmaster-monitor-db --remote
-
-# 3. Set secrets (values prompted interactively, never echoed).
+# 2. Set secrets (values prompted interactively, never echoed).
 wrangler secret put REPORT_TOKEN
 wrangler secret put DASHBOARD_PIN
 wrangler secret put ALERT_WEBHOOK_URL
 
-# 4. Deploy. To deploy without the custom domain first, comment out the
+# 3. Deploy. To deploy without the custom domain first, comment out the
 #    [[routes]] block (pattern "status.sinaicamps.com"), deploy to
 #    *.workers.dev, test, then add the domain later.
 wrangler deploy
 
-# 5. Verify.
+# 4. Verify.
 curl https://status.sinaicamps.com/api/status
 ```
+
+There is **no database step and no migration step**: nothing in this worker
+reads or writes SQL, so there is no schema to create, apply or reconcile.
+
+### OWNER ACTION 1 — the old database is now orphaned (already safe)
+
+`campmaster-monitor-db` still exists in the account and still holds the last
+rows the worker wrote there (`checks`, `reports`, `login_attempts`). Nothing
+reads it any more, so it is inert data, and deleting it is **not** part of the
+deploy. It can be left in place indefinitely; it costs nothing but confusion.
+
+### OWNER ACTION 2 — delete it only AFTER a verified deploy
+
+Deleting a Cloudflare resource is irreversible and is the owner's call, never an
+agent's. Do it in this order, and only after step 3 has actually succeeded:
+
+```bash
+cd monitor
+
+# 1. Deploy the database-free worker.
+wrangler deploy
+
+# 2. Verify BOTH halves of the migration — the read side and the write side:
+#      - the dashboard answers and shows a fresh timestamp  → GET /
+#      - a probe run is still being stored and alerted on     → the cron at
+#        status.sinaicamps.com writes a new checks/<date>/<HH-MM>.json and the
+#        next run's dashboard is green (watch two consecutive 5-minute ticks)
+curl -s https://status.sinaicamps.com/api/status | head -c 400
+curl -s 'https://status.sinaicamps.com/api/history?target=marketplace&hours=2' | head -c 400
+#      - and the login gate still works: 5 wrong PINs from your IP, then 429
+#        (`{"error":"rate limit exceeded"}`), and a correct PIN afterwards
+
+# 3. Only then delete the orphaned database.
+wrangler d1 delete campmaster-monitor-db
+```
+
+If step 2 does not pass, **stop** and keep the database — it is the only place
+the pre-2026-10-03 history still exists, so deleting it before the new path is
+proven loses that history for good.
 
 ## 3. First login
 
@@ -95,10 +151,26 @@ curl https://status.sinaicamps.com/api/status
 6. Missing/invalid `DASHBOARD_PIN` renders a "dashboard PIN not
    configured" page (set it via `wrangler secret put DASHBOARD_PIN`, exactly 6 digits).
 
-`POST /login` is rate-limited (5 failed PIN attempts per 5 minutes per IP in D1 `login_attempts`, 429 `rate limit exceeded`; every attempt inserts one row with the outcome bit only, never the PIN)
-and requires a CSRF header (`Origin` or `Referer`, else 400). Attempt rows
-older than 1 hour are auto-cleared by the cron `scheduled()` handler
-(`clearOldLoginAttempts`), so the gate table stays small with no manual cleanup.
+`POST /login` is rate-limited (5 failed PIN attempts per 5 minutes per IP,
+429 `rate limit exceeded`) and requires a CSRF header (`Origin` or `Referer`,
+else 400).
+
+The gate is one object per IP: `state/login_attempts/<ipHash>.json`, holding the
+failure timestamps still inside the 5-minute **sliding** window plus
+`window_start`, `locked_until`, `last_success_at` and `updated_at`. `ipHash` is
+an HMAC-SHA256 of the address keyed by `DASHBOARD_PIN`, so the bucket never
+stores a raw IP and the mapping is unknown to anybody without the PIN; the
+filename is all that identifies the client. Consequences worth knowing:
+
+- A successful login does **not** refund the budget (it never did) — it only
+  records `last_success_at`.
+- Rotating `DASHBOARD_PIN` resets every counter, exactly as it invalidates every
+  session cookie.
+- Nothing reads a counter past its 5-minute window, so the daily sweep deletes
+  counters untouched for a day (`runRetention`, `LOGIN_ATTEMPTS_RETENTION_DAYS`)
+  and the bucket holds at most one small document per IP that logged in recently.
+- `cf-connecting-ip` only, never a spoofable `x-forwarded-for`; no KV writes, so
+  the gate never touches the free plan's 1,000/day quota.
 
 ## 4. Rotate the dashboard PIN
 
@@ -125,7 +197,8 @@ only — never in `wrangler.toml`, never printed, never committed.
 
 ## 6. How to add a target
 
-Targets live in code, not in the DB — no migration needed.
+Targets live in code, not in storage — there is no schema and no migration, so
+adding a target is a one-line edit plus a deploy.
 
 1. Edit the `TARGETS` array in `src/targets.js`:
    `{ name: '<id>', url: 'https://…', expect: 200, timeoutMs: 10000 }`.
@@ -136,13 +209,15 @@ Targets live in code, not in the DB — no migration needed.
 3. Run `wrangler deploy` from `monitor/`.
 
 Alert state for the new target is created automatically on the first cron
-evaluation (`alert_state` upsert).
+evaluation (`state/alert_state.json` gains the entry, `state/history/<name>.json`
+and the `state/summary.json` rollup follow), and the first full run drops the
+entry again if the target is removed from `TARGETS`.
 
 The array ships with one self-referential target — `self-check` →
 `https://status.sinaicamps.com/api/status`, `expect: 200`. It is the only
 target whose job is to watch the monitor: a Worker outage cannot deliver its
-own alert, so the `checks` row written by the run *after* the gap is the only
-durable record that it happened. `expect: 200` doubles as a standing check
+own alert, so the `checks/<date>/<HH-MM>.json` object written by the run *after*
+the gap is the only durable record that it happened. `expect: 200` doubles as a standing check
 that `/api/status` stays public and unauthenticated — gate it behind the PIN
 and this target goes red instead of quietly logging you out of your own
 dashboard. Removing it is safe mechanically; you just lose that record.
@@ -150,8 +225,10 @@ dashboard. Removing it is safe mechanically; you just lose that record.
 ## 7. Cron interval
 
 `[triggers] crons = [ "*/5 * * * *" ]` in `wrangler.toml` — the `scheduled`
-handler (`runProbeCycle` → `evaluateAlerts` → `clearOldLoginAttempts` →
-`runRetention`) runs **every 5 minutes**.
+handler (`runProbeCycle` → `evaluateAlerts` → `updateSummary` →
+`updateHistoryRing` → `runRetention`) runs **every 5 minutes**. The sweep itself
+only does work during UTC hour 0 (12 of the 288 daily ticks); the other 276 are
+a no-op that lists nothing.
 Change the expression and redeploy to adjust.
 
 ## 8. Telegram / Slack alerts
@@ -180,18 +257,21 @@ wrangler secret put ALERT_WEBHOOK_URL
 - `wrangler deploy` fails on the route: comment out the `[[routes]]`
   block (`pattern = "status.sinaicamps.com"`) and deploy to
   `*.workers.dev` first, then add the custom domain later.
-- `database_id` placeholder: `wrangler.toml` ships with
-  `database_id = "<owner pastes after wrangler d1 create>"` — replace it
-  with the id from step 1 before deploying.
+- `database_id` placeholder: gone with the binding — `wrangler.toml` no longer
+  has a database block to fill in. If a deploy complains about a missing
+  database id, you are deploying an old copy of `wrangler.toml`.
 - Dashboard redirects to `/login`: `GET /` needs the `monitor_session`
   cookie from `POST /login` (`DASHBOARD_PIN`, constant-time compare;
   missing/invalid/expired → 302 to `/login` by design). The old
   `?token=` bookmark never authenticates.
 - `/login` returns 500 "dashboard PIN not configured": set it via
   `wrangler secret put DASHBOARD_PIN` (exactly 6 digits) from `monitor/`, then redeploy.
-- `/login` returns 429: the D1-backed 5-fails-per-5-minutes-per-IP gate fired
-  (D1 `login_attempts` on `cf-connecting-ip` only; no KV writes, so it never
-  touches the free-plan 1,000/day quota).
+- `/login` returns 429: the 5-fails-per-5-minutes-per-IP gate fired, i.e. five
+  failures are still inside the sliding window in that IP's
+  `state/login_attempts/<ipHash>.json` (`cf-connecting-ip` only; no KV writes,
+  so it never touches the free-plan 1,000/day quota). It reopens on its own as
+  those timestamps age out — a locked IP is retried, not blocked forever — and
+  `POST /login` with no `pin` in the body records nothing at all.
 - `/login` or `/logout` return 400 `csrf required`: send `Origin` (or
   `Referer`) — browsers do this automatically on same-origin POSTs.
 - `/report/*` return 401: they take `REPORT_TOKEN` (Bearer only, no
@@ -203,9 +283,11 @@ wrangler secret put ALERT_WEBHOOK_URL
   backend's `RATE_LIMIT_KV_ENABLED="false"` fallback; no KV writes, so it
   never touches the free-plan 1,000/day quota).
 - `/api/history` returns 400: `target` query param is required and must
-  match a `TARGETS` name; `hours` is clamped to 1–168.
+  match a `TARGETS` name (the body lists `valid_targets`); `hours` above 48 is
+  REJECTED, never clamped, because the answer would otherwise be a shorter series
+  than the caller asked for with nothing saying so.
 - No alerts arriving but status shows down: webhook secret missing
   (silent skip by design) or the 3-consecutive-failure threshold not yet
-  reached — check `alert_state` rows.
+  reached — check `consecutive_failures` in `state/alert_state.json`.
 - Never commit secrets, `.env` files, or token values; never add KV
   writes (free-plan quota).

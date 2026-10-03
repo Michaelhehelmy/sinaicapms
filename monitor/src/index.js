@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { TARGETS, matchesExpect } from './targets.js';
-import * as db from './db.js';
 import {
   CHECKS_PREFIX,
   REPORT_KINDS,
   CHECKS_RETENTION_DAYS,
   REPORTS_RETENTION_DAYS,
+  LOGIN_ATTEMPTS_RETENTION_DAYS,
   checksKey,
   reportKey,
   secondsStamp,
@@ -14,6 +14,9 @@ import {
   alertStateKey,
   summaryKey,
   historyKey,
+  loginAttemptsKey,
+  loginAttemptsPrefix,
+  ipHash,
   datePrefix,
   dateStamp,
   isOlderThan,
@@ -82,10 +85,10 @@ export async function probeTarget(target, fetchFn = fetch) {
 
 // Serialize one probe result into its STORED form.
 //
-// Snake_case on purpose: it is the column naming the D1 `checks` table used, so
-// the R2 read path is a mechanical port and the `/api/status` + `/api/history`
-// wire shape (which was built from those rows) does not change underneath the
-// dashboard. `ok` stays 1/0, not a boolean, for the same reason.
+// Snake_case on purpose: it is the column naming the old row-per-target probe
+// store used, so the R2 read path is a mechanical port and the `/api/status` +
+// `/api/history` wire shape (which was built from those rows) does not change
+// underneath the dashboard. `ok` stays 1/0, not a boolean, for the same reason.
 function toStoredResult(r) {
   return {
     name: r.name,
@@ -99,7 +102,7 @@ function toStoredResult(r) {
 
 // Persist ONE object per probe run — the single write the cron makes per tick.
 //
-// The D1 table grew by one ROW PER TARGET per tick (5 rows every 5 minutes,
+// The old table grew by one ROW PER TARGET per tick (5 rows every 5 minutes,
 // forever, which is what forced the 2026-09-30 index/query rewrite). R2 inverts
 // that: one object per run holds all N results, so the storage grows by exactly
 // one object per tick, the run's `run_at` lives in the document instead of
@@ -123,8 +126,8 @@ export async function writeRunResults(env, results, now = new Date()) {
 // ORDER IS PROBED, NOT WRITTEN: every target is probed before anything is
 // written, so the write path can never add latency to a probe or (if R2 is
 // unavailable) lose the run's results after they were already collected. That
-// is the mirror image of the D1 version, which wrote each row inside its own
-// probe task.
+// is the mirror image of the row-at-a-time version, which wrote each row inside
+// its own probe task.
 export async function runProbeCycle(env, fetchFn = fetch, now = new Date()) {
   const settled = await Promise.all(
     TARGETS.map(async (target) => {
@@ -140,7 +143,7 @@ export async function runProbeCycle(env, fetchFn = fetch, now = new Date()) {
 //
 // PERFORMANCE (2026-09-30): the dashboard polls /api/status once plus
 // /api/history once per card on every refresh, and each poll re-ran the same
-// D1 aggregates. Even on the 60s interval that is 1 + N reads per viewer per
+// aggregates. Even on the 60s interval that is 1 + N reads per viewer per
 // minute, multiplied by however many dashboards are open. A short TTL collapses
 // every read inside one window onto a single read and takes that fan-out
 // back out of the picture.
@@ -220,14 +223,13 @@ export async function withPublicCacheInfo(key, producer, now = Date.now()) {
 
 // --- R2 read path (migration phase 3) ---
 //
-// The D1 version answered both public reads with SQL: `getLatestPerTarget` (one
-// index probe per target) + `getLastCheckTime` + `getUptimeSince` (one COUNT/SUM
-// per target) for `/api/status`, and a single indexed `WHERE target = ? AND
-// checked_at >= ?` for `/api/history`. None of those queries exists any more;
-// what replaced them is below, and the wire shapes are byte-for-byte the same.
+// Both public reads used to be SQL: one index probe per target plus a COUNT/SUM
+// per target for `/api/status`, and a single indexed range scan for
+// `/api/history`. None of those queries exists any more; what replaced them is
+// below, and the wire shapes are byte-for-byte the same.
 
 // Widest window `/api/history` will serve, and the ceiling on the entries it
-// returns (both carried over from the D1 call's own limits: a 168h clamp and
+// returns (both carried over from the old call's own limits: a 168h clamp and
 // `LIMIT 500`). In R2 the window ceiling is also the RING's retention: the
 // stored document is trimmed to this many hours on every write, so a request can
 // never ask for an older sample than the bucket still holds.
@@ -271,7 +273,7 @@ export async function newestRun(bucket, now = new Date()) {
 }
 
 // Uptime percentage from the rollup's `{ okCount, totalCount }` bucket. Same
-// arithmetic and same one-decimal rounding as the D1 `getUptimeSince`, and the
+// arithmetic and same one-decimal rounding as the old aggregate query, and the
 // same "no rows in the window ⇒ null" contract the dashboard renders as `—`.
 function uptimeFromBucket(bucket) {
   const total = Number(bucket?.totalCount ?? 0);
@@ -280,10 +282,11 @@ function uptimeFromBucket(bucket) {
 }
 
 // The public aggregate behind BOTH `/api/status` and the server-rendered
-// dashboard. Shared deliberately: the D1 version had two byte-identical copies
-// of this block (`getDashboardAggregate`), and with the reads on R2 a second
-// copy would be a second thing to keep in step with the storage layout — plus a
-// way for the page and the JSON endpoint to disagree on the same bucket.
+// dashboard. Shared deliberately: there used to be two byte-identical copies
+// of this block (one for the page, one for the endpoint), and with the reads on
+// R2 a second copy would be a second thing to keep in step with the storage
+// layout — plus a way for the page and the JSON endpoint to disagree on the
+// same bucket.
 //
 // THREE READS, IN PARALLEL, no fan-out:
 //   - the newest run object   → per-target last status / response time / error
@@ -292,9 +295,9 @@ function uptimeFromBucket(bucket) {
 //
 // THE CARRY-FORWARD IS WHY ALERT STATE IS READ HERE AT ALL. A run object holds
 // one result per PROBED target, and `POST /internal/check` writes a normal run
-// object with a SINGLE result when an operator checks one host by hand. Under
-// D1, "latest row per target" was a query that simply had a row for every
-// configured target, so a one-target run left the other five alone. Reading
+// object with a SINGLE result when an operator checks one host by hand. With
+// "latest row per target" being a query that simply had a row for every
+// configured target, a one-target run left the other five alone. Reading
 // only the newest run object would instead blank them — the newest run's shape
 // is the newest run's business, and the dashboard would report five healthy
 // hosts as down because a human pressed a button. `alert_state.json` is the
@@ -305,9 +308,9 @@ function uptimeFromBucket(bucket) {
 // `up`, deliberately, is NOT read from alert state when the run HAS a result for
 // that target: `last_state` is sticky by design (it stays `up` until three
 // consecutive failures cross the threshold), so a target failing for one or two
-// runs would still be reported healthy — the D1 version reported `up: false` the
-// moment a single row came back ok=0. The live run bit wins; the state document
-// only fills the gaps.
+// runs would still be reported healthy — the row-based version reported
+// `up: false` the moment a single probe came back ok=0. The live run bit wins;
+// the state document only fills the gaps.
 export async function readStatusAggregate(env, now = new Date()) {
   const [run, alert, summary] = await Promise.all([
     newestRun(env.MONITOR_BUCKET, now),
@@ -356,7 +359,7 @@ app.get('/api/status', async (c) => {
 
 // Public per-target history. `target` is required; hours defaults to 24.
 //
-// MAX 48 HOURS, REJECTED RATHER THAN CLAMPED. The D1 endpoint clamped to 168
+// MAX 48 HOURS, REJECTED RATHER THAN CLAMPED. The old endpoint clamped to 168
 // because an indexed range scan over 7 days was one query. The R2 read is a
 // window over a stored ring (see `historyKey` in storage.js) whose whole reason
 // to exist is that a per-object walk of the window does not fit in an
@@ -398,17 +401,17 @@ app.get('/api/history', async (c) => {
 });
 
 // One target's checks inside the requested window, oldest first — the exact
-// `{target, hours, checks}` shape the D1 query produced, and the exact four
-// fields its `rowToCheck` projected (`status_code`, `ok` as 1/0, `response_ms`,
-// `checked_at`). The stored entries already carry those names, so the port is a
-// window filter, not a reshape: there is no field to mistranslate and nothing to
-// remember about the D1 column naming after this commit.
+// `{target, hours, checks}` shape the range query produced, and the exact four
+// fields it projected (`status_code`, `ok` as 1/0, `response_ms`, `checked_at`).
+// The stored entries already carry those names, so the port is a window filter,
+// not a reshape: there is no field to mistranslate and nothing to remember about
+// the old column naming after this commit.
 //
-// ONE GET for the whole response, versus the D1 query's one query. Sorting is
-// defensive: entries are appended in run order, but two runs inside the same
-// minute share a key and a manual `/internal/check` can be back-dated by
-// nothing at all, so the window's contents are re-sorted by the value the caller
-// reads rather than trusted to the write order.
+// ONE GET for the whole response, versus the range query's single statement.
+// Sorting is defensive: entries are appended in run order, but two runs inside
+// the same minute share a key and a manual `/internal/check` can be back-dated
+// by nothing at all, so the window's contents are re-sorted by the value the
+// caller reads rather than trusted to the write order.
 export async function readHistoryWindow(env, target, hours, now = new Date()) {
   const since = new Date(now).getTime() - hours * 60 * 60 * 1000;
   const doc = await readJson(env.MONITOR_BUCKET, historyKey(target), null);
@@ -434,7 +437,7 @@ export async function readHistoryWindow(env, target, hours, now = new Date()) {
 // The dashboard's "Recent reports" list, as a PUBLIC endpoint: same audience and
 // same exposure as /api/status (report messages are user-submitted prose about
 // the product; the endpoints are already public and CORS-open under /api/*), and
-// the same reason it is an endpoint rather than server-rendered markup — the D1
+// the same reason it is an endpoint rather than server-rendered markup — the old
 // version paid one query per page render for a list the operator then had to
 // reload to see.
 //
@@ -654,14 +657,93 @@ export function getClientIp(c) {
 }
 
 // POST /login brute-force budget: 5 failed PIN attempts per 5 minutes per IP,
-// enforced in D1 via the login_attempts table (see db.js recordLoginAttempt /
-// getRecentFailCount + migrations/0002_login_attempts.sql). D1-backed so the
-// budget survives isolate restarts; only cf-connecting-ip is trusted (not
-// spoofable x-forwarded-for). No KV writes (free-plan 1,000/day quota).
-// Every POST /login inserts exactly one attempt row (success + failure +
-// rate-limited alike) — only the outcome bit, never the PIN value or hash.
+// enforced in the bucket as ONE document per IP at
+// `state/login_attempts/<ipHash>.json` (`ipHash` + `loginAttemptsKey` in
+// storage.js, swept by `runRetention`). Object-backed so the budget survives
+// isolate restarts; only cf-connecting-ip is trusted (not spoofable
+// x-forwarded-for). No KV writes (free-plan 1,000/day quota).
+//
+// EVERY POST /login RECORDS EXACTLY ONE OUTCOME — success, failure and
+// rate-limited alike — the same accounting the attempt table kept: the failure
+// TIMESTAMPS plus a `last_success_at` stamp, never the PIN value or hash, and
+// never the raw address (the filename is an HMAC of it).
 export const LOGIN_FAIL_LIMIT = 5;
-export const LOGIN_FAIL_WINDOW = '5 minutes';
+export const LOGIN_FAIL_WINDOW_MS = 5 * 60 * 1000;
+
+// Drop the failure timestamps that have left the 5-minute window. This is the
+// SLIDING half of the gate, and it is why the document stores timestamps rather
+// than a count: `fails` is what decides when the budget frees up again, so an
+// attempt made just before the oldest failure expires keeps costing a try.
+//
+// An unparseable stamp is dropped (it cannot be shown to be inside the window)
+// and the result is always sorted ascending, so the oldest entry IS the window
+// start even if a document was written by an older/hand-edited writer.
+function pruneLoginFails(fails, nowMs) {
+  return (Array.isArray(fails) ? fails : [])
+    .map((f) => Date.parse(String(f ?? '')))
+    .filter((t) => Number.isFinite(t) && nowMs - t < LOGIN_FAIL_WINDOW_MS)
+    .sort((a, b) => a - b)
+    .map((t) => new Date(t).toISOString());
+}
+
+// Read one IP's gate counter. Never throws on a cold bucket: an absent document
+// is `count: 0, locked: false`, which is exactly a first-time visitor.
+//
+// Returns the document as well as the pruned window, so the caller that records
+// an outcome does not have to guess what was stored before it.
+export async function readLoginGate(env, ip, now = new Date()) {
+  const hash = await ipHash(ip, env?.DASHBOARD_PIN);
+  const key = loginAttemptsKey(hash);
+  const doc = await readJson(env.MONITOR_BUCKET, key, null);
+  const fails = pruneLoginFails(doc?.fails, new Date(now).getTime());
+  return {
+    key,
+    ip_hash: hash,
+    doc,
+    fails,
+    count: fails.length,
+    locked: fails.length >= LOGIN_FAIL_LIMIT,
+  };
+}
+
+// Record one POST /login outcome against the IP's counter document and return
+// the resulting window.
+//
+// THREE RULES, each preserving the contract the attempt table had:
+//   - a FAILURE appends a timestamp, unless the budget is already spent: past
+//     the limit nothing is appended, so a hammering client cannot grow the
+//     document and the window still frees up one failure at a time.
+//   - a SUCCESS DOES NOT CLEAR THE FAILURES. The old count filtered on
+//     `success = 0` and nothing else, so a success never refunded the budget;
+//     refunding it here would hand an attacker five fresh guesses for the price
+//     of one guess they do not need. The success is recorded as
+//     `last_success_at` instead, which answers "did this IP authenticate
+//     recently" without touching the gate.
+//   - the write is UNWRAPPED, like every other write in this worker: an
+//     unrecorded attempt is a gate that has silently moved, which is worse than
+//     a 500 the caller can retry.
+export async function recordLoginOutcome(env, ip, { success }, now = new Date()) {
+  const at = new Date(now);
+  const gate = await readLoginGate(env, ip, at);
+  const fails =
+    success || gate.count >= LOGIN_FAIL_LIMIT
+      ? gate.fails
+      : [...gate.fails, at.toISOString()];
+  const windowStart = fails.length ? fails[0] : null;
+  const lockedUntil =
+    fails.length >= LOGIN_FAIL_LIMIT
+      ? new Date(Date.parse(windowStart) + LOGIN_FAIL_WINDOW_MS).toISOString()
+      : null;
+  await writeJson(env.MONITOR_BUCKET, gate.key, {
+    ip_hash: gate.ip_hash,
+    fails,
+    window_start: windowStart,
+    locked_until: lockedUntil,
+    updated_at: at.toISOString(),
+    last_success_at: success ? at.toISOString() : (gate.doc?.last_success_at ?? null),
+  });
+  return { ...gate, fails, count: fails.length, locked: fails.length >= LOGIN_FAIL_LIMIT };
+}
 
 // CSRF gate for cookie-authenticated POSTs (/login, /logout). Browsers
 // always send Origin (fetch/form) or Referer on same-origin POSTs; a
@@ -818,7 +900,7 @@ export function newReportId(now = new Date()) {
 // report that arrives at 23:59:59.9 must not file itself under tomorrow, or the
 // dashboard would order it before reports it was stored after.
 //
-// The document carries the four fields the D1 row had (kind, message, page_url,
+// The document carries the four fields the old row had (kind, message, page_url,
 // contact, status) plus the id, the arrival time, the caller's severity and its
 // User-Agent — everything an operator needs to triage without opening logs.
 export async function writeReport(env, { kind, message, pageUrl, contact, severity, userAgent }, now = new Date()) {
@@ -1010,7 +1092,7 @@ app.post('/internal/check', async (c) => {
     // one-object-per-run shape (with one result), so the R2 read path has
     // exactly one document shape to parse and never has to ask "is this a
     // partial run?". It also advances that target's consecutive-failure
-    // counter, exactly as the D1 version's row insert did.
+    // counter, exactly as the row-at-a-time version's insert did.
     await writeRunResults(c.env, probed, now);
   } else {
     probed = await runProbeCycle(c.env, fetch, now);
@@ -1029,13 +1111,13 @@ app.post('/internal/check', async (c) => {
 });
 
 // The dashboard's status block is `readStatusAggregate` itself — the A.4
-// "extend-only, keep a separate copy" rule existed because the D1 version had
-// two byte-identical query blocks. With one read path in the bucket there is one
+// "extend-only, keep a separate copy" rule existed because there used to be
+// two byte-identical read blocks. With one read path in the bucket there is one
 // shape to keep, and the page and /api/status cannot disagree about the same
 // data.
 
 // Newest-first probe rows across ALL targets, max `limit` — the dashboard's
-// "Recent checks" table, and the R2 replacement for the D1
+// "Recent checks" table, and the R2 replacement for the old
 // `ORDER BY id DESC LIMIT ?` over the append-only probe table.
 //
 // READ THE RINGS, NOT THE RUN OBJECTS. A run object holds every target's
@@ -1236,7 +1318,7 @@ async function refreshAll(){
 //
 // LAZY PER TAB: nothing is fetched until a tab is opened, and each kind is
 // fetched once per page view. The server no longer renders this list, so a page
-// render costs no report query at all — which is the point: the D1 version paid
+// render costs no report read at all — which is the point: the old version paid
 // a newest-first reports query on every dashboard load, including every load
 // where nobody looked at the list.
 //
@@ -1356,9 +1438,10 @@ openReportTab('errors');
 
 // 6-digit PIN login (form-friendly). GET renders the keypad form; POST checks
 // DASHBOARD_PIN constant-time and issues the signed session cookie.
-// D1 gate: 5 failed attempts per 5 minutes per IP (cf-connecting-ip only),
-// then 429 `rate limit exceeded`; every POST inserts one login_attempts row
-// (success + failure + rate-limited alike — outcome bit only, never the PIN).
+// Brute-force gate: 5 failed attempts per 5 minutes per IP (cf-connecting-ip
+// only), then 429 `rate limit exceeded`; every POST records one outcome against
+// that IP's `state/login_attempts/<ipHash>.json` (failures + rate-limited alike,
+// and a success stamp — timestamps only, never the PIN, never the raw address).
 // Trust-device checkbox extends the cookie Max-Age from 12h (43200) to 90d
 // (7776000). The PIN never appears in a URL and is never logged.
 // Secrets via `wrangler secret put` — never in wrangler.toml [vars],
@@ -1378,9 +1461,15 @@ app.post('/login', async (c) => {
   if (!isPinConfigured(c.env)) return c.json({ error: 'dashboard pin not configured' }, 500);
   if (!hasCsrfHeader(c)) return c.json({ error: 'csrf required' }, 400);
   const ip = getClientIp(c);
-  const failCount = await db.getRecentFailCount(c.env.DB, ip);
-  if (failCount >= LOGIN_FAIL_LIMIT) {
-    await db.recordLoginAttempt(c.env.DB, { ip, success: false });
+  const now = new Date();
+  // The gate is consulted BEFORE the body is read, exactly as the attempt count
+  // used to be: a spent budget answers 429 whatever the request body is (even a
+  // malformed one), and it costs one small object read rather than a query.
+  // `triesLeft` below is derived from the SAME read, so the number in the 401
+  // and the counter the gate just wrote cannot disagree.
+  const gate = await readLoginGate(c.env, ip, now);
+  if (gate.locked) {
+    await recordLoginOutcome(c.env, ip, { success: false }, now);
     return c.json({ error: 'rate limit exceeded' }, 429);
   }
   let pin = '';
@@ -1404,9 +1493,9 @@ app.post('/login', async (c) => {
   }
   if (!pin) return c.json({ error: 'pin is required' }, 400);
   const ok = timingSafeEqual(pin, c.env.DASHBOARD_PIN);
-  await db.recordLoginAttempt(c.env.DB, { ip, success: ok });
+  await recordLoginOutcome(c.env, ip, { success: ok });
   if (!ok) {
-    const triesLeft = Math.max(0, LOGIN_FAIL_LIMIT - failCount - 1);
+    const triesLeft = Math.max(0, LOGIN_FAIL_LIMIT - gate.count - 1);
     return c.json({ error: `Wrong PIN, ${triesLeft} tries left` }, 401);
   }
   const session = await signSession(c.env.DASHBOARD_PIN, Date.now());
@@ -1481,7 +1570,7 @@ export async function sendAlert(env, { target, url, event, statusCode, errorMess
 }
 
 // Consecutive failed runs before a target is announced DOWN. Same number the
-// D1 version derived by asking for the last 3 rows — it is the alert latency
+// last three rows used to imply — it is the alert latency
 // floor: one bad 5-minute probe is noise, three is an outage.
 export const ALERT_FAIL_THRESHOLD = 3;
 
@@ -1490,13 +1579,14 @@ export const ALERT_FAIL_THRESHOLD = 3;
 //   - a healthy run while down → send "recovery"
 //   - otherwise → counter bookkeeping only, no webhook.
 //
-// THE COUNTER IS THE STATE, NOT A RE-DERIVATION. The D1 version re-read the last
-// three `checks` rows on every target on every run (5 targets x a query per
-// 5 minutes, forever). Here `state/alert_state.json` carries
+// THE COUNTER IS THE STATE, NOT A RE-DERIVATION. The last version re-read the
+// three most recent probe rows on every target on every run (5 targets x a query
+// per 5 minutes, forever). Here `state/alert_state.json` carries
 // `consecutive_failures`, so "3 in a row" is a single read of one small object
 // and a single write back — no history read at all. One deliberate difference
-// from the D1 rules, and it is the owner's chosen rule: recovery fires on the
-// FIRST healthy run after a down, where D1 required three. A down alert is a
+// from the old rules, and it is the owner's chosen rule: recovery fires on the
+// FIRST healthy run after a down, where the previous rules required three. A
+// down alert is a
 // human-visible claim ("this is broken"); the recovery that retracts it should
 // arrive as soon as the claim stops being true.
 //
@@ -1586,9 +1676,9 @@ export async function evaluateAlerts(env, probeResults, fetchFn = fetch, now = n
 
 // Rolling 24h uptime rollup, rewritten in place on every run.
 //
-// OWNER-APPROVED ADDITION over a literal port of the D1 query. `getUptimeSince`
+// OWNER-APPROVED ADDITION over a literal port of the old aggregate. It
 // answered "what fraction of this target's checks in the last 24h were ok" with
-// one indexed SQL count per target; the R2 equivalent is "walk 24h of run
+// one indexed count per target; the R2 equivalent is "walk 24h of run
 // objects" = 288 objects at the 5-minute cadence, x 5 targets, on every cached
 // miss of the PUBLIC `/api/status` route. That is the read fan-out this
 // rollup exists to remove: one small object read replaces up to 288.
@@ -1648,7 +1738,7 @@ export async function updateSummary(env, results, now = new Date()) {
 // WHY THIS EXISTS, in the only terms that matter: R2 has no range read, so
 // serving a WINDOW means reading every object the window covers. At the 5-minute
 // cron cadence `hours=24` is 288 run objects, and the Workers free plan allows
-// 50 subrequests per invocation — so a literal port of the D1 range query does
+// 50 subrequests per invocation — so a literal port of the range query does
 // not merely cost more, it FAILS, and it would fail inside the dashboard's
 // per-card loop of six requests. (Same reasoning, same shape as
 // `updateSummary` above: one small object read replaces a walk that no longer
@@ -1661,7 +1751,7 @@ export async function updateSummary(env, results, now = new Date()) {
 // instead of to uptime; the cap is what bounds it if an operator hammers
 // `/internal/check` (every manual run appends).
 //
-// THE SAME FOUR FIELDS `/api/history` PROJECTS, and the same names the D1
+// THE SAME FOUR FIELDS `/api/history` PROJECTS, and the same names the old
 // columns had — no `error_message`, which the endpoint never returned.
 //
 // "NOT PROBED" IS NOT A NEW ENTRY, mirroring `evaluateAlerts`: a target missing
@@ -1704,21 +1794,25 @@ export async function updateHistoryRing(env, results, now = new Date()) {
   return written;
 }
 
-// Cron retention sweep over the R2 layout, replacing the three D1 DELETE
-// statements: probe-run objects older than 14 days, and intake-report objects
-// (both kinds) older than 30. `state/*` is never swept — it is not dated, it is
-// rewritten in place, and "old" state objects are exactly the state that must
-// survive a quiet period.
+// Cron retention sweep over the R2 layout, replacing the row DELETEs that used
+// to prune it: probe-run objects older than 14 days, intake-report objects (both
+// kinds) older than 30, and per-IP PIN gate counters untouched for a day.
 //
-// DAILY, AT UTC HOUR 0. The D1 version could run every 5 minutes because a
-// bounded `DELETE ... WHERE indexed_col < ?` is cheap. A sweep here must LIST
-// keys (up to ~4,000 for checks alone at the retention floor), which is
-// paginated and not free, so it runs once a day — and at hour 0 in UTC, the
-// same clock the day buckets and the retention cutoffs are built on, so "the
-// first run of a new UTC day" is a fact rather than a coincidence. Every one of
-// the 12 daily runs that lands inside hour 0 (the cron fires every 5 minutes)
-// does the sweep; that is idempotent and costs 12 listings a day, far cheaper
-// than a state flag that could be lost and strand an unbounded bucket.
+// `state/` IS NEVER SWEPT, except that one sub-collection: the alert state, the
+// rollup and the per-target rings are not dated, are rewritten in place, and
+// "old" versions of them are exactly the state that must survive a quiet
+// period. A gate counter is the opposite — nothing reads it past its 5-minute
+// window, so its age is meaningless and sweeping it is what bounds the key count.
+//
+// DAILY, AT UTC HOUR 0. The row-based version could run every 5 minutes because
+// a bounded indexed `DELETE` is cheap. A sweep here must LIST keys (up to ~4,000
+// for checks alone at the retention floor), which is paginated and not free, so
+// it runs once a day — and at hour 0 in UTC, the same clock the day buckets and
+// the retention cutoffs are built on, so "the first run of a new UTC day" is a
+// fact rather than a coincidence. Every one of the 12 daily runs that lands
+// inside hour 0 (the cron fires every 5 minutes) does the sweep; that is
+// idempotent and costs 12 listings a day, far cheaper than a state flag that
+// could be lost and strand an unbounded bucket.
 //
 // BEST-EFFORT BY DESIGN, one try/catch PER STEP — the same posture as
 // `sendAlert()`, and the same reason: this cron is what produces the alert that
@@ -1731,6 +1825,7 @@ export async function runRetention(env, now = new Date()) {
   const steps = [
     ['checks', `${CHECKS_PREFIX}/`, CHECKS_RETENTION_DAYS],
     ...REPORT_KINDS.map((kind) => [`reports/${kind}`, reportsPrefix(kind), REPORTS_RETENTION_DAYS]),
+    ['login_attempts', loginAttemptsPrefix(), LOGIN_ATTEMPTS_RETENTION_DAYS],
   ];
   const deleted = {};
   for (const [name, prefix, days] of steps) {
@@ -1749,9 +1844,13 @@ export async function runRetention(env, now = new Date()) {
 }
 
 // Cron entry: probe every target, store the run as ONE object, evaluate alert
-// transitions, fold the run into the 24h rollup, prune old login_attempts rows
-// (keeps the 5-min PIN gate table small — still D1), and run the daily R2 sweep.
-// Runs every 5 minutes via the [triggers] crons schedule in wrangler.toml.
+// transitions, fold the run into the 24h rollup and the per-target rings, and
+// run the daily R2 sweep. Runs every 5 minutes via the [triggers] crons
+// schedule in wrangler.toml.
+//
+// This is the WHOLE data path: the worker binds an object bucket and nothing
+// else, so there is no statement to prune here any more — the gate counters the
+// cron used to age out are swept by `runRetention` like every other dated key.
 //
 // FAILURE POSTURE, per step and deliberately not uniform:
 //   - probe + write + alerts stay UNWRAPPED. A failure there means the monitor
@@ -1759,13 +1858,9 @@ export async function runRetention(env, now = new Date()) {
 //     silently stale dashboard.
 //   - the rollups and the sweep are WRAPPED each in their own try/catch. All
 //     are derived/maintenance data with a correct answer on the next run, and
-//     none is allowed to cancel the alerting above them. (The pre-existing
-//     D1 version had exactly this split: retention steps were per-step guarded,
-//     the probe/alert half was not.)
-//   - `clearOldLoginAttempts` keeps its original unwrapped behaviour (a throw
-//     there still rejects `scheduled()`); changing that failure mode is a
-//     separate call from this task's retention policy, so it is left alone
-//     deliberately. It is also the last remaining D1 write in the cron.
+//     none is allowed to cancel the alerting above them. (This split is
+//     inherited unchanged: retention steps were always per-step guarded, the
+//     probe/alert half was not.)
 async function scheduled(event, env, ctx) {
   const now = new Date();
   const results = await runProbeCycle(env, fetch, now);
@@ -1783,7 +1878,6 @@ async function scheduled(event, env, ctx) {
   } catch (err) {
     console.error('monitor history ring update failed', err?.message ?? err);
   }
-  await db.clearOldLoginAttempts(env.DB);
   await runRetention(env, now);
 }
 

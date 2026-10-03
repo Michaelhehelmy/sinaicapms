@@ -1,24 +1,33 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { scheduled, runRetention } from '../src/index.js';
 import { TARGETS } from '../src/targets.js';
-import { CHECKS_RETENTION_DAYS, REPORTS_RETENTION_DAYS } from '../src/storage.js';
-import { makeR2, stubFetch, HOUR_0 } from './helpers/fake-r2.js';
+import {
+  CHECKS_RETENTION_DAYS,
+  REPORTS_RETENTION_DAYS,
+  LOGIN_ATTEMPTS_RETENTION_DAYS,
+} from '../src/storage.js';
+import { makeR2, stubFetch, seedGate, HOUR_0 } from './helpers/fake-r2.js';
+
+// The secret the gate's HMAC is keyed with in these fixtures — the dashboard PIN,
+// exactly as the worker keys it.
+const PIN = '123456';
 
 // Retention policy guard — real `runRetention()`, real `scheduled()` wiring.
 //
-// This file used to replay the three D1 migrations into `node:sqlite` and assert
-// on surviving ROWS, because the D1 prunes were SQL and a SQL-dispatching stub
-// could not tell "deleted the right rows" from "deleted none". Nothing under test
-// is SQL any more: retention is now "list a prefix, delete what is over-age", so
-// the equivalent proof is on KEYS in an R2 double that lists in byte order with
-// a cursor — which is exactly the property a naive Map stub would fake away.
+// This file used to replay the migrations into `node:sqlite` and assert on
+// surviving ROWS, because the prunes were SQL and a SQL-dispatching stub could
+// not tell "deleted the right rows" from "deleted none". Nothing under test is
+// SQL any more: retention is "list a prefix, delete what is over-age", so the
+// equivalent proof is on KEYS in an R2 double that lists in byte order with a
+// cursor — which is exactly the property a naive Map stub would fake away.
 //
 // `scheduled()` is still driven (with the clock pinned to UTC hour 0 via fake
 // timers) so a sweep that works but is never wired in would fail here, as before.
 //
-// STILL D1, STILL CALLED: `scheduled()` runs `clearOldLoginAttempts` (the PIN
-// brute-force table) and that is the last D1 write in the cron — phase 6 moves
-// it. The stub below answers only that DELETE.
+// PHASE 6: the sweep no longer has a statement to issue anywhere, so `env`
+// carries ONLY the bucket. `DB` is not merely absent — it is a throwing getter
+// (see `noDatabase`), so any handler that reached for the old binding would fail
+// the test instead of passing against a stub.
 
 const HOUR_0_MINUS = (hours) => new Date(HOUR_0.getTime() - hours * 3600 * 1000);
 
@@ -26,25 +35,20 @@ const HOUR_0_MINUS = (hours) => new Date(HOUR_0.getTime() - hours * 3600 * 1000)
 const CHECKS_DAYS = CHECKS_RETENTION_DAYS; // 14
 const REPORTS_DAYS = REPORTS_RETENTION_DAYS; // 30
 
-// Minimal D1 stub: the cron only issues one statement (the login_attempts
-// prune). A throw here is a genuine failure, not something to swallow.
-function makeDb() {
+// An env with no database binding AT ALL: touching `.DB` throws, which is what a
+// deployed worker without the binding would do (TypeError on undefined) — turned
+// into a named failure a test can read.
+function noDatabase(bucket, extra = {}) {
   return {
-    prepare(sql) {
-      return {
-        sql,
-        bind() {
-          return this;
-        },
-        async run() {
-          return { success: true, meta: { changes: 0 } };
-        },
-      };
+    get DB() {
+      throw new Error('the monitor worker has no DB binding (phase 6)');
     },
+    MONITOR_BUCKET: bucket,
+    ...extra,
   };
 }
 
-const envWith = (bucket, extra = {}) => ({ DB: makeDb(), MONITOR_BUCKET: bucket, ...extra });
+const envWith = (bucket, extra = {}) => noDatabase(bucket, extra);
 
 const checksKeys = (bucket) => bucket.keys().filter((k) => k.startsWith('checks/'));
 const reportKeys = (bucket, kind) => bucket.keys().filter((k) => k.startsWith(`reports/${kind}/`));
@@ -57,6 +61,7 @@ function seed(bucket, key, hoursOld = 1) {
 }
 
 const daysOld = (days) => days * 24;
+const hoursOld = (days) => days * 24;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -105,16 +110,24 @@ describe('cron retention sweep (R2)', () => {
     expect(reportKeys(bucket, 'feedback')).toEqual([]);
   });
 
-  it('never sweeps the state documents', async () => {
+  it('never sweeps the in-place state documents, but DOES age out gate counters', async () => {
     const bucket = makeR2();
     bucket.seed('state/alert_state.json', { marketplace: { last_state: 'down' } }, HOUR_0_MINUS(daysOld(365)).toISOString());
     bucket.seed('state/summary.json', { targets: {} }, HOUR_0_MINUS(daysOld(365)).toISOString());
+    bucket.seed('state/history/marketplace.json', { entries: [] }, HOUR_0_MINUS(daysOld(365)).toISOString());
+    // A counter nobody has touched for a day is the one `state/` document whose
+    // age is meaningless, so it — and only it — is swept. This replaces the
+    // hourly `DELETE FROM login_attempts` the cron used to issue.
+    await seedGate(bucket, '10.0.0.1', PIN, { fails: [], at: HOUR_0_MINUS(daysOld(LOGIN_ATTEMPTS_RETENTION_DAYS + 1)) });
+    const freshKey = await seedGate(bucket, '10.0.0.2', PIN, { fails: [], at: HOUR_0 });
 
     await runRetention(envWith(bucket), HOUR_0);
 
     // A year-old state document is exactly the state that must survive a quiet
-    // period — `state/` is rewritten in place, never aged out.
-    expect(bucket.keys().sort()).toEqual(['state/alert_state.json', 'state/summary.json']);
+    // period — it is rewritten in place, never aged out.
+    expect(bucket.keys().sort()).toEqual(
+      ['state/alert_state.json', 'state/history/marketplace.json', 'state/summary.json', freshKey].sort(),
+    );
   });
 
   it('runs ONLY at UTC hour 0, and deletes nothing at any other hour', async () => {
@@ -156,10 +169,15 @@ describe('cron retention sweep (R2)', () => {
     seed(bucket, 'checks/2026-08-01/00-00.json', daysOld(40));
     seed(bucket, 'reports/errors/2026-08-01/00-00-00-1.json', daysOld(40));
     seed(bucket, 'reports/feedback/2026-09-30/00-00-00-2.json', 1);
+    const staleGate = await seedGate(bucket, '10.0.0.9', PIN, {
+      fails: [HOUR_0_MINUS(hoursOld(LOGIN_ATTEMPTS_RETENTION_DAYS + 1)).toISOString()],
+      at: HOUR_0_MINUS(hoursOld(LOGIN_ATTEMPTS_RETENTION_DAYS + 1)),
+    });
 
     const res = await runRetention(envWith(bucket), HOUR_0);
+    expect(bucket.read(staleGate)).toBeUndefined();
 
-    expect(res).toEqual({ checks: 1, 'reports/errors': 1, 'reports/feedback': 0 });
+    expect(res).toEqual({ checks: 1, 'reports/errors': 1, 'reports/feedback': 0, login_attempts: 1 });
   });
 
   it('a failing sweep step never fails the cron, and the other steps still run', async () => {
@@ -208,6 +226,12 @@ describe('cron retention sweep (R2)', () => {
 
     expect(checksKeys(bucket)).toEqual(['checks/2026-10-03/00-10.json']);
     expect(bucket.keys().sort()).toEqual(['checks/2026-10-03/00-10.json']);
+    expect(await runRetention(envWith(bucket), new Date('2026-10-03T00:59:00.000Z'))).toEqual({
+      checks: 0,
+      'reports/errors': 0,
+      'reports/feedback': 0,
+      login_attempts: 0,
+    });
   });
 
   it('a cold bucket sweeps cleanly (nothing to list, nothing to delete)', async () => {
@@ -216,6 +240,7 @@ describe('cron retention sweep (R2)', () => {
       checks: 0,
       'reports/errors': 0,
       'reports/feedback': 0,
+      login_attempts: 0,
     });
   });
 });
@@ -262,29 +287,15 @@ describe('scheduled() cron wiring (R2)', () => {
     }
   });
 
-  it('never writes to the D1 probe/alert/report tables (login_attempts only)', async () => {
+  it('issues no statement of any kind — the cron has no database binding to query', async () => {
     pinClock();
     const bucket = makeR2();
-    const statements = [];
-    const db = {
-      prepare(sql) {
-        statements.push(sql);
-        return {
-          bind() {
-            return this;
-          },
-          async run() {
-            return { success: true, meta: { changes: 0 } };
-          },
-        };
-      },
-    };
 
-    await scheduled({}, { DB: db, MONITOR_BUCKET: bucket });
-
-    // The ONLY D1 statement the cron may still issue is the login_attempts prune.
-    expect(statements).toHaveLength(1);
-    expect(statements[0]).toMatch(/DELETE FROM login_attempts/);
+    // `envWith`'s `DB` is a throwing getter, so the whole cron running to
+    // completion IS the assertion: the last write path to move (the PIN gate's
+    // counter prune) is gone, and so is every other one.
+    await expect(scheduled({}, envWith(bucket))).resolves.toBeUndefined();
+    expect(bucket.keys().some((k) => k.startsWith('checks/2026-10-03/'))).toBe(true);
   });
 
   it('a broken R2 put fails the run loudly (the monitor must not go quietly stale)', async () => {

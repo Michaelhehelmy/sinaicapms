@@ -34,16 +34,14 @@ function work(bucket) {
   return bucket.calls.get.length + bucket.calls.list.length;
 }
 
-// The dashboard route still server-renders the reports list out of D1 (that read
-// moves to `GET /api/reports` in phase 5), so a page render still needs a DB
-// binding. Nothing else in this file does.
-const reportDb = () => ({
-  prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) }),
-});
-
+// The only storage binding is the bucket (phase 6 removed the last one this file
+// needed), and `DB` is a throwing getter so a handler that reached for a database
+// would fail here rather than pass against a stub.
 const envFor = (bucket, extra = {}) => ({
+  get DB() {
+    throw new Error('the monitor worker has no DB binding (phase 6)');
+  },
   MONITOR_BUCKET: bucket,
-  DB: reportDb(),
   DASHBOARD_PIN: '123456',
   ...extra,
 });

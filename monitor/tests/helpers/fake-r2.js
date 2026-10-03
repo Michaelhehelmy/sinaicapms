@@ -25,6 +25,8 @@ import {
   historyKey,
   reportKey,
   secondsStamp,
+  ipHash,
+  loginAttemptsKey,
 } from '../../src/storage.js';
 
 function matches(failOn, op, key) {
@@ -216,3 +218,48 @@ export const ringEntry = (at, minutesAgo, over = {}) => ({
   response_ms: 12,
   ...over,
 });
+
+// --- fixtures for the PIN brute-force counters (phase 6) ---
+//
+// The gate is one document per IP, filed under an HMAC of the address, so a
+// fixture CANNOT hand-type the key: it derives it through the same
+// `ipHash`/`loginAttemptsKey` pair the route uses. That also gives these tests
+// the property the whole hashing design exists for — the raw address never
+// appears in a key, so a bucket listing cannot be walked back to the clients.
+
+export const GATE_PREFIX = 'state/login_attempts/';
+
+// The counter document's key for `ip`, exactly as POST /login computes it.
+export async function gateKey(ip, secret) {
+  return loginAttemptsKey(await ipHash(ip, secret));
+}
+
+// Every counter document in the bucket (one per IP that has ever logged in).
+export const gateDocs = (bucket) => bucket.keys().filter((k) => k.startsWith(GATE_PREFIX));
+
+// Seed a counter document for `ip`. `fails` is a list of ISO timestamps inside
+// the window, matching the stored shape; `at` is the `uploaded` stamp the
+// retention sweep ages by.
+export async function seedGate(bucket, ip, secret, { fails = [], at = HOUR_0, lastSuccessAt = null } = {}) {
+  const key = await gateKey(ip, secret);
+  const windowStart = fails.length ? fails[0] : null;
+  return bucket.seed(
+    key,
+    {
+      ip_hash: key.slice(GATE_PREFIX.length, -'.json'.length),
+      fails,
+      window_start: windowStart,
+      locked_until: fails.length >= 5 && windowStart
+        ? new Date(Date.parse(windowStart) + 5 * 60_000).toISOString()
+        : null,
+      updated_at: new Date(at).toISOString(),
+      last_success_at: lastSuccessAt,
+    },
+    new Date(at).toISOString(),
+  );
+}
+
+// The stored counter document for `ip`, or undefined when there is none.
+export async function readGate(bucket, ip, secret) {
+  return bucket.read(await gateKey(ip, secret));
+}
