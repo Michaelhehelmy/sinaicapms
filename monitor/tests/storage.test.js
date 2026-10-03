@@ -17,6 +17,11 @@ import {
   alertStateKey,
   summaryKey,
   historyKey,
+  loginAttemptsKey,
+  loginAttemptsPrefix,
+  ipHash,
+  LOGIN_ATTEMPTS_RETENTION_DAYS,
+  LOGIN_ATTEMPTS_PREFIX,
   isOlderThan,
   readJson,
   writeJson,
@@ -156,11 +161,84 @@ describe('storage key layout', () => {
     expect(reportKey('feedback', T('2026-10-03T00:00:00.000Z'), '00-00-00', 1).startsWith(`${REPORTS_PREFIX}/`)).toBe(true);
   });
 
-  it('carries the D1 retention windows forward unchanged', () => {
-    // 14 days is bounded by /api/history's 168h clamp; 30 by the fact that
-    // reports have no time-windowed UI. Both must match what db.js used.
+  it('carries the row-era retention windows forward unchanged', () => {
+    // 14 days is bounded by /api/history's 48h ceiling; 30 by the fact that
+    // reports have no time-windowed UI. Both must match what the prunes used.
     expect(CHECKS_RETENTION_DAYS).toBe(14);
     expect(REPORTS_RETENTION_DAYS).toBe(30);
+    // The gate counters are swept on the same daily pass: nothing reads one past
+    // its 5-minute window, so the day is purely a bound on key count.
+    expect(LOGIN_ATTEMPTS_RETENTION_DAYS).toBe(1);
+  });
+});
+
+// --- the PIN gate's key: hashed, closed-set, sweepable ------------------
+//
+// `state/login_attempts/<ipHash>.json` is the one key in this layout whose stem
+// comes from a REQUEST HEADER rather than a code-declared target name, so it is
+// the one key with a real injection surface: a `/` or `..` in the stem would file
+// the document outside `state/login_attempts/`. The stem is an HMAC of the
+// address, and these tests pin all three properties that make that safe.
+
+describe('login gate key (state/login_attempts/<ipHash>.json)', () => {
+  const PIN = '123456';
+  const OTHER_PIN = '654321';
+
+  it('is one document per IP under state/, and never contains the address', async () => {
+    const hash = await ipHash('203.0.113.9', PIN);
+    expect(hash).toMatch(/^[0-9a-f]{32}$/);
+    const key = loginAttemptsKey(hash);
+    expect(key).toBe(`state/login_attempts/${hash}.json`);
+    expect(key.startsWith(loginAttemptsPrefix())).toBe(true);
+    expect(loginAttemptsPrefix()).toBe('state/login_attempts/');
+    expect(LOGIN_ATTEMPTS_PREFIX).toBe('login_attempts');
+    // The whole point: a listing of the prefix cannot be walked back to clients.
+    expect(key).not.toContain('203.0.113.9');
+    // No colons (illegal unescaped in a URL path segment) and exactly one dot —
+    // the extension — so the stem cannot be misread as a date or a domain.
+    expect(key).not.toMatch(/[:]/);
+    expect(key.split('.').length).toBe(2);
+    // Undated, like the other state documents — only the sweep's own
+    // `login_attempts` step may touch this sub-collection.
+    expect(key).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('is KEYED, not a bare digest: the same address under another secret files elsewhere', async () => {
+    // An unsalted SHA-256 of an IPv4 address is reversible in practice (2^32
+    // space, fast hash), so a bare digest would publish exactly the client
+    // addresses the hashing exists to protect. Keying it means only a worker
+    // holding the secret can map a key back to an IP.
+    const a = await ipHash('203.0.113.9', PIN);
+    const b = await ipHash('203.0.113.9', OTHER_PIN);
+    expect(a).not.toBe(b);
+    expect(loginAttemptsKey(a)).not.toBe(loginAttemptsKey(b));
+    // Deterministic per (ip, secret) — that is what makes the gate per-IP.
+    expect(await ipHash('203.0.113.9', PIN)).toBe(a);
+    // And different addresses never collide.
+    expect(await ipHash('203.0.113.10', PIN)).not.toBe(a);
+    // Distinct domains: the hash of the same address under a different HMAC key
+    // is a different value, so this can never collide with another use of the
+    // same secret.
+    expect(await ipHash('', PIN)).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it('refuses an unkeyed hash and an empty secret rather than hashing with nothing', async () => {
+    // WebCrypto rejects a zero-length HMAC key, so an unset secret has to be a
+    // loud throw — not a value derived from an empty key that looks fine.
+    await expect(ipHash('203.0.113.9', '')).rejects.toThrow(/requires a secret/);
+    await expect(ipHash('203.0.113.9', undefined)).rejects.toThrow(/requires a secret/);
+  });
+
+  it('rejects any stem outside the closed hash set, so a key cannot escape the prefix', async () => {
+    // The stem is caller-supplied, so it is validated rather than trusted: same
+    // rule as `historyKey`, same reason (a `/` or `..` would file the document
+    // outside `state/login_attempts/`).
+    for (const bad of ['', '   ', 'zzzz', '123', '../alert_state', 'a/b', `${'a'.repeat(7)}`, `${'a'.repeat(65)}`, 'abc-123', null, undefined]) {
+      expect(() => loginAttemptsKey(bad), String(bad)).toThrow(/invalid login ip hash/);
+    }
+    // Hex is case-normalised, so the key cannot be filed two ways.
+    expect(loginAttemptsKey('ABCDEF0123456789')).toBe('state/login_attempts/abcdef0123456789.json');
+    expect(loginAttemptsKey(' abcdef0123456789 ')).toBe('state/login_attempts/abcdef0123456789.json');
   });
 });
 
@@ -306,6 +384,23 @@ describe('storage mechanics', () => {
     // missing cursor is the stop signal.
     expect(await listAll(bucket, { prefix: 'checks/' })).toHaveLength(1);
     expect(MAX_LIST_PAGES).toBeGreaterThan(0);
+  });
+
+  it('listAll gives up after MAX_LIST_PAGES pages instead of spinning forever', async () => {
+    // A bucket that answers every page as truncated, WITH a cursor, would walk
+    // forever inside a cron invocation and burn its CPU budget for nothing. The
+    // ceiling is the stop signal, and the partial result is returned rather than
+    // thrown: the sweep's own semantics are "delete the OLDEST", so a truncated
+    // listing only ever means fewer objects were considered.
+    const bucket = new FakeBucket();
+    let pages = 0;
+    bucket.list = async () => {
+      pages += 1;
+      return { objects: [{ key: `checks/x-${pages}.json`, uploaded: null }], truncated: true, cursor: String(pages) };
+    };
+    const all = await listAll(bucket, { prefix: 'checks/' });
+    expect(pages).toBe(MAX_LIST_PAGES);
+    expect(all).toHaveLength(MAX_LIST_PAGES);
   });
 
   it('listPage exposes one raw page for a manual cursor walk', async () => {

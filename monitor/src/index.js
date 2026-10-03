@@ -163,8 +163,9 @@ export async function runProbeCycle(env, fetchFn = fetch, now = new Date()) {
 export const PUBLIC_CACHE_TTL_MS = 20_000;
 
 // Bound on the history fan-out (N targets * 3 window sizes); a dashboard that
-// asks for more still gets correct answers, just from the bucket.
-const PUBLIC_CACHE_MAX_ENTRIES = 256;
+// asks for more still gets correct answers, just from the bucket. Exported so the
+// bound itself is asserted rather than restated as a magic number in a test.
+export const PUBLIC_CACHE_MAX_ENTRIES = 256;
 
 function publicCacheStore() {
   if (!globalThis.__monitorPublicCache) globalThis.__monitorPublicCache = new Map();
@@ -482,9 +483,12 @@ async function listReportKeysDesc(bucket, prefix) {
     }
     cursor = res?.cursor;
     // `truncated: true` with no cursor cannot advance; stopping is the only safe
-    // move (a non-advancing cursor would spin inside the invocation).
+    // move (a non-advancing cursor would spin inside the invocation). It is NOT
+    // "exhausted", though: the bucket just told us there is more and we cannot
+    // enumerate it, so the response says `truncated` rather than claiming a
+    // complete listing it knows it did not finish.
     if (!cursor) {
-      exhausted = true;
+      exhausted = false;
       break;
     }
   }

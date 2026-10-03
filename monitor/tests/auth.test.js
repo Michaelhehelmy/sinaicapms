@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { app, isPinConfigured, LOGIN_FAIL_LIMIT } from '../src/index.js';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { app, isPinConfigured, hasValidSession, LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS } from '../src/index.js';
 import { TARGETS } from '../src/targets.js';
 import {
   SESSION_COOKIE,
@@ -69,6 +69,7 @@ async function loginCookie(bucket, env, ip = '10.99.1.4', extraBody = {}) {
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
+  vi.useRealTimers();
 });
 
 describe('monitor PIN login (signed session cookie + R2 gate)', () => {
@@ -484,5 +485,118 @@ describe('monitor PIN login (signed session cookie + R2 gate)', () => {
       expect(dash.status).toBe(500);
       expect(await dash.text()).toMatch(/pin not configured/i);
     }
+  });
+});
+
+// The gate's TIME semantics, which case 11 above cannot reach: it drives five
+// failures back to back, so it proves the budget but not the window that frees
+// it. Both properties below are the ones the row-per-attempt store gave for free
+// (`attempted_at >= datetime('now','-5 minutes')`) and that an object-based
+// counter has to earn back by hand.
+describe('the gate 5-minute window (sliding, one slot at a time)', () => {
+  const IP = '10.99.8.1';
+  const T0 = new Date('2026-10-03T12:00:00.000Z');
+
+  const post = (env, body = { pin: '000000' }, ip = IP) =>
+    app.request(
+      '/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', origin: ORIGIN, 'cf-connecting-ip': ip },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+
+  it('stays shut while any failure is still inside the window, and reopens one slot at a time', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const bucket = makeR2();
+    const env = envFor({ MONITOR_BUCKET: bucket });
+
+    // Five failures spaced 20s apart: the oldest is at T0, so the window is
+    // anchored there and the budget is spent at T0 + 80s.
+    for (let i = 0; i < LOGIN_FAIL_LIMIT; i += 1) {
+      const res = await post(env);
+      expect(res.status).toBe(401);
+      vi.advanceTimersByTime(20_000);
+    }
+    const spent = await readGate(bucket, IP, DASHBOARD_PIN);
+    expect(spent.fails).toHaveLength(LOGIN_FAIL_LIMIT);
+    expect(Date.parse(spent.locked_until) - Date.parse(spent.window_start)).toBe(LOGIN_FAIL_WINDOW_MS);
+
+    // One second before the oldest failure leaves the window: still shut.
+    vi.setSystemTime(new Date(Date.parse(spent.window_start) + LOGIN_FAIL_WINDOW_MS - 1000));
+    expect((await post(env)).status).toBe(429);
+    // The 429 path recorded nothing new, so hammering cannot grow the document.
+    expect((await readGate(bucket, IP, DASHBOARD_PIN)).fails).toHaveLength(LOGIN_FAIL_LIMIT);
+
+    // The instant the oldest failure ages out: ONE slot frees, not five. This is
+    // the sliding property — a counter plus a fixed window anchor would hand back
+    // the WHOLE budget here, which is the bug this shape exists to prevent.
+    const slideAt = Date.parse(spent.window_start) + LOGIN_FAIL_WINDOW_MS;
+    vi.setSystemTime(new Date(slideAt));
+    const reopened = await post(env);
+    expect(reopened.status).toBe(401);
+    // Four failures were still inside the window, so this guess is the fifth:
+    // "0 tries left" is the honest count, and the window has SLID rather than
+    // restarted (its start is now the second-oldest failure, 20s later).
+    expect((await reopened.json()).error).toContain('0 tries left');
+    const slid = await readGate(bucket, IP, DASHBOARD_PIN);
+    expect(slid.window_start).toBe(spent.fails[1]);
+    expect(slid.fails).toHaveLength(LOGIN_FAIL_LIMIT); // this guess refilled the freed slot
+    expect(Date.parse(slid.locked_until) - Date.parse(slid.window_start)).toBe(LOGIN_FAIL_WINDOW_MS);
+
+    // Still shut 19s later — only the second failure is now the one about to
+    // expire. A window that reset wholesale would answer 401 here.
+    vi.setSystemTime(new Date(slideAt + 19_000));
+    expect((await post(env)).status).toBe(429);
+
+    // One more 1s and that failure ages out too, and the gate is a BUDGET, not a
+    // lockout: the correct PIN is accepted in the same window.
+    vi.setSystemTime(new Date(slideAt + 20_000));
+    const ok = await post(env, { pin: DASHBOARD_PIN });
+    expect(ok.status).toBe(302);
+    const afterSuccess = await readGate(bucket, IP, DASHBOARD_PIN);
+    // A success does NOT refund the failures still inside the window (the old
+    // count filtered on `success = 0` and nothing else); it only stamps itself.
+    expect(afterSuccess.fails).toHaveLength(LOGIN_FAIL_LIMIT - 1);
+    expect(afterSuccess.last_success_at).not.toBeNull();
+  });
+
+  it('rotating the PIN moves the counter: the same IP starts a fresh budget', async () => {
+    // The counter is keyed by an HMAC of the address under DASHBOARD_PIN, so a new
+    // PIN files the document somewhere else and the spent budget is invisible.
+    // (That is also the property a bare, unkeyed digest would fail — a static hash
+    // would keep returning 429 here forever.)
+    const bucket = makeR2();
+    const envA = envFor({ MONITOR_BUCKET: bucket });
+    for (let i = 0; i < LOGIN_FAIL_LIMIT; i += 1) expect((await post(envA)).status).toBe(401);
+    expect((await post(envA, { pin: DASHBOARD_PIN })).status).toBe(429);
+
+    const envB = envFor({ MONITOR_BUCKET: bucket, DASHBOARD_PIN: '654321' });
+    const fresh = await post(envB);
+    expect(fresh.status).toBe(401);
+    expect((await fresh.json()).error).toContain('4 tries left');
+    expect((await post(envB, { pin: '654321' })).status).toBe(302);
+    // Two documents: one per secret. Neither key contains the address.
+    expect(gateDocs(bucket)).toHaveLength(2);
+    expect(JSON.stringify(bucket.keys())).not.toContain(IP);
+  });
+
+  it('hasValidSession is fail-closed on a malformed PIN, even with a valid signature', async () => {
+    // A session is HMAC'd with the PIN, so a correctly-signed cookie from an
+    // older 6-digit PIN must still be refused once the configured PIN is not a
+    // 6-digit value at all — otherwise "unconfigured" would mean "any holder of
+    // an old cookie is authenticated".
+    const value = await signSession('123456', Date.now());
+    const ctx = (env, cookie) => ({ env, req: { header: (h) => (h === 'cookie' ? cookie : undefined) } });
+    const cookie = `${SESSION_COOKIE}=${value}`;
+    expect(await hasValidSession(ctx({ DASHBOARD_PIN }, cookie))).toBe(true);
+    for (const bad of [{}, { DASHBOARD_PIN: '' }, { DASHBOARD_PIN: '12345' }, { DASHBOARD_PIN: 'abcdef' }]) {
+      expect(await hasValidSession(ctx(bad, cookie)), JSON.stringify(bad)).toBe(false);
+    }
+    // No cookie at all denies too.
+    expect(await hasValidSession(ctx({ DASHBOARD_PIN }, ''))).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { probeTarget } from '../src/index.js';
+import { matchesExpect } from '../src/targets.js';
 
 // probeTarget(target, fetchFn): hard-timeout probe that never throws —
 // network failures, timeouts, and non-2xx handling all fold into the row.
@@ -66,5 +67,26 @@ describe('probeTarget check logic', () => {
       expect(Number.isInteger(row.responseMs)).toBe(true);
       expect(row.responseMs).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describe('matchesExpect (what counts as healthy)', () => {
+  it('a single expected status is an equality test', () => {
+    expect(matchesExpect(200, 200)).toBe(true);
+    expect(matchesExpect(201, 200)).toBe(false);
+    // `401` is how a target pins an endpoint that REQUIRES auth: a 200 there
+    // would mean the auth was bypassed, so 200 must read as UNHEALTHY.
+    expect(matchesExpect(401, 401)).toBe(true);
+    expect(matchesExpect(200, 401)).toBe(false);
+  });
+
+  it('an ARRAY of statuses is a membership test — the documented multi-status form', () => {
+    // No shipped target uses the array form today, which is exactly why it needs
+    // a test: it is documented in README section 6, so an operator adding a
+    // `expect: [200, 204]` target must be able to trust it.
+    expect(matchesExpect(200, [200, 204])).toBe(true);
+    expect(matchesExpect(204, [200, 204])).toBe(true);
+    expect(matchesExpect(301, [200, 204])).toBe(false);
+    expect(matchesExpect(200, [])).toBe(false);
   });
 });

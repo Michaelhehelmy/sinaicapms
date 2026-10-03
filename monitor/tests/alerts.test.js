@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   evaluateAlerts,
   forwardReport,
+  sendAlert,
   updateSummary,
   updateHistoryRing,
   readHistoryWindow,
@@ -23,6 +24,10 @@ import { makeR2, webhookCollector, ringEntry } from './helpers/fake-r2.js';
 //
 // The stub's page size is deliberately 2 with sorted keys, so the state file is
 // read through the same list/get discipline a real bucket uses.
+
+// Three of the configured target names — `evaluateAlerts` evaluates every target
+// it is given against the real TARGETS list, so these have to exist in it.
+const TARGET_NAMES = ['marketplace', 'api-meals', 'self-check'];
 
 const T = (target, ok, extra = {}) => ({ name: target, url: `https://${target}.test/`, ok: ok ? 1 : 0, statusCode: ok ? 200 : 500, responseMs: 12, errorMessage: ok ? null : 'boom', ...extra });
 
@@ -361,5 +366,82 @@ describe('report forwarding (the alert channel)', () => {
       throw new Error('ECONNREFUSED');
     });
     expect(res).toEqual({ skipped: true, reason: 'send-failed' });
+  });
+});
+
+// `forwardReport` above covers the intake half of the channel; this covers the
+// ALERT half, whose contract is the same in spirit and different in detail: a
+// dead webhook must not be able to fail the cron that just recorded an outage.
+describe('sendAlert (the down/recovery half of the channel)', () => {
+  const EVENT = { target: 'marketplace', url: 'https://marketplace.test/', event: 'down', statusCode: 503, errorMessage: null };
+
+  it('posts the down payload, and the recovery line reads differently', async () => {
+    const hooks = webhookCollector();
+    expect(await sendAlert({ ALERT_WEBHOOK_URL: 'https://hooks.example/t' }, EVENT, hooks.impl)).toEqual({
+      sent: true,
+    });
+    const body = hooks.calls[0].body;
+    expect(body.event).toBe('down');
+    expect(body.status_code).toBe(503);
+    expect(body.text).toContain('is DOWN');
+    expect(body.text).toContain('HTTP 503');
+    expect(body.checked_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    expect(
+      await sendAlert(
+        { ALERT_WEBHOOK_URL: 'https://hooks.example/t' },
+        { ...EVENT, event: 'recovery', statusCode: 200 },
+        hooks.impl,
+      ),
+    ).toEqual({ sent: true });
+    expect(hooks.calls[1].body.text).toContain('RECOVERED');
+  });
+
+  it('an error message is appended, and a dead webhook resolves as skipped', async () => {
+    const hooks = webhookCollector();
+    await sendAlert(
+      { ALERT_WEBHOOK_URL: 'https://hooks.example/t' },
+      { ...EVENT, statusCode: null, errorMessage: 'getaddrinfo ENOTFOUND' },
+      hooks.impl,
+    );
+    expect(hooks.calls[0].body.text).toContain('getaddrinfo ENOTFOUND');
+    expect(hooks.calls[0].body.status_code).toBeNull();
+
+    // A throw resolves as skipped — never rejects, because a rejecting webhook
+    // would abort evaluateAlerts mid-loop and leave the alert state half-written
+    // for the targets after this one.
+    expect(
+      await sendAlert({ ALERT_WEBHOOK_URL: 'https://hooks.example/t' }, EVENT, async () => {
+        throw new Error('ECONNREFUSED');
+      }),
+    ).toEqual({ skipped: true });
+    // Unconfigured is the same silent skip: state still flips, nobody is paged.
+    expect(await sendAlert({}, EVENT, hooks.impl)).toEqual({ skipped: true });
+    expect(hooks.calls).toHaveLength(1);
+  });
+
+  it('a dead webhook is `notified: false` while the state still flips — a lost page, not a lost outage', async () => {
+    // The caller records `notified` from the RESULT, so "the webhook died" and
+    // "the transition happened" are separable facts in one outcome row. That is
+    // the whole reason `sendAlert` resolves instead of rejecting: a rejection
+    // here would abort the loop mid-targets and leave the alert state half
+    // written, i.e. the monitor would forget an outage it is supposed to hold.
+    const env = { MONITOR_BUCKET: makeR2(), ALERT_WEBHOOK_URL: 'https://hooks.example/t' };
+    const dead = async () => {
+      throw new Error('ECONNREFUSED');
+    };
+    const failing = TARGET_NAMES.map((name) => T(name, false));
+    // Below the threshold: nothing to send, nothing to report.
+    const first = await evaluateAlerts(env, failing, dead, NOW);
+    expect(first.every((o) => o.event === null && o.notified === false && o.alerting === false)).toBe(true);
+    await evaluateAlerts(env, failing, dead, new Date(NOW.getTime() + 300_000));
+    // On the third consecutive failure the transition fires, the webhook dies,
+    // and the state is still recorded as down.
+    const third = await evaluateAlerts(env, failing, dead, new Date(NOW.getTime() + 600_000));
+    expect(third.every((o) => o.event === 'down')).toBe(true);
+    expect(third.every((o) => o.notified === false)).toBe(true);
+    expect(third.every((o) => o.alerting === true)).toBe(true);
+    expect(third.every((o) => o.consecutiveFailures === 3)).toBe(true);
+    expect(Object.values(env.MONITOR_BUCKET.read(alertStateKey())).every((s) => s.last_state === 'down')).toBe(true);
   });
 });

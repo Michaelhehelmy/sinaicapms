@@ -8,11 +8,13 @@ import {
   clearPublicCache,
   FAVICON_CACHE_CONTROL,
   REPORT_RATE_LIMIT,
+  REPORT_RATE_WINDOW_MS,
   HISTORY_MAX_WINDOW_HOURS,
   readRecentChecks,
   REPORT_USER_AGENT_MAX,
   REPORTS_MAX_READS,
   REPORTS_MAX_LIMIT,
+  writeReport,
 } from '../src/index.js';
 import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
@@ -139,6 +141,33 @@ describe('constant-time token helpers', () => {
     expect(last.count).toBe(REPORT_RATE_LIMIT + 1);
     // Next minute window resets.
     expect(checkReportRateLimit(ip, 1_700_000_000_000 + 61_000).allowed).toBe(true);
+  });
+
+  it('the limiter store is bounded: it sweeps windows older than the one it is tracking', () => {
+    // One entry per `<ip>:<window>` in a per-isolate Map. With a 60/min budget and
+    // a public intake endpoint, an attacker rotating IPs would otherwise grow
+    // that Map forever inside one isolate. Past 2000 entries the store drops
+    // everything from an earlier window — the counters are only ever read for the
+    // CURRENT window, so an old one is dead weight, and the fresh entries (the
+    // ones actually enforcing a limit) are the ones kept.
+    const store = globalThis.__monitorReportRate;
+    store.clear();
+    const base = 1_700_000_000_000;
+    for (let i = 0; i < 2_100; i += 1) {
+      checkReportRateLimit(`sweep-${i}`, base);
+    }
+    expect(store.size).toBeGreaterThan(2000);
+    // The NEXT call trips the sweep: every entry above belongs to the window that
+    // just ended, so they are all removable.
+    checkReportRateLimit('sweep-trigger', base + REPORT_RATE_WINDOW_MS);
+    expect(store.size).toBe(1);
+    // And the limiter still enforces: this is a cleanup, not a reset of policy.
+    const ip = 'bounded';
+    for (let i = 0; i < REPORT_RATE_LIMIT; i += 1) {
+      expect(checkReportRateLimit(ip, base + 120_000).allowed).toBe(true);
+    }
+    expect(checkReportRateLimit(ip, base + 120_000).allowed).toBe(false);
+    store.clear();
   });
 });
 
@@ -605,6 +634,24 @@ describe('GET /api/reports (public, newest-first per kind)', () => {
     }
   });
 
+  it('a listing that reports truncation with NO cursor stops walking and says so', async () => {
+    // R2 signals "there is more" with `truncated` + a cursor. A truncated page
+    // carrying no cursor cannot advance, and looping on it would burn the
+    // invocation's subrequest budget forever inside a request — so the walk stops
+    // and the response admits it is partial instead of pretending it is complete.
+    const bucket = makeR2();
+    seedIntake(bucket, 'errors', '2026-10-03T12:00:00.000Z');
+    bucket.list = async ({ prefix = '' }) => {
+      if (!prefix.startsWith('reports/errors/')) return { objects: [], truncated: false };
+      return { objects: [{ key: 'reports/errors/2026-10-03/12-00-00-x.json', uploaded: null }], truncated: true };
+    };
+    const res = await app.request('/api/reports?kind=errors', {}, envFor({ MONITOR_BUCKET: bucket }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.truncated).toBe(true);
+    expect(body.reports).toEqual([]);
+  });
+
   it('the 20s cache covers it too, keyed by every parameter', async () => {
     const bucket = reportsBucket();
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -688,6 +735,39 @@ describe('POST /report/* (tokened intake)', () => {
     expect((await postReport('/report/error', { token: null })).status).toBe(401);
     expect((await postReport('/report/error', { token: 'wrong' })).status).toBe(401);
     expect((await postReport('/report/feedback', { token: null })).status).toBe(401);
+  });
+
+  it('400 on a malformed body, and 400 on every over-long field — nothing is stored', async () => {
+    // Each limit is a separate bound with its own message, so an operator reading
+    // a 400 knows WHICH field was too long rather than being handed one generic
+    // rejection. Nothing is written in any of these cases: a rejected report must
+    // leave no object behind.
+    const bucket = makeR2();
+    // `postReport` stringifies its body, so the malformed case drives the raw
+    // request instead.
+    const malformed = await app.request(
+      '/report/error',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${REPORT_TOKEN}`, 'cf-connecting-ip': '10.9.0.3' },
+        body: '{not-json',
+      },
+      envFor({ MONITOR_BUCKET: bucket }),
+    );
+    expect(malformed.status).toBe(400);
+    expect((await malformed.json()).error).toMatch(/invalid JSON/i);
+
+    const cases = [
+      [{ message: 'x'.repeat(2001) }, /message too long/],
+      [{ message: 'ok', page_url: `https://x.test/${'p'.repeat(500)}` }, /page_url too long/],
+      [{ message: 'ok', contact: 'c'.repeat(201) }, /contact too long/],
+    ];
+    for (const [body, expected] of cases) {
+      const res = await postReport('/report/error', { bucket, body });
+      expect(res.status, JSON.stringify(Object.keys(body))).toBe(400);
+      expect((await res.json()).error).toMatch(expected);
+    }
+    expect(bucket.keys()).toEqual([]);
   });
 
   it('400 when message missing or blank', async () => {
@@ -1053,6 +1133,75 @@ describe('POST /internal/check (tokened manual probe)', () => {
     const rings = bucket.keys().filter((k) => k.startsWith('state/history/'));
     expect(rings).toEqual(['state/history/marketplace.json']);
     expect(bucket.read(historyKey('marketplace')).entries).toHaveLength(1);
+  });
+
+  it('400 on a malformed body — nothing is probed and nothing is written', async () => {
+    globalThis.fetch = async () => ({ status: 200, ok: true });
+    const bucket = makeR2();
+    const res = await app.request(
+      '/internal/check',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${REPORT_TOKEN}` },
+        body: '{not-json',
+      },
+      envFor({ MONITOR_BUCKET: bucket }),
+    );
+    // Same posture as `unknown target`: the body is parsed before any network or
+    // storage work, so a typo cannot spend a probe or leave a run object behind.
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/invalid JSON/i);
+    expect(bucket.keys()).toEqual([]);
+  });
+
+  it('a failing ring write is logged and still returns the outcomes the operator asked for', async () => {
+    globalThis.fetch = async () => ({ status: 200, ok: true });
+    const bucket = makeR2({ failOn: { put: 'state/history/' } });
+    const errors = [];
+    vi.spyOn(console, 'error').mockImplementation((...a) => errors.push(a));
+
+    const res = await app.request(
+      '/internal/check',
+      { method: 'POST', headers: { authorization: `Bearer ${REPORT_TOKEN}` } },
+      envFor({ MONITOR_BUCKET: bucket }),
+    );
+
+    // The ring is DERIVED data with a correct answer on the next run, so it must
+    // not be able to cost the operator the outcome they asked for — the same
+    // posture the cron takes, on the same write.
+    expect(res.status).toBe(200);
+    expect((await res.json()).results).toHaveLength(TARGETS.length);
+    expect(errors.map((e) => e.join(' '))).toEqual([
+      expect.stringContaining('monitor history ring update failed'),
+    ]);
+    // The alerting half and the rollup still ran.
+    expect(bucket.keys().some((k) => k.startsWith('checks/'))).toBe(true);
+    expect(Object.keys(bucket.read('state/alert_state.json'))).toEqual(TARGETS.map((t) => t.name));
+    expect(bucket.read('state/summary.json')).toBeTruthy();
+  });
+});
+
+// The intake write resolves its collection in exactly one place, and a typo must
+// THROW there rather than mint a collection the retention sweep never visits —
+// the failure mode is an operator who believes a report was stored and was not.
+describe('writeReport kind guard', () => {
+  it('an unmapped kind throws instead of filing a report nobody can find', async () => {
+    const bucket = makeR2();
+    const env = envFor({ MONITOR_BUCKET: bucket });
+    await expect(writeReport(env, { kind: 'erorr', message: 'typo' })).rejects.toThrow(
+      /unknown report kind/,
+    );
+    expect(bucket.keys()).toEqual([]);
+  });
+});
+
+describe('the 404 envelope', () => {
+  it('an unknown path is a JSON 404, never the dashboard and never an HTML error', async () => {
+    for (const path of ['/nope', '/api/nope', '/admin', '/report']) {
+      const res = await app.request(path, {}, envFor());
+      expect(res.status, path).toBe(404);
+      expect(await res.json(), path).toEqual({ error: 'not found' });
+    }
   });
 });
 

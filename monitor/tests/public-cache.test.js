@@ -5,6 +5,7 @@ import {
   withPublicCacheInfo,
   clearPublicCache,
   PUBLIC_CACHE_TTL_MS,
+  PUBLIC_CACHE_MAX_ENTRIES,
 } from '../src/index.js';
 import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
@@ -46,6 +47,11 @@ const envFor = (bucket, extra = {}) => ({
   ...extra,
 });
 const get = (path, bucket) => app.request(path, {}, envFor(bucket));
+
+// The cache lives on globalThis (per-isolate in production) behind a private
+// store function, so this reads it the same way the worker does rather than
+// asserting on an exported number that could drift from the real cap.
+const publicCacheSize = () => globalThis.__monitorPublicCache?.size ?? 0;
 
 // A bucket holding one healthy run for every target, plus a 100%-uptime rollup.
 function seeded({ ok = () => true } = {}) {
@@ -351,6 +357,26 @@ describe('withPublicCache / clearPublicCache', () => {
     await withPublicCache('a', async () => ++calls.a, T0);
     await withPublicCache('b', async () => ++calls.b, T0);
     expect(calls).toEqual({ a: 1, b: 1 });
+  });
+
+  it('is BOUNDED: the entry count cannot grow without limit under distinct keys', async () => {
+    // A dashboard asks for `status` plus one entry per (target, window) pair, so
+    // the key space is small in practice — but nothing stops a caller from asking
+    // for arbitrary windows, and an unbounded per-isolate Map is a memory leak
+    // with a 20-second fuse. The store evicts stale entries first and, if that is
+    // not enough (everything is fresh), drops the OLDEST until it is back under
+    // the cap. Correct answers are never affected: an evicted key is simply
+    // re-read.
+    const producer = async () => 'v';
+    for (let i = 0; i < 300; i += 1) {
+      await withPublicCache(`k${i}`, producer, T0);
+    }
+    // The newest key is still cached (it was written last and is fresh)...
+    expect(await withPublicCache('k299', producer, T0)).toBe('v');
+    // ...and the store did not simply keep growing.
+    expect(PUBLIC_CACHE_MAX_ENTRIES).toBeGreaterThan(0);
+    expect(publicCacheSize()).toBeLessThanOrEqual(PUBLIC_CACHE_MAX_ENTRIES);
+    expect(publicCacheSize()).toBeGreaterThan(0);
   });
 
   it('clearPublicCache forces the next read to query', async () => {
