@@ -1,6 +1,14 @@
 ---
 // Zone-exclusivity guard: renders the branded 404 (with an HTTP 404 status)
-// when the current request's route is forbidden for the resolved zone.
+// when the current request's route is forbidden for the resolved zone, and the
+// branded 503 outage page when the tenant lookup itself FAILED (D1 outage,
+// gateway error, timeout) — a property that cannot be reached right now is not
+// a property that does not exist.
+//
+// This is the ONLY place the "404 vs 503" decision is made: the middleware
+// classifies the lookup once (lib/tenantLookup.ts → locals.tenantLookupState)
+// and every page that renders this guard inherits the correct status, so no
+// page has to repeat — or get wrong — the distinction.
 //
 // Usage in any page whose route can be forbidden (see lib/routeZones.ts):
 //   ---
@@ -10,7 +18,15 @@
 //   }
 //   ---
 import NotFoundPage from '@/components/public/NotFoundPage.astro';
+import TenantOutagePage from '@/components/public/TenantOutagePage.astro';
+import { resolveTenantGuardState } from '@/lib/tenantLookup';
 
-Astro.response.status = 404;
+const guard = resolveTenantGuardState({
+  tenantLookupState: Astro.locals.tenantLookupState,
+  routeForbidden: Astro.locals.routeForbidden,
+});
+
+Astro.response.status = guard.status;
+if (guard.retryAfter) Astro.response.headers.set('Retry-After', guard.retryAfter);
 ---
-<NotFoundPage />
+{guard.kind === 'outage' ? <TenantOutagePage /> : <NotFoundPage />}

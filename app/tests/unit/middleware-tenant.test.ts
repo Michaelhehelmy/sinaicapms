@@ -5,11 +5,21 @@ import { getTenantSSRData, onRequest, resolveApiFetcher } from '@/middleware/ten
 const fetchMock = vi.fn();
 
 function okJson(body: unknown): Response {
-  return { ok: true, json: async () => body } as unknown as Response;
+  return { ok: true, status: 200, json: async () => body } as unknown as Response;
 }
 
-function notOkJson(): Response {
-  return { ok: false, json: async () => ({}) } as unknown as Response;
+/**
+ * A non-2xx tenant answer. Defaults to the backend's "no such tenant" 404
+ * (api/tenants.js `errorResponse('Tenant not found', 404)`); pass another status
+ * to model anything the API can answer that is NOT proof of absence.
+ */
+function notOkJson(status = 404): Response {
+  return { ok: false, status, json: async () => ({}) } as unknown as Response;
+}
+
+/** What a D1 outage looks like to SSR: the Worker's `app.onError` 500. */
+function serverErrorJson(status = 500): Response {
+  return notOkJson(status);
 }
 
 beforeEach(() => {
@@ -35,6 +45,7 @@ describe('getTenantSSRData', () => {
     expect(data.primaryColor).toBe('#4a7c4f');
     expect(data.tenantName).toBe('Camp Portal');
     expect(data.API_BASE).toBe('http://localhost:8787/api/v1');
+    expect(data.lookupState).toBe('skipped');
     expect(data.theme.primary).toBe('#4a7c4f');
     expect(data.theme.darkMode).toBe('class');
     expect(Object.keys(data.theme.cssVars)).toEqual([
@@ -57,6 +68,7 @@ describe('getTenantSSRData', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8787/api/v1/tenants/acacia');
     expect(data.tenantId).toBe('acacia');
     expect(data.tenant?.name).toBe('Acacia Camp');
+    expect(data.lookupState).toBe('ok');
     expect(data.camps).toHaveLength(1);
     expect(data.roomTypes).toHaveLength(1);
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8787/api/v1/projects', {
@@ -174,6 +186,39 @@ describe('getTenantSSRData', () => {
     expect(data.tenantId).toBe('');
     expect(data.primaryColor).toBe('#4a7c4f');
     expect(data.theme.primary).toBe('#4a7c4f');
+    // 404 is the API's positive "no such tenant" → NOT an outage.
+    expect(data.lookupState).toBe('not-found');
+  });
+
+  it('reports the lookup as failed when the API answers 5xx (D1 outage)', async () => {
+    fetchMock.mockResolvedValue(serverErrorJson());
+
+    const data = await getTenantSSRData(new URL('https://acacia.sinaicamps.com/'));
+
+    expect(data.tenant).toBeNull();
+    expect(data.tenantId).toBe('');
+    expect(data.lookupState).toBe('failed');
+  });
+
+  it('reports the lookup as failed when the tenant body is not JSON', async () => {
+    // An edge/proxy error page can arrive 200 + HTML: json() throws, so the
+    // lookup never completed even though the status looked fine.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    } as unknown as Response);
+
+    const data = await getTenantSSRData(new URL('https://acacia.sinaicamps.com/'));
+
+    expect(data.tenant).toBeNull();
+    expect(data.lookupState).toBe('failed');
+    expect(console.error).toHaveBeenCalledWith(
+      'Error loading tenant SSR data:',
+      expect.any(SyntaxError),
+    );
   });
 
   it('keeps defaults when the matched tenant has no id', async () => {
@@ -183,6 +228,8 @@ describe('getTenantSSRData', () => {
 
     expect(data.tenant).toBeNull();
     expect(data.tenantId).toBe('');
+    // 2xx we cannot use is treated as absent, exactly as before this change.
+    expect(data.lookupState).toBe('not-found');
   });
 
   it('keeps camps empty when the camps fetch is not-ok', async () => {
@@ -218,6 +265,7 @@ describe('getTenantSSRData', () => {
 
     expect(data.tenant).toBeNull();
     expect(data.tenantId).toBe('');
+    expect(data.lookupState).toBe('failed');
     expect(console.error).toHaveBeenCalledWith('Error loading tenant SSR data:', expect.any(Error));
   });
 });
@@ -232,6 +280,7 @@ describe('tenant onRequest middleware', () => {
       expect(fetchMock).not.toHaveBeenCalled();
       expect(context.locals.tenantId).toBe('marketplace');
       expect(context.locals.API_BASE).toBe('https://sinaicamps.com/api/v1');
+      expect(context.locals.tenantLookupState).toBe('skipped');
       fetchMock.mockReset();
     }
   });
@@ -245,6 +294,7 @@ describe('tenant onRequest middleware', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(context.locals.tenant).toBeNull();
     expect(context.locals.tenantSubdomain).toBe('');
+    expect(context.locals.tenantLookupState).toBe('skipped');
     expect(next).toHaveBeenCalledOnce();
   });
 
@@ -256,6 +306,7 @@ describe('tenant onRequest middleware', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(context.locals.tenantId).toBe('');
+    expect(context.locals.tenantLookupState).toBe('skipped');
     expect(next).toHaveBeenCalledOnce();
   });
 
@@ -274,6 +325,7 @@ describe('tenant onRequest middleware', () => {
     expect(context.locals.tenant).toEqual({ id: 't1', name: 'Acacia', subdomain: 'acacia' });
     expect(context.locals.tenantId).toBe('t1');
     expect(context.locals.tenantSubdomain).toBe('acacia');
+    expect(context.locals.tenantLookupState).toBe('ok');
     expect(next).toHaveBeenCalledOnce();
   });
 
@@ -288,6 +340,61 @@ describe('tenant onRequest middleware', () => {
     expect(context.locals.tenant).toBeNull();
     expect(context.locals.tenantId).toBe('acacia');
     expect(context.locals.tenantSubdomain).toBe('');
+    // A 404 is the API saying "no such tenant" — the branded 404 still applies.
+    expect(context.locals.tenantLookupState).toBe('not-found');
+  });
+
+  // THE INCIDENT (2026-10-03): a D1 outage answered every tenant host with the
+  // Worker's 500, the middleware swallowed it, and the pages rendered the
+  // branded 404. These pin the distinction at its single source.
+  it('reports a FAILED lookup (not "not found") when the API answers 5xx', async () => {
+    for (const status of [500, 502, 503, 504]) {
+      fetchMock.mockResolvedValue(serverErrorJson(status));
+
+      const context = { url: new URL('https://acacia.sinaicamps.com/'), locals: {} } as any;
+      const next = vi.fn().mockResolvedValue(new Response('ok'));
+      await onRequest(context, next);
+
+      expect(context.locals.tenant).toBeNull();
+      expect(context.locals.tenantLookupState, `status ${status}`).toBe('failed');
+      fetchMock.mockReset();
+    }
+  });
+
+  it('reports a FAILED lookup when the tenant answer is throttled or unauthenticated', async () => {
+    for (const status of [401, 403, 429]) {
+      fetchMock.mockResolvedValue(serverErrorJson(status));
+
+      const context = { url: new URL('https://acaciacamp.com/'), locals: {} } as any;
+      const next = vi.fn().mockResolvedValue(new Response('ok'));
+      await onRequest(context, next);
+
+      expect(context.locals.tenantLookupState, `status ${status}`).toBe('failed');
+      fetchMock.mockReset();
+    }
+  });
+
+  it('reports a FAILED lookup when the 2xx tenant body is not JSON', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    } as unknown as Response);
+
+    const context = { url: new URL('https://acacia.sinaicamps.com/'), locals: {} } as any;
+    const next = vi.fn().mockResolvedValue(new Response('ok'));
+
+    await onRequest(context, next);
+
+    expect(context.locals.tenant).toBeNull();
+    expect(context.locals.tenantLookupState).toBe('failed');
+    expect(console.error).toHaveBeenCalledWith(
+      'Middleware tenant fetch failed:',
+      expect.any(SyntaxError),
+    );
+    expect(next).toHaveBeenCalledOnce();
   });
 
   it('keeps tenant null and logs when the fetch rejects', async () => {
@@ -299,6 +406,7 @@ describe('tenant onRequest middleware', () => {
     await onRequest(context, next);
 
     expect(context.locals.tenant).toBeNull();
+    expect(context.locals.tenantLookupState).toBe('failed');
     expect(console.error).toHaveBeenCalledWith('Middleware tenant fetch failed:', expect.any(Error));
     expect(next).toHaveBeenCalledOnce();
   });
@@ -314,6 +422,7 @@ describe('tenant onRequest middleware', () => {
     expect(context.locals.tenant).toBeNull();
     expect(context.locals.tenantId).toBe('acacia');
     expect(context.locals.tenantSubdomain).toBe('');
+    expect(context.locals.tenantLookupState).toBe('not-found');
   });
 
   it('sets an empty subdomain when the tenant has none', async () => {
@@ -327,6 +436,7 @@ describe('tenant onRequest middleware', () => {
     expect(context.locals.tenant).toEqual({ id: 't2', name: 'Y' });
     expect(context.locals.tenantId).toBe('t2');
     expect(context.locals.tenantSubdomain).toBe('');
+    expect(context.locals.tenantLookupState).toBe('ok');
   });
 
   it('aborts the tenant fetch and logs when it times out', async () => {
@@ -352,6 +462,9 @@ describe('tenant onRequest middleware', () => {
       expect.any(DOMException),
     );
     expect(context.locals.tenant).toBeNull();
+    // An aborted lookup never learned whether the tenant exists → outage, not
+    // "no such tenant".
+    expect(context.locals.tenantLookupState).toBe('failed');
     expect(next).toHaveBeenCalledOnce();
 
     vi.useRealTimers();

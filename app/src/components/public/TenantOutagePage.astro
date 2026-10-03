@@ -1,0 +1,69 @@
+---
+// Branded "we could not load this property" page — the outage twin of
+// NotFoundPage.astro, served with HTTP 503 (+ Retry-After) by ZoneGuard when
+// the tenant lookup itself failed (D1 outage, gateway error, timeout) instead
+// of positively answering "no such tenant" (see lib/tenantLookup.ts).
+//
+// Renders on any host without depending on Astro.locals.tenant data: during an
+// outage there IS no tenant row to read, so it reuses PublicLayout with the
+// default brand color exactly like NotFoundPage does.
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import {
+  TENANT_OUTAGE_HEADLINE,
+  TENANT_OUTAGE_MARKER,
+  TENANT_OUTAGE_RETRY_LABEL,
+} from '@/lib/tenantLookup';
+
+const pageTitle = 'Temporarily unavailable';
+const brandColor = '#4a7c4f';
+const pageDesc = "We're having trouble loading this property right now. Please try again in a few moments.";
+// Retry affordance: re-request THIS page (path + query), so `?tenant=` style
+// host overrides survive the retry instead of dropping the visitor to the
+// marketplace.
+const retryHref = `${Astro.url.pathname}${Astro.url.search}`;
+---
+<PublicLayout
+  title={pageTitle}
+  tenantName="SinaiCamps"
+  primaryColor={brandColor}
+  description={pageDesc}
+  activePage=""
+>
+  <section
+    data-testid={TENANT_OUTAGE_MARKER}
+    role="status"
+    class="relative overflow-hidden px-6 py-24 md:py-32"
+    style={`background: linear-gradient(135deg, ${brandColor}0D 0%, ${brandColor}1E 100%)`}
+  >
+    <div class="mx-auto max-w-2xl text-center">
+      <div
+        class="mx-auto mb-8 flex h-24 w-24 items-center justify-center rounded-full text-4xl shadow-lg"
+        style={`background-color: ${brandColor}1A; color: var(--color-brand-deep)`}
+        aria-hidden="true"
+      >
+        🛠️
+      </div>
+      <p
+        class="mb-2 text-7xl font-black leading-none tracking-tight md:text-8xl"
+        style={`color: var(--color-brand-deep)`}
+        data-testid="tenant-outage-code"
+      >
+        503
+      </p>
+      <h1 data-testid="tenant-outage-title" class="mb-4 text-3xl font-extrabold tracking-tight text-[var(--text)] md:text-4xl">
+        Temporarily unavailable
+      </h1>
+      <p data-testid="tenant-outage-message" class="mx-auto mb-10 max-w-xl text-lg text-[var(--text-muted)]">
+        {TENANT_OUTAGE_HEADLINE} right now. Please try again in a few moments.
+      </p>
+      <div class="flex flex-wrap justify-center gap-4">
+        <a href={retryHref} data-testid="tenant-outage-retry-link" class="btn btn-primary btn-lg">
+          {TENANT_OUTAGE_RETRY_LABEL}
+        </a>
+        <a href="/" data-testid="tenant-outage-home-link" class="btn btn-secondary btn-lg">
+          Back to Home
+        </a>
+      </div>
+    </div>
+  </section>
+</PublicLayout>

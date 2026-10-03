@@ -28,6 +28,16 @@ declare global {
        */
       routeForbidden: boolean;
       /**
+       * Outcome of the middleware's tenant lookup (see lib/tenantLookup.ts):
+       * 'skipped' (no lookup — marketplace host / system route), 'ok',
+       * 'not-found' (the API positively answered "no such tenant" — the ONLY
+       * state that may render the branded 404) or 'failed' (the lookup could
+       * not be completed — renders the 503 outage page instead). 'skipped' is
+       * the default so a request that never ran the lookup can never be
+       * mistaken for a positive "no such tenant".
+       */
+      tenantLookupState: 'skipped' | 'ok' | 'not-found' | 'failed';
+      /**
        * Adapter-injected Cloudflare runtime (advanced mode). Set by
        * `@astrojs/cloudflare` — `env` carries the Worker/Pages bindings,
        * including the `API_BACKEND` service binding.

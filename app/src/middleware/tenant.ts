@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'astro';
 import { defineMiddleware } from 'astro:middleware';
 import { env } from 'cloudflare:workers';
 import { isRouteForbidden, resolveZone } from '@/lib/routeZones';
+import { classifyTenantLookup, type TenantLookupState } from '@/lib/tenantLookup';
 import { buildTenantTheme, type TenantTheme } from '@/lib/theme';
 
 export interface TenantData {
@@ -40,6 +41,12 @@ export interface TenantSSRData {
   tenantName: string;
   API_BASE: string;
   theme: TenantTheme;
+  /**
+   * Why `tenant` is (or is not) populated — see lib/tenantLookup.ts. `'failed'`
+   * means the lookup itself broke (D1 outage, gateway error, timeout), which is
+   * NOT the same as `'not-found'`.
+   */
+  lookupState: TenantLookupState;
 }
 
 export interface RoomTypeData {
@@ -158,6 +165,7 @@ export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<
   let camps: TenantData[] = [];
   let roomTypes: RoomTypeData[] = [];
   let tenantId = '';
+  let lookupState: TenantLookupState = 'skipped';
 
   if (!lookupKey) {
     return {
@@ -169,6 +177,7 @@ export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<
       tenantName: 'Camp Portal',
       API_BASE,
       theme: buildTenantTheme(null),
+      lookupState,
     };
   }
 
@@ -177,7 +186,10 @@ export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<
     const singleRes = await apiFetch(`/tenants/${lookupKey}`);
     if (singleRes.ok) {
       const matched = (await singleRes.json()) as TenantData;
-      if (matched && matched.id) {
+      // 2xx without an `id` is treated as absent, exactly as before — only a
+      // 2xx WITH an id is a resolved tenant.
+      lookupState = classifyTenantLookup(singleRes, matched);
+      if (lookupState === 'ok' && matched && matched.id) {
         tenantId = matched.id;
         tenant = matched;
         const headers = { 'x-tenant-id': tenantId };
@@ -188,8 +200,13 @@ export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<
         if (campsRes.ok) camps = await campsRes.json() as TenantData[];
         if (productsRes.ok) roomTypes = await productsRes.json() as RoomTypeData[];
       }
+    } else {
+      lookupState = classifyTenantLookup(singleRes);
     }
   } catch (e) {
+    // Threw, was aborted by the timeout, or the body was not JSON: we never
+    // learned whether the tenant exists.
+    lookupState = 'failed';
     console.error('Error loading tenant SSR data:', e);
   }
 
@@ -202,6 +219,7 @@ export async function getTenantSSRData(url: URL, fetcher?: ApiFetcher): Promise<
     tenantName: tenant?.name || 'Camp Portal',
     API_BASE,
     theme: buildTenantTheme(tenant),
+    lookupState,
   };
 }
 
@@ -221,6 +239,10 @@ export const onRequest: MiddlewareHandler = defineMiddleware(async (context, nex
   context.locals.API_FETCH = apiFetch;
   context.locals.tenant = null;
   context.locals.tenantSubdomain = '';
+  // Default until the lookup below says otherwise: a tenant host whose lookup
+  // never ran must NOT be mistaken for one that positively answered "no such
+  // tenant" (see lib/tenantLookup.ts).
+  context.locals.tenantLookupState = 'skipped';
 
   const pathname = url.pathname;
 
@@ -256,13 +278,22 @@ export const onRequest: MiddlewareHandler = defineMiddleware(async (context, nex
       clearTimeout(timeout);
       if (res.ok) {
         const matched = (await res.json()) as TenantData;
-        if (matched && matched.id) {
+        context.locals.tenantLookupState = classifyTenantLookup(res, matched);
+        if (context.locals.tenantLookupState === 'ok' && matched && matched.id) {
           context.locals.tenant = matched as unknown as Record<string, unknown>;
           context.locals.tenantId = matched.id;
           context.locals.tenantSubdomain = matched.subdomain || '';
         }
+      } else {
+        // 404/410 -> 'not-found' (branded 404, unchanged); a 5xx/429/auth/junk
+        // answer -> 'failed' (the outage page). The backend answers a missing
+        // tenant with 404 and a D1 failure with the Worker's 500, so the two
+        // are never conflated.
+        context.locals.tenantLookupState = classifyTenantLookup(res);
       }
     } catch (e) {
+      // Network failure or the 5s abort: never learned whether it exists.
+      context.locals.tenantLookupState = 'failed';
       console.error('Middleware tenant fetch failed:', e);
     }
   }
