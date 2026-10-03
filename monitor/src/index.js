@@ -15,10 +15,12 @@ import {
   summaryKey,
   historyKey,
   datePrefix,
+  dateStamp,
   isOlderThan,
   readJson,
   writeJson,
   listAll,
+  listPage,
   deleteKeys,
 } from './storage.js';
 import {
@@ -426,6 +428,131 @@ export async function readHistoryWindow(env, target, hours, now = new Date()) {
     }));
   return { target, hours, checks };
 }
+
+// --- Public reports listing (phase 5) ---
+//
+// The dashboard's "Recent reports" list, as a PUBLIC endpoint: same audience and
+// same exposure as /api/status (report messages are user-submitted prose about
+// the product; the endpoints are already public and CORS-open under /api/*), and
+// the same reason it is an endpoint rather than server-rendered markup — the D1
+// version paid one query per page render for a list the operator then had to
+// reload to see.
+//
+// Covered by the same 20s in-memory cache as /api/history, keyed by every
+// parameter that changes the answer. It is NOT behind the intake limiter: that
+// limiter exists to throttle a token brute-force (60/min per IP), and this
+// endpoint takes no credential, so a shared per-IP budget would only punish
+// viewers behind one NAT.
+
+export const REPORTS_DEFAULT_KIND = 'errors';
+// A page is a page: 20 is the largest the dashboard asks for, and capping it
+// keeps one request's work inside an invocation's subrequest budget.
+export const REPORTS_MAX_LIMIT = 20;
+// Hard ceiling on objects READ per request (`offset + limit`). The reads are the
+// unavoidable part of an object listing — each report is its own object — so the
+// budget is expressed in objects and rejected rather than clamped, for the same
+// reason /api/history rejects `hours > 48`: a silent clamp answers 200 with a
+// shorter page than the caller asked for and tells it nothing.
+export const REPORTS_MAX_READS = 40;
+// Pages walked per day bucket. R2 lists ASCENDING with a forward-only cursor, so
+// "the newest N" costs every page before them: at the intake limiter's ceiling
+// (60/min/IP) a single day could hold ~86,000 keys, and the dashboard's own page
+// budget would be gone long before that. Ten pages is 10,000 reports per day —
+// a sustained ~11 reports/minute — and `truncated` in the response says plainly
+// when a bucket had more than that, instead of serving the oldest of the day's
+// first 10,000 as if they were the newest.
+export const REPORTS_MAX_LIST_PAGES = 10;
+
+// Keys under one report day bucket, NEWEST FIRST, plus whether the bucket was
+// fully walked. Reversing the ascending listing is the whole trick: byte order is
+// arrival order, so no timestamp is parsed.
+async function listReportKeysDesc(bucket, prefix) {
+  const keys = [];
+  let cursor;
+  let exhausted = false;
+  for (let page = 0; page < REPORTS_MAX_LIST_PAGES; page += 1) {
+    const res = await listPage(bucket, { prefix, cursor });
+    for (const object of res?.objects ?? []) keys.push(object.key);
+    if (!res?.truncated) {
+      exhausted = true;
+      break;
+    }
+    cursor = res?.cursor;
+    // `truncated: true` with no cursor cannot advance; stopping is the only safe
+    // move (a non-advancing cursor would spin inside the invocation).
+    if (!cursor) {
+      exhausted = true;
+      break;
+    }
+  }
+  keys.reverse();
+  return { keys, exhausted };
+}
+
+// Newest-first intake reports for one kind, sliced by `offset`/`limit`.
+//
+// TODAY + YESTERDAY, two day buckets. The retention window is 30 days, but
+// walking 30 buckets is 30 listings (each a subrequest) to answer a question the
+// dashboard asks as "what is new"; the older reports are still retained, still
+// swept on schedule, and still readable by an operator with bucket access.
+//
+// The page is taken from the KEY ordering and only then read: the newest `limit`
+// objects are exactly the ones that will be rendered, so no body is fetched that
+// the response does not contain. A key that vanished between the listing and the
+// GET (the retention sweep deletes by key) is skipped rather than answering a
+// slot with `null`.
+export async function readReports(env, { kind, limit, offset }, now = new Date()) {
+  const at = new Date(now).getTime();
+  const descending = [];
+  let exhausted = true;
+  for (const daysAgo of [0, 1]) {
+    // `reportsPrefix(kind)` already ends in a slash, so the day segment is
+    // appended directly rather than through `datePrefix` (which would insert a
+    // second one and produce a prefix that matches nothing).
+    const listed = await listReportKeysDesc(
+      env.MONITOR_BUCKET,
+      `${reportsPrefix(kind)}${dateStamp(new Date(at - daysAgo * 86_400_000))}/`,
+    );
+    descending.push(...listed.keys);
+    exhausted = exhausted && listed.exhausted;
+  }
+  const page = descending.slice(offset, offset + limit);
+  const documents = await Promise.all(page.map((key) => readJson(env.MONITOR_BUCKET, key, null)));
+  return {
+    reports: documents.filter((doc) => doc && typeof doc === 'object'),
+    truncated: !exhausted,
+  };
+}
+
+app.get('/api/reports', async (c) => {
+  // Validate BEFORE the cache, exactly like /api/history: a 400 is never stored
+  // under any key, and a typo costs zero bucket work.
+  const valid_kinds = REPORT_KINDS;
+  const kind = (c.req.query('kind') ?? REPORTS_DEFAULT_KIND).trim();
+  if (!valid_kinds.includes(kind)) return c.json({ error: 'unknown kind', valid_kinds }, 400);
+
+  let limit = parseInt(c.req.query('limit') ?? String(REPORTS_MAX_LIMIT), 10);
+  if (Number.isNaN(limit)) limit = REPORTS_MAX_LIMIT;
+  limit = Math.min(Math.max(limit, 1), REPORTS_MAX_LIMIT);
+  let offset = parseInt(c.req.query('offset') ?? '0', 10);
+  if (Number.isNaN(offset) || offset < 0) offset = 0;
+  if (offset + limit > REPORTS_MAX_READS) {
+    return c.json(
+      {
+        error: `reports max ${REPORTS_MAX_READS} objects per request in R2 mode`,
+        max_reads: REPORTS_MAX_READS,
+        max_limit: REPORTS_MAX_LIMIT,
+        valid_kinds,
+      },
+      400,
+    );
+  }
+
+  const payload = await withPublicCache(`reports:${kind}|${limit}|${offset}`, () =>
+    readReports(c.env, { kind, limit, offset }),
+  );
+  return c.json(payload);
+});
 
 // --- Favicon ---
 //
@@ -949,7 +1076,15 @@ export async function readRecentChecks(env, limit = 20) {
 // immediately instead of waiting for the interval. Both endpoints are served
 // from the 20s in-memory public cache, so a manual "Check Now" right after a
 // refresh is nearly free.
-function buildDashboardHtml({ overall, checked_at, targets, recentChecks, recentReports }) {
+//
+// The REPORTS list is the one thing that is NOT server-rendered: it arrives from
+// `GET /api/reports` when its tab is opened (see `renderReports`), so switching
+// between errors and feedback costs no page render and no server query. The
+// consequence, recorded here because it is a security decision rather than a UI
+// one: report messages used to be escaped server-side by `escapeHtml`, and now
+// they are assigned as TEXT NODES, which cannot parse their input as HTML, and
+// the page script contains no HTML-parsing sink at all (pinned by test).
+function buildDashboardHtml({ overall, checked_at, targets, recentChecks }) {
   const pillLabel = overall.toUpperCase();
   const cards = targets
     .map(
@@ -976,14 +1111,6 @@ function buildDashboardHtml({ overall, checked_at, targets, recentChecks, recent
       <tr><td>${escapeHtml(r.checked_at ?? '')}</td><td>${escapeHtml(r.target)}</td>
       <td class="${r.ok ? 'ok' : 'bad'}">${r.ok ? 'up' : 'down'}</td>
       <td>${r.status_code ?? '—'}</td><td>${r.response_ms ?? '—'}</td></tr>`,
-    )
-    .join('');
-  const reportRows = recentReports
-    .map(
-      (r) => `
-      <tr><td>${escapeHtml(r.created_at ?? '')}</td><td>${escapeHtml(r.kind)}</td>
-      <td>${escapeHtml(String(r.message ?? '').slice(0, 120))}</td>
-      <td>${escapeHtml(r.status ?? '')}</td></tr>`,
     )
     .join('');
   return `<!doctype html>
@@ -1019,6 +1146,9 @@ th,td{text-align:left;padding:.3rem .35rem;border-bottom:1px solid #334155;verti
 th{color:#94a3b8;font-weight:600}
 td.ok{color:#4ade80}td.bad{color:#f87171}
 .muted{color:#94a3b8;font-size:.75rem}
+.tabs{display:flex;gap:.4rem;margin:.2rem 0 .35rem}
+.tab{flex:1;padding:.35rem;font-size:.8rem;font-weight:600;color:#94a3b8;background:#0b1220;border:1px solid #334155;border-radius:.5rem}
+.tab.on{color:#0f172a;background:#38bdf8;border-color:#38bdf8}
 #check-now{width:100%;padding:.7rem;font-size:.9rem;font-weight:700;color:#0f172a;background:#38bdf8;border:0;border-radius:.6rem;margin-top:1rem}
 #check-now:active{transform:scale(.98)}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
@@ -1037,9 +1167,13 @@ td.ok{color:#4ade80}td.bad{color:#f87171}
 <h2>Recent checks (last 20)</h2>
 <table><thead><tr><th>time</th><th>target</th><th>state</th><th>http</th><th>ms</th></tr></thead>
 <tbody id="checks">${checkRows || '<tr><td colspan="5" class="muted">no checks yet</td></tr>'}</tbody></table>
-<h2>Recent reports (last 20)</h2>
+<h2>Recent reports</h2>
+<div class="tabs" role="tablist">
+<button type="button" role="tab" class="tab on" data-report-tab="errors" aria-selected="true">Errors</button>
+<button type="button" role="tab" class="tab" data-report-tab="feedback" aria-selected="false">Feedback</button>
+</div>
 <table><thead><tr><th>time</th><th>kind</th><th>message</th><th>status</th></tr></thead>
-<tbody id="reports">${reportRows || '<tr><td colspan="4" class="muted">no reports yet</td></tr>'}</tbody></table>
+<tbody id="reports"><tr><td colspan="4" class="muted" id="reports-state">Loading…</td></tr></tbody></table>
 </div>
 <script>
 (function(){
@@ -1098,7 +1232,101 @@ async function refreshAll(){
     document.getElementById('updated').textContent = 'refresh failed — showing last render';
   }
 }
-document.getElementById('check-now').addEventListener('click', refreshAll);
+// --- reports (fetched per tab, rendered as text nodes) ---
+//
+// LAZY PER TAB: nothing is fetched until a tab is opened, and each kind is
+// fetched once per page view. The server no longer renders this list, so a page
+// render costs no report query at all — which is the point: the D1 version paid
+// a newest-first reports query on every dashboard load, including every load
+// where nobody looked at the list.
+//
+// TEXT NODES, NEVER MARKUP. Report messages are user-submitted prose, so each
+// cell is assigned through textContent, which cannot parse its input as HTML.
+// Building rows out of markup instead would mean re-implementing escapeHtml
+// inside the page — two escaping implementations to keep in step, one of them
+// invisible to the server-side tests — and the page script would then contain an
+// HTML-parsing sink, which a test cannot assert is absent while this comment
+// names it. The rule is pinned in tests/api.test.js instead.
+var REPORTS_PER_PAGE = 20;
+var reportTabsLoaded = {};
+function reportRow(values){
+  var tr = document.createElement('tr');
+  for (var i = 0; i < values.length; i++) {
+    var td = document.createElement('td');
+    td.textContent = values[i];
+    tr.appendChild(td);
+  }
+  return tr;
+}
+function reportNotice(text){
+  var tr = document.createElement('tr');
+  var td = document.createElement('td');
+  td.colSpan = 4;
+  td.className = 'muted';
+  td.textContent = text;
+  tr.appendChild(td);
+  return tr;
+}
+function renderReports(rows, truncated){
+  var body = document.getElementById('reports');
+  body.textContent = '';
+  if (!rows.length) { body.appendChild(reportNotice('No recent reports')); return; }
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    body.appendChild(reportRow([
+      r.received_at || '', r.kind || '',
+      String(r.message == null ? '' : r.message).slice(0, 120),
+      r.status || ''
+    ]));
+  }
+  if (truncated) {
+    // More reports exist than the listing walks. Say so, rather than let an
+    // operator read this page as "nothing has been reported since".
+    body.appendChild(reportNotice('Listing truncated — more reports exist than this view walks.'));
+  }
+}
+async function openReportTab(kind, force){
+  if (reportTabsLoaded[kind] && !force) return;
+  var body = document.getElementById('reports');
+  body.textContent = '';
+  body.appendChild(reportNotice('Loading…'));
+  var rows = [];
+  var truncated = false;
+  try {
+    var res = await fetch('/api/reports?kind=' + encodeURIComponent(kind) + '&limit=' + REPORTS_PER_PAGE).then(function(r){ return r.json(); });
+    rows = res.reports || [];
+    truncated = !!res.truncated;
+  } catch (e) {
+    body.textContent = '';
+    body.appendChild(reportNotice('Could not load reports — showing nothing'));
+    reportTabsLoaded[kind] = true;
+    return;
+  }
+  reportTabsLoaded[kind] = true;
+  renderReports(rows, truncated);
+}
+function selectReportTab(kind){
+  var tabs = document.querySelectorAll('[data-report-tab]');
+  for (var i = 0; i < tabs.length; i++) {
+    var on = tabs[i].getAttribute('data-report-tab') === kind;
+    tabs[i].className = on ? 'tab on' : 'tab';
+    tabs[i].setAttribute('aria-selected', on ? 'true' : 'false');
+  }
+  return openReportTab(kind);
+}
+(function(){
+  var tabs = document.querySelectorAll('[data-report-tab]');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function(){ selectReportTab(this.getAttribute('data-report-tab')); });
+  }
+})();
+document.getElementById('check-now').addEventListener('click', function(){
+  // A manual refresh re-reads the OPEN tab as well — or "Check Now" would skip
+  // the one panel an operator opens it to see.
+  var open = document.querySelector('.tab.on[data-report-tab]');
+  if (open) openReportTab(open.getAttribute('data-report-tab'), true);
+  refreshAll();
+});
 // VISIBILITY-AWARE TIMER: a backgrounded tab still has its setInterval
 // running (browsers only throttle it to ~1/min, they do not stop it), so every
 // hidden dashboard kept hitting /api/status + N × /api/history for data nobody
@@ -1119,6 +1347,8 @@ document.addEventListener('visibilitychange', function(){
 if (document.hidden) stopTimer(); else startTimer();
 refreshAll();
 })();
+// The Errors tab is the default view, so it opens — and fetches — with the page.
+openReportTab('errors');
 </script>
 </body>
 </html>`;
@@ -1203,8 +1433,7 @@ app.get('/', async (c) => {
   }
   const agg = await readStatusAggregate(c.env);
   const recentChecks = await readRecentChecks(c.env, 20);
-  const recentReports = await db.getRecentReports(c.env.DB, 20);
-  return c.html(buildDashboardHtml({ ...agg, recentChecks, recentReports }));
+  return c.html(buildDashboardHtml({ ...agg, recentChecks }));
 });
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));

@@ -19,11 +19,10 @@ import { makeR2, seedRun } from './helpers/fake-r2.js';
 // and the PIN never appears in a URL. Brute-force budget is D1-backed:
 // 5 failed attempts per 5 minutes per IP (login_attempts table), then 429.
 
-// In-memory D1 stand-in covering the SQL shapes db.js still has: the intake
-// reports (read by the dashboard until phase 5) and the `login_attempts` PIN
-// gate. The probe table is deliberately not implemented — phase 3 moved those
-// reads to R2, and a stub that still answered them would let a probe query back
-// in unnoticed.
+// In-memory D1 stand-in covering the ONE SQL shape db.js still has: the
+// `login_attempts` PIN gate. The probe tables and the reports table are
+// deliberately not implemented — phases 3-5 moved those reads to R2, and a stub
+// that still answered them would let a query back in unnoticed.
 class FakeStmt {
   constructor(db, sql) {
     this.db = db;
@@ -48,47 +47,19 @@ class FakeStmt {
 
 class FakeDb {
   constructor() {
-    this.reports = [];
     this.attempts = [];
-    this.reportSeq = 0;
     this.tick = 0;
   }
   prepare(sql) {
     return new FakeStmt(this, sql);
   }
-  seedReport(row) {
-    this.reportSeq += 1;
-    this.tick += 1;
-    this.reports.push({
-      id: this.reportSeq,
-      kind: 'error',
-      message: 'seeded',
-      page_url: null,
-      contact: null,
-      status: 'new',
-      created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
-      ...row,
-    });
-    return this.reports[this.reports.length - 1];
-  }
   execRun(sql, args) {
-    if (sql.startsWith('INSERT INTO checks') || sql.startsWith('INSERT INTO alert_state')) {
-      throw new Error(`FakeDb.run: ${sql} — probe history and alert state moved to R2`);
-    }
-    if (sql.startsWith('INSERT INTO reports')) {
-      const [kind, message, page_url, contact] = args;
-      this.reportSeq += 1;
-      this.tick += 1;
-      this.reports.push({
-        id: this.reportSeq,
-        kind,
-        message,
-        page_url,
-        contact,
-        status: 'new',
-        created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
-      });
-      return { success: true, meta: { last_row_id: this.reportSeq } };
+    if (
+      sql.startsWith('INSERT INTO checks') ||
+      sql.startsWith('INSERT INTO alert_state') ||
+      sql.startsWith('INSERT INTO reports')
+    ) {
+      throw new Error(`FakeDb.run: ${sql} — every write moved to R2 (phases 2 and 4)`);
     }
     if (sql.startsWith('INSERT INTO login_attempts')) {
       const [ip, success] = args;
@@ -117,8 +88,7 @@ class FakeDb {
       throw new Error(`FakeDb.all: ${sql} — probe history and alert state moved to R2`);
     }
     if (sql.includes('FROM reports')) {
-      const [limit] = args;
-      return [...this.reports].sort((a, b) => b.id - a.id).slice(0, limit);
+      throw new Error(`FakeDb.all: ${sql} — reports are read from R2 via GET /api/reports (phase 5)`);
     }
     throw new Error(`FakeDb.all: unhandled SQL: ${sql}`);
   }

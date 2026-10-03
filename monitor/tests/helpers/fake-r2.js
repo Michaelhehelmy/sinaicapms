@@ -18,7 +18,14 @@
 // break exactly one write and assert the OTHER steps still ran — the property
 // that keeps a broken bucket from silencing the monitor that reports it.
 
-import { checksKey, alertStateKey, summaryKey, historyKey } from '../../src/storage.js';
+import {
+  checksKey,
+  alertStateKey,
+  summaryKey,
+  historyKey,
+  reportKey,
+  secondsStamp,
+} from '../../src/storage.js';
 
 function matches(failOn, op, key) {
   const rule = failOn?.[op];
@@ -176,6 +183,28 @@ export function seedRing(bucket, target, entries, { at = HOUR_0 } = {}) {
     target,
     updated_at: new Date(at).toISOString(),
     entries,
+  });
+}
+
+// Seed ONE intake report object: `reports/<kind>/<date>/<HH-MM-SS>-<id>.json`,
+// where `kind` is the PLURAL collection ('errors' / 'feedback') because that is
+// what the key layout uses. `at` derives both the stamps and the key, so a
+// fixture cannot place a report in a bucket its own `received_at` disagrees with.
+export function seedIntake(bucket, kind, at, overrides = {}) {
+  const when = new Date(at);
+  const id = overrides.id ?? `${when.getTime().toString(36)}-000001`;
+  const key = reportKey(kind, when, secondsStamp(when), id);
+  return bucket.seed(key, {
+    id,
+    kind: kind === 'errors' ? 'error' : 'feedback',
+    received_at: when.toISOString(),
+    message: 'seeded report',
+    page_url: null,
+    contact: null,
+    status: 'new',
+    severity: 'error',
+    user_agent: null,
+    ...overrides,
   });
 }
 

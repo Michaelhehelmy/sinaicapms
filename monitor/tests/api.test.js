@@ -11,6 +11,8 @@ import {
   HISTORY_MAX_WINDOW_HOURS,
   readRecentChecks,
   REPORT_USER_AGENT_MAX,
+  REPORTS_MAX_READS,
+  REPORTS_MAX_LIMIT,
 } from '../src/index.js';
 import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
@@ -21,18 +23,20 @@ import {
   seedSummary,
   seedAlertState,
   seedRing,
+  seedIntake,
   ringEntry,
   webhookCollector,
 } from './helpers/fake-r2.js';
 
-// In-memory D1 stand-in covering every SQL shape db.js still has: the intake
-// reports (until phase 5 moves them to `/api/reports`) and the PIN gate.
+// In-memory D1 stand-in covering the ONE SQL shape db.js still has: the
+// `login_attempts` PIN gate.
 //
-// The PROBE table is deliberately not implemented any more. Phase 3 moved the
-// status/history/dashboard reads to R2, and a stub that still answered `FROM
-// checks` would quietly let a query back in: the assertion below throws on any
-// probe-table SQL, so reintroducing one fails here instead of passing against a
-// stale stub and reading a table the cron stopped writing in phase 2.
+// The probe tables and the reports table are deliberately NOT implemented. Phase
+// 3 moved the status/history/dashboard reads to R2 and phase 5 moved the reports
+// list, and a stub that still answered them would quietly let a query back in —
+// against tables nothing writes any more. The assertions below throw on all
+// three, so a reintroduced query fails here instead of passing against a stale
+// stub and reading nothing in production.
 class FakeStmt {
   constructor(db, sql) {
     this.db = db;
@@ -59,10 +63,12 @@ class FakeDb {
   constructor() {
     this.reports = [];
     this.attempts = [];
+    this.prepared = [];
     this.reportSeq = 0;
     this.tick = 0;
   }
   prepare(sql) {
+    this.prepared.push(sql);
     return new FakeStmt(this, sql);
   }
   seedReport(row) {
@@ -111,12 +117,15 @@ class FakeDb {
       const fails = this.attempts.filter((r) => r.ip === ip && r.success === 0).length;
       return [{ fail_count: fails }];
     }
-    if (sql.includes('FROM checks') || sql.includes('FROM alert_state')) {
-      throw new Error(`FakeDb.all: ${sql} — probe history and alert state moved to R2 (phase 3)`);
+    if (
+      sql.includes('FROM checks') ||
+      sql.includes('FROM alert_state') ||
+      sql.includes('FROM reports')
+    ) {
+      throw new Error(`FakeDb.all: ${sql} — read from R2 instead (phases 3 and 5)`);
     }
     if (sql.includes('FROM reports')) {
-      const [limit] = args;
-      return [...this.reports].sort((a, b) => b.id - a.id).slice(0, limit);
+      throw new Error(`FakeDb.all: ${sql} — reports are read from R2 via GET /api/reports (phase 5)`);
     }
     throw new Error(`FakeDb.all: unhandled SQL: ${sql}`);
   }
@@ -518,6 +527,202 @@ describe('GET /api/history (public, target required, read from R2)', () => {
     expect(body.checks).toHaveLength(500);
     // Newest survive: the cut is at the FRONT of the oldest-first list.
     expect(body.checks[499].checked_at).toBe('2026-10-03T12:00:00.000Z');
+  });
+});
+
+describe('GET /api/reports (public, newest-first per kind)', () => {
+  const NOW = '2026-10-03T12:00:00.000Z';
+  const at = (iso) => new Date(iso);
+  const env = (bucket) => envFor(new FakeDb(), { MONITOR_BUCKET: bucket });
+
+  // Five reports across today and yesterday, out of insertion order on purpose:
+  // the listing must sort by KEY, not by anything the bucket remembers.
+  function reportsBucket() {
+    const bucket = makeR2();
+    seedIntake(bucket, 'errors', at('2026-10-03T09:00:00.000Z'), { message: 'e today old' });
+    seedIntake(bucket, 'errors', at('2026-10-03T11:59:00.000Z'), { message: 'e today newest' });
+    seedIntake(bucket, 'errors', at('2026-10-02T23:00:00.000Z'), { message: 'e yesterday' });
+    seedIntake(bucket, 'feedback', at('2026-10-03T10:00:00.000Z'), { message: 'f only' });
+    return bucket;
+  }
+
+  it('lists only the requested kind, newest first, and defaults to errors', async () => {
+    const bucket = reportsBucket();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at(NOW));
+    try {
+      const res = await app.request('/api/reports', {}, env(bucket));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(Object.keys(body).sort()).toEqual(['reports', 'truncated']);
+      expect(body.reports.map((r) => r.message)).toEqual([
+        'e today newest',
+        'e today old',
+        'e yesterday',
+      ]);
+      // The stored document is returned as-is: id, arrival time, severity and
+      // user_agent included, because the triage view needs them.
+      expect(body.reports[0]).toMatchObject({
+        kind: 'error',
+        status: 'new',
+        severity: 'error',
+        received_at: '2026-10-03T11:59:00.000Z',
+      });
+      expect(body.truncated).toBe(false);
+      // Feedback lives in its own collection and is never mixed in.
+      const feedback = await app.request('/api/reports?kind=feedback', {}, env(bucket)).then((r) => r.json());
+      expect(feedback.reports.map((r) => r.message)).toEqual(['f only']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('limit + offset page the newest-first list', async () => {
+    const bucket = reportsBucket();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at(NOW));
+    try {
+      const page1 = await app.request('/api/reports?limit=2', {}, env(bucket)).then((r) => r.json());
+      expect(page1.reports.map((r) => r.message)).toEqual(['e today newest', 'e today old']);
+      const page2 = await app.request('/api/reports?limit=2&offset=2', {}, env(bucket)).then((r) => r.json());
+      expect(page2.reports.map((r) => r.message)).toEqual(['e yesterday']);
+      const past = await app.request('/api/reports?limit=2&offset=3', {}, env(bucket)).then((r) => r.json());
+      expect(past.reports).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads only the objects it returns', async () => {
+    const bucket = reportsBucket();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at(NOW));
+    try {
+      await app.request('/api/reports?limit=1', {}, env(bucket));
+      // Two day buckets listed, ONE object fetched: the page is cut from the KEY
+      // ordering first, so no body is read that the response does not contain.
+      expect(bucket.calls.list.map((l) => l.prefix)).toEqual([
+        'reports/errors/2026-10-03/',
+        'reports/errors/2026-10-02/',
+      ]);
+      expect(bucket.calls.get).toHaveLength(1);
+      expect(bucket.calls.get[0]).toContain('11-59-00');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('400 for an unknown kind, listing the valid ones', async () => {
+    const bucket = makeR2();
+    const res = await app.request('/api/reports?kind=erorr', {}, env(bucket));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.valid_kinds).toEqual(['errors', 'feedback']);
+    expect(body.error).toBe('unknown kind');
+    // Rejected before any bucket work, like every other validation here.
+    expect(bucket.calls.list).toEqual([]);
+  });
+
+  it('rejects a page wider than one invocation can read, and never clamps it', async () => {
+    const bucket = makeR2();
+    const res = await app.request(
+      `/api/reports?limit=${REPORTS_MAX_LIMIT}&offset=${REPORTS_MAX_READS - REPORTS_MAX_LIMIT + 1}`,
+      {},
+      env(bucket),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('reports max 40 objects per request in R2 mode');
+    expect(body.max_reads).toBe(REPORTS_MAX_READS);
+    expect(bucket.calls.list).toEqual([]);
+  });
+
+  it('caps limit silently and floors a nonsense one', async () => {
+    const bucket = reportsBucket();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at(NOW));
+    try {
+      // A limit over the cap is clamped DOWN (asking for more is harmless: it
+      // cannot cost more than the cap) ...
+      const capped = await app.request('/api/reports?limit=999', {}, env(bucket)).then((r) => r.json());
+      expect(capped.reports).toHaveLength(3);
+      // ... while nonsense values fall back to the default rather than erroring.
+      for (const q of ['limit=abc', 'limit=-4', 'offset=-1', 'offset=abc']) {
+        const res = await app.request(`/api/reports?${q}`, {}, env(bucket));
+        expect(res.status, q).toBe(200);
+        expect((await res.json()).reports.length).toBeGreaterThan(0);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('an empty bucket is an empty list, not an error', async () => {
+    const res = await app.request('/api/reports', {}, env(makeR2()));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reports: [], truncated: false });
+  });
+
+  it('reports `truncated` when a day holds more than the listing walks', async () => {
+    // A sustained flood (the intake limiter allows 60/min/IP). The endpoint says
+    // so instead of serving the oldest of the day's first N as if they were the
+    // newest — the page-size stub makes 10 pages of 2 keys.
+    const bucket = makeR2();
+    for (let i = 0; i < 40; i += 1) {
+      seedIntake(bucket, 'errors', new Date(Date.parse(NOW) - i * 1000), { message: `flood ${i}` });
+    }
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at(NOW));
+    try {
+      const body = await app.request('/api/reports?limit=20', {}, env(bucket)).then((r) => r.json());
+      expect(body.truncated).toBe(true);
+      // Even truncated, the page it does serve is newest-first — it just is not
+      // the newest of the DAY, which is precisely what `truncated` is for: a
+      // silent answer here would read as "nothing reported since".
+      expect(body.reports[0].message).toBe('flood 20');
+      expect(body.reports[19].message).toBe('flood 39');
+      // ...and a bucket within the budget says so, so `truncated` cannot sit at
+      // `true` forever as a permanent shrug.
+      const small = makeR2();
+      for (let i = 0; i < 4; i += 1) {
+        seedIntake(small, 'errors', new Date(Date.parse(NOW) - i * 1000), { message: `few ${i}` });
+      }
+      // A different `limit` is a different cache entry, so this is a fresh read
+      // of the fresh bucket rather than the cached answer for the flooded one.
+      expect((await app.request('/api/reports?limit=10', {}, env(small)).then((r) => r.json())).truncated).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the 20s cache covers it too, keyed by every parameter', async () => {
+    const bucket = reportsBucket();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at(NOW));
+    try {
+      await app.request('/api/reports?kind=errors&limit=2', {}, env(bucket));
+      const settled = bucket.calls.list.length + bucket.calls.get.length;
+      expect(settled).toBeGreaterThan(0);
+      // Same key → no bucket work at all.
+      await app.request('/api/reports?kind=errors&limit=2', {}, env(bucket));
+      expect(bucket.calls.list.length + bucket.calls.get.length).toBe(settled);
+      // Any parameter change is a different entry.
+      await app.request('/api/reports?kind=feedback', {}, env(bucket));
+      await app.request('/api/reports?kind=errors&limit=1', {}, env(bucket));
+      await app.request('/api/reports?kind=errors&limit=2&offset=1', {}, env(bucket));
+      expect(bucket.calls.list.length + bucket.calls.get.length).toBeGreaterThan(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a 400 never reaches the cache', async () => {
+    const bucket = makeR2();
+    expect((await app.request('/api/reports?kind=nope', {}, env(bucket))).status).toBe(400);
+    expect(bucket.calls.list).toEqual([]);
+    vi.setSystemTime(new Date(NOW));
+    expect((await app.request('/api/reports?kind=nope', {}, env(bucket))).status).toBe(400);
+    expect(bucket.calls.list).toEqual([]);
   });
 });
 
@@ -1013,6 +1218,58 @@ describe('GET / dashboard (cookie-session HTML)', () => {
     // the seeded `response_ms` appearing in the page is proof the page render
     // read the same documents /api/history serves.
     expect(html).toContain('4321');
+  });
+
+  it('renders the reports list as TABS the client fetches, and no longer from D1', async () => {
+    const db = new FakeDb();
+    db.seedReport({ message: 'seeded in D1' });
+    const bucket = okBucket();
+    const env = envFor(db, { MONITOR_BUCKET: bucket });
+    const value = await signSession(env.DASHBOARD_PIN, Date.now());
+    const res = await app.request('/', { headers: { cookie: `${SESSION_COOKIE}=${value}` } }, env);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    // The list is a shell: one tab per kind, and the rows arrive from
+    // /api/reports when a tab is opened.
+    expect(html).toContain('data-report-tab="errors"');
+    expect(html).toContain('data-report-tab="feedback"');
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain("fetch('/api/reports?kind='");
+    expect(html).toContain('Loading…');
+    expect(html).toContain('No recent reports');
+    expect(html).toContain('openReportTab(\'errors\')');
+    // Each kind is fetched ONCE per page view — six dashboards open in six
+    // browsers must not mean six listings each — but "Check Now" forces a
+    // re-read of the open tab, or a manual refresh would silently skip the one
+    // panel an operator opens it to see.
+    expect(html).toContain('if (reportTabsLoaded[kind] && !force) return;');
+    expect(html).toContain("openReportTab(open.getAttribute('data-report-tab'), true)");
+    // The D1 row is NOT on the page: the endpoint reads R2 now, and a leftover
+    // server-rendered list would be a second copy of the data to keep in step.
+    expect(html).not.toContain('seeded in D1');
+    // No reports query on a page render at all.
+    expect(db.prepared).toEqual([]);
+  });
+
+  it('never hands report text to an HTML parser', async () => {
+    const bucket = okBucket();
+    const env = envFor(new FakeDb(), { MONITOR_BUCKET: bucket });
+    const value = await signSession(env.DASHBOARD_PIN, Date.now());
+    const html = await (
+      await app.request('/', { headers: { cookie: `${SESSION_COOKIE}=${value}` } }, env)
+    ).text();
+
+    // Report messages are user-submitted prose and the list is now client-rendered,
+    // so the escaping moved with it. There is exactly one sink for that text and
+    // it cannot parse its input as HTML: the page's SCRIPT block assigns cells
+    // with textContent and never hands a string to an HTML parser.
+    const script = html.slice(html.indexOf('<script>'));
+    for (const sink of ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'document.write', 'createContextualFragment']) {
+      expect(script, sink).not.toContain(sink);
+    }
+    expect(script).toContain('td.textContent = values[i];');
+    expect(script).toContain('td.textContent = text;');
   });
 
   it('accepts session cookie too and escapes report content', async () => {

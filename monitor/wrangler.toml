@@ -11,12 +11,20 @@ persist = true
 [triggers]
 crons = [ "*/5 * * * *" ]
 
-# NOTE (2026-10-03): the probe/alert/report data path is migrating to R2. The
-# D1 binding below is kept on purpose until the final phase — `login_attempts`
-# (the PIN brute-force counter) is still D1-backed and the read endpoints still
-# read D1 while the cron writes R2. Do not delete this block until the R2 read
-# path has shipped AND login_attempts has moved; see `src/storage.js` for the
-# object layout (checks/, reports/, state/) and monitor/README.md for the plan.
+# NOTE (2026-10-03): the D1 binding below is now ONLY `login_attempts` — the PIN
+# brute-force counter, which is the one thing the worker still reads AND writes in
+# D1 (see `src/db.js`, whose entire remaining scope is those three helpers).
+#
+# Everything else — probe runs, alert state, the uptime rollup, the per-target
+# history rings and the intake reports, plus every public read endpoint — is R2
+# (`src/storage.js` for the object layout: checks/, reports/, state/history/).
+# The `checks` and `reports` TABLES still exist in this database and are written
+# by nothing; they are dropped with this binding in the final phase, along with
+# migrations/, once login_attempts has moved.
+#
+# Do not delete this block until login_attempts has moved: doing it now would
+# 500 every POST /login (the PIN gate reads its 5-min budget from this table)
+# and the cron's prune step.
 [[d1_databases]]
 binding = "DB"
 database_name = "campmaster-monitor-db"

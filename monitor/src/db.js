@@ -1,17 +1,15 @@
 // D1 query helpers for the monitor worker. Every helper takes the D1 binding
 // (`env.DB`) as its first argument so routes stay thin and tests can pass a stub.
 //
-// SCOPE AFTER THE R2 MIGRATION (2026-10-03, phases 2-3): this module is the
-// intake-reports READ side plus `login_attempts`, and nothing else. Every WRITE
-// for probe history, alert state, and intake reports moved to R2
-// (`src/storage.js`), the three D1 retention DELETEs were superseded by the R2
-// key sweep in `index.js#runRetention` (an R2 sweep deletes objects by key, so
-// there is no `DELETE ... WHERE` left to write here), and the PROBE READS are
-// gone as of phase 3. What remains:
-//   - intake report reads (`getRecentReports`) — phase 5 removes the last of
-//     them, when the dashboard's reports list moves to `GET /api/reports`;
-//   - the PIN gate (`recordLoginAttempt`, `getRecentFailCount`,
-//     `clearOldLoginAttempts`) — the last D1-only feature, phase 6.
+// SCOPE AFTER THE R2 MIGRATION (2026-10-03, phases 2-5): this module is
+// `login_attempts` and NOTHING ELSE. Every write for probe history, alert state
+// and intake reports moved to R2 (`src/storage.js`), the three D1 retention
+// DELETEs were superseded by the R2 key sweep in `index.js#runRetention` (an R2
+// sweep deletes objects by key, so there is no `DELETE ... WHERE` left to write
+// here), the probe reads went in phase 3, and the intake reads went in phase 5.
+// What remains is the PIN gate — the last D1-only feature, and all phase 6 has to
+// do is delete this module, the `[[d1_databases]]` block and `migrations/`:
+//   - `recordLoginAttempt`, `getRecentFailCount`, `clearOldLoginAttempts`.
 // The removed helpers are gone rather than left dead: an unused D1 write path is
 // exactly what phase 6's `grep env.DB` gate is meant to catch, so keeping one
 // "just in case" would make the migration unprovable. The same applies to the
@@ -20,18 +18,6 @@
 // the run objects, `state/summary.json`, and `state/history/<target>.json`, and
 // the SQL that produced them no longer describes where the data lives.
 //
-// Time storage note: the schema defaults `checked_at` to SQLite
-// `datetime('now')` ("YYYY-MM-DD HH:MM:SS" UTC). `toIso()` converts that form
-// to ISO-8601 on the way out; values that already look like ISO pass through.
-
-// "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SSZ". ISO input passes through.
-export function toIso(value) {
-  if (value == null) return null;
-  const s = String(value);
-  if (s.includes('T')) return s;
-  return `${s.replace(' ', 'T')}Z`;
-}
-
 // `getLastNChecks`, `getAlertState`, and `upsertAlertState` used to live here.
 // All three moved to R2: alert evaluation now reads and rewrites ONE
 // `state/alert_state.json` document and derives "3 consecutive failures" from
@@ -58,35 +44,25 @@ export function toIso(value) {
 // `getRecentReports` below is the last reader and phase 5 replaces it with
 // `GET /api/reports`.
 
-// Newest-first intake rows, max `limit`. Server-rendered into the dashboard
-// "Recent reports" list; ISO times via toIso().
-export async function getRecentReports(db, limit = 20) {
-  const res = await db
-    .prepare(
-      `SELECT id, kind, message, page_url, contact, status, created_at
-       FROM reports
-       ORDER BY id DESC
-       LIMIT ?`,
-    )
-    .bind(limit)
-    .all();
-  return (res.results ?? []).map((row) => ({ ...row, created_at: toIso(row.created_at) }));
-}
+// `getRecentReports` used to live here (`ORDER BY id DESC LIMIT ?`, server-rendered
+// into the dashboard's reports table). Phase 5 replaced it with `GET /api/reports`
+// and a dashboard that fetches its reports list per tab, which also means the
+// page render no longer costs a reports query at all.
+//
+// That was this module's LAST reader of the `reports` table, and `toIso` with it
+// — the SQLite `checked_at`/`created_at` normalisation existed for columns that
+// no longer exist anywhere in the schema this worker uses. Both are gone rather
+// than left dead, because phase 6 deletes this module wholesale and a `grep
+// env.DB` gate cannot tell a used helper from a forgotten one.
 
-// Newest-first probe rows across all targets, max `limit`. Server-rendered
-// into the dashboard "Recent checks" list; ISO times via toIso().
-export async function getRecentChecks(db, limit = 20) {
-  const res = await db
-    .prepare(
-      `SELECT target, status_code, ok, response_ms, error_message, checked_at
-       FROM checks
-       ORDER BY id DESC
-       LIMIT ?`,
-    )
-    .bind(limit)
-    .all();
-  return (res.results ?? []).map((row) => ({ ...row, checked_at: toIso(row.checked_at) }));
-}
+// `getRecentChecks` (the D1 newest-first probe query behind the dashboard's
+// "Recent checks" table) was ALSO still here after phase 3 — an oversight, since
+// the phase-3 removal range stopped at the marker comment above and this helper
+// sits below `getRecentReports`. It was dead: the dashboard had been reading
+// `readRecentChecks` from the rings since phase 3, nothing imported it, and its
+// `toIso` call had no meaning left in the module. Deleting `toIso` in this commit
+// would have turned that dead code into a `ReferenceError` waiting for a caller,
+// which is exactly the kind of latent break this module's header warns about.
 
 // --- PIN login gate helpers (append-only; helpers above untouched) ---
 //
