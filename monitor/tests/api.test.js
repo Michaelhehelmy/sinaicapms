@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   app,
   timingSafeEqual,
@@ -8,14 +8,22 @@ import {
   clearPublicCache,
   FAVICON_CACHE_CONTROL,
   REPORT_RATE_LIMIT,
+  HISTORY_MAX_WINDOW_HOURS,
+  readRecentChecks,
 } from '../src/index.js';
 import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
-import { checksKey } from '../src/storage.js';
-import { makeR2 } from './helpers/fake-r2.js';
+import { checksKey, historyKey } from '../src/storage.js';
+import { makeR2, seedRun, seedSummary, seedAlertState, seedRing, ringEntry } from './helpers/fake-r2.js';
 
-// In-memory D1 stand-in covering every SQL shape used by db.js
-// (status/history aggregates + A.4 intake/dashboard helpers).
+// In-memory D1 stand-in covering every SQL shape db.js still has: the intake
+// reports (until phase 5 moves them to `/api/reports`) and the PIN gate.
+//
+// The PROBE table is deliberately not implemented any more. Phase 3 moved the
+// status/history/dashboard reads to R2, and a stub that still answered `FROM
+// checks` would quietly let a query back in: the assertion below throws on any
+// probe-table SQL, so reintroducing one fails here instead of passing against a
+// stale stub and reading a table the cron stopped writing in phase 2.
 class FakeStmt {
   constructor(db, sql) {
     this.db = db;
@@ -40,45 +48,32 @@ class FakeStmt {
 
 class FakeDb {
   constructor() {
-    this.checks = [];
     this.reports = [];
-    this.alert = new Map();
     this.attempts = [];
-    this.seq = 0;
     this.reportSeq = 0;
     this.tick = 0;
   }
   prepare(sql) {
     return new FakeStmt(this, sql);
   }
-  seedCheck(target, { ok = true, statusCode, errorMessage } = {}) {
-    this.seq += 1;
+  seedReport(row) {
+    this.reportSeq += 1;
     this.tick += 1;
-    this.checks.push({
-      id: this.seq,
-      target,
-      status_code: statusCode ?? (ok ? 200 : 500),
-      ok: ok ? 1 : 0,
-      response_ms: 12,
-      error_message: errorMessage ?? (ok ? null : 'boom'),
-      checked_at: `2026-09-29 00:00:${String(this.tick).padStart(2, '0')}`,
+    this.reports.push({
+      id: this.reportSeq,
+      kind: 'error',
+      message: 'seeded',
+      page_url: null,
+      contact: null,
+      status: 'new',
+      created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
+      ...row,
     });
+    return this.reports[this.reports.length - 1];
   }
   execRun(sql, args) {
-    if (sql.startsWith('INSERT INTO checks')) {
-      const [target, status_code, ok, response_ms, error_message] = args;
-      this.seq += 1;
-      this.tick += 1;
-      this.checks.push({
-        id: this.seq,
-        target,
-        status_code,
-        ok,
-        response_ms,
-        error_message,
-        checked_at: `2026-09-29 00:00:${String(this.tick).padStart(2, '0')}`,
-      });
-      return { success: true };
+    if (sql.startsWith('INSERT INTO checks') || sql.startsWith('INSERT INTO alert_state')) {
+      throw new Error(`FakeDb.run: ${sql} — probe history and alert state moved to R2 (phase 2)`);
     }
     if (sql.startsWith('INSERT INTO reports')) {
       const [kind, message, page_url, contact] = args;
@@ -94,17 +89,6 @@ class FakeDb {
         created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
       });
       return { success: true, meta: { last_row_id: this.reportSeq } };
-    }
-    if (sql.startsWith('INSERT INTO alert_state')) {
-      const [target, consecutive_failures, alerting, last_alert_at] = args;
-      this.alert.set(target, {
-        target,
-        consecutive_failures,
-        alerting,
-        last_alert_at,
-        updated_at: '2026-09-29 00:00:00',
-      });
-      return { success: true };
     }
     if (sql.startsWith('INSERT INTO login_attempts')) {
       const [ip, success] = args;
@@ -129,59 +113,12 @@ class FakeDb {
       const fails = this.attempts.filter((r) => r.ip === ip && r.success === 0).length;
       return [{ fail_count: fails }];
     }
-    if (sql.includes('UNION ALL') && sql.includes('ORDER BY id DESC LIMIT 1')) {
-      // getLatestPerTarget: one branch per configured target, each a bounded
-      // `WHERE target = ? ORDER BY id DESC LIMIT 1` probe.
-      const rows = [];
-      for (const target of args) {
-        const newest = this.checks.filter((r) => r.target === target).pop();
-        if (newest) {
-          rows.push({
-            target: newest.target,
-            status_code: newest.status_code,
-            ok: newest.ok,
-            response_ms: newest.response_ms,
-            error_message: newest.error_message,
-            checked_at: newest.checked_at,
-          });
-        }
-      }
-      return rows;
-    }
-    if (sql.includes('SELECT MAX(id)')) {
-      throw new Error(
-        'FakeDb.all: legacy `SELECT MAX(id) ... GROUP BY target` last-per-target shape is gone; ' +
-          'getLatestPerTarget must use the per-target UNION ALL probe.',
-      );
-    }
-    if (sql.includes('SELECT MAX(checked_at)')) {
-      const max = this.checks.reduce((m, r) => (!m || r.checked_at > m ? r.checked_at : m), null);
-      return [{ last_check: max }];
-    }
-    if (sql.includes('SELECT COUNT(*) AS total')) {
-      const [target] = args;
-      const rows = this.checks.filter((r) => r.target === target);
-      return [{ total: rows.length, ok_count: rows.reduce((n, r) => n + r.ok, 0) }];
-    }
-    if (sql.includes("datetime('now',")) {
-      const [target] = args;
-      return this.checks.filter((r) => r.target === target);
-    }
-    if (sql.includes('FROM (SELECT * FROM checks WHERE target = ?')) {
-      const [target, n] = args;
-      return this.checks.filter((r) => r.target === target).slice(-n);
-    }
-    if (sql.includes('FROM alert_state WHERE target = ?')) {
-      const row = this.alert.get(args[0]);
-      return row ? [row] : [];
+    if (sql.includes('FROM checks') || sql.includes('FROM alert_state')) {
+      throw new Error(`FakeDb.all: ${sql} — probe history and alert state moved to R2 (phase 3)`);
     }
     if (sql.includes('FROM reports')) {
       const [limit] = args;
       return [...this.reports].sort((a, b) => b.id - a.id).slice(0, limit);
-    }
-    if (sql.includes('ORDER BY id DESC')) {
-      const [limit] = args;
-      return [...this.checks].sort((a, b) => b.id - a.id).slice(0, limit);
     }
     throw new Error(`FakeDb.all: unhandled SQL: ${sql}`);
   }
@@ -189,9 +126,30 @@ class FakeDb {
 
 const REPORT_TOKEN = 'test-report-secret';
 const DASHBOARD_PIN = '123456';
-// The worker always has BOTH bindings; `POST /internal/check` needs
-// MONITOR_BUCKET since the probe write path moved off D1 (migration phase 2).
-const envFor = (db, extra = {}) => ({ DB: db, MONITOR_BUCKET: makeR2(), REPORT_TOKEN, DASHBOARD_PIN, ...extra });
+// The worker always has BOTH bindings. Phase 3 made the R2 bucket the source for
+// the public reads too, so a test that wants to assert on them passes its own
+// double in (the default is a fresh empty bucket = "nothing has ever run").
+const envFor = (db, extra = {}) => ({
+  DB: db,
+  MONITOR_BUCKET: extra.MONITOR_BUCKET ?? makeR2(),
+  REPORT_TOKEN,
+  DASHBOARD_PIN,
+  ...extra,
+});
+
+// A bucket holding one healthy run for every target, a fully-up rollup, and one
+// history-ring entry each: the smallest fixture that renders a dashboard as OK
+// with a populated "Recent checks" table.
+function okBucket({ at = '2026-10-03T12:00:00.000Z', ok = () => true } = {}) {
+  const bucket = makeR2();
+  const when = new Date(at);
+  seedRun(bucket, when, TARGETS.map((t) => ({ name: t.name, ok: ok(t) })));
+  seedSummary(bucket, Object.fromEntries(TARGETS.map((t) => [t.name, { okCount: 12, totalCount: 12 }])));
+  for (const t of TARGETS) {
+    seedRing(bucket, t.name, [ringEntry(when, 5, { response_ms: 4321 })]);
+  }
+  return bucket;
+}
 
 function postReport(path, { token = REPORT_TOKEN, body = { message: 'help' }, ip = '10.9.0.1' } = {}) {
   const headers = { 'Content-Type': 'application/json', 'cf-connecting-ip': ip };
@@ -203,8 +161,8 @@ const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
   // The 20s public read cache lives on globalThis (per-isolate in production).
-  // Every test builds its own D1 stub, so a leftover entry would leak one
-  // test's rows into the next — clear it around every test.
+  // Every test builds its own storage doubles, so a leftover entry would leak
+  // one test's bucket into the next — clear it around every test.
   clearPublicCache();
 });
 
@@ -245,15 +203,16 @@ describe('constant-time token helpers', () => {
   });
 });
 
-describe('GET /api/status (public aggregate)', () => {
+describe('GET /api/status (public aggregate, read from R2)', () => {
   it('returns {overall, checked_at, targets[]} with one row per target', async () => {
-    const db = new FakeDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
-    const res = await app.request('/api/status', {}, envFor(db));
+    const bucket = okBucket();
+    const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.overall).toBe('ok');
-    expect(typeof body.checked_at).toBe('string');
+    // `checked_at` is the newest run object's own `run_at` — the D1 version's
+    // MAX(checked_at) over the probe table, same meaning, same ISO form.
+    expect(body.checked_at).toBe('2026-10-03T12:00:00.000Z');
     // Top-level only: `cached` reports whether THIS response came out of the
     // 20s read cache. The per-target rows below must NOT gain the key.
     expect(body.cached).toBe(false);
@@ -263,38 +222,149 @@ describe('GET /api/status (public aggregate)', () => {
         ['last_error', 'last_response_ms', 'last_status', 'name', 'up', 'uptime_24h', 'url'].sort(),
       );
       expect(row.up).toBe(true);
+      expect(row.last_status).toBe(200);
+      // The 12/12 rollup entry, as one decimal, exactly like getUptimeSince.
+      expect(row.uptime_24h).toBe(100);
     }
   });
 
   it('mixed health degrades overall', async () => {
-    const db = new FakeDb();
-    db.seedCheck(TARGETS[0].name, { ok: true });
-    db.seedCheck(TARGETS[1].name, { ok: false });
-    const res = await app.request('/api/status', {}, envFor(db));
+    const bucket = makeR2();
+    const at = new Date('2026-10-03T12:00:00.000Z');
+    seedRun(bucket, at, [
+      { name: TARGETS[0].name, ok: true },
+      { name: TARGETS[1].name, ok: false },
+      ...TARGETS.slice(2).map((t) => ({ name: t.name, ok: true })),
+    ]);
+    const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
     const body = await res.json();
     expect(['degraded', 'down']).toContain(body.overall);
   });
+
+  it('an empty bucket reports every target as never seen, not as an empty list', async () => {
+    // The D1 cold-start shape: a configured target with no probe row rendered as
+    // `up: false` with null details, so the dashboard shows six cards reading
+    // "never checked" instead of vanishing. Returning `targets: []` here would
+    // look like a working monitor with nothing to say.
+    const res = await app.request('/api/status', {}, envFor(new FakeDb()));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.overall).toBe('down');
+    expect(body.checked_at).toBeNull();
+    expect(body.targets).toHaveLength(TARGETS.length);
+    for (const row of body.targets) {
+      expect(row.up).toBe(false);
+      expect(row.last_status).toBeNull();
+      expect(row.last_response_ms).toBeNull();
+      expect(row.uptime_24h).toBeNull();
+    }
+  });
+
+  it('falls back to yesterday when today has no run yet', async () => {
+    // A deploy at 00:02 UTC (or a cron that has not fired today) must still
+    // render the last known state rather than "never checked".
+    const bucket = makeR2();
+    const yesterday = new Date('2026-10-02T23:55:00.000Z');
+    seedRun(bucket, yesterday, TARGETS.map((t) => ({ name: t.name, ok: true })));
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-03T00:02:00.000Z'));
+    try {
+      const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+      const body = await res.json();
+      expect(body.overall).toBe('ok');
+      expect(body.checked_at).toBe(yesterday.toISOString());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the newest run wins, and a partial run does not blank the other cards', async () => {
+    const bucket = makeR2();
+    // Two runs on the same day: the newer key is the answer even though the
+    // earlier one is also present.
+    seedRun(
+      bucket,
+      new Date('2026-10-03T11:50:00.000Z'),
+      TARGETS.map((t) => ({ name: t.name, ok: true })),
+    );
+    // ...and the newest run probes ONE host (what POST /internal/check writes).
+    seedRun(bucket, new Date('2026-10-03T12:00:00.000Z'), [
+      { name: TARGETS[0].name, ok: false, statusCode: 500, errorMessage: 'boom' },
+    ]);
+    // Alert state is the carry-forward for the five the run did not probe.
+    seedAlertState(
+      bucket,
+      Object.fromEntries(
+        TARGETS.slice(1).map((t) => [t.name, { last_state: 'up', consecutive_failures: 0, updated_at: '2026-10-03T11:50:00.000Z' }]),
+      ),
+    );
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-03T12:01:00.000Z'));
+    try {
+      const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+      const body = await res.json();
+      expect(body.checked_at).toBe('2026-10-03T12:00:00.000Z');
+      expect(body.overall).toBe('degraded');
+      const probed = body.targets.find((t) => t.name === TARGETS[0].name);
+      expect(probed).toMatchObject({ up: false, last_status: 500, last_error: 'boom' });
+      // The five unprobed targets keep their carried-forward state instead of
+      // being reported down.
+      for (const t of body.targets.slice(1)) {
+        expect(t.up, t.name).toBe(true);
+        expect(t.last_status).toBeNull();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a target still under the alert threshold reads DOWN, not healthy', async () => {
+    // `last_state` is sticky until three consecutive failures cross the
+    // threshold, so `up` must come from the RUN's ok bit — otherwise one or two
+    // bad probes would render as healthy.
+    const bucket = makeR2();
+    seedRun(bucket, new Date('2026-10-03T12:00:00.000Z'), [
+      { name: TARGETS[0].name, ok: false, statusCode: 503 },
+      ...TARGETS.slice(1).map((t) => ({ name: t.name, ok: true })),
+    ]);
+    seedAlertState(bucket, {
+      [TARGETS[0].name]: { last_state: 'up', consecutive_failures: 1, updated_at: '2026-10-03T12:00:00.000Z' },
+    });
+    const res = await app.request('/api/status', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }));
+    const body = await res.json();
+    expect(body.targets.find((t) => t.name === TARGETS[0].name).up).toBe(false);
+    expect(body.targets.find((t) => t.name === TARGETS[0].name).last_status).toBe(503);
+  });
+
+  it('reads no D1 probe table at all', async () => {
+    // Any SQL against `checks` throws in the stub; a 200 here is the proof the
+    // read path is entirely R2.
+    const db = new FakeDb();
+    const res = await app.request('/api/status', {}, envFor(db, { MONITOR_BUCKET: okBucket() }));
+    expect(res.status).toBe(200);
+  });
 });
 
-describe('GET /api/history (public, target required)', () => {
+describe('GET /api/history (public, target required, read from R2)', () => {
   it('400 when target missing or unknown', async () => {
-    const db = new FakeDb();
-    expect((await app.request('/api/history', {}, envFor(db))).status).toBe(400);
-    expect((await app.request('/api/history?target=nope', {}, envFor(db))).status).toBe(400);
+    const env = envFor(new FakeDb());
+    expect((await app.request('/api/history', {}, env)).status).toBe(400);
+    expect((await app.request('/api/history?target=nope', {}, env)).status).toBe(400);
   });
 
   it('every 400 lists the valid targets, and never the rejected one', async () => {
-    const db = new FakeDb();
+    const env = envFor(new FakeDb());
     const names = TARGETS.map((t) => t.name);
 
-    const missing = await app.request('/api/history', {}, envFor(db));
+    const missing = await app.request('/api/history', {}, env);
     expect(missing.status).toBe(400);
     expect((await missing.json()).valid_targets).toEqual(names);
 
     // Case/near-miss spellings are the realistic typo, and all must be rejected
     // the same way -- with the same recovery hint.
     for (const bad of ['nope', 'Marketplace', 'marketplace ', 'api-meals-2', '', ' ']) {
-      const res = await app.request(`/api/history?target=${encodeURIComponent(bad)}`, {}, envFor(db));
+      const res = await app.request(`/api/history?target=${encodeURIComponent(bad)}`, {}, env);
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.valid_targets).toEqual(names);
@@ -305,22 +375,130 @@ describe('GET /api/history (public, target required)', () => {
     // Every name in the list is actually accepted (the list cannot drift into
     // advertising targets that 400).
     for (const name of names) {
-      const res = await app.request(`/api/history?target=${encodeURIComponent(name)}`, {}, envFor(db));
+      const res = await app.request(`/api/history?target=${encodeURIComponent(name)}`, {}, env);
       expect(res.status).toBe(200);
     }
   });
 
-  it('200 shape for a known target', async () => {
-    const db = new FakeDb();
-    db.seedCheck('marketplace', { ok: true });
-    db.seedCheck('marketplace', { ok: false });
-    const res = await app.request('/api/history?target=marketplace&hours=24', {}, envFor(db));
+  it('200 shape for a known target, oldest first, from the stored ring', async () => {
+    const at = new Date('2026-10-03T12:00:00.000Z');
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', [
+      ringEntry(at, 30),
+      ringEntry(at, 15, { status_code: 500, ok: 0, response_ms: 900 }),
+      ringEntry(at, 5),
+    ]);
+    const res = await app.request(
+      '/api/history?target=marketplace&hours=24',
+      {},
+      envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+    );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.target).toBe('marketplace');
     expect(body.hours).toBe(24);
-    expect(body.checks).toHaveLength(2);
-    expect(body.checks[0].checked_at).toContain('T');
+    expect(Object.keys(body).sort()).toEqual(['checks', 'hours', 'target']);
+    expect(body.checks).toHaveLength(3);
+    // Exactly the four fields the D1 `rowToCheck` projected.
+    for (const check of body.checks) {
+      expect(Object.keys(check).sort()).toEqual(['checked_at', 'ok', 'response_ms', 'status_code']);
+    }
+    // Oldest first, so the sparkline draws left to right.
+    expect(body.checks[0].checked_at).toBe('2026-10-03T11:30:00.000Z');
+    expect(body.checks[2].checked_at).toBe('2026-10-03T11:55:00.000Z');
+    expect(body.checks[1]).toMatchObject({ ok: 0, status_code: 500, response_ms: 900 });
+  });
+
+  it('reads only the requested window', async () => {
+    const at = new Date('2026-10-03T12:00:00.000Z');
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', [
+      ringEntry(at, 60 * 30), // 30h ago — outside a 24h window
+      ringEntry(at, 60 * 25), // 25h ago — outside a 24h window
+      ringEntry(at, 60 * 23), // 23h ago — inside
+      ringEntry(at, 60 * 2), // 2h ago  — inside
+    ]);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at);
+    try {
+      const body = await app
+        .request('/api/history?target=marketplace&hours=24', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }))
+        .then((r) => r.json());
+      expect(body.checks.map((c) => c.checked_at)).toEqual([
+        '2026-10-02T13:00:00.000Z',
+        '2026-10-03T10:00:00.000Z',
+      ]);
+      // A wider window brings the older samples back, from the same object.
+      const wider = await app
+        .request('/api/history?target=marketplace&hours=48', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }))
+        .then((r) => r.json());
+      expect(wider.checks).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects hours over the R2 window with the ceiling named (never clamps)', async () => {
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', [ringEntry(new Date('2026-10-03T12:00:00.000Z'), 5)]);
+    const res = await app.request(
+      `/api/history?target=marketplace&hours=${HISTORY_MAX_WINDOW_HOURS + 1}`,
+      {},
+      envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('history max 48 hours in R2 mode');
+    expect(body.max_hours).toBe(48);
+    // The D1 version answered 168h; the ceiling moved and says so.
+    expect(HISTORY_MAX_WINDOW_HOURS).toBe(48);
+    // Exactly at the ceiling is fine.
+    expect(
+      (
+        await app.request(
+          `/api/history?target=marketplace&hours=${HISTORY_MAX_WINDOW_HOURS}`,
+          {},
+          envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+        )
+      ).status,
+    ).toBe(200);
+  });
+
+  it('an empty bucket answers an empty list, not an error', async () => {
+    const res = await app.request('/api/history?target=marketplace&hours=24', {}, envFor(new FakeDb()));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.checks).toEqual([]);
+    expect(body.target).toBe('marketplace');
+  });
+
+  it('costs one bucket read for the whole window', async () => {
+    // The reason the endpoint reads a rolling document instead of the run
+    // objects its window covers: at the cron cadence `hours=24` is 288 objects.
+    const at = new Date('2026-10-03T12:00:00.000Z');
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', Array.from({ length: 288 }, (_, i) => ringEntry(at, i)));
+    const res = await app.request(
+      '/api/history?target=marketplace&hours=24',
+      {},
+      envFor(new FakeDb(), { MONITOR_BUCKET: bucket }),
+    );
+    const body = await res.json();
+    expect(body.checks).toHaveLength(288);
+    expect(bucket.calls.get).toEqual([historyKey('marketplace')]);
+    expect(bucket.calls.list).toEqual([]);
+  });
+
+  it('caps the response at 500 entries (the D1 LIMIT, unchanged)', async () => {
+    const at = new Date('2026-10-03T12:00:00.000Z');
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', Array.from({ length: 520 }, (_, i) => ringEntry(at, i)));
+    const body = await app
+      .request('/api/history?target=marketplace&hours=48', {}, envFor(new FakeDb(), { MONITOR_BUCKET: bucket }))
+      .then((r) => r.json());
+    expect(body.checks).toHaveLength(500);
+    // Newest survive: the cut is at the FRONT of the oldest-first list.
+    expect(body.checks[499].checked_at).toBe('2026-10-03T12:00:00.000Z');
   });
 });
 
@@ -478,7 +656,13 @@ describe('POST /internal/check (tokened manual probe)', () => {
     const [key] = bucket.keys();
     expect(key).toMatch(/^checks\/\d{4}-\d{2}-\d{2}\/\d{2}-\d{2}\.json$/);
     expect(bucket.read(key).results).toHaveLength(TARGETS.length);
-    expect(db.checks).toHaveLength(0);
+    // The read path's two rollups are written by the manual path as well, or a
+    // hand-run check would show up on the dashboard for 20s and then vanish from
+    // the sparkline.
+    for (const t of TARGETS) {
+      expect(bucket.read(historyKey(t.name)).entries).toHaveLength(1);
+    }
+    expect(bucket.read('state/summary.json').targets[TARGETS[0].name].totalCount).toBe(1);
   });
 
   it('200 probes a single target when scoped', async () => {
@@ -502,7 +686,37 @@ describe('POST /internal/check (tokened manual probe)', () => {
     // must never have to ask whether a document is a full or partial run.
     const [key] = bucket.keys();
     expect(bucket.read(key).results.map((r) => r.name)).toEqual(['marketplace']);
-    expect(db.checks).toHaveLength(0);
+    // ...and it appends to ONE ring, not six: a target the run did not probe
+    // must not gain a sample that was never observed.
+    const rings = bucket.keys().filter((k) => k.startsWith('state/history/'));
+    expect(rings).toEqual(['state/history/marketplace.json']);
+    expect(bucket.read(historyKey('marketplace')).entries).toHaveLength(1);
+  });
+});
+
+describe('readRecentChecks (dashboard table, merged from the rings)', () => {
+  const at = new Date('2026-10-03T12:00:00.000Z');
+  const env = (bucket) => envFor(new FakeDb(), { MONITOR_BUCKET: bucket });
+
+  it('merges every target newest-first and honours the limit', async () => {
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', [ringEntry(at, 30), ringEntry(at, 10)]);
+    seedRing(bucket, 'acacia', [ringEntry(at, 20, { status_code: 500, ok: 0 })]);
+    // A target with no ring at all (never probed) contributes nothing.
+    const rows = await readRecentChecks(env(bucket), 3);
+    expect(rows.map((r) => `${r.checked_at} ${r.target}`)).toEqual([
+      `${new Date(at.getTime() - 10 * 60_000).toISOString()} marketplace`,
+      `${new Date(at.getTime() - 20 * 60_000).toISOString()} acacia`,
+      `${new Date(at.getTime() - 30 * 60_000).toISOString()} marketplace`,
+    ]);
+    expect(rows[1]).toMatchObject({ target: 'acacia', ok: 0, status_code: 500 });
+    // One GET per configured target, whatever the row count.
+    expect(bucket.calls.get.sort()).toEqual(TARGETS.map((t) => historyKey(t.name)).sort());
+    expect(bucket.calls.list).toEqual([]);
+  });
+
+  it('an empty bucket yields no rows (the table renders its own empty state)', async () => {
+    expect(await readRecentChecks(env(makeR2()), 20)).toEqual([]);
   });
 });
 
@@ -518,8 +732,8 @@ describe('GET / dashboard (cookie-session HTML)', () => {
 
   it('200 HTML contains status-pill, dark bg, Check Now, lists', async () => {
     const db = new FakeDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
-    const env = envFor(db);
+    const bucket = okBucket();
+    const env = envFor(db, { MONITOR_BUCKET: bucket });
     const login = await app.request(
       '/login',
       {
@@ -547,12 +761,24 @@ describe('GET / dashboard (cookie-session HTML)', () => {
     expect(html).toContain('Recent reports');
     expect(html).toContain('prefers-reduced-motion');
     expect(html).toContain('marketplace');
+    // The server-rendered "Recent checks" table is built from the rings now, so
+    // the seeded `response_ms` appearing in the page is proof the page render
+    // read the same documents /api/history serves.
+    expect(html).toContain('4321');
   });
 
   it('accepts session cookie too and escapes report content', async () => {
     const db = new FakeDb();
-    db.seedCheck('marketplace', { ok: false, errorMessage: '<img src=x>' });
-    const env = envFor(db);
+    const bucket = makeR2();
+    const at = new Date('2026-10-03T12:00:00.000Z');
+    // The probe error string is operator-adjacent data (a probe URL can carry a
+    // token), and it is the one server-rendered value left: it must arrive
+    // escaped.
+    seedRun(bucket, at, [
+      { name: TARGETS[0].name, ok: false, errorMessage: '<img src=x>' },
+      ...TARGETS.slice(1).map((t) => ({ name: t.name, ok: true })),
+    ]);
+    const env = envFor(db, { MONITOR_BUCKET: bucket });
     await app.request(
       '/report/error',
       {
@@ -585,7 +811,7 @@ describe('GET / dashboard (cookie-session HTML)', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).not.toContain('<script>alert(1)</script>');
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<img src=x>');
+    expect(html).toContain('&lt;img src=x&gt;');
   });
 });

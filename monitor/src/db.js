@@ -1,22 +1,24 @@
-import { TARGETS } from './targets.js';
-
 // D1 query helpers for the monitor worker. Every helper takes the D1 binding
 // (`env.DB`) as its first argument so routes stay thin and tests can pass a stub.
 //
-// SCOPE AFTER THE R2 MIGRATION (2026-10-03, phase 2): this module is the
-// READ side plus `login_attempts`, and nothing else. Every WRITE for probe
-// history, alert state, and intake reports moved to R2 (`src/storage.js`), and
-// the three D1 retention DELETEs were superseded by the R2 key sweep in
-// `index.js#runRetention` — an R2 sweep deletes objects by key, so there is no
-// `DELETE ... WHERE` left to write here. What remains:
-//   - probe reads (`getLatestPerTarget`, `getLastCheckTime`, `getUptimeSince`,
-//     `getHistory`) — still served from D1, migrating to R2 in phase 3;
-//   - intake report reads (`getRecentReports`, `getRecentChecks`) — phase 4/5;
+// SCOPE AFTER THE R2 MIGRATION (2026-10-03, phases 2-3): this module is the
+// intake-reports READ side plus `login_attempts`, and nothing else. Every WRITE
+// for probe history, alert state, and intake reports moved to R2
+// (`src/storage.js`), the three D1 retention DELETEs were superseded by the R2
+// key sweep in `index.js#runRetention` (an R2 sweep deletes objects by key, so
+// there is no `DELETE ... WHERE` left to write here), and the PROBE READS are
+// gone as of phase 3. What remains:
+//   - intake report reads (`getRecentReports`) — phase 5 removes the last of
+//     them, when the dashboard's reports list moves to `GET /api/reports`;
 //   - the PIN gate (`recordLoginAttempt`, `getRecentFailCount`,
 //     `clearOldLoginAttempts`) — the last D1-only feature, phase 6.
 // The removed helpers are gone rather than left dead: an unused D1 write path is
 // exactly what phase 6's `grep env.DB` gate is meant to catch, so keeping one
-// "just in case" would make the migration unprovable.
+// "just in case" would make the migration unprovable. The same applies to the
+// probe reads this commit deleted (`getLatestPerTarget`, `getLastCheckTime`,
+// `getUptimeSince`, `getHistory`, `getRecentChecks`): the answers now come from
+// the run objects, `state/summary.json`, and `state/history/<target>.json`, and
+// the SQL that produced them no longer describes where the data lives.
 //
 // Time storage note: the schema defaults `checked_at` to SQLite
 // `datetime('now')` ("YYYY-MM-DD HH:MM:SS" UTC). `toIso()` converts that form
@@ -30,103 +32,22 @@ export function toIso(value) {
   return `${s.replace(' ', 'T')}Z`;
 }
 
-function rowToCheck(row) {
-  return {
-    status_code: row.status_code,
-    ok: row.ok,
-    response_ms: row.response_ms,
-    checked_at: toIso(row.checked_at),
-  };
-}
-
-// `recordCheck` used to live here (one INSERT per target per run). It moved to
-// R2 with the rest of the probe write path — see `writeRunResults` in
-// `index.js`, which stores the whole run as ONE object instead of 5 rows.
-
-// Newest check row per target (raw rows, includes target + error_message).
-//
-// PERFORMANCE (2026-09-30): this was `WHERE id IN (SELECT MAX(id) FROM checks
-// GROUP BY target)`, which plan-decompiles to
-//   SEARCH checks USING INTEGER PRIMARY KEY (rowid=?)
-//   LIST SUBQUERY 1
-//   SCAN checks USING COVERING INDEX idx_checks_target_id   <- O(rows)
-//   CREATE BLOOM FILTER
-// The outer probe set (one id per target) is only obtainable by walking the
-// whole (target, id DESC) index, so the query is O(rows) in the probe table
-// even though it returns one row per target. `checks` grows ~1 row/target per
-// probe cycle, so this is the query that degrades fastest as uptime accrues.
-//
-// D1 does not run ANALYZE, so `sqlite_stat1` is absent and SQLite cannot skip-
-// scan the probe set; the O(rows) covering scan is therefore unavoidable in
-// ANY self-contained form (verified: `DISTINCT target`, `GROUP BY target`,
-// and a correlated `MAX(id)` rewrite all still emit `SCAN ... USING COVERING
-// INDEX idx_checks_target_id`).
-//
-// The probe set does not need to come from the table at all: `TARGETS` lives in
-// code (`src/targets.js`), so we drive one bounded index SEARCH per configured
-// target instead of scanning for the target list:
-//
-//   SEARCH checks USING INDEX idx_checks_target_id (target=?)
-//
-// That is O(targets * log(rows)) with no scan, measured flat at ~0.011 ms/run
-// from 5k to 320k rows (vs 5.2 ms -> 38 ms for the old form). A configured
-// target with no rows yet simply contributes zero rows, which matches the old
-// `IN (...)` form: a target absent from `checks` was never in the result set.
-// Callers pair rows with `TARGETS` by name, so row order is irrelevant and the
-// wire shape (the six projected fields, per target) is unchanged.
-const LATEST_PER_TARGET_BRANCH =
-  'SELECT target, status_code, ok, response_ms, error_message, checked_at\n' +
-  '       FROM checks WHERE target = ? ORDER BY id DESC LIMIT 1';
-
-export async function getLatestPerTarget(db, targets = TARGETS) {
-  const names = targets.map((t) => (typeof t === 'string' ? t : t.name));
-  if (!names.length) return [];
-  const sql = names.map(() => `SELECT * FROM (\n${LATEST_PER_TARGET_BRANCH}\n)`).join('\nUNION ALL\n');
-  const res = await db
-    .prepare(sql)
-    .bind(...names)
-    .all();
-  return res.results ?? [];
-}
-
-// ISO time of the most recent check run across all targets, or null when empty.
-export async function getLastCheckTime(db) {
-  const row = await db.prepare('SELECT MAX(checked_at) AS last_check FROM checks').first();
-  return row?.last_check ?? null;
-}
-
-// 24h-style uptime percentage for one target since `sinceSqliteUtc`
-// ("YYYY-MM-DD HH:MM:SS"). Null when there are no rows in the window.
-export async function getUptimeSince(db, target, sinceSqliteUtc) {
-  const row = await db
-    .prepare('SELECT COUNT(*) AS total, COALESCE(SUM(ok), 0) AS ok_count FROM checks WHERE target = ? AND checked_at >= ?')
-    .bind(target, sinceSqliteUtc)
-    .first();
-  const total = row?.total ?? 0;
-  if (!total) return null;
-  return Math.round(((row.ok_count ?? 0) / total) * 1000) / 10;
-}
-
-// History for one target over the last `hours` hours, oldest first, max `limit`.
-export async function getHistory(db, target, hours, limit = 500) {
-  const res = await db
-    .prepare(
-      `SELECT status_code, ok, response_ms, checked_at
-       FROM checks
-       WHERE target = ? AND checked_at >= datetime('now', ?)
-       ORDER BY checked_at ASC
-       LIMIT ?`,
-    )
-    .bind(target, `-${hours} hours`, limit)
-    .all();
-  return (res.results ?? []).map(rowToCheck);
-}
-
 // `getLastNChecks`, `getAlertState`, and `upsertAlertState` used to live here.
 // All three moved to R2: alert evaluation now reads and rewrites ONE
 // `state/alert_state.json` document and derives "3 consecutive failures" from
 // the counter inside it, instead of re-reading the last three rows per target on
 // every run. See `evaluateAlerts` in `index.js`.
+//
+// The probe READS went the same way in phase 3, and their replacements are
+// named here so the next reader does not go looking for a query that is gone:
+//   - latest result per target → `newestRun()` reads the newest `checks/<date>/`
+//     object, and `state/alert_state.json` carries a target forward when the
+//     newest run did not probe it (`readStatusAggregate`)
+//   - 24h uptime → the pre-summed `targets{}` of `state/summary.json`
+//   - history window → `state/history/<target>.json`, the rolling ring
+//     (`updateHistoryRing` writes it, `readHistoryWindow` answers from it)
+//   - dashboard "Recent checks" → merged from every target's ring
+//     (`readRecentChecks`)
 
 // --- A.4 intake + dashboard helpers (append-only; A.3 helpers above untouched) ---
 

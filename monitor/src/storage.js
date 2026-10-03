@@ -15,6 +15,7 @@
 //                                      one object per intake report
 //   state/alert_state.json             { <target>: { last_state, consecutive_failures, updated_at } }
 //   state/summary.json                 rolling 24h per-target { okCount, totalCount }
+//   state/history/<target>.json        rolling per-target check ring (the /api/history read path)
 //
 // LEXICOGRAPHIC ORDER IS THE SORT ORDER, AND THAT IS THE POINT: R2 `list()`
 // returns keys in UTF-8 byte order, so `checks/2026-10-03/23-55.json` sorts
@@ -133,6 +134,39 @@ export function alertStateKey() {
 // `uptime_24h` for 5 targets.
 export function summaryKey() {
   return `${STATE_PREFIX}/summary.json`;
+}
+
+// Rolling per-target check ring: `state/history/<target>.json` = { target,
+// updated_at, entries: [{ checked_at, status_code, ok, response_ms }] }.
+//
+// WHY A SECOND ROLLUP, when the `checks/<date>/` objects already hold every
+// result (2026-10-03, phase 3 — the second owner-approved deviation, the first
+// being `summary.json` above): `/api/history` has to serve a WINDOW, and R2 has
+// no range read. The faithful port — list the day prefixes the window touches
+// and GET every run object inside it — is 288 objects for `hours=24` at the
+// 5-minute cron cadence, and the Workers subrequest budget on the free plan is
+// 50 per invocation. A faithful port is not merely slow here, it fails: the
+// dashboard's six `/api/history` calls (one per target card) cannot each afford
+// 288 GETs, and neither can a single one. The ring collapses the whole read to
+// ONE GET and keeps exactly the entries the endpoint is able to return (its
+// 500-entry cap), so no byte is fetched that would not be rendered.
+//
+// Per target rather than one shared document, so a card's read costs one GET and
+// stays inside the budget no matter how many cards are open.
+//
+// NOT DATED, so the retention sweep (age-based, `checks/` + `reports/`) leaves
+// it alone for the same reason it leaves `alert_state.json` alone: it is
+// rewritten in place every run, and a year-old ring is exactly the history that
+// must survive a quiet period.
+export function historyKey(target) {
+  const name = String(target ?? '').trim();
+  // Target names are code-declared in `targets.js`, but the value reaches this
+  // helper from a QUERY STRING (`/api/history?target=…`) in the read path, so
+  // the key is built only from a closed character set. A `/` or `..` in a name
+  // would file a document outside `state/history/`; rejecting is cheaper than
+  // discovering that later.
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error(`invalid history target: ${target}`);
+  return `${STATE_PREFIX}/history/${name}.json`;
 }
 
 // True when an object's `uploaded` timestamp is strictly older than

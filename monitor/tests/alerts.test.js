@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateAlerts, updateSummary, ALERT_FAIL_THRESHOLD } from '../src/index.js';
-import { alertStateKey, summaryKey } from '../src/storage.js';
-import { makeR2, webhookCollector } from './helpers/fake-r2.js';
+import {
+  evaluateAlerts,
+  updateSummary,
+  updateHistoryRing,
+  readHistoryWindow,
+  ALERT_FAIL_THRESHOLD,
+  HISTORY_MAX_ENTRIES,
+} from '../src/index.js';
+import { alertStateKey, summaryKey, historyKey } from '../src/storage.js';
+import { makeR2, webhookCollector, ringEntry } from './helpers/fake-r2.js';
 
 // Alert-transition guard on the R2 state document.
 //
@@ -190,5 +197,115 @@ describe('rolling 24h summary (state/summary.json)', () => {
     // The whole point: `/api/status` reads ONE key, not 288 run objects.
     expect(bucket.calls.get).toEqual([summaryKey()]);
     expect(bucket.read(summaryKey()).targets.marketplace.totalCount).toBe(1);
+  });
+});
+describe('rolling per-target history ring (state/history/<target>.json)', () => {
+  const env = (bucket) => ({ MONITOR_BUCKET: bucket });
+
+  it('appends one entry per probed target, newest last, and skips the rest', async () => {
+    const bucket = makeR2();
+    const at = (minutes) => new Date(NOW.getTime() - minutes * 60_000);
+
+    await updateHistoryRing(env(bucket), [T('marketplace', true), T('acacia', false)], at(20));
+    await updateHistoryRing(env(bucket), [T('marketplace', false)], at(5));
+
+    const market = bucket.read(historyKey('marketplace'));
+    expect(market.target).toBe('marketplace');
+    expect(market.updated_at).toBe(at(5).toISOString());
+    expect(market.entries).toHaveLength(2);
+    expect(market.entries[0]).toEqual({
+      checked_at: at(20).toISOString(),
+      status_code: 200,
+      ok: 1,
+      response_ms: 12,
+    });
+    expect(market.entries[1]).toMatchObject({ ok: 0, status_code: 500 });
+    // A target absent from this run's results gets NO invented sample: "not probed"
+    // is not a healthy observation.
+    expect(bucket.read(historyKey('acacia')).entries).toHaveLength(1);
+    // ...and a target this run never touched at all has no document yet.
+    expect(bucket.keys().filter((k) => k.startsWith('state/history/')).sort()).toEqual([
+      'state/history/acacia.json',
+      'state/history/marketplace.json',
+    ]);
+  });
+
+  it('drops entries past the served window', async () => {
+    const bucket = makeR2();
+    // One sample an hour, for 60 hours: the ones older than the 48h window the
+    // endpoint will serve are gone, the rest survive.
+    const hourly = [];
+    for (let h = 1; h <= 60; h += 1) hourly.push(ringEntry(NOW, h * 60, { response_ms: h }));
+    bucket.seed(historyKey('marketplace'), {
+      target: 'marketplace',
+      updated_at: NOW.toISOString(),
+      entries: hourly,
+    });
+    await updateHistoryRing(env(bucket), [T('marketplace', true)], NOW);
+    const kept = bucket.read(historyKey('marketplace')).entries;
+    // 47 hourly samples inside the window, plus the one this run appended.
+    expect(kept).toHaveLength(48);
+    // 48h exactly is already unanswerable, so it is not kept; anything newer is.
+    expect(kept.some((e) => e.checked_at === ringEntry(NOW, 48 * 60).checked_at)).toBe(false);
+    expect(kept[kept.length - 1].checked_at).toBe(NOW.toISOString());
+    // Append order is run order, not sorted order — the read path sorts the
+    // window itself (see `readHistoryWindow`), so a run that lands out of order
+    // cannot corrupt the series.
+    expect(kept[0].checked_at).toBe(ringEntry(NOW, 60).checked_at);
+  });
+
+  it('caps the document at the endpoint\'s own entry limit, keeping the newest', async () => {
+    const bucket = makeR2();
+    // More samples inside the window than the endpoint can return — what an
+    // operator hammering POST /internal/check produces.
+    const full = Array.from({ length: HISTORY_MAX_ENTRIES + 5 }, (_, i) =>
+      ringEntry(NOW, i, { response_ms: i }),
+    );
+    bucket.seed(historyKey('marketplace'), {
+      target: 'marketplace',
+      updated_at: NOW.toISOString(),
+      entries: full,
+    });
+    await updateHistoryRing(env(bucket), [T('marketplace', true)], NOW);
+    const capped = bucket.read(historyKey('marketplace')).entries;
+    expect(capped).toHaveLength(HISTORY_MAX_ENTRIES);
+    // Newest survives: the run appended at NOW is the last entry.
+    expect(capped[capped.length - 1].checked_at).toBe(NOW.toISOString());
+  });
+
+  it('is readable by the endpoint: one object serves the whole window', async () => {
+    const bucket = makeR2();
+    const at = (hours) => new Date(NOW.getTime() - hours * 3600_000);
+    bucket.seed(historyKey('marketplace'), {
+      target: 'marketplace',
+      updated_at: NOW.toISOString(),
+      entries: [ringEntry(at(47), 0), ringEntry(at(20), 0), ringEntry(at(2), 0, { response_ms: 99 })],
+    });
+
+    const payload = await readHistoryWindow(env(bucket), 'marketplace', 24, NOW);
+    expect(payload.checks).toHaveLength(2);
+    expect(payload.checks.map((c) => c.checked_at)).toEqual([
+      at(20).toISOString(),
+      at(2).toISOString(),
+    ]);
+    // ONE get, no listing: the whole point of the ring.
+    expect(bucket.calls.get).toEqual([historyKey('marketplace')]);
+    expect(bucket.calls.list).toEqual([]);
+  });
+
+  it('a cold bucket reads as an empty series, not an error', async () => {
+    const payload = await readHistoryWindow(env(makeR2()), 'marketplace', 24, NOW);
+    expect(payload).toEqual({ target: 'marketplace', hours: 24, checks: [] });
+  });
+
+  it('a corrupt ring throws instead of being read as "no history"', async () => {
+    const bucket = makeR2();
+    bucket.seed(historyKey('marketplace'), null);
+    bucket.get = async () => ({
+      json: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    });
+    await expect(readHistoryWindow(env(bucket), 'marketplace', 24, NOW)).rejects.toThrow();
   });
 });

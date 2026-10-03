@@ -244,6 +244,12 @@ describe('scheduled() cron wiring (R2)', () => {
     const doc = bucket.read('checks/2026-10-03/00-12.json');
     expect(doc.run_at).toBe(HOUR_0.toISOString());
     expect(doc.results.map((r) => r.name)).toEqual(TARGETS.map((t) => t.name));
+    // The read path's per-target rings are written by the same pass, so
+    // /api/history is never a window behind the run objects it was cut from.
+    for (const t of TARGETS) {
+      const ring = bucket.read(`state/history/${t.name}.json`);
+      expect(ring.entries.map((e) => e.checked_at)).toEqual([HOUR_0.toISOString()]);
+    }
   });
 
   it('every cron run writes its own object — 5 targets, one object per tick', async () => {
@@ -304,9 +310,28 @@ describe('scheduled() cron wiring (R2)', () => {
     expect(errors.map((e) => e.join(' '))).toEqual([
       expect.stringContaining('monitor summary update failed'),
     ]);
-    // The parts that matter still happened: the run object and the alert state.
+    // The parts that matter still happened: the run object, the alert state, and
+    // the rings — a failed summary must not skip the steps after it either.
     expect(bucket.keys().some((k) => k.startsWith('checks/2026-10-03/'))).toBe(true);
     expect(Object.keys(bucket.read('state/alert_state.json'))).toEqual(TARGETS.map((t) => t.name));
+    expect(bucket.keys().filter((k) => k.startsWith('state/history/'))).toHaveLength(TARGETS.length);
+  });
+
+  it('a ring failure is swallowed with its own log line, and the cron still completes', async () => {
+    pinClock();
+    const bucket = makeR2({ failOn: { put: 'state/history/' } });
+    const errors = [];
+    vi.spyOn(console, 'error').mockImplementation((...a) => errors.push(a));
+
+    await expect(scheduled({}, envWith(bucket))).resolves.toBeUndefined();
+
+    expect(errors.map((e) => e.join(' '))).toEqual([
+      expect.stringContaining('monitor history ring update failed'),
+    ]);
+    // The alerting half and the sweep still ran.
+    expect(bucket.keys().some((k) => k.startsWith('checks/2026-10-03/'))).toBe(true);
+    expect(Object.keys(bucket.read('state/alert_state.json'))).toEqual(TARGETS.map((t) => t.name));
+    expect(bucket.read('state/summary.json')).toBeTruthy();
   });
 
   it('probes every target over the network exactly once, and retention fetches nothing', async () => {

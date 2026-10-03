@@ -15,6 +15,7 @@ import {
   reportsPrefix,
   alertStateKey,
   summaryKey,
+  historyKey,
   isOlderThan,
   readJson,
   writeJson,
@@ -114,6 +115,20 @@ describe('storage key layout', () => {
     expect(alertStateKey().startsWith(`${STATE_PREFIX}/`)).toBe(true);
     expect(summaryKey().startsWith(`${STATE_PREFIX}/`)).toBe(true);
     expect(alertStateKey()).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('historyKey is per target, under state/, and rejects anything outside the name set', () => {
+    // The read path builds this from a QUERY STRING, so the key is only ever
+    // assembled from a closed character set: a `/` or a `..` would file a
+    // document outside `state/history/`.
+    expect(historyKey('marketplace')).toBe('state/history/marketplace.json');
+    expect(historyKey('api-meals')).toBe('state/history/api-meals.json');
+    expect(historyKey('self-check').startsWith(`${STATE_PREFIX}/history/`)).toBe(true);
+    // Undated and undeletable by the age sweep, like the other state documents.
+    expect(historyKey('marketplace')).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    for (const bad of ['', '  ', 'Marketplace', '../alert_state', 'a/b', 'a.json', null, undefined]) {
+      expect(() => historyKey(bad), String(bad)).toThrow(/invalid history target/);
+    }
   });
 
   it('top-level prefixes are the three namespaced collections', () => {

@@ -8,117 +8,58 @@ import {
 } from '../src/index.js';
 import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
+import { makeR2, seedRun, seedRing, ringEntry } from './helpers/fake-r2.js';
 
 // Read-through cache coverage for the two PUBLIC dashboard endpoints
 // (/api/status, /api/history). The contract under test:
 //
-//   - a second read inside the 20s TTL performs ZERO D1 prepares (no query)
-//   - once the TTL expires the endpoint queries D1 again (never stale-past-TTL)
+//   - a second read inside the 20s TTL touches the bucket ZERO times
+//   - once the TTL expires the endpoint reads again (never stale-past-TTL)
 //   - /api/history entries are keyed by `target|hours`
-//   - a failing query is NEVER cached — the next read retries D1
+//   - a failing read is NEVER cached — the next read retries
 //
-// Every assertion here counts `prepare()` calls on the D1 stub: that is the
-// unit of work the cache exists to remove.
-
-class SpyStmt {
-  constructor(db, sql) {
-    this.db = db;
-    this.sql = sql;
-    this.args = [];
-  }
-  bind(...args) {
-    this.args = args;
-    return this;
-  }
-  async all() {
-    return { results: this.db.execAll(this.sql, this.args) };
-  }
-  async first() {
-    const rows = this.db.execAll(this.sql, this.args);
-    return rows[0] ?? null;
-  }
-  async run() {
-    return { success: true };
-  }
-}
-
-class SpyDb {
-  constructor({ throwOnPrepare = false } = {}) {
-    this.prepareCount = 0;
-    this.throwOnPrepare = throwOnPrepare;
-    this.checks = [];
-    this.reports = [];
-    this.seq = 0;
-    this.tick = 0;
-  }
-  prepare(sql) {
-    this.prepareCount += 1;
-    if (this.throwOnPrepare) throw new Error('D1 unavailable');
-    return new SpyStmt(this, sql);
-  }
-  seedCheck(target, { ok = true, responseMs = 12 } = {}) {
-    this.seq += 1;
-    this.tick += 1;
-    this.checks.push({
-      id: this.seq,
-      target,
-      status_code: ok ? 200 : 500,
-      ok: ok ? 1 : 0,
-      response_ms: responseMs,
-      error_message: null,
-      checked_at: `2026-09-30 00:00:${String(this.tick).padStart(2, '0')}`,
-    });
-  }
-  execAll(sql, args) {
-    if (sql.includes('UNION ALL') && sql.includes('ORDER BY id DESC LIMIT 1')) {
-      const rows = [];
-      for (const target of args) {
-        const newest = this.checks.filter((r) => r.target === target).pop();
-        if (newest) {
-          rows.push({
-            target: newest.target,
-            status_code: newest.status_code,
-            ok: newest.ok,
-            response_ms: newest.response_ms,
-            error_message: newest.error_message,
-            checked_at: newest.checked_at,
-          });
-        }
-      }
-      return rows;
-    }
-    if (sql.includes('SELECT MAX(checked_at)')) {
-      const max = this.checks.reduce((m, r) => (!m || r.checked_at > m ? r.checked_at : m), null);
-      return [{ last_check: max }];
-    }
-    if (sql.includes('SELECT COUNT(*) AS total')) {
-      const [target] = args;
-      const rows = this.checks.filter((r) => r.target === target);
-      return [{ total: rows.length, ok_count: rows.reduce((n, r) => n + r.ok, 0) }];
-    }
-    if (sql.includes("datetime('now',")) {
-      const [target] = args;
-      return this.checks.filter((r) => r.target === target);
-    }
-    if (sql.includes('FROM reports')) {
-      const [limit] = args;
-      return this.reports.slice(0, limit);
-    }
-    if (sql.includes('ORDER BY id DESC')) {
-      const [limit] = args;
-      return [...this.checks].sort((a, b) => b.id - a.id).slice(0, limit);
-    }
-    throw new Error(`SpyDb.execAll: unhandled SQL: ${sql}`);
-  }
-}
-
-const envFor = (db) => ({ DB: db, DASHBOARD_PIN: '123456' });
-const get = (path, db) => app.request(path, {}, envFor(db));
+// RE-POINTED AT R2 (2026-10-03, phase 3). The D1 version of this file counted
+// `prepare()` calls on a SQL stub; the unit of work the cache removes is now a
+// bucket GET plus the LIST that finds the newest run key, so that is what is
+// counted here. Nothing about the cache changed — only what it is in front of —
+// which is why the assertions are the same assertions.
 
 const T0 = Date.parse('2026-09-30T12:00:00Z');
+const T = (ms) => new Date(T0 + ms);
 
-// The routes read the clock through Date.now(), so faking Date is what lets the
-// test step across the TTL boundary deterministically (no sleeping).
+// Total storage operations issued against the bucket — the work the 20s window
+// collapses. `list` counts: finding the newest run key is a listing, and a
+// cache that skipped it would be skipping the read we care about.
+function work(bucket) {
+  return bucket.calls.get.length + bucket.calls.list.length;
+}
+
+// The dashboard route still server-renders the reports list out of D1 (that read
+// moves to `GET /api/reports` in phase 5), so a page render still needs a DB
+// binding. Nothing else in this file does.
+const reportDb = () => ({
+  prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) }),
+});
+
+const envFor = (bucket, extra = {}) => ({
+  MONITOR_BUCKET: bucket,
+  DB: reportDb(),
+  DASHBOARD_PIN: '123456',
+  ...extra,
+});
+const get = (path, bucket) => app.request(path, {}, envFor(bucket));
+
+// A bucket holding one healthy run for every target, plus a 100%-uptime rollup.
+function seeded({ ok = () => true } = {}) {
+  const bucket = makeR2();
+  seedRun(
+    bucket,
+    T(0),
+    TARGETS.map((t) => ({ name: t.name, ok: ok(t) })),
+  );
+  return bucket;
+}
+
 beforeEach(() => {
   clearPublicCache();
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -131,22 +72,21 @@ afterEach(() => {
 });
 
 describe('GET /api/status — 20s TTL cache', () => {
-  it('second read inside the TTL performs zero D1 prepares', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+  it('second read inside the TTL performs zero bucket operations', async () => {
+    const bucket = seeded();
 
-    const first = await get('/api/status', db);
+    const first = await get('/api/status', bucket);
     expect(first.status).toBe(200);
-    const afterFirst = db.prepareCount;
+    const afterFirst = work(bucket);
     expect(afterFirst).toBeGreaterThan(0);
 
     // 10s in: still inside the TTL.
     vi.setSystemTime(T0 + 10_000);
-    const second = await get('/api/status', db);
+    const second = await get('/api/status', bucket);
 
     expect(second.status).toBe(200);
-    expect(db.prepareCount).toBe(afterFirst);
-    // Served from cache: the DATA is byte-identical, not a re-query. The
+    expect(work(bucket)).toBe(afterFirst);
+    // Served from cache: the DATA is byte-identical, not a re-read. The
     // per-response `cached` flag is the one key that must differ (false on the
     // miss, true on the hit) -- it is not part of the cached value.
     const { cached: coldFlag, ...coldPayload } = await first.json();
@@ -156,200 +96,223 @@ describe('GET /api/status — 20s TTL cache', () => {
     expect(warmPayload).toEqual(coldPayload);
   });
 
-  it('re-queries D1 once the TTL expires (never serves past TTL)', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+  it('re-reads the bucket once the TTL expires (never serves past TTL)', async () => {
+    const bucket = seeded();
 
-    const first = await get('/api/status', db);
-    const afterFirst = db.prepareCount;
+    const first = await get('/api/status', bucket);
+    const afterFirst = work(bucket);
     const firstBody = await first.json();
 
-    // Fresh rows land in D1, but the cached entry is still valid at TTL - 1ms.
-    db.seedCheck(TARGETS[0].name, { ok: false, responseMs: 999 });
+    // A newer run lands (its own minute, so it is a genuinely newer key).
+    seedRun(
+      bucket,
+      T(60_000),
+      TARGETS.map((t) => ({ name: t.name, ok: false, responseMs: 999 })),
+    );
     vi.setSystemTime(T0 + PUBLIC_CACHE_TTL_MS - 1);
-    const justBefore = await get('/api/status', db);
-    expect(db.prepareCount).toBe(afterFirst);
+    const justBefore = await get('/api/status', bucket);
+    expect(work(bucket)).toBe(afterFirst);
     expect((await justBefore.json()).overall).toBe(firstBody.overall);
 
-    // At exactly TTL the entry is expired and D1 runs again.
+    // At exactly TTL the entry is expired and the bucket is read again.
     vi.setSystemTime(T0 + PUBLIC_CACHE_TTL_MS);
-    const atTtl = await get('/api/status', db);
-    expect(db.prepareCount).toBeGreaterThan(afterFirst);
+    const atTtl = await get('/api/status', bucket);
+    expect(work(bucket)).toBeGreaterThan(afterFirst);
 
     const freshBody = await atTtl.json();
     expect(freshBody.overall).not.toBe(firstBody.overall);
-    expect(freshBody.targets.find((t) => t.name === TARGETS[0].name).last_response_ms).toBe(999);
+    expect(freshBody.targets[0].last_response_ms).toBe(999);
   });
 
   it('serves a stale-free aggregate to every viewer in the window', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+    const bucket = seeded();
 
-    await get('/api/status', db);
-    const afterFirst = db.prepareCount;
-    // Ten concurrent dashboards inside one TTL window share the single query.
+    await get('/api/status', bucket);
+    const afterFirst = work(bucket);
+    // Ten concurrent dashboards inside one TTL window share the single read.
     const bodies = await Promise.all(
-      Array.from({ length: 10 }, () => get('/api/status', db).then((r) => r.json())),
+      Array.from({ length: 10 }, () => get('/api/status', bucket).then((r) => r.json())),
     );
-    expect(db.prepareCount).toBe(afterFirst);
+    expect(work(bucket)).toBe(afterFirst);
     expect(new Set(bodies.map((b) => b.overall))).toEqual(new Set(['ok']));
+  });
+
+  it('one uncached read costs three objects, not one per target', async () => {
+    // The fan-out this cache (and the rollup) exist to remove: a LIST to find the
+    // newest run key, that run, and the two state documents. Growing with
+    // TARGETS.length instead would be the D1 shape coming back.
+    const bucket = seeded();
+    await get('/api/status', bucket);
+    expect(bucket.calls.list).toHaveLength(1);
+    expect(bucket.calls.get).toHaveLength(3);
+    expect(bucket.calls.get.some((k) => k.startsWith('checks/'))).toBe(true);
+    expect(bucket.calls.get.filter((k) => k.startsWith('state/')).sort()).toEqual([
+      'state/alert_state.json',
+      'state/summary.json',
+    ]);
   });
 });
 
 describe('GET /api/history — 20s TTL cache keyed by target|hours', () => {
-  it('second read of the same key performs zero D1 prepares', async () => {
-    const db = new SpyDb();
-    db.seedCheck('marketplace', { ok: true });
-    db.seedCheck('marketplace', { ok: false });
+  const ring = (bucket, target, minutes = []) =>
+    seedRing(bucket, target, minutes.map((m) => ringEntry(T0, m)));
 
-    const first = await get('/api/history?target=marketplace&hours=24', db);
+  it('second read of the same key performs zero bucket operations', async () => {
+    const bucket = makeR2();
+    ring(bucket, 'marketplace', [30, 10]);
+
+    const first = await get('/api/history?target=marketplace&hours=24', bucket);
     expect(first.status).toBe(200);
-    const afterFirst = db.prepareCount;
+    const afterFirst = work(bucket);
+    expect(afterFirst).toBe(1); // one object, not one per run in the window
 
     vi.setSystemTime(T0 + 5_000);
-    const second = await get('/api/history?target=marketplace&hours=24', db);
+    const second = await get('/api/history?target=marketplace&hours=24', bucket);
 
-    expect(db.prepareCount).toBe(afterFirst);
+    expect(work(bucket)).toBe(afterFirst);
     expect(await second.json()).toEqual(await first.json());
   });
 
   it('a different hours window is a different cache entry', async () => {
-    const db = new SpyDb();
-    db.seedCheck('marketplace', { ok: true });
+    const bucket = makeR2();
+    ring(bucket, 'marketplace', [30, 10]);
 
-    await get('/api/history?target=marketplace&hours=24', db);
-    const afterFirst = db.prepareCount;
+    await get('/api/history?target=marketplace&hours=24', bucket);
+    const afterFirst = work(bucket);
 
-    // Different key → must query.
-    const seven = await get('/api/history?target=marketplace&hours=7', db);
-    expect(db.prepareCount).toBeGreaterThan(afterFirst);
+    // Different key → must read.
+    const seven = await get('/api/history?target=marketplace&hours=7', bucket);
+    expect(work(bucket)).toBeGreaterThan(afterFirst);
     expect((await seven.json()).hours).toBe(7);
-    const afterSeven = db.prepareCount;
+    const afterSeven = work(bucket);
 
     // Same key again → cached.
-    await get('/api/history?target=marketplace&hours=7', db);
-    expect(db.prepareCount).toBe(afterSeven);
+    await get('/api/history?target=marketplace&hours=7', bucket);
+    expect(work(bucket)).toBe(afterSeven);
   });
 
   it('a different target is a different cache entry', async () => {
-    const db = new SpyDb();
+    const bucket = makeR2();
     const [a, b] = TARGETS;
-    db.seedCheck(a.name, { ok: true });
-    db.seedCheck(b.name, { ok: true });
+    ring(bucket, a.name, [30]);
+    ring(bucket, b.name, [30, 10]);
 
-    const firstBody = await get(`/api/history?target=${a.name}&hours=24`, db).then((r) => r.json());
-    const afterFirst = db.prepareCount;
+    const firstBody = await get(`/api/history?target=${a.name}&hours=24`, bucket).then((r) => r.json());
+    const afterFirst = work(bucket);
 
-    const otherBody = await get(`/api/history?target=${b.name}&hours=24`, db).then((r) => r.json());
-    expect(db.prepareCount).toBeGreaterThan(afterFirst);
+    const otherBody = await get(`/api/history?target=${b.name}&hours=24`, bucket).then((r) => r.json());
+    expect(work(bucket)).toBeGreaterThan(afterFirst);
     expect(otherBody.target).toBe(b.name);
     expect(otherBody).not.toEqual(firstBody);
 
     // Both keys now cached.
-    const settled = db.prepareCount;
-    await get(`/api/history?target=${a.name}&hours=24`, db);
-    await get(`/api/history?target=${b.name}&hours=24`, db);
-    expect(db.prepareCount).toBe(settled);
+    const settled = work(bucket);
+    await get(`/api/history?target=${a.name}&hours=24`, bucket);
+    await get(`/api/history?target=${b.name}&hours=24`, bucket);
+    expect(work(bucket)).toBe(settled);
   });
 
   it('normalized hours collapse onto one entry', async () => {
-    const db = new SpyDb();
-    db.seedCheck('marketplace', { ok: true });
+    const bucket = makeR2();
+    ring(bucket, 'marketplace', [30]);
 
-    await get('/api/history?target=marketplace&hours=7', db);
-    const afterFirst = db.prepareCount;
+    await get('/api/history?target=marketplace&hours=7', bucket);
+    const afterFirst = work(bucket);
     // `07` normalizes to 7, so this must NOT be a cache miss.
-    await get('/api/history?target=marketplace&hours=07', db);
-    expect(db.prepareCount).toBe(afterFirst);
+    await get('/api/history?target=marketplace&hours=07', bucket);
+    expect(work(bucket)).toBe(afterFirst);
   });
 
-  it('re-queries D1 after the TTL expires', async () => {
-    const db = new SpyDb();
-    db.seedCheck('marketplace', { ok: true });
+  it('re-reads the bucket after the TTL expires', async () => {
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', [ringEntry(T0, 30)]);
 
-    await get('/api/history?target=marketplace&hours=24', db);
-    const afterFirst = db.prepareCount;
+    await get('/api/history?target=marketplace&hours=24', bucket);
+    const afterFirst = work(bucket);
 
-    db.seedCheck('marketplace', { ok: false, responseMs: 777 });
+    // A newer sample lands in the ring.
+    const doc = bucket.read('state/history/marketplace.json');
+    doc.entries.push(ringEntry(T0, 0, { response_ms: 777, status_code: 500, ok: 0 }));
     vi.setSystemTime(T0 + PUBLIC_CACHE_TTL_MS);
-    const body = await get('/api/history?target=marketplace&hours=24', db).then((r) => r.json());
+    const body = await get('/api/history?target=marketplace&hours=24', bucket).then((r) => r.json());
 
-    expect(db.prepareCount).toBeGreaterThan(afterFirst);
+    expect(work(bucket)).toBeGreaterThan(afterFirst);
     expect(body.checks).toHaveLength(2);
     expect(body.checks[1].response_ms).toBe(777);
   });
 });
 
 describe('public cache never stores errors', () => {
-  it('a throwing /api/status query is retried on the next read', async () => {
-    const broken = new SpyDb({ throwOnPrepare: true });
-    for (const t of TARGETS) broken.seedCheck(t.name, { ok: true });
+  it('a throwing /api/status read is retried on the next read', async () => {
+    const broken = makeR2({ failOn: { get: 'checks/' } });
+    seedRun(broken, T(0), [{ name: 'marketplace', ok: true }]);
 
     const failed = await get('/api/status', broken);
     expect(failed.status).toBeGreaterThanOrEqual(500);
 
     // Same TTL window: if the failure had been cached, this would fail too.
     vi.setSystemTime(T0 + 1_000);
-    const healthy = new SpyDb();
-    for (const t of TARGETS) healthy.seedCheck(t.name, { ok: true });
+    const healthy = seeded();
     const ok = await get('/api/status', healthy);
 
     expect(ok.status).toBe(200);
-    expect(healthy.prepareCount).toBeGreaterThan(0);
+    expect(work(healthy)).toBeGreaterThan(0);
     expect((await ok.json()).overall).toBe('ok');
   });
 
-  it('a throwing /api/history query is retried on the next read', async () => {
-    const failed = await get('/api/history?target=marketplace&hours=24', new SpyDb({ throwOnPrepare: true }));
+  it('a throwing /api/history read is retried on the next read', async () => {
+    const broken = makeR2({ failOn: { get: 'state/history/' } });
+    seedRing(broken, 'marketplace', [ringEntry(T0, 5)]);
+    const failed = await get('/api/history?target=marketplace&hours=24', broken);
     expect(failed.status).toBeGreaterThanOrEqual(500);
 
     vi.setSystemTime(T0 + 1_000);
-    const healthy = new SpyDb();
-    healthy.seedCheck('marketplace', { ok: true });
+    const healthy = makeR2();
+    seedRing(healthy, 'marketplace', [ringEntry(T0, 5)]);
     const ok = await get('/api/history?target=marketplace&hours=24', healthy);
     expect(ok.status).toBe(200);
-    expect(healthy.prepareCount).toBeGreaterThan(0);
+    expect(work(healthy)).toBeGreaterThan(0);
   });
 
   it('validation 400s never reach the cache', async () => {
-    const db = new SpyDb();
-    const missing = await get('/api/history', db);
-    const unknown = await get('/api/history?target=nope', db);
+    const bucket = seeded();
+    const missing = await get('/api/history', bucket);
+    const unknown = await get('/api/history?target=nope', bucket);
     expect(missing.status).toBe(400);
     expect(unknown.status).toBe(400);
-    // Rejected before any D1 work.
-    expect(db.prepareCount).toBe(0);
+    // Rejected before any bucket work.
+    expect(work(bucket)).toBe(0);
 
     // And repeating them keeps failing the same way (no poisoned entry).
     vi.setSystemTime(T0 + 1_000);
-    expect((await get('/api/history', db)).status).toBe(400);
-    expect((await get('/api/history?target=nope', db)).status).toBe(400);
-    expect(db.prepareCount).toBe(0);
+    expect((await get('/api/history', bucket)).status).toBe(400);
+    expect((await get('/api/history?target=nope', bucket)).status).toBe(400);
+    expect(work(bucket)).toBe(0);
   });
 
   it('validation runs BEFORE the cache lookup: a 400 neither writes nor evicts', async () => {
-    const db = new SpyDb();
-    db.seedCheck('marketplace', { ok: true });
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', [ringEntry(T0, 5)]);
 
     // Warm ONE valid entry, then attack it with rejected requests.
-    await get('/api/history?target=marketplace&hours=24', db);
-    const warm = db.prepareCount;
+    await get('/api/history?target=marketplace&hours=24', bucket);
+    const warm = work(bucket);
     expect(warm).toBeGreaterThan(0);
 
     for (const bad of ['/api/history', '/api/history?target=nope', '/api/history?target=nope&hours=24']) {
-      expect((await get(bad, db)).status).toBe(400);
+      expect((await get(bad, bucket)).status).toBe(400);
     }
-    // A rejected request must not have consulted D1 ...
-    expect(db.prepareCount).toBe(warm);
+    // A rejected request must not have consulted the bucket ...
+    expect(work(bucket)).toBe(warm);
     // ... nor evicted/overwritten the entry it collided with: the valid key is
     // still a hit. (A validation 400 stored under any key would surface here.)
     vi.setSystemTime(T0 + 1_000);
-    expect((await get('/api/history?target=marketplace&hours=24', db)).status).toBe(200);
-    expect(db.prepareCount).toBe(warm);
+    expect((await get('/api/history?target=marketplace&hours=24', bucket)).status).toBe(200);
+    expect(work(bucket)).toBe(warm);
 
     // The valid_targets hint is the payload of the 400 -- it must not leak into
     // a cached 200 either.
-    const body = await get('/api/history?target=marketplace&hours=24', db).then((r) => r.json());
+    const body = await get('/api/history?target=marketplace&hours=24', bucket).then((r) => r.json());
     expect(Object.keys(body).sort()).toEqual(['checks', 'hours', 'target']);
   });
 
@@ -406,30 +369,28 @@ describe('withPublicCache / clearPublicCache', () => {
 
 describe('GET /api/status — `cached` flag reports THIS response', () => {
   it('false on a cold read, true inside the TTL, false again once it expires', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+    const bucket = seeded();
 
-    const cold = await get('/api/status', db).then((r) => r.json());
+    const cold = await get('/api/status', bucket).then((r) => r.json());
     expect(cold.cached).toBe(false);
-    const afterCold = db.prepareCount;
+    const afterCold = work(bucket);
     expect(afterCold).toBeGreaterThan(0);
 
     vi.setSystemTime(T0 + 5_000);
-    const warm = await get('/api/status', db).then((r) => r.json());
+    const warm = await get('/api/status', bucket).then((r) => r.json());
     expect(warm.cached).toBe(true);
-    expect(db.prepareCount).toBe(afterCold);
+    expect(work(bucket)).toBe(afterCold);
 
     vi.setSystemTime(T0 + PUBLIC_CACHE_TTL_MS);
-    const expired = await get('/api/status', db).then((r) => r.json());
+    const expired = await get('/api/status', bucket).then((r) => r.json());
     expect(expired.cached).toBe(false);
-    expect(db.prepareCount).toBeGreaterThan(afterCold);
+    expect(work(bucket)).toBeGreaterThan(afterCold);
   });
 
   it('the flag is NOT frozen into the cached payload (the self-invalidating trap)', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+    const bucket = seeded();
 
-    const cold = await get('/api/status', db).then((r) => r.json());
+    const cold = await get('/api/status', bucket).then((r) => r.json());
     // The value stored under 'status' carries no `cached` key of its own...
     expect(Object.hasOwn(cold, 'cached')).toBe(true);
     const stored = await withPublicCacheInfo('status', () => {
@@ -445,15 +406,14 @@ describe('GET /api/status — `cached` flag reports THIS response', () => {
   });
 
   it('concurrent viewers inside one window: one miss, the rest hits', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+    const bucket = seeded();
 
-    await get('/api/status', db);
-    const afterFirst = db.prepareCount;
+    await get('/api/status', bucket);
+    const afterFirst = work(bucket);
     const bodies = await Promise.all(
-      Array.from({ length: 5 }, () => get('/api/status', db).then((r) => r.json())),
+      Array.from({ length: 5 }, () => get('/api/status', bucket).then((r) => r.json())),
     );
-    expect(db.prepareCount).toBe(afterFirst);
+    expect(work(bucket)).toBe(afterFirst);
     // Every one of them truthfully reports where its own bytes came from.
     for (const b of bodies) expect(b.cached).toBe(true);
     // And the flag does not leak into the per-target rows.
@@ -461,14 +421,13 @@ describe('GET /api/status — `cached` flag reports THIS response', () => {
   });
 
   it('clearPublicCache makes the next read report cached:false again', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
+    const bucket = seeded();
 
-    expect((await get('/api/status', db).then((r) => r.json())).cached).toBe(false);
-    expect((await get('/api/status', db).then((r) => r.json())).cached).toBe(true);
+    expect((await get('/api/status', bucket).then((r) => r.json())).cached).toBe(false);
+    expect((await get('/api/status', bucket).then((r) => r.json())).cached).toBe(true);
 
     clearPublicCache();
-    expect((await get('/api/status', db).then((r) => r.json())).cached).toBe(false);
+    expect((await get('/api/status', bucket).then((r) => r.json())).cached).toBe(false);
   });
 });
 
@@ -510,9 +469,8 @@ describe('withPublicCacheInfo', () => {
 
 describe('dashboard refresh interval', () => {
   it('polls every 60s, not 30s, and pauses while the tab is hidden', async () => {
-    const db = new SpyDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
-    const env = envFor(db);
+    const bucket = seeded();
+    const env = envFor(bucket);
 
     // The dashboard is PIN-gated, so mint a real session cookie to render it.
     const value = await signSession(env.DASHBOARD_PIN, T0);

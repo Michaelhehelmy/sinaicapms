@@ -11,6 +11,8 @@ import {
   reportsPrefix,
   alertStateKey,
   summaryKey,
+  historyKey,
+  datePrefix,
   isOlderThan,
   readJson,
   writeJson,
@@ -136,7 +138,7 @@ export async function runProbeCycle(env, fetchFn = fetch, now = new Date()) {
 // /api/history once per card on every refresh, and each poll re-ran the same
 // D1 aggregates. Even on the 60s interval that is 1 + N reads per viewer per
 // minute, multiplied by however many dashboards are open. A short TTL collapses
-// every read inside one window onto a single D1 query and takes that fan-out
+// every read inside one window onto a single read and takes that fan-out
 // back out of the picture.
 //
 // 20s is deliberately shorter than the 5-minute probe cron, so the cache can
@@ -146,15 +148,15 @@ export async function runProbeCycle(env, fetchFn = fetch, now = new Date()) {
 //
 // Best-effort by design, and deliberately NOT KV: per-isolate Map on
 // globalThis, so a cold isolate simply queries (same trade-off as the report
-// rate limiter above). A KV write per public read would burn the free plan's
+// rate limiter below). A KV write per public read would burn the free plan's
 // 1,000 writes/day quota, which is exactly the outage documented in AGENTS.md.
 //
 // Errors are NEVER cached: `producer` throws → nothing is stored, so the next
-// request retries D1 rather than pinning a transient failure for 20s.
+// request retries the bucket rather than pinning a transient failure for 20s.
 export const PUBLIC_CACHE_TTL_MS = 20_000;
 
 // Bound on the history fan-out (N targets * 3 window sizes); a dashboard that
-// asks for more still gets correct answers, just from D1.
+// asks for more still gets correct answers, just from the bucket.
 const PUBLIC_CACHE_MAX_ENTRIES = 256;
 
 function publicCacheStore() {
@@ -163,8 +165,8 @@ function publicCacheStore() {
 }
 
 // Drop every cached public read. Exported so tests can isolate themselves (each
-// test builds its own D1 stub) and so a deploy can never inherit a stale entry
-// from a recycled isolate.
+// test builds its own storage double) and so a deploy can never inherit a stale
+// entry from a recycled isolate.
 export function clearPublicCache() {
   publicCacheStore().clear();
 }
@@ -183,7 +185,7 @@ export async function withPublicCache(key, producer, now = Date.now()) {
 }
 
 // Same read-through cache, but also reports whether the returned payload was a
-// HIT (`cached: true`) or was just produced from D1 (`cached: false`).
+// HIT (`cached: true`) or was just produced from storage (`cached: false`).
 //
 // The hit/miss answer is deliberately NOT part of the stored value: it describes
 // one HTTP response, not the data, so it is computed per call and merged into
@@ -212,53 +214,155 @@ export async function withPublicCacheInfo(key, producer, now = Date.now()) {
   return { value, cached: false };
 }
 
-// Public aggregate status across all targets.
-app.get('/api/status', async (c) => {
-  // Cache the finished payload, not the per-target query results: one entry for
-  // the whole aggregate, so concurrent viewers share a single D1 read.
-  const { value: aggregate, cached } = await withPublicCacheInfo('status', async () => {
-    const latest = await db.getLatestPerTarget(c.env.DB);
-    const byTarget = new Map(latest.map((row) => [row.target, row]));
-    const lastCheck = await db.getLastCheckTime(c.env.DB);
-    const since = new Date(Date.now() - 24 * 3600 * 1000)
-      .toISOString()
-      .slice(0, 19)
-      .replace('T', ' ');
+// --- R2 read path (migration phase 3) ---
+//
+// The D1 version answered both public reads with SQL: `getLatestPerTarget` (one
+// index probe per target) + `getLastCheckTime` + `getUptimeSince` (one COUNT/SUM
+// per target) for `/api/status`, and a single indexed `WHERE target = ? AND
+// checked_at >= ?` for `/api/history`. None of those queries exists any more;
+// what replaced them is below, and the wire shapes are byte-for-byte the same.
 
-    const targets = [];
-    for (const t of TARGETS) {
-      const row = byTarget.get(t.name) ?? null;
-      targets.push({
-        name: t.name,
-        url: t.url,
-        up: row ? row.ok === 1 : false,
-        last_status: row?.status_code ?? null,
-        last_response_ms: row?.response_ms ?? null,
-        uptime_24h: await db.getUptimeSince(c.env.DB, t.name, since),
-        last_error: row?.error_message ?? null,
-      });
-    }
+// Widest window `/api/history` will serve, and the ceiling on the entries it
+// returns (both carried over from the D1 call's own limits: a 168h clamp and
+// `LIMIT 500`). In R2 the window ceiling is also the RING's retention: the
+// stored document is trimmed to this many hours on every write, so a request can
+// never ask for an older sample than the bucket still holds.
+export const HISTORY_MAX_WINDOW_HOURS = 48;
+export const HISTORY_MAX_ENTRIES = 500;
 
-    const upCount = targets.filter((t) => t.up).length;
-    const overall = upCount === targets.length ? 'ok' : upCount === 0 ? 'down' : 'degraded';
+// One run object per MINUTE at most — the key stamp is `HH-MM` — so a UTC day
+// can hold no more than 1440 keys however hard `POST /internal/check` is
+// hammered. The bound on the listing exists because `listAll` truncates rather
+// than telling the caller it stopped, and it returns ASCENDING keys: a
+// truncated listing would drop the NEWEST run, which is the only one the reader
+// wants. Staying under the ceiling is what makes the walk complete.
+const RUN_KEYS_PER_DAY_MAX = 1440;
+
+// Newest run object: today's `checks/<date>/` prefix, falling back to
+// yesterday's.
+//
+// TWO DAY BUCKETS, NOT A WHOLE-BUCKET WALK: R2 lists ASCENDING, so "newest" is
+// the LAST key of a listing — one LIST plus one GET, and a LIST is a subrequest
+// too. Walking `checks/` (14 days of retention, ~4,000 keys, paginated) to find
+// the newest object would cost more than the read it serves, so the lookup asks
+// the two day buckets that can hold it and stops. Yesterday is the fallback
+// that matters in practice: a deploy at 00:02 UTC, or a cron that has not run
+// yet today, must still render yesterday's last known state rather than nothing.
+//
+// The returned document is the run itself (`{ run_at, results[] }`) or null for
+// a cold bucket — readJson's `fallback`, which is how an empty bucket reads as
+// "nothing has ever been probed" instead of an error.
+export async function newestRun(bucket, now = new Date()) {
+  const at = new Date(now).getTime();
+  for (const daysAgo of [0, 1]) {
+    const keys = await listAll(bucket, {
+      prefix: datePrefix(CHECKS_PREFIX, new Date(at - daysAgo * 86_400_000)),
+      maxKeys: RUN_KEYS_PER_DAY_MAX,
+    });
+    const newest = keys[keys.length - 1]?.key;
+    if (!newest) continue;
+    return readJson(bucket, newest, null);
+  }
+  return null;
+}
+
+// Uptime percentage from the rollup's `{ okCount, totalCount }` bucket. Same
+// arithmetic and same one-decimal rounding as the D1 `getUptimeSince`, and the
+// same "no rows in the window ⇒ null" contract the dashboard renders as `—`.
+function uptimeFromBucket(bucket) {
+  const total = Number(bucket?.totalCount ?? 0);
+  if (!total) return null;
+  return Math.round((Number(bucket?.okCount ?? 0) / total) * 1000) / 10;
+}
+
+// The public aggregate behind BOTH `/api/status` and the server-rendered
+// dashboard. Shared deliberately: the D1 version had two byte-identical copies
+// of this block (`getDashboardAggregate`), and with the reads on R2 a second
+// copy would be a second thing to keep in step with the storage layout — plus a
+// way for the page and the JSON endpoint to disagree on the same bucket.
+//
+// THREE READS, IN PARALLEL, no fan-out:
+//   - the newest run object   → per-target last status / response time / error
+//   - `state/alert_state.json`→ carry-forward for targets this run did not probe
+//   - `state/summary.json`    → `uptime_24h`, pre-summed (see updateSummary)
+//
+// THE CARRY-FORWARD IS WHY ALERT STATE IS READ HERE AT ALL. A run object holds
+// one result per PROBED target, and `POST /internal/check` writes a normal run
+// object with a SINGLE result when an operator checks one host by hand. Under
+// D1, "latest row per target" was a query that simply had a row for every
+// configured target, so a one-target run left the other five alone. Reading
+// only the newest run object would instead blank them — the newest run's shape
+// is the newest run's business, and the dashboard would report five healthy
+// hosts as down because a human pressed a button. `alert_state.json` is the
+// per-target state the cron already carries forward verbatim for exactly this
+// case ("not probed" is not "healthy"), so a target with no result in the newest
+// run falls back to its `last_state`.
+//
+// `up`, deliberately, is NOT read from alert state when the run HAS a result for
+// that target: `last_state` is sticky by design (it stays `up` until three
+// consecutive failures cross the threshold), so a target failing for one or two
+// runs would still be reported healthy — the D1 version reported `up: false` the
+// moment a single row came back ok=0. The live run bit wins; the state document
+// only fills the gaps.
+export async function readStatusAggregate(env, now = new Date()) {
+  const [run, alert, summary] = await Promise.all([
+    newestRun(env.MONITOR_BUCKET, now),
+    readJson(env.MONITOR_BUCKET, alertStateKey(), {}),
+    readJson(env.MONITOR_BUCKET, summaryKey(), null),
+  ]);
+
+  const results = Array.isArray(run?.results) ? run.results : [];
+  const byName = new Map(results.map((r) => [r.name, r]));
+  const state = alert && typeof alert === 'object' ? alert : {};
+  const buckets = summary && typeof summary === 'object' ? summary.targets : null;
+
+  const targets = TARGETS.map((t) => {
+    const row = byName.get(t.name) ?? null;
+    const carried = state[t.name] ?? null;
     return {
-      overall,
-      checked_at: db.toIso(lastCheck),
-      targets,
+      name: t.name,
+      url: t.url,
+      up: row ? row.ok === 1 : carried?.last_state === 'up',
+      last_status: row?.status_code ?? null,
+      last_response_ms: row?.response_ms ?? null,
+      uptime_24h: uptimeFromBucket(buckets?.[t.name]),
+      last_error: row?.error_message ?? null,
     };
   });
-  // `cached` describes THIS response (served from the 20s window vs queried
-  // just now), so an operator watching the dashboard can see the cache working
-  // -- and, more usefully, can tell a stale-looking pill apart from a stale
+
+  const upCount = targets.filter((t) => t.up).length;
+  const overall = upCount === targets.length ? 'ok' : upCount === 0 ? 'down' : 'degraded';
+  return { overall, checked_at: run?.run_at ?? null, targets };
+}
+
+// Public aggregate status across all targets.
+app.get('/api/status', async (c) => {
+  // Cache the finished payload, not the per-target read results: one entry for
+  // the whole aggregate, so concurrent viewers share a single read.
+  const { value: aggregate, cached } = await withPublicCacheInfo('status', () =>
+    readStatusAggregate(c.env),
+  );
+  // `cached` describes THIS response (served from the 20s window vs read just
+  // now), so an operator watching the dashboard can see the cache working --
+  // and, more usefully, can tell a stale-looking pill apart from a stale
   // backend. It is merged here, outside the cached value, for the reason in
   // withPublicCacheInfo's comment.
   return c.json({ ...aggregate, cached });
 });
 
-// Public per-target history. `target` is required; hours defaults to 24 (max 168).
+// Public per-target history. `target` is required; hours defaults to 24.
+//
+// MAX 48 HOURS, REJECTED RATHER THAN CLAMPED. The D1 endpoint clamped to 168
+// because an indexed range scan over 7 days was one query. The R2 read is a
+// window over a stored ring (see `historyKey` in storage.js) whose whole reason
+// to exist is that a per-object walk of the window does not fit in an
+// invocation's subrequest budget. Clamping `hours=168` to 48 would answer 200
+// with a 48-hour series and no indication that anything was dropped — the caller
+// would draw a shorter sparkline than the number in its own URL and never know.
+// A 400 names the ceiling instead.
 app.get('/api/history', async (c) => {
   // Validate BEFORE the cache so a 400 is never stored under any key, and so an
-  // unknown target costs zero D1 work instead of joining the cached fan-out.
+  // unknown target costs zero reads instead of joining the cached fan-out.
   //
   // A rejected request echoes `valid_targets`: the caller was asking for one
   // target out of a known, code-declared set, so the actionable answer is the
@@ -273,16 +377,53 @@ app.get('/api/history', async (c) => {
 
   let hours = parseInt(c.req.query('hours') ?? '24', 10);
   if (Number.isNaN(hours)) hours = 24;
-  hours = Math.min(Math.max(hours, 1), 168);
+  if (hours > HISTORY_MAX_WINDOW_HOURS) {
+    return c.json(
+      { error: `history max ${HISTORY_MAX_WINDOW_HOURS} hours in R2 mode`, max_hours: HISTORY_MAX_WINDOW_HOURS, valid_targets },
+      400,
+    );
+  }
+  hours = Math.max(hours, 1);
 
   // Keyed by the normalized target|hours so `/api/history?target=x&hours=07`
   // and `?hours=7` share one entry.
-  const payload = await withPublicCache(`history:${target}|${hours}`, async () => {
-    const checks = await db.getHistory(c.env.DB, target, hours, 500);
-    return { target, hours, checks };
-  });
+  const payload = await withPublicCache(`history:${target}|${hours}`, () =>
+    readHistoryWindow(c.env, target, hours),
+  );
   return c.json(payload);
 });
+
+// One target's checks inside the requested window, oldest first — the exact
+// `{target, hours, checks}` shape the D1 query produced, and the exact four
+// fields its `rowToCheck` projected (`status_code`, `ok` as 1/0, `response_ms`,
+// `checked_at`). The stored entries already carry those names, so the port is a
+// window filter, not a reshape: there is no field to mistranslate and nothing to
+// remember about the D1 column naming after this commit.
+//
+// ONE GET for the whole response, versus the D1 query's one query. Sorting is
+// defensive: entries are appended in run order, but two runs inside the same
+// minute share a key and a manual `/internal/check` can be back-dated by
+// nothing at all, so the window's contents are re-sorted by the value the caller
+// reads rather than trusted to the write order.
+export async function readHistoryWindow(env, target, hours, now = new Date()) {
+  const since = new Date(now).getTime() - hours * 60 * 60 * 1000;
+  const doc = await readJson(env.MONITOR_BUCKET, historyKey(target), null);
+  const entries = Array.isArray(doc?.entries) ? doc.entries : [];
+  const checks = entries
+    .filter((e) => {
+      const t = Date.parse(e?.checked_at ?? '');
+      return Number.isFinite(t) && t >= since;
+    })
+    .sort((a, b) => Date.parse(a.checked_at) - Date.parse(b.checked_at))
+    .slice(-HISTORY_MAX_ENTRIES)
+    .map((e) => ({
+      status_code: e?.status_code ?? null,
+      ok: e?.ok ? 1 : 0,
+      response_ms: e?.response_ms ?? null,
+      checked_at: e?.checked_at ?? null,
+    }));
+  return { target, hours, checks };
+}
 
 // --- Favicon ---
 //
@@ -575,7 +716,7 @@ app.post('/internal/check', async (c) => {
   }
   let probed;
   // One instant for the whole request: the run object's key + `run_at`, the
-  // alert state stamps, and the summary entry must all agree, and the rollup
+  // alert state stamps, and both rollup entries must all agree, and the rollups
   // must not double-count a manual run that spans a day boundary.
   const now = new Date();
   if (targetName) {
@@ -593,45 +734,65 @@ app.post('/internal/check', async (c) => {
   }
   const results = await evaluateAlerts(c.env, probed, fetch, now);
   await updateSummary(c.env, probed, now);
+  // The history ring is derived data, same as the summary: wrapped, because a
+  // ring that missed one manual run still renders a correct (shorter) window,
+  // while an exception here would cost the operator the outcome they asked for.
+  try {
+    await updateHistoryRing(c.env, probed, now);
+  } catch (err) {
+    console.error('monitor history ring update failed', err?.message ?? err);
+  }
   return c.json({ checked_at: now.toISOString(), results });
 });
 
-// Aggregate shape for the dashboard. Mirrors GET /api/status field-for-field
-// (kept as a separate block per A.4 extend-only scope — the /api/status
-// handler above is untouched).
-async function getDashboardAggregate(env) {
-  const latest = await db.getLatestPerTarget(env.DB);
-  const byTarget = new Map(latest.map((row) => [row.target, row]));
-  const lastCheck = await db.getLastCheckTime(env.DB);
-  const since = new Date(Date.now() - 24 * 3600 * 1000)
-    .toISOString()
-    .slice(0, 19)
-    .replace('T', ' ');
-  const targets = [];
-  for (const t of TARGETS) {
-    const row = byTarget.get(t.name) ?? null;
-    targets.push({
-      name: t.name,
-      url: t.url,
-      up: row ? row.ok === 1 : false,
-      last_status: row?.status_code ?? null,
-      last_response_ms: row?.response_ms ?? null,
-      uptime_24h: await db.getUptimeSince(env.DB, t.name, since),
-      last_error: row?.error_message ?? null,
-    });
-  }
-  const upCount = targets.filter((t) => t.up).length;
-  const overall = upCount === targets.length ? 'ok' : upCount === 0 ? 'down' : 'degraded';
-  return { overall, checked_at: db.toIso(lastCheck), targets };
+// The dashboard's status block is `readStatusAggregate` itself — the A.4
+// "extend-only, keep a separate copy" rule existed because the D1 version had
+// two byte-identical query blocks. With one read path in the bucket there is one
+// shape to keep, and the page and /api/status cannot disagree about the same
+// data.
+
+// Newest-first probe rows across ALL targets, max `limit` — the dashboard's
+// "Recent checks" table, and the R2 replacement for the D1
+// `ORDER BY id DESC LIMIT ?` over the append-only probe table.
+//
+// READ THE RINGS, NOT THE RUN OBJECTS. A run object holds every target's
+// result, so a naive port would walk run objects newest-first and flatten; that
+// costs a LIST per day plus one GET per run, and it cannot tell in advance how
+// many runs a page of 20 rows needs (a partial one-target run yields one row,
+// not six). The rings are already per target and already ordered, so the whole
+// table is one GET per target — bounded by TARGETS, not by the row count — and
+// the newest-20 cut is taken after the merge.
+//
+// `error_message` is NOT carried: `/api/history` never projected it and the
+// table never rendered it, so the ring does not store it (see updateHistoryRing).
+export async function readRecentChecks(env, limit = 20) {
+  const rings = await Promise.all(
+    TARGETS.map((t) => readJson(env.MONITOR_BUCKET, historyKey(t.name), null)),
+  );
+  const rows = [];
+  rings.forEach((doc, i) => {
+    for (const entry of Array.isArray(doc?.entries) ? doc.entries : []) {
+      rows.push({
+        target: TARGETS[i].name,
+        status_code: entry?.status_code ?? null,
+        ok: entry?.ok ? 1 : 0,
+        response_ms: entry?.response_ms ?? null,
+        checked_at: entry?.checked_at ?? null,
+      });
+    }
+  });
+  rows.sort((a, b) => Date.parse(b.checked_at ?? '') - Date.parse(a.checked_at ?? ''));
+  return rows.slice(0, Math.max(limit, 0));
 }
 
 // Inline dark mobile dashboard HTML. Server-rendered: status pill, per-target
-// cards, last-20 checks + last-20 reports lists. Client JS refreshes the pill,
-// cards, and per-target sparklines from the PUBLIC /api/status + /api/history
-// endpoints every 60s (no token in the page JS); "Check Now" re-runs that same
-// refresh immediately instead of waiting for the interval. Both endpoints are
-// served from the 20s in-memory public cache, so a manual "Check Now" right
-// after a refresh is nearly free.
+// cards, and the last-20 checks list, all read from R2 by the two helpers the
+// public endpoints also use. Client JS refreshes the pill, cards, and
+// per-target sparklines from the PUBLIC /api/status + /api/history endpoints
+// every 60s (no token in the page JS); "Check Now" re-runs that same refresh
+// immediately instead of waiting for the interval. Both endpoints are served
+// from the 20s in-memory public cache, so a manual "Check Now" right after a
+// refresh is nearly free.
 function buildDashboardHtml({ overall, checked_at, targets, recentChecks, recentReports }) {
   const pillLabel = overall.toUpperCase();
   const cards = targets
@@ -884,8 +1045,8 @@ app.get('/', async (c) => {
   if (!(await hasValidSession(c))) {
     return c.redirect('/login', 302);
   }
-  const agg = await getDashboardAggregate(c.env);
-  const recentChecks = await db.getRecentChecks(c.env.DB, 20);
+  const agg = await readStatusAggregate(c.env);
+  const recentChecks = await readRecentChecks(c.env, 20);
   const recentReports = await db.getRecentReports(c.env.DB, 20);
   return c.html(buildDashboardHtml({ ...agg, recentChecks, recentReports }));
 });
@@ -1096,6 +1257,68 @@ export async function updateSummary(env, results, now = new Date()) {
   return targets;
 }
 
+// Rolling per-target check ring, rewritten in place on every run: the stored
+// document `/api/history` reads instead of walking run objects.
+//
+// WHY THIS EXISTS, in the only terms that matter: R2 has no range read, so
+// serving a WINDOW means reading every object the window covers. At the 5-minute
+// cron cadence `hours=24` is 288 run objects, and the Workers free plan allows
+// 50 subrequests per invocation — so a literal port of the D1 range query does
+// not merely cost more, it FAILS, and it would fail inside the dashboard's
+// per-card loop of six requests. (Same reasoning, same shape as
+// `updateSummary` above: one small object read replaces a walk that no longer
+// fits in an invocation.)
+//
+// The ring is trimmed to the widest window the endpoint will serve
+// (`HISTORY_MAX_WINDOW_HOURS`) and capped at the number of entries it can return
+// (`HISTORY_MAX_ENTRIES`), so it never stores a sample no request could be
+// answered with. Trimming by age keeps the document proportional to the window
+// instead of to uptime; the cap is what bounds it if an operator hammers
+// `/internal/check` (every manual run appends).
+//
+// THE SAME FOUR FIELDS `/api/history` PROJECTS, and the same names the D1
+// columns had — no `error_message`, which the endpoint never returned.
+//
+// "NOT PROBED" IS NOT A NEW ENTRY, mirroring `evaluateAlerts`: a target missing
+// from `results` (a single-target manual run) is SKIPPED rather than appended as
+// a healthy sample, because the run carried no observation of it and inventing
+// one would draw a straight line on its sparkline across a check that never
+// happened.
+export async function updateHistoryRing(env, results, now = new Date()) {
+  const at = new Date(now);
+  const nowMs = at.getTime();
+  const windowMs = HISTORY_MAX_WINDOW_HOURS * 60 * 60 * 1000;
+  const byName = new Map((results ?? []).map((r) => [r.name, r]));
+  const written = [];
+  for (const target of TARGETS) {
+    const row = byName.get(target.name);
+    if (!row) continue;
+    const previous = await readJson(env.MONITOR_BUCKET, historyKey(target.name), null);
+    const prior = Array.isArray(previous?.entries) ? previous.entries : [];
+    // Strictly inside the window, matching `isOlderThan`'s boundary: an entry
+    // exactly 48h old is already unanswerable, so keeping it would store bytes
+    // no request can return.
+    const kept = prior.filter((e) => {
+      const t = Date.parse(e?.checked_at ?? '');
+      return Number.isFinite(t) && nowMs - t < windowMs;
+    });
+    kept.push({
+      checked_at: at.toISOString(),
+      status_code: row.statusCode ?? null,
+      ok: row.ok ? 1 : 0,
+      response_ms: row.responseMs ?? null,
+    });
+    const entries = kept.length > HISTORY_MAX_ENTRIES ? kept.slice(-HISTORY_MAX_ENTRIES) : kept;
+    await writeJson(env.MONITOR_BUCKET, historyKey(target.name), {
+      target: target.name,
+      updated_at: at.toISOString(),
+      entries,
+    });
+    written.push(target.name);
+  }
+  return written;
+}
+
 // Cron retention sweep over the R2 layout, replacing the three D1 DELETE
 // statements: probe-run objects older than 14 days, and intake-report objects
 // (both kinds) older than 30. `state/*` is never swept — it is not dated, it is
@@ -1149,9 +1372,9 @@ export async function runRetention(env, now = new Date()) {
 //   - probe + write + alerts stay UNWRAPPED. A failure there means the monitor
 //     did not do its job; swallowing it would turn a broken probe path into a
 //     silently stale dashboard.
-//   - the rollup and the sweep are WRAPPED each in their own try/catch. Both
+//   - the rollups and the sweep are WRAPPED each in their own try/catch. All
 //     are derived/maintenance data with a correct answer on the next run, and
-//     neither is allowed to cancel the alerting above them. (The pre-existing
+//     none is allowed to cancel the alerting above them. (The pre-existing
 //     D1 version had exactly this split: retention steps were per-step guarded,
 //     the probe/alert half was not.)
 //   - `clearOldLoginAttempts` keeps its original unwrapped behaviour (a throw
@@ -1166,6 +1389,14 @@ async function scheduled(event, env, ctx) {
     await updateSummary(env, results, now);
   } catch (err) {
     console.error('monitor summary update failed', err?.message ?? err);
+  }
+  // Its own try/catch, and its own log line, for the same reason as the summary
+  // above: a ring that missed one run still answers `/api/history` correctly for
+  // the samples it holds, so it must not be able to cancel the cron.
+  try {
+    await updateHistoryRing(env, results, now);
+  } catch (err) {
+    console.error('monitor history ring update failed', err?.message ?? err);
   }
   await db.clearOldLoginAttempts(env.DB);
   await runRetention(env, now);

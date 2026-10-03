@@ -11,7 +11,7 @@ import {
   timingSafeEqual,
   buildSessionCookie,
 } from '../src/auth.js';
-import { makeR2 } from './helpers/fake-r2.js';
+import { makeR2, seedRun } from './helpers/fake-r2.js';
 
 // Cookie-session dashboard auth: 6-digit PIN login issues a signed
 // `monitor_session` cookie; GET / requires it; POST /internal/check
@@ -19,9 +19,11 @@ import { makeR2 } from './helpers/fake-r2.js';
 // and the PIN never appears in a URL. Brute-force budget is D1-backed:
 // 5 failed attempts per 5 minutes per IP (login_attempts table), then 429.
 
-// In-memory D1 stand-in covering the SQL shapes used by db.js
-// (status aggregate + intake/dashboard + alert evaluation for /internal/check
-// + login_attempts gate for POST /login).
+// In-memory D1 stand-in covering the SQL shapes db.js still has: the intake
+// reports (read by the dashboard until phase 5) and the `login_attempts` PIN
+// gate. The probe table is deliberately not implemented — phase 3 moved those
+// reads to R2, and a stub that still answered them would let a probe query back
+// in unnoticed.
 class FakeStmt {
   constructor(db, sql) {
     this.db = db;
@@ -46,45 +48,32 @@ class FakeStmt {
 
 class FakeDb {
   constructor() {
-    this.checks = [];
     this.reports = [];
-    this.alert = new Map();
     this.attempts = [];
-    this.seq = 0;
     this.reportSeq = 0;
     this.tick = 0;
   }
   prepare(sql) {
     return new FakeStmt(this, sql);
   }
-  seedCheck(target, { ok = true } = {}) {
-    this.seq += 1;
+  seedReport(row) {
+    this.reportSeq += 1;
     this.tick += 1;
-    this.checks.push({
-      id: this.seq,
-      target,
-      status_code: ok ? 200 : 500,
-      ok: ok ? 1 : 0,
-      response_ms: 12,
-      error_message: ok ? null : 'boom',
-      checked_at: `2026-09-29 00:00:${String(this.tick).padStart(2, '0')}`,
+    this.reports.push({
+      id: this.reportSeq,
+      kind: 'error',
+      message: 'seeded',
+      page_url: null,
+      contact: null,
+      status: 'new',
+      created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
+      ...row,
     });
+    return this.reports[this.reports.length - 1];
   }
   execRun(sql, args) {
-    if (sql.startsWith('INSERT INTO checks')) {
-      const [target, status_code, ok, response_ms, error_message] = args;
-      this.seq += 1;
-      this.tick += 1;
-      this.checks.push({
-        id: this.seq,
-        target,
-        status_code,
-        ok,
-        response_ms,
-        error_message,
-        checked_at: `2026-09-29 00:00:${String(this.tick).padStart(2, '0')}`,
-      });
-      return { success: true };
+    if (sql.startsWith('INSERT INTO checks') || sql.startsWith('INSERT INTO alert_state')) {
+      throw new Error(`FakeDb.run: ${sql} — probe history and alert state moved to R2`);
     }
     if (sql.startsWith('INSERT INTO reports')) {
       const [kind, message, page_url, contact] = args;
@@ -100,17 +89,6 @@ class FakeDb {
         created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
       });
       return { success: true, meta: { last_row_id: this.reportSeq } };
-    }
-    if (sql.startsWith('INSERT INTO alert_state')) {
-      const [target, consecutive_failures, alerting, last_alert_at] = args;
-      this.alert.set(target, {
-        target,
-        consecutive_failures,
-        alerting,
-        last_alert_at,
-        updated_at: '2026-09-29 00:00:00',
-      });
-      return { success: true };
     }
     if (sql.startsWith('INSERT INTO login_attempts')) {
       const [ip, success] = args;
@@ -135,59 +113,12 @@ class FakeDb {
       const fails = this.attempts.filter((r) => r.ip === ip && r.success === 0).length;
       return [{ fail_count: fails }];
     }
-    if (sql.includes('UNION ALL') && sql.includes('ORDER BY id DESC LIMIT 1')) {
-      // getLatestPerTarget: one branch per configured target, each a bounded
-      // `WHERE target = ? ORDER BY id DESC LIMIT 1` probe.
-      const rows = [];
-      for (const target of args) {
-        const newest = this.checks.filter((r) => r.target === target).pop();
-        if (newest) {
-          rows.push({
-            target: newest.target,
-            status_code: newest.status_code,
-            ok: newest.ok,
-            response_ms: newest.response_ms,
-            error_message: newest.error_message,
-            checked_at: newest.checked_at,
-          });
-        }
-      }
-      return rows;
-    }
-    if (sql.includes('SELECT MAX(id)')) {
-      throw new Error(
-        'FakeDb.all: legacy `SELECT MAX(id) ... GROUP BY target` last-per-target shape is gone; ' +
-          'getLatestPerTarget must use the per-target UNION ALL probe.',
-      );
-    }
-    if (sql.includes('SELECT MAX(checked_at)')) {
-      const max = this.checks.reduce((m, r) => (!m || r.checked_at > m ? r.checked_at : m), null);
-      return [{ last_check: max }];
-    }
-    if (sql.includes('SELECT COUNT(*) AS total')) {
-      const [target] = args;
-      const rows = this.checks.filter((r) => r.target === target);
-      return [{ total: rows.length, ok_count: rows.reduce((n, r) => n + r.ok, 0) }];
-    }
-    if (sql.includes("datetime('now',")) {
-      const [target] = args;
-      return this.checks.filter((r) => r.target === target);
-    }
-    if (sql.includes('FROM (SELECT * FROM checks WHERE target = ?')) {
-      const [target, n] = args;
-      return this.checks.filter((r) => r.target === target).slice(-n);
-    }
-    if (sql.includes('FROM alert_state WHERE target = ?')) {
-      const row = this.alert.get(args[0]);
-      return row ? [row] : [];
+    if (sql.includes('FROM checks') || sql.includes('FROM alert_state')) {
+      throw new Error(`FakeDb.all: ${sql} — probe history and alert state moved to R2`);
     }
     if (sql.includes('FROM reports')) {
       const [limit] = args;
       return [...this.reports].sort((a, b) => b.id - a.id).slice(0, limit);
-    }
-    if (sql.includes('ORDER BY id DESC')) {
-      const [limit] = args;
-      return [...this.checks].sort((a, b) => b.id - a.id).slice(0, limit);
     }
     throw new Error(`FakeDb.all: unhandled SQL: ${sql}`);
   }
@@ -195,10 +126,18 @@ class FakeDb {
 
 const REPORT_TOKEN = 'test-report-secret';
 const DASHBOARD_PIN = '123456';
-// The worker always has BOTH bindings. `MONITOR_BUCKET` is here because
-// `POST /internal/check` now persists its run to R2 (the probe write path moved
-// off D1 in migration phase 2) — a request without it 500s.
-const envFor = (db, extra = {}) => ({ DB: db, MONITOR_BUCKET: makeR2(), REPORT_TOKEN, DASHBOARD_PIN, ...extra });
+// The worker always has BOTH bindings. `MONITOR_BUCKET` is here because the
+// probe write path moved off D1 in migration phase 2 and, since phase 3, the
+// dashboard's status and "Recent checks" blocks are read from it too — a request
+// without it 500s. This file is about the PIN gate, so a test that renders the
+// page passes its own bucket in when it needs data in it.
+const envFor = (db, extra = {}) => ({
+  DB: db,
+  MONITOR_BUCKET: extra.MONITOR_BUCKET ?? makeR2(),
+  REPORT_TOKEN,
+  DASHBOARD_PIN,
+  ...extra,
+});
 const ORIGIN = 'https://status.sinaicamps.com';
 
 function cookieHeader(setCookie) {
@@ -441,8 +380,11 @@ describe('monitor PIN login (signed session cookie + D1 gate)', () => {
 
   it('6: GET / with valid cookie renders the dashboard with logout link', async () => {
     const db = new FakeDb();
-    for (const t of TARGETS) db.seedCheck(t.name, { ok: true });
-    const env = envFor(db);
+    // `>OK</div>` is only true when the status block finds a healthy run, so the
+    // bucket has to hold one (the aggregate no longer reads D1 — phase 3).
+    const bucket = makeR2();
+    seedRun(bucket, new Date(), TARGETS.map((t) => ({ name: t.name, ok: true })));
+    const env = envFor(db, { MONITOR_BUCKET: bucket });
     const cookie = await loginCookie(db, env, '10.99.1.5');
     const res = await app.request('/', { headers: { cookie } }, env);
     expect(res.status).toBe(200);

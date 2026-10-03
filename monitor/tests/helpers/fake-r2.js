@@ -1,4 +1,5 @@
-// In-memory R2 double shared by the cron's tests.
+// In-memory R2 double shared by every R2 test in this suite — the cron's
+// writes, the retention sweep, and (as of phase 3) the PUBLIC READS.
 //
 // The D1-era tests used two different stubs — a SQL-dispatching `FakeDb` and a
 // real `node:sqlite` adapter — because the thing under test WAS SQL. Nothing
@@ -16,6 +17,8 @@
 // Failure injection is per-operation (`failOn: { put: /checks/ }`) so a test can
 // break exactly one write and assert the OTHER steps still ran — the property
 // that keeps a broken bucket from silencing the monitor that reports it.
+
+import { checksKey, alertStateKey, summaryKey, historyKey } from '../../src/storage.js';
 
 function matches(failOn, op, key) {
   const rule = failOn?.[op];
@@ -114,3 +117,73 @@ export function webhookCollector() {
 
 // UTC hour 0 — the only hour the retention sweep runs in.
 export const HOUR_0 = new Date('2026-10-03T00:12:00.000Z');
+
+// --- fixture builders for the READ path (phase 3) ---
+//
+// The public reads resolve their keys THROUGH `src/storage.js`, so a fixture
+// that hand-typed a key string could pass against a layout the code no longer
+// uses. Every builder below derives the key from the same instant the body's
+// stamps come from, exactly like the cron does — a fixture cannot invent a key
+// that disagrees with its own payload.
+
+// One probe result in the shape the cron STORES (snake_case, `ok` as 1/0).
+const storedResult = (r) => ({
+  name: r.name,
+  url: r.url ?? `https://${r.name}.test/`,
+  status_code: r.statusCode ?? (r.ok ? 200 : 500),
+  ok: r.ok ? 1 : 0,
+  response_ms: r.responseMs ?? 12,
+  error_message: r.errorMessage ?? null,
+});
+
+// Seed one run object: `checks/<date>/<HH-MM>.json` = { run_at, results[] }.
+// Pass a partial `results` list to model a PARTIAL run (what a single-target
+// `POST /internal/check` writes).
+export function seedRun(bucket, at, results, uploaded) {
+  return bucket.seed(
+    checksKey(at),
+    { run_at: new Date(at).toISOString(), results: results.map(storedResult) },
+    uploaded,
+  );
+}
+
+// Seed `state/summary.json`, the pre-summed 24h rollup. `targets` maps a target
+// name to its { okCount, totalCount }; an omitted target reads as "no samples",
+// i.e. `uptime_24h: null`.
+export function seedSummary(bucket, targets, { at = HOUR_0, runs = [] } = {}) {
+  return bucket.seed(
+    summaryKey(),
+    {
+      updated_at: new Date(at).toISOString(),
+      window_hours: 24,
+      targets,
+      runs,
+    },
+    undefined,
+  );
+}
+
+// Seed `state/alert_state.json` (the per-target carry-forward the status read
+// falls back to for a target the newest run did not probe).
+export function seedAlertState(bucket, state) {
+  return bucket.seed(alertStateKey(), state);
+}
+
+// Seed one target's `state/history/<target>.json` ring. Entries are stored in
+// the same four fields `/api/history` projects.
+export function seedRing(bucket, target, entries, { at = HOUR_0 } = {}) {
+  return bucket.seed(historyKey(target), {
+    target,
+    updated_at: new Date(at).toISOString(),
+    entries,
+  });
+}
+
+// A ring entry at `minutesAgo` before `at`, ok by default.
+export const ringEntry = (at, minutesAgo, over = {}) => ({
+  checked_at: new Date(new Date(at).getTime() - minutesAgo * 60_000).toISOString(),
+  status_code: 200,
+  ok: 1,
+  response_ms: 12,
+  ...over,
+});
