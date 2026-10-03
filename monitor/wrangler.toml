@@ -11,11 +11,25 @@ persist = true
 [triggers]
 crons = [ "*/5 * * * *" ]
 
+# NOTE (2026-10-03): the probe/alert/report data path is migrating to R2. The
+# D1 binding below is kept on purpose until the final phase — `login_attempts`
+# (the PIN brute-force counter) is still D1-backed and the read endpoints still
+# read D1 while the cron writes R2. Do not delete this block until the R2 read
+# path has shipped AND login_attempts has moved; see `src/storage.js` for the
+# object layout (checks/, reports/, state/) and monitor/README.md for the plan.
 [[d1_databases]]
 binding = "DB"
 database_name = "campmaster-monitor-db"
 database_id = "81de335f-a729-4511-a9e8-57a6882c6932"
 migrations_dir = "migrations"
+
+# Object storage for probe history, intake reports, and the small mutable state
+# documents. One bucket for the whole worker so the retention sweep has a single
+# place to look; keys are namespaced by prefix instead (`checks/`, `reports/`,
+# `state/`). `MONITOR_BUCKET` is the binding name used across src/.
+[[r2_buckets]]
+binding = "MONITOR_BUCKET"
+bucket_name = "campmaster-monitor-media"
 
 [vars]
 # No plaintext secrets. Leave empty.
