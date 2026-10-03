@@ -3,6 +3,21 @@ import { TARGETS } from './targets.js';
 // D1 query helpers for the monitor worker. Every helper takes the D1 binding
 // (`env.DB`) as its first argument so routes stay thin and tests can pass a stub.
 //
+// SCOPE AFTER THE R2 MIGRATION (2026-10-03, phase 2): this module is the
+// READ side plus `login_attempts`, and nothing else. Every WRITE for probe
+// history, alert state, and intake reports moved to R2 (`src/storage.js`), and
+// the three D1 retention DELETEs were superseded by the R2 key sweep in
+// `index.js#runRetention` — an R2 sweep deletes objects by key, so there is no
+// `DELETE ... WHERE` left to write here. What remains:
+//   - probe reads (`getLatestPerTarget`, `getLastCheckTime`, `getUptimeSince`,
+//     `getHistory`) — still served from D1, migrating to R2 in phase 3;
+//   - intake report reads (`getRecentReports`, `getRecentChecks`) — phase 4/5;
+//   - the PIN gate (`recordLoginAttempt`, `getRecentFailCount`,
+//     `clearOldLoginAttempts`) — the last D1-only feature, phase 6.
+// The removed helpers are gone rather than left dead: an unused D1 write path is
+// exactly what phase 6's `grep env.DB` gate is meant to catch, so keeping one
+// "just in case" would make the migration unprovable.
+//
 // Time storage note: the schema defaults `checked_at` to SQLite
 // `datetime('now')` ("YYYY-MM-DD HH:MM:SS" UTC). `toIso()` converts that form
 // to ISO-8601 on the way out; values that already look like ISO pass through.
@@ -24,15 +39,9 @@ function rowToCheck(row) {
   };
 }
 
-// One row per probe run.
-export async function recordCheck(db, { target, statusCode, ok, responseMs, errorMessage }) {
-  await db
-    .prepare(
-      'INSERT INTO checks (target, status_code, ok, response_ms, error_message) VALUES (?, ?, ?, ?, ?)',
-    )
-    .bind(target, statusCode, ok ? 1 : 0, responseMs, errorMessage ?? null)
-    .run();
-}
+// `recordCheck` used to live here (one INSERT per target per run). It moved to
+// R2 with the rest of the probe write path — see `writeRunResults` in
+// `index.js`, which stores the whole run as ONE object instead of 5 rows.
 
 // Newest check row per target (raw rows, includes target + error_message).
 //
@@ -113,47 +122,11 @@ export async function getHistory(db, target, hours, limit = 500) {
   return (res.results ?? []).map(rowToCheck);
 }
 
-// Oldest-first last-N rows for one target (used by alert evaluation).
-export async function getLastNChecks(db, target, n) {
-  const res = await db
-    .prepare(
-      `SELECT status_code, ok, response_ms, error_message, checked_at
-       FROM (SELECT * FROM checks WHERE target = ? ORDER BY id DESC LIMIT ?)
-       ORDER BY checked_at ASC`,
-    )
-    .bind(target, n)
-    .all();
-  return res.results ?? [];
-}
-
-// Alert-state row for one target, or null when never evaluated.
-export async function getAlertState(db, target) {
-  const row = await db
-    .prepare(
-      `SELECT target, consecutive_failures, alerting, last_alert_at, updated_at
-       FROM alert_state WHERE target = ?`,
-    )
-    .bind(target)
-    .first();
-  return row ?? null;
-}
-
-// Upsert per-target alert state. `lastAlertAt` is a "YYYY-MM-DD HH:MM:SS" UTC
-// string (SQLite form, like `checked_at`) or null when no transition fired.
-export async function upsertAlertState(db, target, { consecutiveFailures, alerting, lastAlertAt }) {
-  await db
-    .prepare(
-      `INSERT INTO alert_state (target, consecutive_failures, alerting, last_alert_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(target) DO UPDATE SET
-         consecutive_failures = excluded.consecutive_failures,
-         alerting = excluded.alerting,
-         last_alert_at = excluded.last_alert_at,
-         updated_at = datetime('now')`,
-    )
-    .bind(target, consecutiveFailures, alerting ? 1 : 0, lastAlertAt ?? null)
-    .run();
-}
+// `getLastNChecks`, `getAlertState`, and `upsertAlertState` used to live here.
+// All three moved to R2: alert evaluation now reads and rewrites ONE
+// `state/alert_state.json` document and derives "3 consecutive failures" from
+// the counter inside it, instead of re-reading the last three rows per target on
+// every run. See `evaluateAlerts` in `index.js`.
 
 // --- A.4 intake + dashboard helpers (append-only; A.3 helpers above untouched) ---
 
@@ -234,92 +207,24 @@ export async function clearOldLoginAttempts(db) {
     .run();
 }
 
-// --- Retention policy (unbounded-growth guard for the cron-written tables) ---
+// --- Retention policy (2026-10-03: R2, not D1) ---
 //
-// `checks` gains one row per target every 5 minutes and nothing ever removed
-// one, so the probe table grew forever — the growth that made FIX A/B/C query
-// work necessary in the first place. Retention is the other half of that fix:
-// bound the table so the indexed reads stay cheap, instead of only making each
-// read cheaper.
+// This section used to hold three DELETE statements (`pruneOldChecks`,
+// `pruneOldReports`, `pruneStaleAlertState`) plus the two window constants, all
+// backed by real query plans (index SEARCH vs full SCAN) and a real-SQLite test.
 //
-// WINDOWS ARE BOUNDED BY WHAT THE DASHBOARD RENDERS, not by taste:
-//   - `/api/history` clamps `hours` to 1–168 (`src/index.js`) and uptime is a
-//     24h window, so the widest thing any reader can ask for is 7 days. A
-//     14-day floor on `checks` can therefore never blank a rendered window —
-//     there is always at least a week of headroom above the largest query.
-//   - `reports` has no time-windowed UI (the dashboard shows the newest 20 by
-//     id), so it can afford a much longer 30-day window before pruning.
-export const CHECKS_RETENTION_DAYS = 14;
-export const REPORTS_RETENTION_DAYS = 30;
-
-// Both prune windows are BOUND parameters, never interpolated SQL (same
-// pattern as `getHistory`), so the constants above are the single source of
-// truth and the statements stay injection-free by construction.
-const checksWindow = () => `-${CHECKS_RETENTION_DAYS} days`;
-
-// Delete probe rows older than the retention window.
+// After the R2 migration there is nothing to DELETE here. `checks` and `reports`
+// are immutable OBJECTS whose age lives in the R2 key and the listing's
+// `uploaded`, so retention is "list the prefix, delete what is over-age" —
+// `runRetention` in `index.js` — with the same 14-day / 30-day windows, now
+// defined in `src/storage.js` (`CHECKS_RETENTION_DAYS`, `REPORTS_RETENTION_DAYS`)
+// beside the key layout they govern. The orphaned-`alert_state` rule is gone
+// too: alert state is ONE document keyed by target, so `evaluateAlerts` drops
+// entries for unconfigured targets on every full run instead of needing a
+// separate sweep query.
 //
-// Plan: `SEARCH checks USING INDEX idx_checks_checked_at (checked_at<?)` —
-// this predicate depends on FIX A's SINGLE-COLUMN index. `0001_init`'s
-// `idx_checks_target_checked` cannot serve it, because `target` is
-// unconstrained here and leads that index, so the delete degrades to a full
-// table scan without `idx_checks_checked_at`.
-//
-// Strict `<`, so a row exactly at the cutoff survives; the next run re-evaluates
-// it against a moved `now`. `checks` is never truncated by a fixed LIMIT, which
-// would make the amount of work per run depend on how far behind it had fallen.
-export async function pruneOldChecks(db) {
-  return db
-    .prepare(`DELETE FROM checks WHERE checked_at < datetime('now', ?)`)
-    .bind(checksWindow())
-    .run();
-}
-
-// Delete intake reports older than the retention window. Strict `<`, same
-// boundary semantics as `pruneOldChecks`.
-//
-// Plan: `SCAN reports` — the only reports index is
-// `idx_reports_status_created (status, created_at)` and `status` is
-// unconstrained here, so this is a full scan of a small, slowly-growing
-// user-intake table (one row per submitted report, not per probe run). A
-// dedicated `created_at` index would fix the plan and is deliberately NOT
-// added: it is another write on every intake row, for a table two orders of
-// magnitude smaller than `checks`. Revisit if report volume ever grows to
-// where a 5-minute scan is measurable.
-export async function pruneOldReports(db) {
-  return db
-    .prepare(`DELETE FROM reports WHERE created_at < datetime('now', ?)`)
-    .bind(`-${REPORTS_RETENTION_DAYS} days`)
-    .run();
-}
-
-// Delete `alert_state` rows whose target has no check inside the checks
-// retention window — i.e. state for a target that is no longer probed.
-//
-// Two things make this safe to run every cron tick:
-//   - `evaluateAlerts` upserts a row for every CURRENT `TARGETS` entry BEFORE
-//     this runs, and the probe cycle has just written a fresh `checks` row for
-//     each of them, so every live target is definitionally "recently checked"
-//     and can never be pruned.
-//   - The window is the SAME 14 days `pruneOldChecks` uses, so the rule reads
-//     the table in its post-prune state: any check old enough to have been
-//     deleted cannot also vouch for an alert_state row. That keeps the two
-//     steps from disagreeing and makes the whole retention pass idempotent.
-//
-// Plan: `SCAN alert_state` + a correlated `SEARCH c USING COVERING INDEX
-// idx_checks_target_checked_desc (target=? AND checked_at>?)`. The outer scan
-// is bounded by the number of configured targets (one row per target, PRIMARY
-// KEY), not by table age, so it does not grow the way `checks` did.
-export async function pruneStaleAlertState(db) {
-  return db
-    .prepare(
-      `DELETE FROM alert_state
-       WHERE NOT EXISTS (
-         SELECT 1 FROM checks c
-         WHERE c.target = alert_state.target
-           AND c.checked_at >= datetime('now', ?)
-       )`,
-    )
-    .bind(checksWindow())
-    .run();
-}
+// The windows themselves are unchanged and keep their original justification:
+// `/api/history` clamps `hours` to 1–168 and uptime is a 24h window, so the
+// widest thing any reader can ask for is 7 days and a 14-day floor on checks
+// can never blank a rendered window; `reports` has no time-windowed UI and can
+// afford 30 days.

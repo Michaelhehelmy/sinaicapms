@@ -3,6 +3,21 @@ import { cors } from 'hono/cors';
 import { TARGETS, matchesExpect } from './targets.js';
 import * as db from './db.js';
 import {
+  CHECKS_PREFIX,
+  REPORT_KINDS,
+  CHECKS_RETENTION_DAYS,
+  REPORTS_RETENTION_DAYS,
+  checksKey,
+  reportsPrefix,
+  alertStateKey,
+  summaryKey,
+  isOlderThan,
+  readJson,
+  writeJson,
+  listAll,
+  deleteKeys,
+} from './storage.js';
+import {
   SESSION_COOKIE,
   SESSION_DEFAULT_MAX_AGE,
   SESSION_TRUSTED_MAX_AGE,
@@ -59,16 +74,59 @@ export async function probeTarget(target, fetchFn = fetch) {
   }
 }
 
-// Probe every target concurrently and persist one `checks` row each.
-// Alert evaluation happens after the writes (wired in a later change).
-export async function runProbeCycle(env, fetchFn = fetch) {
+// Serialize one probe result into its STORED form.
+//
+// Snake_case on purpose: it is the column naming the D1 `checks` table used, so
+// the R2 read path is a mechanical port and the `/api/status` + `/api/history`
+// wire shape (which was built from those rows) does not change underneath the
+// dashboard. `ok` stays 1/0, not a boolean, for the same reason.
+function toStoredResult(r) {
+  return {
+    name: r.name,
+    url: r.url,
+    status_code: r.statusCode ?? null,
+    ok: r.ok ? 1 : 0,
+    response_ms: r.responseMs ?? null,
+    error_message: r.errorMessage ?? null,
+  };
+}
+
+// Persist ONE object per probe run — the single write the cron makes per tick.
+//
+// The D1 table grew by one ROW PER TARGET per tick (5 rows every 5 minutes,
+// forever, which is what forced the 2026-09-30 index/query rewrite). R2 inverts
+// that: one object per run holds all N results, so the storage grows by exactly
+// one object per tick, the run's `run_at` lives in the document instead of
+// being inferred from a column, and retention becomes "delete the object".
+//
+// `now` is a parameter, never `new Date()` at write time, and the KEY is derived
+// from the same instant as the body's `run_at` — otherwise a run that starts at
+// 12:59:59.9 and finishes at 13:00:00.1 would file itself under the wrong day
+// and disagree with its own payload.
+export async function writeRunResults(env, results, now = new Date()) {
+  const key = checksKey(now);
+  await writeJson(env.MONITOR_BUCKET, key, {
+    run_at: now.toISOString(),
+    results: results.map(toStoredResult),
+  });
+  return key;
+}
+
+// Probe every target concurrently, then persist the run as one object.
+//
+// ORDER IS PROBED, NOT WRITTEN: every target is probed before anything is
+// written, so the write path can never add latency to a probe or (if R2 is
+// unavailable) lose the run's results after they were already collected. That
+// is the mirror image of the D1 version, which wrote each row inside its own
+// probe task.
+export async function runProbeCycle(env, fetchFn = fetch, now = new Date()) {
   const settled = await Promise.all(
     TARGETS.map(async (target) => {
       const row = await probeTarget(target, fetchFn);
-      await db.recordCheck(env.DB, { target: target.name, ...row });
       return { name: target.name, url: target.url, ...row };
     }),
   );
+  await writeRunResults(env, settled, now);
   return settled;
 }
 
@@ -516,16 +574,26 @@ app.post('/internal/check', async (c) => {
     }
   }
   let probed;
+  // One instant for the whole request: the run object's key + `run_at`, the
+  // alert state stamps, and the summary entry must all agree, and the rollup
+  // must not double-count a manual run that spans a day boundary.
+  const now = new Date();
   if (targetName) {
     const t = TARGETS.find((x) => x.name === targetName);
     const row = await probeTarget(t);
-    await db.recordCheck(c.env.DB, { target: t.name, ...row });
     probed = [{ name: t.name, url: t.url, ...row }];
+    // A single-target manual run is still a RUN: it is stored in the same
+    // one-object-per-run shape (with one result), so the R2 read path has
+    // exactly one document shape to parse and never has to ask "is this a
+    // partial run?". It also advances that target's consecutive-failure
+    // counter, exactly as the D1 version's row insert did.
+    await writeRunResults(c.env, probed, now);
   } else {
-    probed = await runProbeCycle(c.env);
+    probed = await runProbeCycle(c.env, fetch, now);
   }
-  const results = await evaluateAlerts(c.env, probed);
-  return c.json({ checked_at: new Date().toISOString(), results });
+  const results = await evaluateAlerts(c.env, probed, fetch, now);
+  await updateSummary(c.env, probed, now);
+  return c.json({ checked_at: now.toISOString(), results });
 });
 
 // Aggregate shape for the dashboard. Mirrors GET /api/status field-for-field
@@ -866,34 +934,70 @@ export async function sendAlert(env, { target, url, event, statusCode, errorMess
   }
 }
 
-// Evaluate alert transitions AFTER the probe rows are written:
-//   - last 3 checks all fail + not already alerting → alerting=1, send "down"
-//   - last 3 checks all ok + currently alerting → alerting=0, send "recovery"
-//   - otherwise → consecutive_failures bookkeeping only, no webhook.
-// `probeResults` scopes evaluation (subset of TARGETS); omit to evaluate all.
-export async function evaluateAlerts(env, probeResults, fetchFn = fetch) {
+// Consecutive failed runs before a target is announced DOWN. Same number the
+// D1 version derived by asking for the last 3 rows — it is the alert latency
+// floor: one bad 5-minute probe is noise, three is an outage.
+export const ALERT_FAIL_THRESHOLD = 3;
+
+// Evaluate alert transitions AFTER the run object is written:
+//   - 3 consecutive failed runs + not already down → send "down"
+//   - a healthy run while down → send "recovery"
+//   - otherwise → counter bookkeeping only, no webhook.
+//
+// THE COUNTER IS THE STATE, NOT A RE-DERIVATION. The D1 version re-read the last
+// three `checks` rows on every target on every run (5 targets x a query per
+// 5 minutes, forever). Here `state/alert_state.json` carries
+// `consecutive_failures`, so "3 in a row" is a single read of one small object
+// and a single write back — no history read at all. One deliberate difference
+// from the D1 rules, and it is the owner's chosen rule: recovery fires on the
+// FIRST healthy run after a down, where D1 required three. A down alert is a
+// human-visible claim ("this is broken"); the recovery that retracts it should
+// arrive as soon as the claim stops being true.
+//
+// `probeResults` scopes evaluation (subset of TARGETS); omit it to evaluate all
+// configured targets. A target that is NOT in `probeResults` (a single-target
+// manual run) keeps its entry untouched — its entry is NOT reset, because
+// "not probed" is not "healthy".
+export async function evaluateAlerts(env, probeResults, fetchFn = fetch, now = new Date()) {
   const names = (probeResults ?? []).map((r) => r.name);
-  const list = names.length ? TARGETS.filter((t) => names.includes(t.name)) : TARGETS;
+  const fullRun = names.length === 0;
+  const list = fullRun ? TARGETS : TARGETS.filter((t) => names.includes(t.name));
+  const byName = new Map((probeResults ?? []).map((r) => [r.name, r]));
+
+  // Read the whole document once. A corrupt/unreadable body THROWS out of
+  // readJson (see storage.js) — which fails this whole step instead of silently
+  // writing back an empty state that would lose `last_state: 'down'`.
+  const previous = await readJson(env.MONITOR_BUCKET, alertStateKey(), {});
+  const state = { ...(previous && typeof previous === 'object' ? previous : {}) };
+
   const outcomes = [];
   for (const target of list) {
-    const last3 = await db.getLastNChecks(env.DB, target.name, 3);
-    const state = await db.getAlertState(env.DB, target.name);
-    const latest = last3[last3.length - 1] ?? null;
-    const consecutiveFailures = latest && !latest.ok ? (state?.consecutive_failures ?? 0) + 1 : 0;
-    const last3Fail = last3.length >= 3 && last3.every((r) => !r.ok);
-    const last3Ok = last3.length >= 3 && last3.every((r) => r.ok);
-    const alerting = state?.alerting === 1;
+    const row = byName.get(target.name);
+    // No result for this target in this run: carry the entry forward verbatim.
+    if (!row) {
+      const carried = state[target.name];
+      outcomes.push({
+        target: target.name,
+        event: null,
+        notified: false,
+        alerting: carried?.last_state === 'down',
+        consecutiveFailures: carried?.consecutive_failures ?? 0,
+      });
+      continue;
+    }
+    const prev = state[target.name] ?? null;
+    const healthy = row.ok === 1;
+    const consecutiveFailures = healthy ? 0 : (prev?.consecutive_failures ?? 0) + 1;
+    const wasDown = prev?.last_state === 'down';
     let event = null;
-    if (last3Fail && !alerting) event = 'down';
-    else if (last3Ok && alerting) event = 'recovery';
-    const nextAlerting = event === 'down' ? 1 : event === 'recovery' ? 0 : alerting ? 1 : 0;
-    await db.upsertAlertState(env.DB, target.name, {
-      consecutiveFailures,
-      alerting: nextAlerting === 1,
-      lastAlertAt: event
-        ? new Date().toISOString().slice(0, 19).replace('T', ' ')
-        : (state?.last_alert_at ?? null),
-    });
+    if (!healthy && consecutiveFailures >= ALERT_FAIL_THRESHOLD && !wasDown) event = 'down';
+    else if (healthy && wasDown) event = 'recovery';
+    const lastState = event === 'down' ? 'down' : healthy ? 'up' : (prev?.last_state ?? 'up');
+    state[target.name] = {
+      last_state: lastState,
+      consecutive_failures: consecutiveFailures,
+      updated_at: now.toISOString(),
+    };
     let notified = false;
     if (event) {
       const res = await sendAlert(
@@ -902,8 +1006,8 @@ export async function evaluateAlerts(env, probeResults, fetchFn = fetch) {
           target: target.name,
           url: target.url,
           event,
-          statusCode: latest?.status_code ?? null,
-          errorMessage: latest?.error_message ?? null,
+          statusCode: row.statusCode ?? null,
+          errorMessage: row.errorMessage ?? null,
         },
         fetchFn,
       );
@@ -913,36 +1017,121 @@ export async function evaluateAlerts(env, probeResults, fetchFn = fetch) {
       target: target.name,
       event,
       notified,
-      alerting: nextAlerting === 1,
+      alerting: lastState === 'down',
       consecutiveFailures,
     });
   }
+
+  // Drop entries for targets that are no longer configured — the R2 form of the
+  // `pruneStaleAlertState` DELETE. ONLY on a full run: a single-target manual
+  // run must not delete the other five targets' alert state, or one operator
+  // clicking "check this host" would erase the outage history of everything
+  // else. Entries accumulate at most one per removed target name, so this is
+  // belt-and-braces on a file that is rewritten every run anyway.
+  if (fullRun) {
+    for (const key of Object.keys(state)) {
+      if (!TARGETS.some((t) => t.name === key)) delete state[key];
+    }
+  }
+
+  await writeJson(env.MONITOR_BUCKET, alertStateKey(), state);
   return outcomes;
 }
 
-// Cron retention pass: prune probe rows, intake reports, and alert state that
-// no longer has a probed target. Called from `scheduled()` after the probe rows
-// are written and the alert transitions have been evaluated, so a live target
-// has a fresh check row by the time the stale-state rule reads the table.
+// Rolling 24h uptime rollup, rewritten in place on every run.
+//
+// OWNER-APPROVED ADDITION over a literal port of the D1 query. `getUptimeSince`
+// answered "what fraction of this target's checks in the last 24h were ok" with
+// one indexed SQL count per target; the R2 equivalent is "walk 24h of run
+// objects" = 288 objects at the 5-minute cadence, x 5 targets, on every cached
+// miss of the PUBLIC `/api/status` route. That is the read fan-out this
+// rollup exists to remove: one small object read replaces up to 288.
+//
+// Shape: `runs[]` is the per-run evidence (the minimum needed to expire the
+// window), `targets{}` is the aggregate `/api/status` actually reads. Keeping
+// both means a reader never has to re-sum 288 entries, and the window can still
+// be rolled forward without trusting a stored total.
+export const SUMMARY_WINDOW_HOURS = 24;
+
+// Ceiling on the retained `runs` entries. At the cron cadence 24h is 288 runs,
+// so this only bites if an operator hammers POST /internal/check (every manual
+// run appends an entry). Dropping the OLDEST is the right truncation: the
+// window is a rolling "recent" view, and the newest entries are the ones a
+// reader needs.
+export const SUMMARY_MAX_RUNS = 1000;
+
+export async function updateSummary(env, results, now = new Date()) {
+  const windowMs = SUMMARY_WINDOW_HOURS * 60 * 60 * 1000;
+  const nowMs = new Date(now).getTime();
+  const previous = await readJson(env.MONITOR_BUCKET, summaryKey(), null);
+  const prior = Array.isArray(previous?.runs) ? previous.runs : [];
+
+  // Strictly inside the window: a run exactly 24h old has expired, matching the
+  // `isOlderThan` boundary the sweep uses.
+  const runs = prior.filter((r) => {
+    const t = Date.parse(r?.run_at ?? '');
+    return Number.isFinite(t) && nowMs - t < windowMs;
+  });
+
+  const ok = {};
+  for (const r of results ?? []) ok[r.name] = r.ok === 1 ? 1 : 0;
+  runs.push({ run_at: new Date(now).toISOString(), ok });
+  const trimmed = runs.length > SUMMARY_MAX_RUNS ? runs.slice(-SUMMARY_MAX_RUNS) : runs;
+
+  const targets = {};
+  for (const run of trimmed) {
+    for (const [name, wasOk] of Object.entries(run.ok ?? {})) {
+      const bucket = (targets[name] ??= { okCount: 0, totalCount: 0 });
+      bucket.totalCount += 1;
+      if (wasOk) bucket.okCount += 1;
+    }
+  }
+
+  await writeJson(env.MONITOR_BUCKET, summaryKey(), {
+    updated_at: new Date(now).toISOString(),
+    window_hours: SUMMARY_WINDOW_HOURS,
+    targets,
+    runs: trimmed,
+  });
+  return targets;
+}
+
+// Cron retention sweep over the R2 layout, replacing the three D1 DELETE
+// statements: probe-run objects older than 14 days, and intake-report objects
+// (both kinds) older than 30. `state/*` is never swept — it is not dated, it is
+// rewritten in place, and "old" state objects are exactly the state that must
+// survive a quiet period.
+//
+// DAILY, AT UTC HOUR 0. The D1 version could run every 5 minutes because a
+// bounded `DELETE ... WHERE indexed_col < ?` is cheap. A sweep here must LIST
+// keys (up to ~4,000 for checks alone at the retention floor), which is
+// paginated and not free, so it runs once a day — and at hour 0 in UTC, the
+// same clock the day buckets and the retention cutoffs are built on, so "the
+// first run of a new UTC day" is a fact rather than a coincidence. Every one of
+// the 12 daily runs that lands inside hour 0 (the cron fires every 5 minutes)
+// does the sweep; that is idempotent and costs 12 listings a day, far cheaper
+// than a state flag that could be lost and strand an unbounded bucket.
 //
 // BEST-EFFORT BY DESIGN, one try/catch PER STEP — the same posture as
-// `sendAlert()` (which returns `{skipped:true}` instead of throwing for a dead
-// webhook). A maintenance problem must never escalate into a monitoring
-// outage: this same cron is what produces the alert that would REPORT a broken
-// D1, so letting a prune failure reject out of `scheduled()` would silence the
-// monitor during exactly the incident it exists to catch. Per-step rather than
-// one wrapper, so a failing step cannot skip the remaining ones.
-export async function runRetention(env) {
+// `sendAlert()`, and the same reason: this cron is what produces the alert that
+// would REPORT a broken bucket, so a prune failure must not silence it. Per-step
+// rather than one wrapper, so a failing step cannot skip the remaining ones.
+export async function runRetention(env, now = new Date()) {
+  if (new Date(now).getUTCHours() !== 0) {
+    return { skipped: true, reason: 'not-utc-hour-0' };
+  }
   const steps = [
-    ['checks', db.pruneOldChecks],
-    ['reports', db.pruneOldReports],
-    ['alert_state', db.pruneStaleAlertState],
+    ['checks', `${CHECKS_PREFIX}/`, CHECKS_RETENTION_DAYS],
+    ...REPORT_KINDS.map((kind) => [`reports/${kind}`, reportsPrefix(kind), REPORTS_RETENTION_DAYS]),
   ];
   const deleted = {};
-  for (const [name, prune] of steps) {
+  for (const [name, prefix, days] of steps) {
     try {
-      const res = await prune(env.DB);
-      deleted[name] = res?.meta?.changes ?? null;
+      const objects = await listAll(env.MONITOR_BUCKET, { prefix });
+      // Age comes from the LISTING's `uploaded`, so deciding what to delete
+      // costs no per-object HEAD.
+      const stale = objects.filter((o) => isOlderThan(o.uploaded, now, days)).map((o) => o.key);
+      deleted[name] = await deleteKeys(env.MONITOR_BUCKET, stale);
     } catch (err) {
       console.error('monitor retention step failed', name, err?.message ?? err);
       deleted[name] = null;
@@ -951,21 +1140,35 @@ export async function runRetention(env) {
   return deleted;
 }
 
-// Cron entry: probe every target, store the rows, then evaluate alerts, then
-// prune old login_attempts rows (keeps the 5-min PIN gate table small) and the
-// retention pass (bounds `checks`/`reports`/orphaned `alert_state`).
+// Cron entry: probe every target, store the run as ONE object, evaluate alert
+// transitions, fold the run into the 24h rollup, prune old login_attempts rows
+// (keeps the 5-min PIN gate table small — still D1), and run the daily R2 sweep.
 // Runs every 5 minutes via the [triggers] crons schedule in wrangler.toml.
-// Probe/alert/target logic above is untouched — only the cleanup DELETEs
-// are added here.
 //
-// `clearOldLoginAttempts` keeps its original unwrapped behaviour (a throw
-// there still rejects `scheduled()`); changing that failure mode is a separate
-// call from this task's retention policy, so it is left alone deliberately.
+// FAILURE POSTURE, per step and deliberately not uniform:
+//   - probe + write + alerts stay UNWRAPPED. A failure there means the monitor
+//     did not do its job; swallowing it would turn a broken probe path into a
+//     silently stale dashboard.
+//   - the rollup and the sweep are WRAPPED each in their own try/catch. Both
+//     are derived/maintenance data with a correct answer on the next run, and
+//     neither is allowed to cancel the alerting above them. (The pre-existing
+//     D1 version had exactly this split: retention steps were per-step guarded,
+//     the probe/alert half was not.)
+//   - `clearOldLoginAttempts` keeps its original unwrapped behaviour (a throw
+//     there still rejects `scheduled()`); changing that failure mode is a
+//     separate call from this task's retention policy, so it is left alone
+//     deliberately. It is also the last remaining D1 write in the cron.
 async function scheduled(event, env, ctx) {
-  const results = await runProbeCycle(env);
-  await evaluateAlerts(env, results);
+  const now = new Date();
+  const results = await runProbeCycle(env, fetch, now);
+  await evaluateAlerts(env, results, fetch, now);
+  try {
+    await updateSummary(env, results, now);
+  } catch (err) {
+    console.error('monitor summary update failed', err?.message ?? err);
+  }
   await db.clearOldLoginAttempts(env.DB);
-  await runRetention(env);
+  await runRetention(env, now);
 }
 
 export default { fetch: app.fetch, scheduled };

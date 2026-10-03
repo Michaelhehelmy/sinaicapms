@@ -11,6 +11,7 @@ import {
   timingSafeEqual,
   buildSessionCookie,
 } from '../src/auth.js';
+import { makeR2 } from './helpers/fake-r2.js';
 
 // Cookie-session dashboard auth: 6-digit PIN login issues a signed
 // `monitor_session` cookie; GET / requires it; POST /internal/check
@@ -194,7 +195,10 @@ class FakeDb {
 
 const REPORT_TOKEN = 'test-report-secret';
 const DASHBOARD_PIN = '123456';
-const envFor = (db, extra = {}) => ({ DB: db, REPORT_TOKEN, DASHBOARD_PIN, ...extra });
+// The worker always has BOTH bindings. `MONITOR_BUCKET` is here because
+// `POST /internal/check` now persists its run to R2 (the probe write path moved
+// off D1 in migration phase 2) — a request without it 500s.
+const envFor = (db, extra = {}) => ({ DB: db, MONITOR_BUCKET: makeR2(), REPORT_TOKEN, DASHBOARD_PIN, ...extra });
 const ORIGIN = 'https://status.sinaicamps.com';
 
 function cookieHeader(setCookie) {

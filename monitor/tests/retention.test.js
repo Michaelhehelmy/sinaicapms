@@ -1,334 +1,326 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { scheduled } from '../src/index.js';
+import { scheduled, runRetention } from '../src/index.js';
 import { TARGETS } from '../src/targets.js';
+import { CHECKS_RETENTION_DAYS, REPORTS_RETENTION_DAYS } from '../src/storage.js';
+import { makeR2, stubFetch, HOUR_0 } from './helpers/fake-r2.js';
 
-// Retention policy guard — real SQLite, real `scheduled()`.
+// Retention policy guard — real `runRetention()`, real `scheduled()` wiring.
 //
-// The unit suite's FakeDb dispatches on SQL substrings, which cannot tell a
-// retention DELETE that deletes the right rows from one that deletes none: both
-// "found nothing to prune" and "pruned the wrong thing" look like a clean run
-// against a stub. This file therefore drives the real cron entry point against
-// real SQL (the same engine D1 embeds, all three migrations replayed) and
-// asserts on the surviving ROWS — old rows gone, fresh rows intact.
+// This file used to replay the three D1 migrations into `node:sqlite` and assert
+// on surviving ROWS, because the D1 prunes were SQL and a SQL-dispatching stub
+// could not tell "deleted the right rows" from "deleted none". Nothing under test
+// is SQL any more: retention is now "list a prefix, delete what is over-age", so
+// the equivalent proof is on KEYS in an R2 double that lists in byte order with
+// a cursor — which is exactly the property a naive Map stub would fake away.
 //
-// `scheduled()` is called, not `runRetention()`, so the wiring into the cron is
-// covered too: a helper that works but is never called would pass a
-// helper-only test.
+// `scheduled()` is still driven (with the clock pinned to UTC hour 0 via fake
+// timers) so a sweep that works but is never wired in would fail here, as before.
+//
+// STILL D1, STILL CALLED: `scheduled()` runs `clearOldLoginAttempts` (the PIN
+// brute-force table) and that is the last D1 write in the cron — phase 6 moves
+// it. The stub below answers only that DELETE.
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS = path.join(here, '..', 'migrations');
-const MIGRATION_FILES = ['0001_init.sql', '0002_login_attempts.sql', '0003_indexes.sql'];
+const HOUR_0_MINUS = (hours) => new Date(HOUR_0.getTime() - hours * 3600 * 1000);
 
-// Windows under test, as SQLite modifier strings.
-//
-// ONE unit+value pair only, and that is a hard SQLite rule, not a style
-// choice: `datetime('now', '-13 days 23 hours')` returns NULL (a second
-// unit+value group invalidates the WHOLE modifier), which would seed a NULL
-// into `checks.checked_at` and blow up on NOT NULL. So every seed below is a
-// single-unit offset.
-//
-// The offsets deliberately BRACKET each boundary by an hour rather than sitting
-// exactly on it. `datetime('now')` is re-evaluated by the DELETE statement, so
-// the cutoff advances by the (sub-second) time between the seed INSERT and the
-// prune; a row seeded at exactly -14 days is therefore already *inside* the
-// window by the time it is deleted. An hour of margin makes both sides of the
-// boundary deterministic regardless of how slow the test machine is.
-//
-// UNITS: `H()` takes HOURS. `ONE_HOUR` below is 1 hour, NOT 3600 seconds — the
-// first draft of this file reused a `HOUR = 3600` constant against this
-// hours-based helper and silently seeded every "fresh" row ~150 days old, so
-// retention correctly deleted rows the test believed were new.
-const H = (hours) => `-${hours} hours`;
+// Windows under test, in days.
+const CHECKS_DAYS = CHECKS_RETENTION_DAYS; // 14
+const REPORTS_DAYS = REPORTS_RETENTION_DAYS; // 30
 
-// `checks` retention is 14 days = 336 hours.
-const CHECKS_INSIDE = 336 - 1; // just inside  -> must survive
-const CHECKS_OUTSIDE = 336 + 1; // just outside -> must be deleted
-// Widest window any reader can ask for: `/api/history` clamps hours to 168.
-const MAX_HISTORY_WINDOW_HOURS = 168;
-// `reports` retention is 30 days = 720 hours.
-const REPORTS_INSIDE = 720 - 1;
-const REPORTS_OUTSIDE = 720 + 1;
-// Comfortably "brand new" — 1 hour, in HOURS (H() takes hours, not seconds).
-const ONE_HOUR = 1;
-
-// Minimal D1-shaped adapter over node:sqlite. `failOn` injects a D1 failure on
-// any statement containing that fragment, for the best-effort path.
-function makeDb({ failOn = null } = {}) {
-  const raw = new DatabaseSync(':memory:');
-  for (const file of MIGRATION_FILES) {
-    raw.exec(fs.readFileSync(path.join(MIGRATIONS, file), 'utf8'));
-  }
-  const db = {
+// Minimal D1 stub: the cron only issues one statement (the login_attempts
+// prune). A throw here is a genuine failure, not something to swallow.
+function makeDb() {
+  return {
     prepare(sql) {
-      const stmt = raw.prepare(sql);
       return {
         sql,
-        args: [],
-        bind(...args) {
-          this.args = args;
+        bind() {
           return this;
         },
-        async all() {
-          return { results: stmt.all(...this.args) };
-        },
-        async first() {
-          return stmt.get(...this.args) ?? null;
-        },
         async run() {
-          if (failOn && sql.includes(failOn)) {
-            throw new Error(`injected D1 failure: ${failOn}`);
-          }
-          const r = stmt.run(...this.args);
-          // D1 reports the affected-row count under `meta.changes`; the prunes
-          // read it, so the shim must expose the same shape or the helpers would
-          // silently return null counts under test.
-          return { success: true, meta: { changes: r.changes, last_row_id: r.lastInsertRowid } };
+          return { success: true, meta: { changes: 0 } };
         },
       };
     },
-    _raw: raw,
   };
-  return db;
 }
 
-// "now" shifted by a SQLite modifier, resolved by SQLite itself so the seed and
-// the prune agree on the format and the clock.
-function ago(db, modifier) {
-  return db._raw.prepare('SELECT datetime(\'now\', ?) AS t').get(modifier).t;
+const envWith = (bucket, extra = {}) => ({ DB: makeDb(), MONITOR_BUCKET: bucket, ...extra });
+
+const checksKeys = (bucket) => bucket.keys().filter((k) => k.startsWith('checks/'));
+const reportKeys = (bucket, kind) => bucket.keys().filter((k) => k.startsWith(`reports/${kind}/`));
+
+// Seed an object whose `uploaded` is `hours` before HOUR_0. Age comes from the
+// LISTING, so this is how a test says "this object is 15 days old".
+function seed(bucket, key, hoursOld = 1) {
+  bucket.seed(key, { seeded: true }, HOUR_0_MINUS(hoursOld).toISOString());
+  return key;
 }
 
-function seedCheck(db, target, modifier) {
-  db._raw
-    .prepare(
-      'INSERT INTO checks (target, status_code, ok, response_ms, error_message, checked_at) VALUES (?,?,?,?,?,?)',
-    )
-    .run(target, 200, 1, 12, null, ago(db, modifier));
-}
-
-function seedReport(db, modifier) {
-  db._raw
-    .prepare("INSERT INTO reports (kind, message, created_at) VALUES ('error', 'boom', ?)")
-    .run(ago(db, modifier));
-}
-
-function seedAlertState(db, target) {
-  db._raw
-    .prepare(
-      'INSERT INTO alert_state (target, consecutive_failures, alerting) VALUES (?, ?, 1)',
-    )
-    .run(target, 5);
-}
-
-const checkTargets = (db) => db._raw.prepare('SELECT target FROM checks').all().map((r) => r.target);
-const reportCount = (db) => db._raw.prepare('SELECT COUNT(*) AS n FROM reports').get().n;
-const alertTargets = (db) =>
-  db._raw.prepare('SELECT target FROM alert_state').all().map((r) => r.target);
-
-// Rows already past the checks retention window — the retention pass's own
-// definition of "prunable". Zero means the previous pass did its job.
-const overAgeChecks = (db) =>
-  db._raw.prepare("SELECT COUNT(*) AS n FROM checks WHERE checked_at < datetime('now','-14 days')").get().n;
-
-// Every probe target, by name — the probe cycle inside `scheduled()` writes one
-// fresh `checks` row and one `alert_state` row for each of these.
-const configured = TARGETS.map((t) => t.name);
-
-// Stub the network the cron uses. Returns 200 so every probe is healthy, which
-// also keeps `evaluateAlerts` from firing a down/recovery webhook.
-function stubFetch() {
-  const calls = [];
-  vi.stubGlobal('fetch', async (url) => {
-    calls.push(String(url));
-    return { status: 200, ok: true };
-  });
-  return calls;
-}
+const daysOld = (days) => days * 24;
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
-describe('cron retention policy', () => {
-  it('deletes checks older than 14 days and keeps everything inside the window', async () => {
-    const db = makeDb();
-    seedCheck(db, 'fresh', H(ONE_HOUR));
-    seedCheck(db, 'boundary-inside', H(CHECKS_INSIDE));
-    seedCheck(db, 'too-old', H(CHECKS_OUTSIDE));
-    seedCheck(db, 'ancient', H(40 * 24));
-    stubFetch();
+describe('cron retention sweep (R2)', () => {
+  it('deletes checks objects older than 14 days and keeps everything inside the window', async () => {
+    const bucket = makeR2();
+    seed(bucket, 'checks/2026-10-02/23-55.json', 1);
+    seed(bucket, 'checks/2026-09-19/12-00.json', daysOld(CHECKS_DAYS) - 1); // just inside
+    seed(bucket, 'checks/2026-09-19/11-55.json', daysOld(CHECKS_DAYS) + 1); // just outside
+    seed(bucket, 'checks/2026-08-01/00-00.json', daysOld(40));
 
-    await scheduled({}, { DB: db });
+    await runRetention(envWith(bucket), HOUR_0);
 
-    const left = checkTargets(db);
-    expect(left).toContain('fresh');
-    expect(left).toContain('boundary-inside');
-    expect(left).not.toContain('too-old');
-    expect(left).not.toContain('ancient');
+    expect(checksKeys(bucket)).toEqual([
+      'checks/2026-09-19/12-00.json', // boundary-inside survives
+      'checks/2026-10-02/23-55.json',
+    ]);
   });
 
   it('keeps the whole widest dashboard window (168h), so retention can never blank a rendered chart', async () => {
-    const db = makeDb();
-    // A row at the very oldest edge of the largest query the API permits
-    // (`/api/history` clamps hours to 168) plus one right at the retention floor.
-    seedCheck(db, 'edge-of-largest-window', H(MAX_HISTORY_WINDOW_HOURS));
-    seedCheck(db, 'at-retention-floor', H(CHECKS_INSIDE));
-    stubFetch();
+    const bucket = makeR2();
+    seed(bucket, 'checks/2026-09-26/00-00.json', 168); // oldest edge of the largest legal query
+    seed(bucket, 'checks/2026-09-19/12-00.json', daysOld(CHECKS_DAYS) - 1);
 
-    await scheduled({}, { DB: db });
+    await runRetention(envWith(bucket), HOUR_0);
 
-    expect(checkTargets(db)).toContain('edge-of-largest-window');
-    expect(checkTargets(db)).toContain('at-retention-floor');
+    expect(checksKeys(bucket)).toHaveLength(2);
   });
 
-  it('deletes reports older than 30 days and keeps everything inside the window', async () => {
-    const db = makeDb();
-    seedReport(db, H(45 * 24));
-    seedReport(db, H(REPORTS_OUTSIDE));
-    seedReport(db, H(REPORTS_INSIDE));
-    seedReport(db, H(ONE_HOUR));
-    expect(reportCount(db)).toBe(4);
-    stubFetch();
+  it('applies a DIFFERENT window per collection (a 20-day report outlives a 15-day check)', async () => {
+    const bucket = makeR2();
+    seed(bucket, 'checks/2026-09-19/00-00.json', daysOld(15));
+    seed(bucket, 'reports/errors/2026-09-13/09-00-00-1.json', daysOld(20));
+    seed(bucket, 'reports/errors/2026-08-20/09-00-00-2.json', daysOld(REPORTS_DAYS) + 1);
+    seed(bucket, 'reports/feedback/2026-08-25/09-00-00-3.json', daysOld(31));
 
-    await scheduled({}, { DB: db });
+    await runRetention(envWith(bucket), HOUR_0);
 
-    // Only the two inside the window survive (plus nothing else — retention adds
-    // no rows, so the count is exactly 2).
-    expect(reportCount(db)).toBe(2);
+    // 15 days kills the check but the 20-day report is well inside 30.
+    expect(checksKeys(bucket)).toHaveLength(0);
+    expect(reportKeys(bucket, 'errors')).toEqual(['reports/errors/2026-09-13/09-00-00-1.json']);
+    expect(reportKeys(bucket, 'feedback')).toEqual([]);
   });
 
-  it('preserves report CONTENT, not just the row count', async () => {
-    const db = makeDb();
-    db._raw
-      .prepare("INSERT INTO reports (kind, message, created_at) VALUES ('error', 'old message', ?)")
-      .run(ago(db, H(45 * 24)));
-    db._raw
-      .prepare("INSERT INTO reports (kind, message, created_at) VALUES ('feedback', 'new message', ?)")
-      .run(ago(db, H(ONE_HOUR)));
-    stubFetch();
+  it('never sweeps the state documents', async () => {
+    const bucket = makeR2();
+    bucket.seed('state/alert_state.json', { marketplace: { last_state: 'down' } }, HOUR_0_MINUS(daysOld(365)).toISOString());
+    bucket.seed('state/summary.json', { targets: {} }, HOUR_0_MINUS(daysOld(365)).toISOString());
 
-    await scheduled({}, { DB: db });
+    await runRetention(envWith(bucket), HOUR_0);
 
-    const left = db._raw.prepare('SELECT kind, message FROM reports').all();
-    expect(left).toEqual([{ kind: 'feedback', message: 'new message' }]);
+    // A year-old state document is exactly the state that must survive a quiet
+    // period — `state/` is rewritten in place, never aged out.
+    expect(bucket.keys().sort()).toEqual(['state/alert_state.json', 'state/summary.json']);
   });
 
-  it('deletes alert_state for a target that has no surviving check', async () => {
-    const db = makeDb();
-    seedAlertState(db, 'orphan'); // never probed — no checks at all
-    seedAlertState(db, 'backed-by-fresh'); // has a check inside the window
-    seedCheck(db, 'backed-by-fresh', H(ONE_HOUR));
-    seedAlertState(db, 'at-retention-floor');
-    seedCheck(db, 'at-retention-floor', H(CHECKS_INSIDE));
-    stubFetch();
+  it('runs ONLY at UTC hour 0, and deletes nothing at any other hour', async () => {
+    const bucket = makeR2();
+    seed(bucket, 'checks/2026-01-01/00-00.json', daysOld(400));
 
-    await scheduled({}, { DB: db });
-
-    const left = alertTargets(db);
-    expect(left).not.toContain('orphan');
-    expect(left).toContain('backed-by-fresh');
-    expect(left).toContain('at-retention-floor');
-  });
-
-  it('deletes alert_state whose ONLY check was itself over-age (rule reads the post-prune table)', async () => {
-    const db = makeDb();
-    // The subtle case: a check row DOES exist for this target, but it is older
-    // than the retention window, so `pruneOldChecks` removes it in the same
-    // pass. A rule keyed on "has any check row at all" would keep the stale
-    // state; keying on the same window the checks prune uses removes it.
-    seedAlertState(db, 'ancient');
-    seedCheck(db, 'ancient', H(40 * 24));
-    expect(checkTargets(db)).toContain('ancient');
-    stubFetch();
-
-    await scheduled({}, { DB: db });
-
-    expect(checkTargets(db)).not.toContain('ancient');
-    expect(alertTargets(db)).not.toContain('ancient');
-  });
-
-  it('never deletes alert_state for a currently configured target', async () => {
-    const db = makeDb();
-    stubFetch();
-
-    await scheduled({}, { DB: db });
-
-    // `evaluateAlerts` upserts one row per configured target before retention
-    // runs, and the probe cycle just wrote a fresh check for each — so live
-    // targets are structurally un-prunable no matter how long the table ages.
-    const left = alertTargets(db);
-    for (const name of configured) {
-      expect(left, `alert_state lost the configured target ${name}`).toContain(name);
+    // Every cron tick inside hour 0 sweeps (there are 12 of them) — the gate is
+    // the HOUR, not a "first run of the day" flag that a lost write could skip.
+    for (const iso of ['2026-10-03T00:00:00.000Z', '2026-10-03T00:12:00.000Z', '2026-10-03T00:55:00.000Z']) {
+      expect(await runRetention(envWith(bucket), new Date(iso))).not.toMatchObject({ skipped: true });
+      expect(checksKeys(bucket)).toHaveLength(0);
+      seed(bucket, 'checks/2026-01-01/00-00.json', daysOld(400)); // re-seed for the next pass
     }
-    expect(new Set(left).size).toBe(left.length); // still one row per target
+
+    // One minute before and one minute after the hour: no listing at all.
+    const listsBefore = bucket.calls.list.length;
+    for (const iso of ['2026-10-02T23:55:00.000Z', '2026-10-03T01:00:00.000Z', '2026-10-03T12:00:00.000Z']) {
+      expect(await runRetention(envWith(bucket), new Date(iso))).toMatchObject({ skipped: true, reason: 'not-utc-hour-0' });
+    }
+    expect(checksKeys(bucket)).toHaveLength(1);
+    expect(bucket.calls.list).toHaveLength(listsBefore); // a skipped sweep lists nothing at all
   });
 
-  it('a retention failure never fails the cron, and the other steps still run', async () => {
-    const db = makeDb({ failOn: 'DELETE FROM checks' });
-    seedCheck(db, 'too-old', H(CHECKS_OUTSIDE));
-    seedReport(db, H(45 * 24));
-    seedAlertState(db, 'orphan');
+  it('pages through the listing with the R2 cursor instead of assuming one page', async () => {
+    // pageSize 2 against 9 keys = 5 pages; a single-page sweep would see 2.
+    const bucket = makeR2({ pageSize: 2 });
+    for (let i = 0; i < 9; i += 1) seed(bucket, `checks/2026-01-0${1 + Math.floor(i / 3)}/0${i}-00.json`, daysOld(40));
+
+    const res = await runRetention(envWith(bucket), HOUR_0);
+
+    expect(res.checks).toBe(9);
+    expect(checksKeys(bucket)).toHaveLength(0);
+    expect(bucket.calls.list.filter((c) => c.prefix === 'checks/').length).toBeGreaterThan(1);
+    expect(bucket.calls.list.some((c) => c.cursor)).toBe(true); // the cursor was actually used
+  });
+
+  it('reports per-collection counts and never touches the other prefixes', async () => {
+    const bucket = makeR2();
+    seed(bucket, 'checks/2026-08-01/00-00.json', daysOld(40));
+    seed(bucket, 'reports/errors/2026-08-01/00-00-00-1.json', daysOld(40));
+    seed(bucket, 'reports/feedback/2026-09-30/00-00-00-2.json', 1);
+
+    const res = await runRetention(envWith(bucket), HOUR_0);
+
+    expect(res).toEqual({ checks: 1, 'reports/errors': 1, 'reports/feedback': 0 });
+  });
+
+  it('a failing sweep step never fails the cron, and the other steps still run', async () => {
+    const bucket = makeR2({ failOn: { delete: 'checks/' } });
+    seed(bucket, 'checks/2026-08-01/00-00.json', daysOld(40));
+    seed(bucket, 'reports/errors/2026-08-01/00-00-00-1.json', daysOld(40));
     const errors = [];
     vi.spyOn(console, 'error').mockImplementation((...a) => errors.push(a));
-    const calls = stubFetch();
 
-    // Must RESOLVE. A rejection here would mean a D1 hiccup during the prune
-    // silently silenced the cron that produces the alerts.
-    await expect(scheduled({}, { DB: db })).resolves.toBeUndefined();
+    // Must RESOLVE. A rejection here would silence the cron that produces the
+    // alert reporting the broken bucket.
+    await expect(runRetention(envWith(bucket), HOUR_0)).resolves.toBeDefined();
 
-    // The failing step is the only casualty: its rows remain...
-    expect(checkTargets(db)).toContain('too-old');
-    // ...while the two later steps still pruned.
-    expect(reportCount(db)).toBe(0);
-    expect(alertTargets(db)).not.toContain('orphan');
-    // The failure is logged, not swallowed silently.
+    // The failing step is the only casualty: its objects remain...
+    expect(checksKeys(bucket)).toHaveLength(1);
+    // ...while the report sweeps still pruned.
+    expect(reportKeys(bucket, 'errors')).toHaveLength(0);
     expect(errors.map((e) => e.join(' '))).toEqual([
       expect.stringContaining('monitor retention step failed checks'),
     ]);
-    // And the probe half of the cron was unaffected.
-    expect(calls).toHaveLength(TARGETS.length);
   });
 
-  it('is idempotent — a second cron run prunes nothing further', async () => {
-    const db = makeDb();
-    seedCheck(db, 'survivor', H(ONE_HOUR));
-    seedCheck(db, 'too-old', H(CHECKS_OUTSIDE));
-    seedReport(db, H(45 * 24));
-    seedAlertState(db, 'orphan');
-    stubFetch();
+  it('a failing LIST is contained too, and reported as null', async () => {
+    const bucket = makeR2({ failOn: { list: 'checks/' } });
+    const errors = [];
+    vi.spyOn(console, 'error').mockImplementation((...a) => errors.push(a));
 
-    await scheduled({}, { DB: db });
-    await scheduled({}, { DB: db });
+    const res = await runRetention(envWith(bucket), HOUR_0);
 
-    // Idempotency here means "no row is still prunable after the first pass",
-    // NOT "the row set is frozen": each cron run legitimately ADDS one
-    // `checks` row per target, so an equality assertion on the raw target list
-    // would (correctly) fail on the probe half of the cron. The exact row
-    // accounting below pins both halves at once — 1 surviving seed plus one row
-    // per target per run, and zero rows past either window.
-    expect(overAgeChecks(db)).toBe(0);
-    expect(reportCount(db)).toBe(0);
-    expect(alertTargets(db)).not.toContain('orphan');
-    expect(checkTargets(db)).not.toContain('too-old');
-    expect(db._raw.prepare('SELECT COUNT(*) AS n FROM checks').get().n).toBe(
-      1 + 2 * TARGETS.length,
+    expect(res.checks).toBeNull();
+    expect(res['reports/errors']).toBe(0); // later steps still ran
+    expect(errors.map((e) => e.join(' ')).join('\n')).toContain(
+      'monitor retention step failed checks',
     );
-    expect(new Set(alertTargets(db)).size).toBe(configured.length);
   });
 
-  it('only probes over the network — retention issues no fetch of its own', async () => {
-    const db = makeDb();
-    const calls = stubFetch();
+  it('is idempotent — a second sweep in the same hour prunes nothing further', async () => {
+    const bucket = makeR2();
+    seed(bucket, 'checks/2026-08-01/00-00.json', daysOld(40));
+    seed(bucket, 'reports/errors/2026-08-01/00-00-00-1.json', daysOld(40));
+    seed(bucket, 'checks/2026-10-03/00-10.json', 1);
 
-    await scheduled({}, { DB: db });
+    await runRetention(envWith(bucket), HOUR_0);
+    // All 12 cron runs inside UTC hour 0 do this; the last must find nothing.
+    await runRetention(envWith(bucket), new Date('2026-10-03T00:55:00.000Z'));
 
-    // Exactly one request per configured target (the probes). No alert webhook
-    // is configured in this env, so no alert POST, and retention never fetches.
-    expect(calls).toHaveLength(TARGETS.length);
-    for (const target of TARGETS) expect(calls).toContain(target.url);
+    expect(checksKeys(bucket)).toEqual(['checks/2026-10-03/00-10.json']);
+    expect(bucket.keys().sort()).toEqual(['checks/2026-10-03/00-10.json']);
+  });
+
+  it('a cold bucket sweeps cleanly (nothing to list, nothing to delete)', async () => {
+    const bucket = makeR2();
+    expect(await runRetention(envWith(bucket), HOUR_0)).toEqual({
+      checks: 0,
+      'reports/errors': 0,
+      'reports/feedback': 0,
+    });
+  });
+});
+
+describe('scheduled() cron wiring (R2)', () => {
+  // Pin the clock: `scheduled()` takes no clock argument (Cloudflare has none),
+  // so fake timers are how a test reaches the UTC-hour-0 sweep through the real
+  // entry point instead of asserting on a directly-called helper.
+  function pinClock(iso = HOUR_0.toISOString()) {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(iso));
+    vi.stubGlobal('fetch', stubFetch(200).impl);
+  }
+
+  it('writes one object per run and sweeps in the same pass, at hour 0', async () => {
+    pinClock();
+    const bucket = makeR2();
+    seed(bucket, 'checks/2026-01-01/00-00.json', daysOld(400));
+
+    await scheduled({}, envWith(bucket));
+
+    const fresh = bucket.keys().filter((k) => k.startsWith('checks/2026-10-03/'));
+    // Exactly one new run object for the whole cycle (5 targets, 1 object).
+    expect(fresh).toEqual(['checks/2026-10-03/00-12.json']);
+    expect(checksKeys(bucket)).toEqual(['checks/2026-10-03/00-12.json']); // the ancient one is gone
+    const doc = bucket.read('checks/2026-10-03/00-12.json');
+    expect(doc.run_at).toBe(HOUR_0.toISOString());
+    expect(doc.results.map((r) => r.name)).toEqual(TARGETS.map((t) => t.name));
+  });
+
+  it('every cron run writes its own object — 5 targets, one object per tick', async () => {
+    for (const stamp of ['00:05:00', '00:10:00', '00:15:00']) {
+      pinClock(`2026-10-03T${stamp}.000Z`);
+      const bucket = makeR2();
+      await scheduled({}, envWith(bucket));
+      expect(checksKeys(bucket)).toEqual([`checks/2026-10-03/${stamp.slice(0, 5).replace(':', '-')}.json`]);
+      vi.useRealTimers();
+    }
+  });
+
+  it('never writes to the D1 probe/alert/report tables (login_attempts only)', async () => {
+    pinClock();
+    const bucket = makeR2();
+    const statements = [];
+    const db = {
+      prepare(sql) {
+        statements.push(sql);
+        return {
+          bind() {
+            return this;
+          },
+          async run() {
+            return { success: true, meta: { changes: 0 } };
+          },
+        };
+      },
+    };
+
+    await scheduled({}, { DB: db, MONITOR_BUCKET: bucket });
+
+    // The ONLY D1 statement the cron may still issue is the login_attempts prune.
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toMatch(/DELETE FROM login_attempts/);
+  });
+
+  it('a broken R2 put fails the run loudly (the monitor must not go quietly stale)', async () => {
+    pinClock();
+    const bucket = makeR2({ failOn: { put: 'checks/' } });
+    const errors = [];
+    vi.spyOn(console, 'error').mockImplementation((...a) => errors.push(a));
+
+    // Probe + write are deliberately NOT wrapped: a failure to record the run is
+    // a real failure and must surface as a cron error, not a silent dashboard.
+    await expect(scheduled({}, envWith(bucket))).rejects.toThrow(/injected R2 put failure/);
+    expect(bucket.read('state/alert_state.json')).toBeUndefined(); // nothing after it ran
+  });
+
+  it('a rollup failure is swallowed: derived data must not cancel the alerting', async () => {
+    pinClock();
+    const bucket = makeR2({ failOn: { put: 'state/summary.json' } });
+    const errors = [];
+    vi.spyOn(console, 'error').mockImplementation((...a) => errors.push(a));
+
+    await expect(scheduled({}, envWith(bucket))).resolves.toBeUndefined();
+
+    expect(errors.map((e) => e.join(' '))).toEqual([
+      expect.stringContaining('monitor summary update failed'),
+    ]);
+    // The parts that matter still happened: the run object and the alert state.
+    expect(bucket.keys().some((k) => k.startsWith('checks/2026-10-03/'))).toBe(true);
+    expect(Object.keys(bucket.read('state/alert_state.json'))).toEqual(TARGETS.map((t) => t.name));
+  });
+
+  it('probes every target over the network exactly once, and retention fetches nothing', async () => {
+    pinClock();
+    const bucket = makeR2();
+    const urls = [];
+    vi.stubGlobal('fetch', async (url) => {
+      urls.push(String(url));
+      return { status: 200, ok: true };
+    });
+
+    await scheduled({}, envWith(bucket));
+
+    expect(urls).toHaveLength(TARGETS.length);
+    for (const t of TARGETS) expect(urls).toContain(t.url);
   });
 });

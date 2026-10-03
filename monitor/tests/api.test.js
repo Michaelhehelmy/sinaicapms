@@ -11,6 +11,8 @@ import {
 } from '../src/index.js';
 import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
+import { checksKey } from '../src/storage.js';
+import { makeR2 } from './helpers/fake-r2.js';
 
 // In-memory D1 stand-in covering every SQL shape used by db.js
 // (status/history aggregates + A.4 intake/dashboard helpers).
@@ -187,7 +189,9 @@ class FakeDb {
 
 const REPORT_TOKEN = 'test-report-secret';
 const DASHBOARD_PIN = '123456';
-const envFor = (db) => ({ DB: db, REPORT_TOKEN, DASHBOARD_PIN });
+// The worker always has BOTH bindings; `POST /internal/check` needs
+// MONITOR_BUCKET since the probe write path moved off D1 (migration phase 2).
+const envFor = (db, extra = {}) => ({ DB: db, MONITOR_BUCKET: makeR2(), REPORT_TOKEN, DASHBOARD_PIN, ...extra });
 
 function postReport(path, { token = REPORT_TOKEN, body = { message: 'help' }, ip = '10.9.0.1' } = {}) {
   const headers = { 'Content-Type': 'application/json', 'cf-connecting-ip': ip };
@@ -456,24 +460,31 @@ describe('POST /internal/check (tokened manual probe)', () => {
   it('200 probes all targets and returns outcomes', async () => {
     globalThis.fetch = async () => ({ status: 200, ok: true });
     const db = new FakeDb();
+    const bucket = makeR2();
     const res = await app.request(
       '/internal/check',
       {
         method: 'POST',
         headers: { authorization: `Bearer ${REPORT_TOKEN}` },
       },
-      envFor(db),
+      { ...envFor(db), MONITOR_BUCKET: bucket },
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(typeof body.checked_at).toBe('string');
     expect(body.results).toHaveLength(TARGETS.length);
-    expect(db.checks).toHaveLength(TARGETS.length);
+    // The run is ONE object holding every result (not N D1 rows): same count,
+    // one write, and nothing left in the probe table.
+    const [key] = bucket.keys();
+    expect(key).toMatch(/^checks\/\d{4}-\d{2}-\d{2}\/\d{2}-\d{2}\.json$/);
+    expect(bucket.read(key).results).toHaveLength(TARGETS.length);
+    expect(db.checks).toHaveLength(0);
   });
 
   it('200 probes a single target when scoped', async () => {
     globalThis.fetch = async () => ({ status: 200, ok: true });
     const db = new FakeDb();
+    const bucket = makeR2();
     const res = await app.request(
       '/internal/check',
       {
@@ -481,13 +492,17 @@ describe('POST /internal/check (tokened manual probe)', () => {
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${REPORT_TOKEN}` },
         body: JSON.stringify({ target: 'marketplace' }),
       },
-      envFor(db),
+      { ...envFor(db), MONITOR_BUCKET: bucket },
     );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.results).toHaveLength(1);
     expect(body.results[0].target).toBe('marketplace');
-    expect(db.checks).toHaveLength(1);
+    // A partial run is still a run object, with one result — the R2 read path
+    // must never have to ask whether a document is a full or partial run.
+    const [key] = bucket.keys();
+    expect(bucket.read(key).results.map((r) => r.name)).toEqual(['marketplace']);
+    expect(db.checks).toHaveLength(0);
   });
 });
 
