@@ -10,11 +10,20 @@ import {
   REPORT_RATE_LIMIT,
   HISTORY_MAX_WINDOW_HOURS,
   readRecentChecks,
+  REPORT_USER_AGENT_MAX,
 } from '../src/index.js';
 import { SESSION_COOKIE, signSession } from '../src/auth.js';
 import { TARGETS } from '../src/targets.js';
 import { checksKey, historyKey } from '../src/storage.js';
-import { makeR2, seedRun, seedSummary, seedAlertState, seedRing, ringEntry } from './helpers/fake-r2.js';
+import {
+  makeR2,
+  seedRun,
+  seedSummary,
+  seedAlertState,
+  seedRing,
+  ringEntry,
+  webhookCollector,
+} from './helpers/fake-r2.js';
 
 // In-memory D1 stand-in covering every SQL shape db.js still has: the intake
 // reports (until phase 5 moves them to `/api/reports`) and the PIN gate.
@@ -72,23 +81,12 @@ class FakeDb {
     return this.reports[this.reports.length - 1];
   }
   execRun(sql, args) {
-    if (sql.startsWith('INSERT INTO checks') || sql.startsWith('INSERT INTO alert_state')) {
-      throw new Error(`FakeDb.run: ${sql} — probe history and alert state moved to R2 (phase 2)`);
-    }
-    if (sql.startsWith('INSERT INTO reports')) {
-      const [kind, message, page_url, contact] = args;
-      this.reportSeq += 1;
-      this.tick += 1;
-      this.reports.push({
-        id: this.reportSeq,
-        kind,
-        message,
-        page_url,
-        contact,
-        status: 'new',
-        created_at: `2026-09-29 00:01:${String(this.tick).padStart(2, '0')}`,
-      });
-      return { success: true, meta: { last_row_id: this.reportSeq } };
+    if (
+      sql.startsWith('INSERT INTO checks') ||
+      sql.startsWith('INSERT INTO alert_state') ||
+      sql.startsWith('INSERT INTO reports')
+    ) {
+      throw new Error(`FakeDb.run: ${sql} — every write moved to R2 (phases 2 and 4)`);
     }
     if (sql.startsWith('INSERT INTO login_attempts')) {
       const [ip, success] = args;
@@ -151,11 +149,32 @@ function okBucket({ at = '2026-10-03T12:00:00.000Z', ok = () => true } = {}) {
   return bucket;
 }
 
-function postReport(path, { token = REPORT_TOKEN, body = { message: 'help' }, ip = '10.9.0.1' } = {}) {
-  const headers = { 'Content-Type': 'application/json', 'cf-connecting-ip': ip };
+function postReport(
+  path,
+  {
+    token = REPORT_TOKEN,
+    body = { message: 'help' },
+    ip = '10.9.0.1',
+    bucket = makeR2(),
+    headers: extra = {},
+    db = new FakeDb(),
+    env = {},
+    executionCtx,
+  } = {},
+) {
+  const headers = { 'Content-Type': 'application/json', 'cf-connecting-ip': ip, ...extra };
   if (token) headers.authorization = `Bearer ${token}`;
-  return app.request(path, { method: 'POST', headers, body: JSON.stringify(body) }, envFor(new FakeDb()));
+  return app.request(
+    path,
+    { method: 'POST', headers, body: JSON.stringify(body) },
+    envFor(db, { MONITOR_BUCKET: bucket, ...env }),
+    executionCtx,
+  );
 }
+
+// Configured alert channel. Every forwarding test passes this; the "unconfigured"
+// case deliberately omits it.
+const HOOK_ENV = { ALERT_WEBHOOK_URL: 'https://hooks.example/t' };
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -561,21 +580,250 @@ describe('POST /report/* (tokened intake)', () => {
     expect((await postReport('/report/error', { body: { message: '  ' } })).status).toBe(400);
   });
 
-  it('201 stores error + feedback rows', async () => {
-    const errRes = await postReport('/report/error', {
-      body: { message: 'checkout 500', page_url: 'https://x/book', contact: 'ops' },
-    });
-    expect(errRes.status).toBe(201);
-    const errBody = await errRes.json();
-    expect(errBody).toMatchObject({ kind: 'error', status: 'new' });
-    expect(typeof errBody.id).toBe('number');
+  it('201 writes ONE object per report, under reports/<kind>/<date>/', async () => {
+    const at = new Date('2026-10-03T12:34:56.000Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at);
+    try {
+      const bucket = makeR2();
+      const errRes = await postReport('/report/error', {
+        body: { message: 'checkout 500', page_url: 'https://x/book', contact: 'ops' },
+        bucket,
+        headers: { 'user-agent': 'SinaiCamps/1.2 (test)' },
+      });
+      expect(errRes.status).toBe(201);
+      const errBody = await errRes.json();
+      expect(errBody).toMatchObject({ kind: 'error', status: 'new' });
+      // The id is a string now: R2 has no sequence, so it is minted per report.
+      expect(typeof errBody.id).toBe('string');
+      expect(errBody.id).toMatch(/^[0-9a-z]+-[0-9a-f]{6}$/);
 
-    const fbRes = await postReport('/report/feedback', {
-      body: { message: 'love the new menu page' },
-      ip: '10.9.0.2',
+      const keys = bucket.keys();
+      expect(keys).toHaveLength(1);
+      const key = keys[0];
+      // The layout the retention sweep and `GET /api/reports` both navigate by:
+      // plural collection, kind, UTC day bucket, second-resolution stamp, id.
+      expect(key).toMatch(
+        /^reports\/errors\/2026-10-03\/12-34-56-[0-9a-z]+-[0-9a-f]{6}\.json$/,
+      );
+      // The id in the response IS the id in the key: one report, one identity.
+      expect(key).toContain(errBody.id);
+
+      const doc = bucket.read(key);
+      expect(doc).toMatchObject({
+        id: errBody.id,
+        kind: 'error',
+        received_at: '2026-10-03T12:34:56.000Z',
+        message: 'checkout 500',
+        page_url: 'https://x/book',
+        contact: 'ops',
+        status: 'new',
+        severity: 'error',
+        user_agent: 'SinaiCamps/1.2 (test)',
+      });
+      // Nothing is nulled out by omission: the key set is fixed, so a reader
+      // never has to guess whether a missing field means "absent" or "old format".
+      expect(Object.keys(doc).sort()).toEqual([
+        'contact',
+        'id',
+        'kind',
+        'message',
+        'page_url',
+        'received_at',
+        'severity',
+        'status',
+        'user_agent',
+      ]);
+
+      const fbBucket = makeR2();
+      const fbRes = await postReport('/report/feedback', {
+        body: { message: 'love the new menu page' },
+        ip: '10.9.0.2',
+        bucket: fbBucket,
+      });
+      expect(fbRes.status).toBe(201);
+      const fbBody = await fbRes.json();
+      expect(fbBody.kind).toBe('feedback');
+      const [fbKey] = fbBucket.keys();
+      expect(fbKey).toMatch(/^reports\/feedback\/2026-10-03\/12-34-56-/);
+      // No User-Agent sent, none stored.
+      expect(fbBucket.read(fbKey).user_agent).toBeNull();
+      expect(fbBucket.read(fbKey).contact).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('two reports in the same second get different keys (intake data is never overwritten)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-03T12:00:00.000Z'));
+    try {
+      const bucket = makeR2();
+      for (let i = 0; i < 5; i += 1) {
+        const res = await postReport('/report/error', { body: { message: `same second ${i}` }, bucket, ip: `10.9.5.${i}` });
+        expect(res.status).toBe(201);
+      }
+      expect(bucket.keys()).toHaveLength(5);
+      expect(new Set(bucket.keys()).size).toBe(5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('an over-long severity is a 400 and writes nothing', async () => {
+    const bucket = makeR2();
+    const res = await postReport('/report/error', {
+      body: { message: 'hi', severity: 'x'.repeat(64) },
+      bucket,
     });
-    expect(fbRes.status).toBe(201);
-    expect((await fbRes.json()).kind).toBe('feedback');
+    expect(res.status).toBe(400);
+    expect(bucket.keys()).toEqual([]);
+  });
+
+  it('the User-Agent is capped: a header cannot decide the stored object size', async () => {
+    const bucket = makeR2();
+    const res = await postReport('/report/error', {
+      body: { message: 'hi' },
+      bucket,
+      headers: { 'user-agent': 'u'.repeat(4000) },
+    });
+    expect(res.status).toBe(201);
+    const [key] = bucket.keys();
+    expect(bucket.read(key).user_agent).toHaveLength(REPORT_USER_AGENT_MAX);
+  });
+
+  it('never inserts a D1 reports row', async () => {
+    // The stub throws on the intake INSERT (see FakeDb), so a 201 here is the
+    // proof the intake path is entirely R2.
+    const res = await postReport('/report/error', { body: { message: 'no d1' } });
+    expect(res.status).toBe(201);
+  });
+
+  it('a failing bucket write is a 500, not a silent 201', async () => {
+    const bucket = makeR2({ failOn: { put: 'reports/' } });
+    const res = await postReport('/report/error', { body: { message: 'lost?' }, bucket });
+    // The one failure mode an intake endpoint must surface rather than swallow.
+    expect(res.status).toBe(500);
+  });
+
+  it('a paging error is forwarded to the alert channel, and the report is stored first', async () => {
+    const webhooks = webhookCollector();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = webhooks.impl;
+    try {
+      const bucket = makeR2();
+      const res = await postReport('/report/error', {
+        body: { message: 'checkout 500 at /book', page_url: 'https://sinaicamps.com/book', contact: 'ops@x' },
+        bucket,
+        env: HOOK_ENV,
+      });
+      expect(res.status).toBe(201);
+
+      // The record exists before the notification is even attempted: intake data
+      // is the product, the channel is a convenience.
+      expect(bucket.keys()).toHaveLength(1);
+      expect(webhooks.calls).toHaveLength(1);
+      expect(webhooks.calls[0].url).toBe('https://hooks.example/t');
+      expect(webhooks.calls[0].body).toMatchObject({
+        event: 'report',
+        kind: 'error',
+        severity: 'error',
+        message: 'checkout 500 at /book',
+        page_url: 'https://sinaicamps.com/book',
+        contact: 'ops@x',
+      });
+      // The channel gets a readable line, not a raw JSON dump.
+      expect(webhooks.calls[0].body.text).toContain('NEW error report');
+      expect(webhooks.calls[0].body.text).toContain('checkout 500 at /book');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('severity=fatal pages too, and an unconfigured channel is a silent skip', async () => {
+    const webhooks = webhookCollector();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = webhooks.impl;
+    try {
+      const fatal = await postReport('/report/error', {
+        body: { message: 'db on fire', severity: 'Fatal' },
+        env: HOOK_ENV,
+      });
+      expect(fatal.status).toBe(201);
+      expect(webhooks.calls).toHaveLength(1);
+      expect(webhooks.calls[0].body.severity).toBe('fatal');
+
+      // No webhook configured: still 201, still stored, nothing sent.
+      const bucket = makeR2();
+      const noHook = await postReport('/report/error', { body: { message: 'nobody listening' }, bucket });
+      expect(noHook.status).toBe(201);
+      expect(bucket.keys()).toHaveLength(1);
+      expect(webhooks.calls).toHaveLength(1);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('feedback and a warning are stored but never page anyone', async () => {
+    const webhooks = webhookCollector();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = webhooks.impl;
+    try {
+      const fb = await postReport('/report/feedback', {
+        body: { message: 'menu page is lovely' },
+        ip: '10.9.6.1',
+        env: HOOK_ENV,
+      });
+      expect(fb.status).toBe(201);
+      // A warning is stored with its severity so the dashboard can still show it,
+      // but it does not interrupt anyone: an endpoint that forwarded everything
+      // would make the channel useless within a day.
+      const warn = await postReport('/report/error', {
+        body: { message: 'odd spacing on /camps', severity: 'warning' },
+        ip: '10.9.6.2',
+        env: HOOK_ENV,
+      });
+      expect(warn.status).toBe(201);
+      expect(webhooks.calls).toHaveLength(0);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('a dead webhook does not fail the intake (the report is already stored)', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      throw new Error('ECONNREFUSED');
+    };
+    try {
+      const bucket = makeR2();
+      const res = await postReport('/report/error', {
+        body: { message: 'stored anyway' },
+        bucket,
+        env: HOOK_ENV,
+      });
+      expect(res.status).toBe(201);
+      expect(bucket.keys()).toHaveLength(1);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('hands the forward to waitUntil when the platform provides a context', async () => {
+    // With an execution context the notification must not sit between the write
+    // and the 201: a slow Telegram cannot delay the caller.
+    const handed = [];
+    const executionCtx = { waitUntil: (p) => handed.push(p) };
+    const res = await postReport('/report/error', {
+      body: { message: 'off the critical path' },
+      env: HOOK_ENV,
+      executionCtx,
+    });
+    expect(res.status).toBe(201);
+    expect(handed).toHaveLength(1);
+    // The promise is already resolved here (no webhook configured), and awaiting
+    // it must not throw — the hand-off path must not swallow an error either.
+    await expect(handed[0]).resolves.toBeTruthy();
   });
 
   it('61st request in a minute → 429', async () => {

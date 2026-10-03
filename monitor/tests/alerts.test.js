@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   evaluateAlerts,
+  forwardReport,
   updateSummary,
   updateHistoryRing,
   readHistoryWindow,
   ALERT_FAIL_THRESHOLD,
   HISTORY_MAX_ENTRIES,
+  REPORT_FORWARD_MESSAGE_MAX,
 } from '../src/index.js';
 import { alertStateKey, summaryKey, historyKey } from '../src/storage.js';
 import { makeR2, webhookCollector, ringEntry } from './helpers/fake-r2.js';
@@ -307,5 +309,57 @@ describe('rolling per-target history ring (state/history/<target>.json)', () => 
       },
     });
     await expect(readHistoryWindow(env(bucket), 'marketplace', 24, NOW)).rejects.toThrow();
+  });
+});
+
+describe('report forwarding (the alert channel)', () => {
+  const REPORT = {
+    id: 'mus0f3ro-189cf5',
+    kind: 'error',
+    severity: 'fatal',
+    message: 'checkout 500',
+    page_url: 'https://sinaicamps.com/book',
+    contact: 'ops@x',
+    received_at: '2026-10-03T12:34:56.000Z',
+    user_agent: 'SinaiCamps/1.2',
+  };
+
+  it('posts a readable line, and truncates a wall of text', async () => {
+    const hooks = webhookCollector();
+    const long = { ...REPORT, message: 'x'.repeat(REPORT_FORWARD_MESSAGE_MAX + 200) };
+    const res = await forwardReport({ ALERT_WEBHOOK_URL: 'https://hooks.example/t' }, long, hooks.impl);
+    expect(res).toEqual({ sent: true });
+    expect(hooks.calls).toHaveLength(1);
+    const { text, message } = hooks.calls[0].body;
+    // The FULL message goes in the structured field...
+    expect(message).toHaveLength(REPORT_FORWARD_MESSAGE_MAX + 200);
+    // ...and a phone-readable summary goes in `text`, marked as cut.
+    expect(text).toContain('NEW fatal report');
+    expect(text).toContain('\u2026');
+    expect(text).toContain('https://sinaicamps.com/book');
+    expect(text).toContain('contact: ops@x');
+  });
+
+  it('honours the TELEGRAM_WEBHOOK_URL alias, and skips silently without one', async () => {
+    const hooks = webhookCollector();
+    expect(
+      await forwardReport({ TELEGRAM_WEBHOOK_URL: 'https://api.telegram.org/bot/x' }, REPORT, hooks.impl),
+    ).toEqual({ sent: true });
+    expect(hooks.calls[0].url).toBe('https://api.telegram.org/bot/x');
+
+    // Unconfigured: the intake request must still succeed, so this is a skip,
+    // not an exception.
+    expect(await forwardReport({}, REPORT, hooks.impl)).toEqual({
+      skipped: true,
+      reason: 'no-webhook',
+    });
+    expect(hooks.calls).toHaveLength(1);
+  });
+
+  it('a throwing webhook resolves as skipped, never rejects', async () => {
+    const res = await forwardReport({ ALERT_WEBHOOK_URL: 'https://hooks.example/t' }, REPORT, async () => {
+      throw new Error('ECONNREFUSED');
+    });
+    expect(res).toEqual({ skipped: true, reason: 'send-failed' });
   });
 });

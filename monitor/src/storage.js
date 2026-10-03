@@ -67,6 +67,16 @@ export function timeStamp(date = new Date()) {
   return new Date(date).toISOString().slice(11, 16).replace(':', '-');
 }
 
+// `HH-MM-SS` in UTC, zero padded — the same rule as `timeStamp`, one field
+// finer, and only the intake reports use it. Two reports can arrive inside the
+// same MINUTE (the intake limit is 60 per minute), so the run object's stamp is
+// too coarse to file them both: the id in the key disambiguates, but the second
+// field keeps the keys ordered by arrival rather than by which of two reports
+// happened to hash lower.
+export function secondsStamp(date = new Date()) {
+  return new Date(date).toISOString().slice(11, 19).replace(/:/g, '-');
+}
+
 // `prefix + YYYY-MM-DD + '/'`, always with a trailing slash. R2 treats `list`
 // prefixes as plain string prefixes (there are no real directories), so the
 // trailing slash is what stops `checks/2026-10-0` from also matching

@@ -9,6 +9,7 @@ import {
   MAX_LIST_PAGES,
   dateStamp,
   timeStamp,
+  secondsStamp,
   datePrefix,
   checksKey,
   reportKey,
@@ -49,6 +50,20 @@ describe('storage key layout', () => {
     const d = T('2026-10-03T23:30:00.000Z');
     expect(dateStamp(d)).toBe('2026-10-03');
     expect(timeStamp(d)).toBe('23-30');
+  });
+
+  it('secondsStamp is the intake stamp: same rule, one field finer', () => {
+    expect(secondsStamp(T('2026-10-03T09:05:07.000Z'))).toBe('09-05-07');
+    expect(secondsStamp(T('2026-10-03T23:55:59.000Z'))).toBe('23-55-59');
+    expect(secondsStamp(T('2026-10-03T00:00:00.000Z'))).toBe('00-00-00');
+    // No colon survives (illegal unescaped in a URL path segment) and the field
+    // is fixed width, so keys inside one minute still sort by arrival.
+    expect(secondsStamp(T('2026-10-03T09:05:07.000Z'))).not.toMatch(/:/);
+    const early = secondsStamp(T('2026-10-03T09:05:07.000Z'));
+    const late = secondsStamp(T('2026-10-03T09:05:59.000Z'));
+    expect([late, early].sort()).toEqual([early, late]);
+    // UTC, like every other stamp in this layout.
+    expect(secondsStamp(T('2026-10-03T23:30:00.000Z'))).toBe('23-30-00');
   });
 
   it('datePrefix always ends in a slash so day buckets cannot bleed', () => {

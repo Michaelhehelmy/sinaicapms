@@ -8,6 +8,8 @@ import {
   CHECKS_RETENTION_DAYS,
   REPORTS_RETENTION_DAYS,
   checksKey,
+  reportKey,
+  secondsStamp,
   reportsPrefix,
   alertStateKey,
   summaryKey,
@@ -647,11 +649,140 @@ export function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-const REPORT_BODY_LIMITS = { message: 2000, page_url: 500, contact: 200 };
+const REPORT_BODY_LIMITS = { message: 2000, page_url: 500, contact: 200, severity: 32 };
+
+// The User-Agent is stored with every report (who/where it came from, which is
+// half of what makes an intake report actionable) but it is a HEADER, so unlike
+// the body fields above nothing in the request path bounds it — it is capped
+// here, at the point it enters storage, so no caller can write an object whose
+// size is set by something outside this worker's control.
+export const REPORT_USER_AGENT_MAX = 300;
+
+// Endpoint kind (`/report/error`, `/report/feedback`) → key collection. See
+// `writeReport`.
+const REPORT_COLLECTION_BY_KIND = { error: 'errors', feedback: 'feedback' };
+
+// Severities that page a human on the alert channel. `warning` is deliberately
+// NOT one of them: the whole point of the severity field is that a stored report
+// does not have to interrupt anyone, and an endpoint that forwarded everything
+// would make the channel useless within a day.
+export const REPORT_PAGING_SEVERITIES = ['error', 'fatal'];
+
+// One intake report, as a string id: `<ms epoch base36>-<6 hex>`.
+//
+// NO DATABASE SEQUENCE ANY MORE (R2 has none) and none is needed: the id only has
+// to be unique inside the key, and unique is enough because a collision would
+// overwrite a report — the one thing an intake endpoint must never do — while
+// ordering is the KEY's job. Leading epoch milliseconds make two reports inside
+// the same second sort in arrival order too, which the 6 random hex characters
+// cannot guarantee on their own. `crypto.getRandomValues` is a global in Workers
+// and in Node, so no import and no crypto client.
+export function newReportId(now = new Date()) {
+  const rand = new Uint8Array(3);
+  crypto.getRandomValues(rand);
+  const suffix = [...rand].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${new Date(now).getTime().toString(36)}-${suffix}`;
+}
+
+// Write ONE intake report as `reports/<kind>/<date>/<HH-MM-SS>-<id>.json`.
+//
+// `now` is a parameter and BOTH the key's stamp and the body's `received_at`
+// come from it, exactly as `checksKey`/`run_at` do in `writeRunResults`: a
+// report that arrives at 23:59:59.9 must not file itself under tomorrow, or the
+// dashboard would order it before reports it was stored after.
+//
+// The document carries the four fields the D1 row had (kind, message, page_url,
+// contact, status) plus the id, the arrival time, the caller's severity and its
+// User-Agent — everything an operator needs to triage without opening logs.
+export async function writeReport(env, { kind, message, pageUrl, contact, severity, userAgent }, now = new Date()) {
+  // The STORED kind is singular ('error') while the KEY's collection is plural
+  // (`REPORT_KINDS`), a distinction `storage.js` documents rather than derives.
+  // It is resolved in exactly one place, here: a misspelled endpoint kind throws
+  // at the write instead of silently minting a collection the retention sweep
+  // never visits.
+  const collection = REPORT_COLLECTION_BY_KIND[kind];
+  if (!collection) throw new Error(`unknown report kind: ${kind}`);
+  const at = new Date(now);
+  const id = newReportId(at);
+  const key = reportKey(collection, at, secondsStamp(at), id);
+  const document = {
+    id,
+    kind,
+    received_at: at.toISOString(),
+    message,
+    page_url: pageUrl || null,
+    contact: contact || null,
+    status: 'new',
+    severity: severity ?? null,
+    user_agent: userAgent ? String(userAgent).slice(0, REPORT_USER_AGENT_MAX) : null,
+  };
+  await writeJson(env.MONITOR_BUCKET, key, document);
+  return { id, key, document };
+}
+
+// Forward a paging report to the alert channel. Same posture as `sendAlert`:
+// resolves `{sent}` / `{skipped}` and NEVER throws, because a dead webhook must
+// not turn a stored report into a failed request (and the report is already
+// stored by the time this runs — the notification is a convenience, the record
+// is the product).
+//
+// The payload keeps the alert channel's `event`/`text` convention so an existing
+// receiver can route on it without a second format, and truncates the message:
+// the channel is a notification, not a copy of the report, and a 2,000-character
+// wall of text is unreadable on a phone at 3am.
+export const REPORT_FORWARD_MESSAGE_MAX = 400;
+export async function forwardReport(env, report, fetchFn = fetch) {
+  const webhookUrl = getWebhookUrl(env);
+  if (!webhookUrl) return { skipped: true, reason: 'no-webhook' };
+  const message = String(report?.message ?? '');
+  const text =
+    `\ud83d\udea8 campmaster-monitor: NEW ${report?.severity ?? 'error'} report (${report?.kind ?? 'error'})\n` +
+    `${message.slice(0, REPORT_FORWARD_MESSAGE_MAX)}${message.length > REPORT_FORWARD_MESSAGE_MAX ? '…' : ''}` +
+    `${report?.page_url ? `\n${report.page_url}` : ''}` +
+    `${report?.contact ? `\ncontact: ${report.contact}` : ''}`;
+  try {
+    await fetchFn(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'campmaster-monitor/1.0' },
+      body: JSON.stringify({
+        event: 'report',
+        kind: report?.kind ?? 'error',
+        severity: report?.severity ?? 'error',
+        id: report?.id ?? null,
+        text,
+        message,
+        page_url: report?.page_url ?? null,
+        contact: report?.contact ?? null,
+        received_at: report?.received_at ?? null,
+        user_agent: report?.user_agent ?? null,
+      }),
+    });
+    return { sent: true };
+  } catch {
+    return { skipped: true, reason: 'send-failed' };
+  }
+}
+
+// `c.executionCtx` THROWS when the context carries none (Hono's getter, and
+// `app.request()` in the tests is exactly such a context), so it is read behind a
+// guard rather than assumed.
+function executionCtxOf(c) {
+  try {
+    return c.executionCtx ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // Shared intake handler for POST /report/error + POST /report/feedback.
 // Order: IP rate limit (60/min, throttles token brute-force too) → Bearer
-// REPORT_TOKEN (401) → JSON + field validation (400) → D1 insert (201).
+// REPORT_TOKEN (401) → JSON + field validation (400) → R2 write (201) → alert
+// channel forward.
+//
+// THE WRITE IS NOT WRAPPED, for the same reason the cron's probe write is not:
+// an intake report that is accepted and then lost is the worst outcome this
+// endpoint has, so a failing bucket is a 500 the caller can see and retry, not a
+// silent success.
 async function handleReport(c, kind) {
   const rl = checkReportRateLimit(getClientIp(c));
   if (!rl.allowed) return c.json({ error: 'rate limit exceeded' }, 429);
@@ -677,12 +808,37 @@ async function handleReport(c, kind) {
   if (contact && contact.length > REPORT_BODY_LIMITS.contact) {
     return c.json({ error: 'contact too long (max 200 chars)' }, 400);
   }
-  const id = await db.insertReport(c.env.DB, {
-    kind,
-    message,
-    pageUrl: pageUrl || null,
-    contact: contact || null,
-  });
+  // Severity is optional and free-form within its length limit: it decides
+  // whether the report interrupts someone, and an unrecognised value simply
+  // means "store it, page nobody" rather than a rejected request.
+  const severityRaw = typeof body?.severity === 'string' ? body.severity.trim().toLowerCase() : '';
+  if (severityRaw.length > REPORT_BODY_LIMITS.severity) {
+    return c.json({ error: 'severity too long (max 32 chars)' }, 400);
+  }
+  const severity = severityRaw || (kind === 'error' ? 'error' : 'info');
+
+  // One instant for the whole request: the key's stamps and `received_at` must
+  // agree, or the dashboard would order the report by one clock and display
+  // another.
+  const now = new Date();
+  const { id, document } = await writeReport(
+    c.env,
+    { kind, message, pageUrl, contact, severity, userAgent: c.req.header('user-agent') },
+    now,
+  );
+
+  // Only paging severities on the error endpoint reach the channel. Feedback is
+  // never forwarded: it is not an incident, and forwarding it would train the
+  // operator to ignore the channel.
+  if (kind === 'error' && REPORT_PAGING_SEVERITIES.includes(severity)) {
+    const send = () => forwardReport(c.env, document);
+    // Hand the network call to the platform where there is a context to hand it
+    // to, so a slow or hanging webhook cannot delay the caller's 201; await it
+    // otherwise (tests, and any adapter with no execution context).
+    const ctx = executionCtxOf(c);
+    if (ctx?.waitUntil) ctx.waitUntil(send());
+    else await send();
+  }
   return c.json({ id, kind, status: 'new' }, 201);
 }
 

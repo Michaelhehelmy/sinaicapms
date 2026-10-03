@@ -49,17 +49,14 @@ export function toIso(value) {
 //   - dashboard "Recent checks" → merged from every target's ring
 //     (`readRecentChecks`)
 
-// --- A.4 intake + dashboard helpers (append-only; A.3 helpers above untouched) ---
+// --- A.4 intake + dashboard helpers ---
 
-// Insert one intake row (`kind` is 'error' or 'feedback'). Returns the new row
-// id (D1 `meta.last_row_id`) or null when the driver omits it.
-export async function insertReport(db, { kind, message, pageUrl, contact }) {
-  const res = await db
-    .prepare('INSERT INTO reports (kind, message, page_url, contact) VALUES (?, ?, ?, ?)')
-    .bind(kind, message, pageUrl ?? null, contact ?? null)
-    .run();
-  return res?.meta?.last_row_id ?? null;
-}
+// `insertReport` used to live here (one D1 row per intake report). It moved to R2
+// with the rest of the write path in phase 4: one report is now ONE immutable
+// object under `reports/<kind>/<date>/`, written by `writeReport` in `index.js`.
+// The D1 `reports` table is read by nothing that writes to it any more —
+// `getRecentReports` below is the last reader and phase 5 replaces it with
+// `GET /api/reports`.
 
 // Newest-first intake rows, max `limit`. Server-rendered into the dashboard
 // "Recent reports" list; ISO times via toIso().
