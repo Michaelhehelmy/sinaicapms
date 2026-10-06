@@ -1,3 +1,38 @@
+---
+title: "SinaiCamps — Architecture"
+aliases:
+  - ARCHITECTURE
+  - Architecture
+tags:
+  - type/reference
+  - audience/developer
+  - audience/agent
+  - domain/architecture
+  - status/current
+created: 2026-08-13
+updated: 2026-10-06
+relates-to:
+  - "[[QUICK_START]]"
+  - "[[docs/01-architecture]]"
+  - "[[API_CONTRACT]]"
+  - "[[API_SURFACE]]"
+  - "[[COMPONENT_CATALOG]]"
+  - "[[PERF_BASELINE]]"
+  - "[[security-guide]]"
+code-references:
+  - "app/src/lib/routeZones.ts:23-69"
+  - "backend/src/index.js:123-141"
+  - "backend/src/middleware/requireAuth.js:133-172"
+  - "backend/src/middleware/rateLimit.js:25-113"
+  - "backend/src/utils/response.js:11-87"
+  - "app/src/lib/rbac.ts:7-20"
+  - "app/src/lib/browser-ai.ts:237"
+  - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "scripts/check-deploy-parity.sh:57-77"
+  - "monitor/src/targets.js:15-41"
+verified: never
+---
+
 # SinaiCamps — Architecture
 
 > This document describes the **current** architecture. If it disagrees with prose elsewhere in the repo, trust this file (it is verified against code) and update the other prose.

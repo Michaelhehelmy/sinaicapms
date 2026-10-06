@@ -1,3 +1,37 @@
+---
+title: "SinaiCamps — Quick Start"
+aliases:
+  - QUICK_START
+  - Quick Start
+tags:
+  - type/quickstart
+  - audience/newcomer
+  - audience/developer
+  - domain/operations
+  - status/current
+created: 2026-08-13
+updated: 2026-10-06
+relates-to:
+  - "[[ARCHITECTURE]]"
+  - "[[docs/01-architecture]]"
+  - "[[TESTING]]"
+  - "[[RUNBOOK]]"
+  - "[[API_CONTRACT]]"
+  - "[[migrations]]"
+code-references:
+  - "backend/wrangler.toml:56-97"
+  - "backend/wrangler.toml:21-39"
+  - "playwright.config.ts:98-116"
+  - "deploy.sh:39-66"
+  - "deploy.sh:292-297"
+  - "backend/package.json:24"
+  - "app/package.json:13-15"
+  - "backend/scripts/generate-openapi.js:1-11"
+  - "app/src/lib/routeZones.ts:46-69"
+  - "endpoint: GET /api/openapi.json → backend/src/index.js:477"
+verified: never
+---
+
 # SinaiCamps — Quick Start
 
 ## Prerequisites
