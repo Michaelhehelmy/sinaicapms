@@ -1,3 +1,37 @@
+---
+title: "SinaiCamps — API Contract"
+aliases:
+  - API_CONTRACT
+  - API Contract
+tags:
+  - type/contract
+  - audience/developer
+  - domain/api
+  - domain/backend
+  - status/current
+created: 2026-08-13
+updated: 2026-10-06
+relates-to:
+  - "[[API_SURFACE]]"
+  - "[[API_SURFACE_MAP]]"
+  - "[[docs/02-api]]"
+  - "[[ARCHITECTURE]]"
+  - "[[COMPONENT_CATALOG]]"
+  - "[[security-guide]]"
+code-references:
+  - "app/src/lib/api.ts:1-2838"
+  - "app/src/lib/api.ts:121-214"
+  - "backend/src/routes/registry.js:1-3494"
+  - "backend/src/utils/response.js:11-87"
+  - "backend/src/middleware/requireAuth.js:68-172"
+  - "backend/src/middleware/resolveScope.js:83-131"
+  - "backend/src/middleware/tenant.js:5"
+  - "backend/src/api/auth.js:104-179"
+  - "app/src/lib/utils.ts:3"
+  - "endpoint: GET /api/openapi.json → backend/src/index.js:477"
+verified: never
+---
+
 # SinaiCamps — API Contract
 
 ## 1. The contract lives in the client

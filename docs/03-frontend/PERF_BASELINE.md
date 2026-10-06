@@ -1,3 +1,35 @@
+---
+title: "Performance Baseline — Bundle Analysis"
+aliases:
+  - PERF_BASELINE
+  - Performance Baseline
+tags:
+  - type/baseline
+  - audience/developer
+  - domain/frontend
+  - status/snapshot
+created: 2026-10-02
+updated: 2026-10-06
+relates-to:
+  - "[[COMPONENT_CATALOG]]"
+  - "[[ARCHITECTURE]]"
+  - "[[docs/03-frontend]]"
+  - "[[TESTING]]"
+  - "[[QUICK_START]]"
+code-references:
+  - "app/astro.config.mjs:8-26"
+  - "app/budget.json:1-14"
+  - "app/src/lib/browser-ai.ts:237"
+  - "app/src/components/admin/BrowserAIPanel.tsx:18"
+  - "app/src/components/admin/SystemHealthPanel.tsx:153-169"
+  - "app/src/components/ui/RechartsLine.tsx:19-22"
+  - "app/src/components/debug/DebugFeedbackWidget.tsx:111-113"
+  - "app/src/components/public/BookPage.astro:45"
+  - "app/src/components/public/MenuPage.astro:48"
+  - "tests/lighthouse/run.ts:52"
+verified: never
+---
+
 # Performance Baseline — Bundle Analysis
 
 > Snapshot 2026-09-22 (current; a newer 2026-10-02 bundle measurement is retained below) — re-run with `ANALYZE=1 npm run build` / `npx tsx tests/lighthouse/run.ts` before quoting. TBT threshold is 300ms in harness (`tests/lighthouse/run.ts`), not 200ms. The 2026-08-07 snapshot is retained below as historical reference. **Measure + update this file on every major islands change** (new `client:*` site, new heavy dep, new admin panel) — stale baselines understate the bundle ~4× (F-A20-01).

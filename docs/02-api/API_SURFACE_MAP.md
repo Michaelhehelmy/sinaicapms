@@ -1,3 +1,36 @@
+---
+title: "API Surface Map — endpoint → client function → handler → table → hook"
+aliases:
+  - API_SURFACE
+  - API_SURFACE_MAP
+  - API Surface Map
+tags:
+  - type/reference
+  - audience/developer
+  - domain/api
+  - domain/backend
+  - status/current
+created: 2026-08-31
+updated: 2026-10-06
+relates-to:
+  - "[[API_SURFACE]]"
+  - "[[API_CONTRACT]]"
+  - "[[docs/02-api]]"
+  - "[[ARCHITECTURE]]"
+code-references:
+  - "app/src/lib/api.ts:289-304"
+  - "backend/src/api/camps.js:290"
+  - "backend/src/api/camps-alias.js:38"
+  - "backend/src/index.js:642"
+  - "backend/src/routes/pos/index.js:127-248"
+  - "backend/src/api/upload.js:7-146"
+  - "backend/src/api/payments.js:16-47"
+  - "backend/src/api/paymob-webhook.js:140-190"
+  - "backend/src/routes/registry.js:1-3494"
+  - "endpoint: GET /api/media/* → backend/src/api/upload.js:146-222"
+verified: never
+---
+
 # API Surface Map — endpoint → client function → handler → table → hook
 
 > **Split out of `docs/API_SURFACE.md` on 2026-10-06** (docs-vault restructure). The framing and

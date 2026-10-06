@@ -1,3 +1,34 @@
+---
+title: "SinaiCamps — Component Catalog"
+aliases:
+  - COMPONENT_CATALOG
+  - Component Catalog
+tags:
+  - type/inventory
+  - audience/developer
+  - domain/frontend
+  - status/needs-refresh
+created: 2026-08-13
+updated: 2026-10-06
+relates-to:
+  - "[[PERF_BASELINE]]"
+  - "[[ARCHITECTURE]]"
+  - "[[docs/03-frontend]]"
+  - "[[TESTING]]"
+code-references:
+  - "app/src/components/ui/LineChart.tsx:9-14"
+  - "app/src/components/ui/RechartsLine.tsx:19-22"
+  - "app/src/components/ui/SafeImage.astro:16-57"
+  - "app/src/components/admin/AdminApp.tsx:60-107"
+  - "app/src/components/admin/BrowserAIPanel.tsx:18"
+  - "app/src/components/pos/POSApp.tsx:7"
+  - "app/src/components/pos/views/DashboardView.tsx:1"
+  - "app/src/components/public/ZoneGuard.astro"
+  - "app/src/hooks/useQueryHooks.ts"
+  - "app/src/lib/utils.ts:106"
+verified: never
+---
+
 # SinaiCamps — Component Catalog
 
 All paths relative to `app/src/`. Styling is Tailwind CSS v4; `cn()` comes from `lib/utils.ts`. Every interactive primitive ships keyboard + focus-visible + `aria` support.
