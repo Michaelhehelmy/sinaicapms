@@ -34,6 +34,13 @@ verified: never
 
 ### Task Log
 
+#### 2026-10-06 — O-7 live status-code probe (5 GETs, owner-approved)
+- **Files changed:** `.opencode/audits/O7-probe-2026-10-06.md` (new)
+- **What was done:** Closed the external half of gap entry **O-7** (`docs/99-gaps/unverified.md:235`, [[RUNBOOK]] §5 post-deploy smoke), which was the last part of that entry still `UNKNOWN` because no prior audit pass had ever issued the curls. Issued **exactly five** GETs against the host/path list in `docs/05-operations/RUNBOOK.md:129-133` — budget spent in full, no sixth request, no response bodies, no `deploy.sh`, no D1/KV/R2.
+- **Result:** **5 / 5 MATCH, 0 DIFFERS** — all five answered `200` (`sinaicamps.com/`, `sinaicamps.com/api/me`, `acaciacamp.com/`, `acaciacamp.com/admin`, `michaelshouse.sinaicamps.com/`). No probe produced `000` or `500`, so the §5 contract ("expect 200/400-guard, never 000/500", `RUNBOOK.md:126`) holds against production on every host.
+- **Key finding:** the `400-guard` half of the runbook phrase is the **imprecise** half, not a live defect. `/api/me` answered `200` where the phrasing implied an auth guard — which is the designed behaviour, documented in-source at `backend/src/index.js:616-617` ("Mixed visibility: GET is public (R-9 — graceful 200 without tenant context)"), with `meScope` (`:619-624`) routing `GET` to `resolveScope({ public: true })`. Phase 4/5 must **not** write this up as an unexpected finding.
+- **Also recorded:** that `200` did not come from a static-asset fallback swallowing an unrouted API path — `app/public/_routes.json` explicitly `exclude`s `/api/*` from its `/*` include, so the request reached the SSR function and its `API_BACKEND` service binding (`app/wrangler.toml`). And `acaciacamp.com/admin` answering `200` unauthenticated only confirms the SPA shell served; the runbook's follow-up ("confirm the Settings panel loads with no chunk 404") is a browser check no status code can close and remains unverified.
+
 #### 2026-08-26 — SinaiCamps vs Odoo Deep Comparative Analysis
 - **Files changed:** `COMPARISON_ODOO.md` (new, 797 lines)
 - **What was done:** Comprehensive 11-section analysis comparing SinaiCamps and Odoo v17/18 across architecture, business modules, platform features, technical stack, TCO, SWOT, and strategic recommendation
