@@ -1,3 +1,30 @@
+---
+title: "SinaiCamps — Testing"
+aliases:
+tags:
+  - type/guide
+  - audience/developer
+  - audience/tester
+  - domain/testing
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/04-testing/README]]"
+  - "[[docs/98-history/merged/TESTING_ROADMAP]]"
+  - "[[docs/98-history/test-runs/2026-09-09-full-suite-run]]"
+  - "[[docs/98-history/tester-guides/testing-guide-owner]]"
+  - "[[docs/98-history/tester-guides/testing-guide-tester]]"
+code-references:
+  - "playwright.config.ts"
+  - "vitest.integration.config.ts"
+  - "tests/e2e/specs/"
+  - "tests/e2e/pages/"
+  - "tests/e2e/fixtures/"
+  - "backend/tests/"
+  - "app/tests/"
+verified: never
+---
 # SinaiCamps — Testing
 
 ## Suites and counts (verified)

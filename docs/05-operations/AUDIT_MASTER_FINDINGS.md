@@ -1,3 +1,37 @@
+---
+title: "SinaiCamps — Master Audit Report (8-domain deep dive)"
+aliases:
+tags:
+  - type/audit
+  - audience/owner
+  - audience/developer
+  - domain/operations
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/05-operations/README]]"
+  - "[[docs/98-history/audits/AUDIT_SECURITY_FINDINGS]]"
+  - "[[docs/98-history/audits/AUDIT_BACKEND_QUALITY_FINDINGS]]"
+  - "[[docs/98-history/audits/AUDIT_DATABASE_FINDINGS]]"
+  - "[[docs/98-history/audits/AUDIT_FRONTEND_FINDINGS]]"
+  - "[[docs/98-history/audits/AUDIT_TEST_COVERAGE_FINDINGS]]"
+  - "[[docs/98-history/audits/AUDIT_E2E_GAPS_FINDINGS]]"
+  - "[[docs/98-history/audits/README]]"
+code-references:
+  - "backend/src/api/onboarding.js:237-252"
+  - "backend/src/index.js:143"
+  - "backend/src/api/orders.js:515-569"
+  - "backend/src/api/services.js:440"
+  - "backend/src/api/pos-barcode.js:21"
+  - "backend/src/api/admin-supply.js:31"
+  - "backend/src/api/admin-settings.js:57-76"
+  - "backend/src/api/admin-subscriptions.js:141"
+  - "backend/src/api/admin-payouts.js:78"
+  - "backend/src/api/meal-plans.js"
+verified: never
+---
 # SinaiCamps — Master Audit Report (8-domain deep dive)
 
 **Date:** 2026-09-05

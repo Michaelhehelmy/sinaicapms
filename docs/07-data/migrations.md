@@ -1,3 +1,27 @@
+---
+title: "SinaiCamps — Migration Guide (D1)"
+aliases:
+  - "MIGRATION_GUIDE"
+tags:
+  - type/guide
+  - audience/developer
+  - domain/data
+  - status/live
+created: 2026-08-13
+updated: 2026-10-06
+relates-to:
+  - "[[docs/07-data/README]]"
+  - "[[docs/98-history/migrations/SCHEMA_DIRECTION_PLAN]]"
+  - "[[docs/10-tenant-import/tenant-import]]"
+  - "[[docs/05-operations/RUNBOOK]]"
+code-references:
+  - "backend/migrations/0123_storefront_order_items_fk_pos_products.sql"
+  - "backend/wrangler.toml"
+  - "backend/migrations/0122_add_storefront_order_items_project_id.sql"
+  - "backend/migrations/0121_add_cart_items_project_id.sql"
+  - "backend/migrations/0120_add_tip_amount_to_pos_transactions.sql"
+verified: never
+---
 # SinaiCamps — Migration Guide (D1)
 
 ## 1. What migrations are

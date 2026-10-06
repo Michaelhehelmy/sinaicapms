@@ -1,3 +1,27 @@
+---
+title: "Tenant Import — tenant-type matrix"
+aliases:
+  - "tenant-import"
+tags:
+  - type/reference
+  - audience/developer
+  - domain/tenant-import
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[tenant-import]]"
+  - "[[tenant-import-schema]]"
+  - "[[tenant-import-appendix]]"
+  - "[[docs/10-tenant-import/README]]"
+  - "[[docs/98-history/merged/audit-2026-09-30-tenant-manifest-types]]"
+code-references:
+  - "backend/migrations/0001_core.sql:19"
+  - "backend/src/api/tenants.js:19"
+  - "backend/src/api/camps.js:43"
+  - "backend/migrations/0001_core.sql"
+verified: never
+---
 # Tenant Import — tenant-type matrix
 
 > Which of the 8 manifest sections actually does anything for each of the 5 tenant types, with

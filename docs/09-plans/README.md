@@ -1,3 +1,25 @@
+---
+title: "docs/09-plans — Plans & backlogs"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/plans
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[DEVELOPER_ROADMAP]]"
+  - "[[BACKLOG_VOID_REFUND]]"
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_appendices]]"
+  - "[[docs/98-history/plans/README]]"
+code-references:
+  - "app/src/lib/api.ts"
+  - "backend/src/api/folios.js"
+  - "backend/src/api/orders.js:1382"
+verified: never
+---
 # docs/09-plans — Plans & backlogs
 
 What is still being decided. Spent plans are under `../98-history/plans/`.

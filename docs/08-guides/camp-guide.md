@@ -1,3 +1,31 @@
+---
+title: "Camp Management Guide"
+aliases:
+tags:
+  - type/guide
+  - audience/tenant-admin
+  - domain/guides
+  - domain/camps
+  - status/live
+created: 2026-08-25
+updated: 2026-10-06
+relates-to:
+  - "[[docs/08-guides/README]]"
+  - "[[docs/07-data/migrations]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+code-references:
+  - "backend/src/api/camps.js:196"
+  - "backend/src/api/meal-plans.js"
+  - "backend/migrations/legacy/0054_fix_room_rate_plan_fk_to_pos_products.sql"
+  - "backend/src/index.js:483"
+  - "app/src/components/admin/CampsPanel.tsx"
+  - "app/src/components/admin/RoomsPanel.tsx"
+  - "app/src/lib/api.ts"
+  - "app/src/components/public/CampBooking.tsx"
+  - "backend/src/api/camps.js:273"
+  - "backend/src/api/camps.js:752"
+verified: never
+---
 # Camp Management Guide
 
 This guide covers how to set up and manage a camp in SinaiCamps — from creating rooms to handling bookings and managing pricing.

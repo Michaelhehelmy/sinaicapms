@@ -1,3 +1,26 @@
+---
+title: "docs/07-data"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/data
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[migrations]]"
+  - "[[docs/98-history/migrations/SCHEMA_DIRECTION_PLAN]]"
+  - "[[docs/98-history/sessions/WAVE6_EXIT_REPORT]]"
+  - "[[docs/10-tenant-import/BLOCKED-pos-products-composite-pk]]"
+code-references:
+  - "backend/wrangler.toml"
+  - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "backend/migrations/legacy/0053_camp_ownership.sql"
+  - "deploy.sh"
+  - "tests/core/migration-integrity.test.js"
+verified: never
+---
 # docs/07-data
 
 Data layer: the D1 schema and the procedures that change it.

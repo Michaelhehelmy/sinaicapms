@@ -1,3 +1,33 @@
+---
+title: "FINAL IMPLEMENTATION PLAN v3 — Governance Closure & Appendices"
+aliases:
+  - "FINAL_IMPLEMENTATION_PLAN_v3"
+tags:
+  - type/plan
+  - audience/owner
+  - audience/developer
+  - domain/plans
+  - status/approved
+created: 2026-09-17
+updated: 2026-10-06
+relates-to:
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
+  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[docs/09-plans/README]]"
+  - "[[docs/09-plans/DEVELOPER_ROADMAP]]"
+code-references:
+  - "tests/core/migration-integrity.test.js:110"
+  - "backend/tests/orders-unit.test.js:1414-1478"
+  - "backend/src/index.js:230-239"
+  - "backend/src/middleware/resolveScope.js"
+  - "backend/tests/tenant-import.test.js"
+  - "backend/tests/tenant-import-smoke.test.js"
+  - "backend/src/api/orders.js:223"
+  - "backend/src/durable/broadcaster.js"
+  - "app/src/lib/sse.ts"
+  - "backend/wrangler.toml"
+verified: never
+---
 # FINAL IMPLEMENTATION PLAN v3 — Governance Closure & Appendices
 
 > **Split out of `FINAL_IMPLEMENTATION_PLAN_v3.md` on 2026-10-06** (docs-vault restructure).

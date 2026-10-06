@@ -1,3 +1,34 @@
+---
+title: "Tenant Import — appendix (examples, validator, export, round-trip, images)"
+aliases:
+  - "tenant-import"
+tags:
+  - type/reference
+  - audience/developer
+  - domain/tenant-import
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[tenant-import]]"
+  - "[[tenant-import-schema]]"
+  - "[[tenant-import-types]]"
+  - "[[docs/10-tenant-import/README]]"
+  - "[[docs/98-history/worksheets/audit-2026-09-30-tenant-import-parity]]"
+  - "[[docs/98-history/merged/audit-2026-10-02-tenant-import-edge-cases]]"
+code-references:
+  - "docs/examples/tenant-manifest.example.json"
+  - "backend/src/middleware/resolveScope.js:46-79"
+  - "backend/tests/tenant-import-smoke.test.js"
+  - "scripts/validate-manifest.mjs"
+  - "backend/src/utils/response.js:41"
+  - "scripts/export-tenant.mjs"
+  - "backend/tests/tenant-export-room-status.test.js"
+  - "backend/tests/tenant-import-project-id.test.js"
+  - "backend/src/api/tenant-import.js:801-822"
+  - "app/src/components/admin/AdminApp.tsx"
+verified: never
+---
 # Tenant Import — appendix (examples, validator, export, round-trip, images)
 
 > Example manifests, the validator CLI, the export CLI and its round-trip ledger, the residual

@@ -1,3 +1,32 @@
+---
+title: "Restaurant Management Guide"
+aliases:
+tags:
+  - type/guide
+  - audience/tenant-admin
+  - domain/guides
+  - domain/restaurant
+  - status/live
+created: 2026-08-25
+updated: 2026-10-06
+relates-to:
+  - "[[docs/08-guides/README]]"
+  - "[[supermarket-guide]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[docs/98-history/sessions/ADMIN_REPAIR_REPORT_2026_09_14]]"
+code-references:
+  - "backend/src/api/pos-tables.js:129"
+  - "backend/src/api/reservations.js:231"
+  - "backend/src/routes/pos/index.js:1098"
+  - "backend/src/index.js:798"
+  - "backend/migrations/legacy/0069_restaurant_tables.sql"
+  - "app/src/components/pos/views/TableView.tsx"
+  - "app/src/components/pos/views/KitchenView.tsx"
+  - "app/src/components/pos/views/OrdersView.tsx"
+  - "app/src/lib/api.ts:1177"
+  - "backend/src/index.js:339"
+verified: never
+---
 # Restaurant Management Guide
 
 This guide covers table management, reservations, kitchen workflow, and billing for restaurant operations in SinaiCamps.

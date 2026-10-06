@@ -1,3 +1,26 @@
+---
+title: "docs/10-tenant-import — Tenant Import"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/tenant-import
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[tenant-import]]"
+  - "[[tenant-import-schema]]"
+  - "[[tenant-import-types]]"
+  - "[[tenant-import-appendix]]"
+  - "[[BLOCKED-pos-products-composite-pk]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+code-references:
+  - "backend/src/api/tenant-import.js"
+  - "backend/src/index.js:244"
+  - "backend/tests/tenant-import-smoke.test.js"
+verified: never
+---
 # docs/10-tenant-import — Tenant Import
 
 `POST /api/tenants/import` — the manifest that provisions or fills a tenant.

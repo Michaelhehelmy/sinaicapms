@@ -1,3 +1,29 @@
+---
+title: "SinaiCamps Operations Runbook"
+aliases:
+tags:
+  - type/runbook
+  - audience/owner
+  - domain/operations
+  - status/live
+created: 2026-09-28
+updated: 2026-10-06
+relates-to:
+  - "[[docs/05-operations/README]]"
+  - "[[docs/98-history/deploys/PROD-DEPLOY-CHECKLIST-2026-09-22]]"
+  - "[[docs/98-history/deploys/ASTRO_DEPLOY_CUTOVER]]"
+  - "[[docs/07-data/migrations]]"
+  - "[[docs/98-history/sessions/G65_STAGING_VALIDATION]]"
+code-references:
+  - "backend/wrangler.toml"
+  - "scripts/check-deploy-parity.sh"
+  - "deploy.sh"
+  - "wrangler.toml"
+  - "app/wrangler.toml"
+  - "backend/tests/pos-transactions-schema.test.js"
+  - "backend/tests/pos-insert-positional.test.js"
+verified: never
+---
 # SinaiCamps Operations Runbook
 
 Owner-only procedures for deploy, rollback, backup, drift detection, and

@@ -1,3 +1,32 @@
+---
+title: "Security Guide"
+aliases:
+tags:
+  - type/guide
+  - audience/developer
+  - domain/security
+  - status/live
+created: 2026-08-26
+updated: 2026-10-06
+relates-to:
+  - "[[docs/06-security/README]]"
+  - "[[docs/02-api/API_CONTRACT]]"
+  - "[[docs/98-history/audits/AUDIT_SECURITY_FINDINGS]]"
+  - "[[docs/98-history/audits/AUTH_SYSTEM_AUDIT]]"
+  - "[[docs/98-history/worksheets/audit-2026-09-30-eschtml-inventory]]"
+code-references:
+  - "backend/src/middleware/requireAuth.js"
+  - "app/src/lib/utils.ts:3"
+  - "app/src/components/public/CampsSection.astro"
+  - "app/src/components/admin/HRPanel.tsx"
+  - "app/src/components/public/MarketplaceHome.astro"
+  - "app/tests/unit/tenant-name-escape.test.tsx"
+  - "backend/src/index.js:147"
+  - "backend/migrations/legacy/0076_sanitize_user_data.sql"
+  - "scripts/check-deploy-parity.sh"
+  - "backend/src/utils/response.js:108"
+verified: never
+---
 # Security Guide
 
 This document covers the security architecture and defensive measures implemented in SinaiCamps.

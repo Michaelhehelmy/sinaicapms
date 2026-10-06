@@ -1,3 +1,30 @@
+---
+title: "FINAL IMPLEMENTATION PLAN v3 — Wave Plan, Acceptance Criteria & Risk Register"
+aliases:
+  - "FINAL_IMPLEMENTATION_PLAN_v3"
+tags:
+  - type/plan
+  - audience/owner
+  - audience/developer
+  - domain/plans
+  - status/approved
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_appendices]]"
+  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[docs/09-plans/README]]"
+  - "[[docs/09-plans/DEVELOPER_ROADMAP]]"
+code-references:
+  - "tests/core/migration-integrity.test.js:110"
+  - "backend/src/api/storefront.js:195"
+  - "app/src/lib/api-types.ts"
+  - "app/src/lib/api.ts"
+  - "backend/src/middleware/tenant.js:12"
+  - "backend/src/middleware/requireAuth.js:185-190"
+  - "backend/src/api/camps.js:224-247"
+verified: never
+---
 # FINAL IMPLEMENTATION PLAN v3 — Wave Plan, Acceptance Criteria & Risk Register
 
 > **Split out of `FINAL_IMPLEMENTATION_PLAN_v3.md` on 2026-10-06** (docs-vault restructure).

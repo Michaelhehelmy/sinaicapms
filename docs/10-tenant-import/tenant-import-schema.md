@@ -1,3 +1,29 @@
+---
+title: "Tenant Import — manifest schema reference"
+aliases:
+  - "tenant-import"
+tags:
+  - type/reference
+  - audience/developer
+  - domain/tenant-import
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[tenant-import]]"
+  - "[[tenant-import-types]]"
+  - "[[tenant-import-appendix]]"
+  - "[[docs/10-tenant-import/README]]"
+  - "[[docs/98-history/merged/audit-2026-09-30-tenant-manifest-schema]]"
+code-references:
+  - "backend/src/api/tenant-import.js"
+  - "backend/tests/tenant-import-smoke.test.js"
+  - "backend/tests/tenant-import.test.js"
+  - "backend/src/utils/response.js"
+  - "docs/examples/tenant-manifest.example.json"
+  - "scripts/validate-manifest.mjs"
+verified: never
+---
 # Tenant Import — manifest schema reference
 
 > The 88-leaf-field manifest schema table, the D1 `IN (…)` probe caps, and the 2026-09-30

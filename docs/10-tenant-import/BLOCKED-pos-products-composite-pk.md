@@ -1,3 +1,28 @@
+---
+title: "BLOCKED — `pos_products` composite PK (parity D3, identifier half)"
+aliases:
+tags:
+  - type/blocked
+  - audience/owner
+  - audience/developer
+  - domain/tenant-import
+  - domain/data
+  - status/blocked
+created: 2026-10-02
+updated: 2026-10-06
+relates-to:
+  - "[[tenant-import]]"
+  - "[[docs/07-data/migrations]]"
+  - "[[docs/10-tenant-import/README]]"
+  - "[[docs/98-history/merged/audit-2026-10-02-tenant-import-edge-cases]]"
+code-references:
+  - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "backend/src/api/tenant-import.js:829-832"
+  - "backend/tests/tenant-import.test.js:787-1038"
+  - "deploy.sh"
+  - "backend/tests/meals-tenant-composite-pk.test.js"
+verified: never
+---
 # BLOCKED — `pos_products` composite PK (parity D3, identifier half)
 
 Status: **BLOCKED — documented only, no migration authored, no source edited**

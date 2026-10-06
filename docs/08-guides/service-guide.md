@@ -1,3 +1,31 @@
+---
+title: "Service Management Guide"
+aliases:
+tags:
+  - type/guide
+  - audience/tenant-admin
+  - domain/guides
+  - domain/services
+  - status/live
+created: 2026-08-25
+updated: 2026-10-06
+relates-to:
+  - "[[docs/08-guides/README]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[docs/98-history/worksheets/audit-2026-09-15-route-gaps]]"
+code-references:
+  - "backend/src/api/services.js:80"
+  - "backend/src/index.js:579"
+  - "app/src/components/admin/ServicesPanel.tsx"
+  - "app/src/components/admin/ServiceBookingsPanel.tsx"
+  - "backend/src/api/services.js:90"
+  - "backend/src/api/services.js:143"
+  - "backend/src/api/services.js:210"
+  - "backend/src/api/services.js:318"
+  - "backend/src/api/services.js:370"
+  - "backend/src/api/services.js:441"
+verified: never
+---
 # Service Management Guide
 
 This guide covers setting up and managing bookable services in SinaiCamps — tours, activities, spa treatments, equipment rentals, and more.

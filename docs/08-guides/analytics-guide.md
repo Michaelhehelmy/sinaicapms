@@ -1,3 +1,31 @@
+---
+title: "Analytics & Reports Guide"
+aliases:
+tags:
+  - type/guide
+  - audience/tenant-admin
+  - domain/guides
+  - domain/analytics
+  - status/live
+created: 2026-08-25
+updated: 2026-10-06
+relates-to:
+  - "[[docs/08-guides/README]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
+code-references:
+  - "backend/src/api/reports.js:29"
+  - "backend/src/api/admin-reports.js:192"
+  - "backend/src/index.js:315"
+  - "app/src/components/admin/ReportsPanel.tsx"
+  - "app/src/components/admin/AnalyticsPanel.tsx"
+  - "backend/src/api/reports.js:61"
+  - "backend/src/api/reports.js:106"
+  - "backend/src/api/reports.js:274"
+  - "backend/src/api/reports.js:471"
+  - "backend/src/index.js:486"
+verified: never
+---
 # Analytics & Reports Guide
 
 This guide covers the analytics dashboard in SinaiCamps — metrics, revenue breakdown, customer insights, and data export.

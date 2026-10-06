@@ -1,3 +1,32 @@
+---
+title: "Supermarket / POS Guide"
+aliases:
+tags:
+  - type/guide
+  - audience/tenant-admin
+  - domain/guides
+  - domain/pos
+  - status/live
+created: 2026-08-25
+updated: 2026-10-06
+relates-to:
+  - "[[restaurant-guide]]"
+  - "[[docs/08-guides/README]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[BACKLOG_VOID_REFUND]]"
+code-references:
+  - "backend/src/routes/pos/index.js:402"
+  - "backend/src/api/pos-barcode.js:21"
+  - "backend/src/api/inventory.js:40"
+  - "backend/src/api/promotions.js:107"
+  - "backend/src/index.js:339"
+  - "app/src/components/pos/views/ProductsView.tsx"
+  - "backend/src/routes/pos/index.js:426"
+  - "backend/src/routes/pos/index.js:1032"
+  - "backend/src/api/promotions.js:244"
+  - "backend/src/index.js:567"
+verified: never
+---
 # Supermarket / POS Guide
 
 This guide covers setting up and managing a supermarket or retail operation using the SinaiCamps POS system.

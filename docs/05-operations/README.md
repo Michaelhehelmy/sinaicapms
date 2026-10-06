@@ -1,3 +1,25 @@
+---
+title: "docs/05-operations — Operations"
+aliases:
+tags:
+  - type/index
+  - audience/owner
+  - audience/developer
+  - domain/operations
+  - status/live
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[RUNBOOK]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[docs/98-history/deploys/README]]"
+  - "[[docs/98-history/sessions/README]]"
+code-references:
+  - "deploy.sh"
+  - "scripts/check-deploy-parity.sh"
+  - "backend/wrangler.toml"
+verified: never
+---
 # docs/05-operations — Operations
 
 Run the thing, and know what was found when.

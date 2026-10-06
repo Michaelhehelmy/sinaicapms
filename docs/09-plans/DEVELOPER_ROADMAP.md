@@ -1,3 +1,30 @@
+---
+title: "SinaiCamps — Developer Roadmap (Backlog State)"
+aliases:
+tags:
+  - type/plan
+  - audience/developer
+  - domain/plans
+  - status/live
+created: 2026-08-13
+updated: 2026-10-06
+relates-to:
+  - "[[docs/09-plans/README]]"
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
+  - "[[docs/03-frontend/PERF_BASELINE]]"
+  - "[[docs/06-security/security-guide]]"
+code-references:
+  - "app/src/lib/routeZones.ts"
+  - "app/src/hooks/useQueryHooks.ts"
+  - "app/src/lib/browser-ai.ts"
+  - "app/src/lib/api.ts"
+  - "backend/openapi.json"
+  - "app/budget.json"
+  - "app/lighthouserc.cjs"
+  - "tests/e2e/specs/tenant/arabic-rtl-deep.spec.ts"
+  - "app/src/components/ui/SafeImage.astro"
+verified: never
+---
 # SinaiCamps — Developer Roadmap (Backlog State)
 
 Status of the production-readiness backlog, as of the **T9–T18** batch plus the docs refresh (2026-08-13). Session completions through 2026-09-28 folded below (T20–T23: Phase 4 gates, Phase 5 exit, storefront FK + POS bind fixes, Phase 6 docs 6.1–6.9). The `AGENT_LOGBOOK.md` in the repo root holds the session-by-session log with dates and file lists.
