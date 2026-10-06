@@ -6,6 +6,7 @@ aliases:
 tags:
   - type/index
   - audience/developer
+  - audience/historian
   - domain/history
   - status/archived
 created: 2026-10-06
@@ -69,12 +70,19 @@ what it currently does. The current answer lives in `docs/01-architecture/` … 
   path" table below is what makes them resolve.
 - **Verified counts are not claims** — the reports here recorded 99 migrations against a tree of 40.
   Archived numbers are read as history, never as current state.
+- **`created` is the landing date, and two files disagree with their own body** — `created` follows
+  `git log --follow --diff-filter=A`, which is the day the file landed, not always the day it was
+  written. `AUDIT-ASSERTION-QUALITY.md` says `**Date:** 2026-07-18` and `SCHEMA_DIRECTION_PLAN.md`
+  says `2026-07-19`; both landed 2026-08-08. The rows above carry both numbers rather than picking one.
+- **`superseded-by` is the only key outside the eight-key schema** — it appears on the 5
+  `status/superseded` files and the 5 merged sources, pointing at the doc that owns the content now.
+  See the `merged/` table below for what each source fed.
 
 ## Buckets
 
 | Bucket | What is in it | Files |
 |---|---|---|
-| [`audits/`](audits/) | Executed and superseded audit rounds: the 2026-09-05 8-domain round, the deep-dive summaries, the 2026-08-22 unification set, the 2026-07-18 assertion-quality QA round. `AUDIT_MASTER_FINDINGS.md`, the consolidation index that round survives as, is **live** at [`../05-operations/`](../05-operations/). | 16 |
+| [`audits/`](audits/) | Executed and superseded audit rounds: the 2026-09-05 8-domain round, the deep-dive summaries, the five-audit unification set, the assertion-quality QA round (authored 2026-07-18, landed 2026-08-08). `AUDIT_MASTER_FINDINGS.md`, the consolidation index that round survives as, is **live** at [`../05-operations/`](../05-operations/). | 16 |
 | [`worksheets/`](worksheets/) | One-step investigation worksheets that each fed a fix that shipped (route gaps, monitor 404, `.eschtml` inventory, tenant-import round-trip parity). | 4 |
 | [`sessions/`](sessions/) | Dated session records, wave-closure reports and gate results. `AGENT_LOGBOOK_HISTORY.md` — the append-only task history split out of the repo-root `AGENT_LOGBOOK.md` — is the entry point for per-task records. | 6 |
 | [`plans/`](plans/) | Spent plans and roadmaps whose work is complete: the Astro 5→7 upgrade, the 38-task `IMPLEMENTATION_PLAN.md`, the polish plan. The live backlog is [[DEVELOPER_ROADMAP]]. | 3 |
@@ -97,13 +105,13 @@ commit that touched the file's content where no date was recoverable).
 
 | Date | Doc | Bucket | What happened |
 |---|---|---|---|
-| 2026-08-08 | [[AUDIT-ASSERTION-QUALITY]] | audits | QA assertion-quality round over the E2E specs. |
-| 2026-08-08 | [[SCHEMA_DIRECTION_PLAN]] | migrations | The D1 schema direction, still headed "Decision Required". |
+| 2026-08-08 | [[AUDIT-ASSERTION-QUALITY]] | audits | QA assertion-quality round over every test file in `tests/` (authored 2026-07-18). |
+| 2026-08-08 | [[SCHEMA_DIRECTION_PLAN]] | migrations | The `@db` agent's D1 schema direction, authored 2026-07-19, still carrying `Status: Decision Required`. |
 | 2026-08-09 | [[POLISH_PLAN]] | plans | Final polish plan, locked. |
-| 2026-08-23 | [[API_CONTRACT_AUDIT]] · [[AUTH_SYSTEM_AUDIT]] · [[BACKEND_UNIFICATION_AUDIT]] · [[DATABASE_SCHEMA_AUDIT]] · [[FRONTEND_UNIFICATION_AUDIT]] | audits | Five audits written the same day: merge the API suite, unify admin+POS auth, consolidate the backend, review the schema, consolidate the frontend. |
+| 2026-08-23 | [[API_CONTRACT_AUDIT]] · [[AUTH_SYSTEM_AUDIT]] · [[BACKEND_UNIFICATION_AUDIT]] · [[DATABASE_SCHEMA_AUDIT]] · [[FRONTEND_UNIFICATION_AUDIT]] | audits | The five-audit unification set: merge the API suite, unify admin+POS auth, consolidate the backend, review the schema, consolidate the frontend. All five landed in one commit on 2026-08-23; `AUTH_SYSTEM_AUDIT` and `DATABASE_SCHEMA_AUDIT` are dated 2026-08-22 in their own front matter. |
 | 2026-08-23 | [[TESTING_ROADMAP]] | merged | Manual-testing roadmap; its surviving sections went into `TESTING.md` and both tester guides. |
 | 2026-08-23 | [[testing-guide-tester]] | tester-guides | The shareable human-testing walkthrough. |
-| 2026-08-26 | [[IMPLEMENTATION_PLAN]] | plans | The 38 tasks that closed the 2026-09-05 audit round. |
+| 2026-08-26 | [[IMPLEMENTATION_PLAN]] | plans | The post-audit remediation plan that closed the 2026-09-05 round — a task index of T1–T38, though its four wave headings declare 37 (6+10+9+12). |
 | 2026-08-31 | [[DEEP_AUDIT_2026_08_27]] | audits | Deep audit report (the file name is its own date). |
 
 ### 2026-09 — audits, remediation, cutover, closure
@@ -121,7 +129,7 @@ commit that touched the file's content where no date was recoverable).
 | 2026-09-16 | [[audit-2026-09-15-route-gaps]] | worksheets | A1 route-surface gap worksheet. |
 | 2026-09-18 | [[FINAL_IMPLEMENTATION_PLAN]] | merged | v2 of the plan; superseded by the repo-root v3, which kept its §4.1 verdicts and §3.7 delta. |
 | 2026-09-21 | [[FINAL-AUDIT-CLOSURE]] · [[G65_STAGING_VALIDATION]] · [[WAVE6_EXIT_REPORT]] | sessions | Wave 6 closure, the G6.5 staging gate, and a doc-truth exit report. |
-| 2026-09-22 | [[PROD-DEPLOY-CHECKLIST-2026-09-22]] · [[FINAL-CLOSURE-v2]] | deploys · sessions | The one-shot prod-deploy checklist its own first line says is now moot, and the final closure. |
+| 2026-09-22 | [[PROD-DEPLOY-CHECKLIST-2026-09-22]] · [[FINAL-CLOSURE-v2]] | deploys · sessions | The one-shot prod-deploy checklist, whose first line records `Staging G6.5 is SATISFIED`, and the final closure, whose gate table shows G1–G5 PASS. |
 
 ### 2026-09-30 → 2026-10-02 — tenant-import and bundle doc-vs-code rounds
 
@@ -131,7 +139,7 @@ commit that touched the file's content where no date was recoverable).
 |---|---|---|---|
 | 2026-09-30 | [[audit-2026-09-30-tenant-manifest-schema]] · [[audit-2026-09-30-tenant-manifest-gaps]] · [[audit-2026-09-30-tenant-manifest-types]] | merged | Field-by-field tenant-import reference plus gap and tenant-type matrices; all three migrated into `docs/10-tenant-import/`. |
 | 2026-09-30 | [[audit-2026-09-30-eschtml-inventory]] · [[audit-2026-09-30-monitor-404]] | worksheets | `.eschtml` inventory (still cited by `security-guide.md`) and the monitor custom-domain 404. |
-| 2026-10-01 | [[audit-2026-09-30-tenant-import-parity]] | worksheets | Round-trip parity; its D3/D4 drift items survive in `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md`. |
+| 2026-10-01 | [[audit-2026-09-30-tenant-import-parity]] | worksheets | Round-trip parity. Its D3 survives in `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md`; its D4 in `docs/10-tenant-import/tenant-import-appendix.md`. |
 | 2026-10-02 | [[audit-2026-10-02-tenant-import-edge-cases]] · [[audit-2026-10-02-bundle-investigation]] | merged | Edge-case matrix (still cited by migration `0127`) and the frontend bundle investigation that seeded `PERF_BASELINE.md`. |
 
 ### 2026-10-06 — the restructure itself

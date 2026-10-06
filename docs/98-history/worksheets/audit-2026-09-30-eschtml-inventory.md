@@ -4,6 +4,7 @@ aliases:
 tags:
   - type/worksheet
   - audience/developer
+  - audience/historian
   - domain/security
   - domain/frontend
   - status/done

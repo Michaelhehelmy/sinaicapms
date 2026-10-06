@@ -4,6 +4,7 @@ aliases:
 tags:
   - type/worksheet
   - audience/developer
+  - audience/historian
   - domain/operations
   - status/done
 created: 2026-09-30

@@ -4,6 +4,7 @@ aliases:
 tags:
   - type/audit
   - audience/developer
+  - audience/historian
   - domain/data
   - domain/audit
   - status/archived

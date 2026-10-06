@@ -4,10 +4,12 @@ aliases:
 tags:
   - type/plan
   - audience/owner
+  - audience/historian
   - domain/plans
   - status/superseded
 created: 2026-09-18
 updated: 2026-10-06
+superseded-by: "[[09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
 relates-to:
   - "[[98-history/merged/README]]"
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"

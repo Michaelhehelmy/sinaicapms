@@ -4,10 +4,12 @@ aliases:
 tags:
   - type/plan
   - audience/developer
+  - audience/historian
   - domain/plans
   - status/superseded
 created: 2026-08-26
 updated: 2026-10-06
+superseded-by: "[[98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
 relates-to:
   - "[[98-history/plans/README]]"
   - "[[98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"

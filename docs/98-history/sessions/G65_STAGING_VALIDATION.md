@@ -2,8 +2,9 @@
 title: "G6.5 Staging Validation — SATISFIED (2026-09-22)"
 aliases:
 tags:
-  - type/report
+  - type/session
   - audience/owner
+  - audience/historian
   - domain/operations
   - status/done
 created: 2026-09-21

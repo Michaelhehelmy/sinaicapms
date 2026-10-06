@@ -4,6 +4,7 @@ aliases:
 tags:
   - type/plan
   - audience/developer
+  - audience/historian
   - domain/frontend
   - status/done
 created: 2026-09-07

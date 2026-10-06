@@ -4,10 +4,12 @@ aliases:
 tags:
   - type/plan
   - audience/developer
+  - audience/historian
   - domain/data
   - status/superseded
 created: 2026-08-08
 updated: 2026-10-06
+superseded-by: "[[07-data/migrations]]"
 relates-to:
   - "[[98-history/migrations/README]]"
   - "[[migrations]]"

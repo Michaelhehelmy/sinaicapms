@@ -4,10 +4,12 @@ aliases:
 tags:
   - type/plan
   - audience/tester
+  - audience/historian
   - domain/testing
   - status/superseded
 created: 2026-08-23
 updated: 2026-10-06
+superseded-by: "[[04-testing/TESTING]]"
 relates-to:
   - "[[98-history/merged/README]]"
   - "[[04-testing/TESTING]]"

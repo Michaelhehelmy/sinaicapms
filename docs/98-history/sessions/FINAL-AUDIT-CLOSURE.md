@@ -2,8 +2,9 @@
 title: "FINAL-AUDIT-CLOSURE (2026-09-21)"
 aliases:
 tags:
-  - type/report
+  - type/session
   - audience/owner
+  - audience/historian
   - domain/audit
   - status/done
 created: 2026-09-21

@@ -4,6 +4,7 @@ aliases:
 tags:
   - type/index
   - audience/developer
+  - audience/historian
   - domain/data
   - status/archived
 created: 2026-10-06

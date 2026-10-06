@@ -2,8 +2,9 @@
 title: "FINAL-CLOSURE-v2 (2026-09-22, orchestrated + independently verified by A6)"
 aliases:
 tags:
-  - type/report
+  - type/session
   - audience/owner
+  - audience/historian
   - domain/audit
   - status/done
 created: 2026-09-22

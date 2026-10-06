@@ -4,11 +4,13 @@ aliases:
 tags:
   - type/audit
   - audience/developer
+  - audience/historian
   - domain/performance
   - domain/audit
   - status/merged
 created: 2026-10-02
 updated: 2026-10-06
+superseded-by: "[[03-frontend/PERF_BASELINE]]"
 relates-to:
   - "[[98-history/merged/README]]"
   - "[[03-frontend/PERF_BASELINE]]"

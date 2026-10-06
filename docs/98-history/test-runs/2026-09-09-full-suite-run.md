@@ -4,6 +4,7 @@ aliases:
 tags:
   - type/report
   - audience/tester
+  - audience/historian
   - domain/testing
   - status/archived
 created: 2026-10-06

@@ -4,11 +4,13 @@ aliases:
 tags:
   - type/audit
   - audience/developer
+  - audience/historian
   - domain/tenant-import
   - domain/audit
   - status/merged
 created: 2026-09-30
 updated: 2026-10-06
+superseded-by: "[[10-tenant-import/tenant-import-schema]]"
 relates-to:
   - "[[98-history/merged/README]]"
   - "[[tenant-import-schema]]"

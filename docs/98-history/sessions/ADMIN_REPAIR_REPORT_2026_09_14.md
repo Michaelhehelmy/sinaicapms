@@ -2,8 +2,9 @@
 title: "Admin Panel & Storefront Improvements Report — 2026-09-14"
 aliases:
 tags:
-  - type/report
+  - type/session
   - audience/developer
+  - audience/historian
   - domain/frontend
   - status/done
 created: 2026-09-14

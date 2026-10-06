@@ -4,6 +4,7 @@ aliases:
 tags:
   - type/checklist
   - audience/owner
+  - audience/historian
   - domain/operations
   - status/done
 created: 2026-09-22

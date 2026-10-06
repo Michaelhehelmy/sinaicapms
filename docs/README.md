@@ -19,7 +19,7 @@ relates-to:
   - "[[TESTING]]"
   - "[[98-history/README]]"
   - "[[tenant-import]]"
-  - "[[SinaiCamps Business API Surface]]"
+  - "[[API_SURFACE]]"
 code-references:
   - "app/src/lib/api.ts"
 verified: never
