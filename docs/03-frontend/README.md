@@ -52,7 +52,7 @@ map, the baseline is a measurement — the baseline is the one to re-run after a
 
 ## Related
 
-- [[docs/README]] — vault entry point
+- [[README|docs/README.md]] — vault entry point
 - [[ARCHITECTURE]] — the layer-1 rules this app is written against
 - [[API_CONTRACT]] — the client these components call
 - [[TESTING]] — unit suites for the components and hooks above

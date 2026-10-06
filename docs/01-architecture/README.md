@@ -52,12 +52,12 @@ running**. Every other folder in the vault describes one part of one of these tw
 
 ## Related
 
-- [[docs/README]] — vault entry point
+- [[README|docs/README.md]] — vault entry point
 - [[API_CONTRACT]] — the frontend↔API rule layer 2 has to honour
 - [[COMPONENT_CATALOG]] · [[PERF_BASELINE]] — the layer-1 reference docs
 - [[RUNBOOK]] — deploy, rollback and incident procedures for the shape described here
 - [[migrations]] — the layer-3 schema the contract depends on
-- [[docs/98-history/README]] — superseded architecture and wave reports
+- [[98-history/README]] — superseded architecture and wave reports
 
 ## Gaps
 

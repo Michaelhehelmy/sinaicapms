@@ -51,7 +51,7 @@ purpose, because it is a statement of rules, not a list of endpoints.
 
 ## Related
 
-- [[docs/README]] — vault entry point
+- [[README|docs/README.md]] — vault entry point
 - [[ARCHITECTURE]] — the layer split these endpoints are the seam of
 - [[security-guide]] — auth, RBAC and tenant scoping on the same endpoints
 - [[migrations]] — the tables the surface map resolves to

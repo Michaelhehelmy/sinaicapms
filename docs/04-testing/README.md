@@ -21,8 +21,46 @@ verified: never
 ---
 # docs/04-testing — Testing
 
-Suites, counts, and the manual-testing references.
+## Overview
+
+Suites, verified counts, and the manual-testing references. `TESTING.md` is the canonical entry:
+if it disagrees with your local run, your run is the thing to investigate.
+
+## Concepts
+
+- **Four suites, four configs** — `backend` (Vitest), `app` (Vitest), root integration
+  (`vitest.integration.config.ts`), and E2E (Playwright, boots both servers). The full-config
+  integration run has a pre-existing 30-minute `/api/auth` login-limit 429 flake; verify targeted
+  or per-file rather than assuming you broke it.
+- **Verified counts, not remembered counts** — the suite table is filesystem-verified and dated.
+  A count in this file is a claim with a date on it.
+- **E2E has a port-hygiene preflight** — free the ports before a full run, and note that tenant
+  pages hang on `load` in `astro dev` because the logo/favicon point at a dead `localhost:8001`.
+  Zone and E2E specs use `waitUntil: 'domcontentloaded'`.
+- **Env-skipped tests are counted, not hidden** — 14 tests skip on missing env. "Skipped" is a
+  reported number here so a green run cannot quietly mean "half the suite did not execute".
+- **Admin tab IDs live only here** — the 3 super-admin / 15 tenant-admin / 4 POS tab IDs are the only
+  place in the repo that carries them; E2E selectors depend on this table staying put.
+- **Manual cross-cutting steps 32–34** — authentication/security, responsive design, error handling.
+  Not automatable, and skipped silently is the same as passed unless you do them.
+- **CI checks before shipping** — the pre-push gate, in order.
+
+## Docs
 
 | Doc | What it is |
 |---|---|
-| [`TESTING.md`](TESTING.md) | Canonical suite list with verified counts and commands, plus the cross-cutting manual steps and the admin tab-ID reference. |
+| [[TESTING\|TESTING.md]] | Canonical suite list with verified counts and commands, plus the cross-cutting manual steps and the admin tab-ID reference. |
+
+## Related
+
+- [[README|docs/README.md]] — vault entry point
+- [[ARCHITECTURE]] — §7 lists the per-layer test commands this folder expands
+- [[COMPONENT_CATALOG]] — what the frontend suites are meant to cover
+- [[98-history/merged/TESTING_ROADMAP]] — the spent plan; note its login-credentials table is stale
+- [[98-history/tester-guides/testing-guide-owner]] · [[98-history/tester-guides/testing-guide-tester]] — the manual walkthroughs
+- [[98-history/test-runs/README]] — archived full-suite run reports
+- [[RUNBOOK]] — deploy-time smoke, the operational half of "did it pass"
+
+## Gaps
+
+<!-- Populated by 99-gaps/code-vs-docs.md -->
