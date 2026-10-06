@@ -41,3 +41,15 @@ sinaicamps.db
 .astro/
 app/storybook-static/
 reports/
+
+# Obsidian vault config — share the settings, ignore the per-user state.
+# Ignore everything .obsidian drops, then re-admit the three shareable files:
+#   app.json (link format, new-file location, excluded files)
+#   core-plugins.json (which core plugins are on)
+#   templates.json (where the Templates plugin looks)
+# Everything else — workspace/graph/cache/bookmarks/hotkeys — is per-user layout
+# or viewport state, and committing it is a diff for nobody but its author.
+docs/.obsidian/*
+!docs/.obsidian/app.json
+!docs/.obsidian/core-plugins.json
+!docs/.obsidian/templates.json

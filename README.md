@@ -10,7 +10,9 @@ tags:
 created: 2026-08-08
 updated: 2026-10-06
 relates-to:
+  - "[[contributing]]"
   - "[[README]]"
+  - "[[01-architecture/README]]"
   - "[[ARCHITECTURE]]"
   - "[[API_CONTRACT]]"
   - "[[AGENT_LOGBOOK]]"
@@ -35,6 +37,43 @@ A full-stack serverless SaaS platform for managing summer camps, wilderness lodg
 **Production:** [sinaicamps.com](https://sinaicamps.com) · **Repo:** [Michaelhehelmy/campmaster](https://github.com/Michaelhehelmy/campmaster) (private)
 
 **Docs:** [[ARCHITECTURE|Architecture]] · [[API_CONTRACT|API Contract]] · [[RUNBOOK|Runbook]] · [[security-guide|Security Guide]] · [[tenant-import|Tenant Import]] · [[COMPONENT_CATALOG|Component Catalog]] · [[migrations|Migration Guide]] · [[QUICK_START|Quick Start]] · [[TESTING|Testing]] · [[DEVELOPER_ROADMAP|Developer Roadmap]] · [[PERF_BASELINE|Performance Baseline]]
+
+---
+
+## Documentation vault
+
+`docs/` is an [Obsidian](https://obsidian.md) vault. **The vault root is `docs/`, not the repo root** —
+so every wikilink below is vault-relative. `[[docs/07-data/migrations]]` resolves to
+`docs/docs/migrations.md` and is dead; `[[07-data/migrations]]` is correct.
+
+**Every folder below exists.** There is no `00-inbox` and **no `99-gaps` yet** — the gaps
+folder is a later phase, and its `## Gaps` sections across the vault still carry the
+`<!-- Populated by 99-gaps/code-vs-docs.md -->` placeholder. Each folder's MOC is its
+`README.md`, and it carries `## Overview`, `## Concepts`, `## Docs`, `## Related` and
+`## Gaps`.
+
+| Folder | MOC | What it holds |
+|---|---|---|
+| `01-architecture` | [[01-architecture/README\|01-architecture]] | Four-layer contract, zone model, quick start |
+| `02-api` | [[02-api/README\|02-api]] | API contract statement + the endpoint→client→handler→table map |
+| `03-frontend` | [[03-frontend/README\|03-frontend]] | Component catalog, performance baseline |
+| `04-testing` | [[04-testing/README\|04-testing]] | Test strategy, the four suites, verified counts |
+| `05-operations` | [[05-operations/README\|05-operations]] | Runbook, deploy, master audit findings |
+| `06-security` | [[06-security/README\|06-security]] | XSS/CSRF layers, CORS ownership, rate-limit table |
+| `07-data` | [[07-data/README\|07-data]] | D1 migration guide and workflow |
+| `08-guides` | [[08-guides/README\|08-guides]] | Per-business-module operator guides |
+| `09-plans` | [[09-plans/README\|09-plans]] | Roadmap, backlog, plan waves and appendices |
+| `10-tenant-import` | [[10-tenant-import/README\|10-tenant-import]] | Manifest import: schema, type matrix, appendix, blocked item |
+| `98-history` | [[98-history/README\|98-history]] | Everything already decided — 9 buckets, chronological index |
+
+Also in the vault: [[README|docs/README.md]] (the in-vault index), [[API_SURFACE]] and
+[[tenant-import]] (path-preserving split entry points), and [[contributing]] — **read that
+before adding or editing a doc**. Templates live in `docs/_templates/`
+(`doc.md`, `moc.md`, `session.md`); Obsidian's shared config is `docs/.obsidian/`.
+
+Two paths stay **outside** the vault by decision, because live code cites them:
+`AGENT_LOGBOOK.md` (12 code files) and `AGENT_LOGBOOK_HISTORY.md` in
+`98-history/sessions/` (the running task log, ~9,700 lines).
 
 ---
 
@@ -155,7 +194,7 @@ sinaicamps/
 │   ├── globalSetup.ts          Boots wrangler dev for integration + E2E
 │   └── *.test.js               Root integration tests
 │
-├── docs/                       Architecture, API contract, component catalog, guides
+├── docs/                       Obsidian vault (vault root = docs/) — see "Documentation vault" above
 ├── deploy.sh                   Single-command deployment
 ├── playwright.config.ts        E2E configuration (local)
 └── tests/e2e/playwright.production.config.ts  E2E configuration (production, critical-flows)
@@ -216,7 +255,7 @@ Custom domains (e.g. `acaciacamp.com`) resolve to their tenant zone automaticall
 - Role-based access via `pos_token` — the ladder is `ROLE_HIERARCHY` (`app/src/lib/rbac.ts`): `super_admin` 100 > `admin` 80 > `manager` 50 > `cashier` 30, and an unknown role always fails
 
 ### Internationalization (status)
-- The frontend is **intentionally hard-coded English LTR**. Arabic RTL was planned (T11) and **cancelled** as a deliberate product decision — there is no `app/src/i18n/`, no locale middleware, no `sc_lang` cookie. See `docs/DEVELOPER_ROADMAP.md` for the reasoning.
+- The frontend is **intentionally hard-coded English LTR**. Arabic RTL was planned (T11) and **cancelled** as a deliberate product decision — there is no `app/src/i18n/`, no locale middleware, no `sc_lang` cookie. See [[DEVELOPER_ROADMAP|the developer roadmap]] for the reasoning.
 
 ---
 
@@ -274,12 +313,12 @@ npx vitest run --config vitest.integration.config.ts
 # E2E — 96 specs, 8 projects; boots wrangler dev + astro dev. The last recorded
 # full gate is 919 passed / 0 failed / 15 env-skipped (2026-09-06). There is no
 # current number: run the gate rather than quoting a remembered one, and never
-# debug against a stale server (docs/RUNBOOK.md §8).
+# debug against a stale server (docs/05-operations/RUNBOOK.md §8).
 CI=true npx playwright test
 ```
 
 Each count above is stated with the run that produced it, so a stale one is
-visible instead of authoritative. `docs/TESTING.md` and `docs/ARCHITECTURE.md`
+visible instead of authoritative. [[TESTING]] and [[ARCHITECTURE]]
 carry the same table.
 
 ---

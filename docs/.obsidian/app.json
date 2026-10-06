@@ -1,0 +1,17 @@
+{
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "absolute",
+  "useMarkdownLinks": false,
+  "newFileLocation": "current",
+  "attachmentFolderPath": "_attachments",
+  "trashOption": "system",
+  "showFrontmatter": true,
+  "readableLineLength": true,
+  "strictLineBreaks": false,
+  "showLineNumber": false,
+  "defaultViewMode": "preview",
+  "livePreview": true,
+  "userIgnoreFilters": [
+    "_templates/"
+  ]
+}

@@ -1,3 +1,20 @@
+---
+title: "Agent Logbook & Memory — Campmaster-integration-tests"
+aliases:
+tags:
+  - type/reference
+  - audience/agent
+  - domain/vault
+  - status/live
+created: 2026-08-08
+updated: 2026-10-06
+relates-to:
+  - "[[98-history/sessions/AGENT_LOGBOOK_HISTORY]]"
+  - "[[contributing]]"
+  - "[[98-history/README]]"
+code-references:
+verified: never
+---
 # Agent Logbook & Memory — Campmaster-integration-tests
 
 This file serves as a persistent memory and logbook for the OpenCode AI agents working in this repository.
@@ -143,6 +160,10 @@ This file serves as a persistent memory and logbook for the OpenCode AI agents w
 - **The `[[docs/…]]` dead-link class is closed as of 2026-10-06 (docs-p6) — the vault-relative form is `[[<path minus docs/>]]`, NEVER the bare stem when the stem is `README` (2026-10-06, docs-p6)**: the p5 gotchas above describe the defect and the correct form but were deliberately left unfixed; p6 applied them vault-wide as one mechanical pass — **229 links across 89 files** (222 pure `docs/`-prefix strips, 6 folder→folder-MOC, 1 mis-path), taking the dead count from **235 to 6**. Strip the prefix, never shorten to the stem: over the 89 vault notes `README` is the only duplicated stem (**21 copies**, one per folder), so `[[98-history/merged/README]]` resolves and `[[README]]` is ambiguous. Six `[[docs/01-architecture]]`-style folder links had to be aimed at the folder's own MOC (`[[01-architecture/README]]`) because **Obsidian has no folder wikilinks** — a folder is not a note, so stripping the prefix alone would have left those six dead.
 - **`[[…]]` inside a code span is the one thing a link-normalisation pass must NOT rewrite, and in this vault those spans are all *documentation of the defect itself* (2026-10-06, docs-p6)**: 13 of the 242 `[[docs/…]]` occurrences are inside inline code — 5 in `AGENT_LOGBOOK.md` (lines 137/140, the p5 gotchas that quote the broken form as examples) and 8 in `AGENT_LOGBOOK_HISTORY.md` (lines 9706/9708, the quoted p5 task-log entries). They render as code, Obsidian never linkifies them, and rewriting them would corrupt the record that documents the bug. **Strip inline code spans AND fenced blocks before counting, then re-run the same scanner to prove the count is stable** — a "fix every occurrence" pass driven by a raw grep corrupts the logbook it is fixing.
 - **Verify a wikilink pass by RESOLVING every target against the vault, not by grepping for the fixed string (2026-10-06, docs-p6)**: the post-fix count is **630 live wikilinks, 6 unresolved**, and all 6 are pre-existing defects of a *different* class that a prefix pass must not absorb — 3× `[[AGENT_LOGBOOK]]` (the target is the repo-root stub, outside the vault, so it is unfixable without an owner decision on whether the vault gets a logbook note), 1× `[[SinaiCamps Business API Surface]]` (`docs/README.md` links the **title** of `docs/API_SURFACE.md`; Obsidian resolves filename/alias, never title), 1× `[[env.staging.routes]]` (a wrangler TOML key inside `<code>` in an HTML table row — not a link), 1× `[[…]]` (inside a double-backtick span). **A "zero dead links" claim is only true if the resolver understands aliases, escaped table pipes, code spans and fenced blocks** — otherwise it reports phantom breakage and tempts a fix that damages the docs.
+- **A `.obsidian/` directory is HALF project config and HALF per-user state, and committing the wrong half is worse than committing none (2026-10-06, docs-p6)**: `docs/.obsidian/` was sitting untracked with 5 files. Staged (shareable): `app.json`, `core-plugins.json`, `templates.json`. Left untracked **and** added to `.gitignore`: `workspace.json` (6 KB of `lastOpenFiles`, the active tab id, panel widths and layout hashes — committing it makes every agent's window layout a diff for everyone), `graph.json` (the graph viewport's `scale`/`centerStrength` are pan-and-zoom state, not settings), `cache.json`. **Rule: share the settings that change behaviour for everyone, ignore the ones that record where a person happened to be looking.**
+- **Enforce a link convention with vault config, because a convention nobody is forced to follow rots (2026-10-06, docs-p6)**: the `[[docs/…]]` defect survived three parts of a program (p4 wrote it, p5 found it, p6 fixed it) purely because every agent re-derived "is this path vault-relative?" by hand. `docs/.obsidian/app.json` now sets `newLinkFormat: "absolute"` + `useMarkdownLinks: false` + `alwaysUpdateLinks: true`, so **Obsidian itself emits the vault-relative wikilink** — the rule is now mechanical for anyone editing in the app. A file whose convention is only written down is a convention that gets broken by the next agent.
+- **`docs/.obsidian/templates.json` is not optional scaffolding — the Templates core plugin has no folder without it (2026-10-06, docs-p6)**: `core-plugins.json` already had `templates: true`, and the mission also asks for `docs/_templates/`, but the Templates plugin reads its folder from `.obsidian/templates.json`, **not** from `app.json`. Without that file the `_templates/` deliverable is inert: the plugin runs, has no folder, and inserts nothing. **A config key in the wrong file is the same failure as a missing one.**
+- **The p6 spec pointed at "the exact JSON per mission" and the mission text is not in the repo (2026-10-06, docs-p6)**: `.opencode/agents/tmp/2026-10-06-p6.md` §Scope says "`app.json` + `core-plugins.json` (exact JSON per mission)" and §Objective says "root README.md rewritten per the mission structure", but no file under `.opencode/` contains the mission's literal JSON or structure — a search for `newLinkFormat`, `useMarkdownLinks`, `attachmentFolderPath` and every other `app.json` key across all `.md`/`.json` returns nothing, and `docs/.obsidian/` was never committed so git history has no earlier version. The config was therefore **derived from the vault's actual needs and every key justified in `docs/contributing.md`**, not copied from a spec that could not be read. **When a spec cites an authority that is not in the repo, say so in the logbook instead of quietly inventing the authority.**
 
 ---
 

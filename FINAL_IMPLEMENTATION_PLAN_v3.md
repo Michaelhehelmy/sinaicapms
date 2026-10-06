@@ -1,3 +1,23 @@
+---
+title: "FINAL IMPLEMENTATION PLAN v3 — SinaiCamps Deep Audit"
+aliases:
+tags:
+  - type/plan
+  - audience/owner
+  - audience/developer
+  - domain/vault
+  - status/archive
+created: 2026-09-17
+updated: 2026-10-06
+relates-to:
+  - "[[09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
+  - "[[09-plans/FINAL_IMPLEMENTATION_PLAN_v3_appendices]]"
+  - "[[98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[09-plans/DEVELOPER_ROADMAP]]"
+  - "[[contributing]]"
+code-references:
+verified: never
+---
 # FINAL IMPLEMENTATION PLAN v3 — SinaiCamps Deep Audit
 
 **Last updated:** 2026-09-17 (v3-exec — **owner approved 2026-09-17: Q10 = KEEP; freeze LIFTED; commits authorized in order** (Wave 1 → A22/Q10 → Wave 2 → Wave 3 → Wave 6.5); deploy stays deferred until Wave 6.5 staging validation; audit bundle moved to `.opencode/audits/2026-09-16/` during Wave 0.5; B-addendum bundle applied: B1→`.opencode/audits/2026-09-16/A1-full-report.md`, B2→`.opencode/audits/2026-09-16/A22-probe-forensics.md`, B3→`.opencode/audits/2026-09-16/Q10-resolution.md`, §8.4→`.opencode/audits/2026-09-16/A1-proposed-0100-0101.md`; in-line corrections B4–B11; **post-review precision pass: F-A11-1 line refs pinned to `orders.js:1009` (pre-fix 997), B1/B2/B3 delivered inline, Q10 checklist item (5) added**; execution log: Wave 0.5 docs hygiene + Wave 1 implemented below)
