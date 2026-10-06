@@ -56,6 +56,7 @@ Welcome to the SinaiCamps documentation. This guide covers everything from quick
 - [Developer Roadmap](09-plans/DEVELOPER_ROADMAP.md) — Feature planning and roadmap
 - [Performance Baseline](03-frontend/PERF_BASELINE.md) — Performance metrics and benchmarks
 - [Security Guide](06-security/security-guide.md) — Auth, CSRF, XSS, rate limiting, CORS
+- [[contributing|Contributing to the docs vault]] — Frontmatter schema, MOC rules, link conventions
 
 ---
 

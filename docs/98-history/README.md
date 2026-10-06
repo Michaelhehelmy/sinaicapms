@@ -153,7 +153,7 @@ commit that touched the file's content where no date was recoverable).
 ### 2026-08-08 → present — the running task log
 
 [[AGENT_LOGBOOK_HISTORY]] has no end date. It is the append-only per-task record and is the one file
-in this archive that keeps growing; the repo-root [[AGENT_LOGBOOK]] holds the reference tier (the
+in this archive that keeps growing; the repo-root `AGENT_LOGBOOK.md` holds the reference tier (the
 persistent gotchas) that stays at its original path because live code cites it.
 
 ## Old path → new path

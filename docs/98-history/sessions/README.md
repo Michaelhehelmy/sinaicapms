@@ -30,7 +30,7 @@ Per-task history lives here. The gate results and wave closures are history; the
 
 | Doc | What it is |
 |---|---|
-| [[AGENT_LOGBOOK_HISTORY]] | **The append-only task history** split out of the repo-root [[AGENT_LOGBOOK]] on 2026-10-06. The reference tier — the gotchas — stays there, because 12 code files and `AGENTS.md` cite that path. Append new task entries here. |
+| [[AGENT_LOGBOOK_HISTORY]] | **The append-only task history** split out of the repo-root `AGENT_LOGBOOK.md` on 2026-10-06. The reference tier — the gotchas — stays there, because 12 code files and `AGENTS.md` cite that path. Append new task entries here. |
 | [[ADMIN_REPAIR_REPORT_2026_09_14]] |  |
 | [[FINAL-AUDIT-CLOSURE]] |  |
 | [[FINAL-CLOSURE-v2]] |  |

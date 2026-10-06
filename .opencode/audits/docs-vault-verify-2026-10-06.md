@@ -236,3 +236,51 @@ was edited anywhere in this audit.**
   files.
 
 **Rollback** = revert the single commit.
+
+## 7. Post-fix state (added by `docs(vault): fix orphans + broken links`)
+
+§§1–6 are the record **as measured at baseline `1616727`** and are deliberately left unedited. This
+section records what the follow-up commit changed, so one document holds both the finding and its
+repair. Three lines, `+1 / −2`, in three files:
+
+| File | Change | Why this and nothing more |
+| --- | --- | --- |
+| `98-history/README.md:156` | `[[AGENT_LOGBOOK]]` → `` `AGENT_LOGBOOK.md` `` | target is the **repo-root** file, outside the vault root (`docs/`); `contributing.md:111` puts "anything outside the vault" in the not-a-note class |
+| `98-history/sessions/README.md:33` | same | same, in a table cell (backticks are cell-safe; no pipe involved) |
+| `docs/README.md:59` | new `[[contributing\|Contributing to the docs vault]]` in § Developer Resources | the orphan fix — §1 #1 |
+
+Re-running the same resolver after the commit:
+
+| Check | Baseline `1616727` | After |
+| --- | --- | --- |
+| Broken link sites | 3 | **1** — only the `<code>` false positive |
+| Real dead links | 2 | **0** |
+| Orphans (strict mission metric) | 6 | **6** — see below |
+| Real orphan defects | 1 | **0** |
+| Ambiguous | 18 | 18 (untouched by design) |
+| Missing frontmatter | 0 | 0 |
+
+**The orphan metric is flat at 6 and that is a property of the metric, not a failed fix.** The strict
+rule excludes any inbound edge whose source is a `README.md`, and the new link's source *is*
+`docs/README.md` — so the note gains an inbound edge and the count cannot move. The fix is verified
+directly instead: `git show 93502f4:docs/README.md | grep -c contributing` → **0**, and after the
+commit the same grep → **1**. `docs/contributing.md`'s inbound set goes from `{99-gaps/README.md}` to
+`{99-gaps/README.md, README.md}`, and `[[contributing]]` resolves uniquely (stem `contributing` is
+unique; `CONTRIBUTING` is its only alias).
+
+**The first attempt at that third line was wrong, and the vault's own rule caught it.** I wrote it as
+`[Contributing](contributing.md)` to match the markdown links the surrounding Table of Contents uses.
+`contributing.md:109` forbids exactly that: *"Use `[[wikilinks]]`, not relative markdown links, for
+`.md` targets. A relative link renders but creates no backlink, so the target's 'linked mentions'
+stays empty."* A markdown link would have rendered, looked correct, and left the orphan unfixed by the
+only measure that matters. Rewritten as a wikilink. **A TOC's local style is not a licence to violate
+the vault's link rule** — and note the inconsistency this exposes in `docs/README.md`: its Table of
+Contents is entirely relative markdown links, so every one of its ~14 TOC targets has an empty
+"linked mentions" panel. Reported, not converted: rewriting the TOC is 14 links and a scope decision,
+not part of an orphan-and-broken-link fix.
+
+**Not fixed, deliberately:** the 4 curated `98-history` notes and `docs/README.md` (§1 #2–#6 — they are
+reachable, adding links would be duplicate navigation); the 18 ambiguous `[[README]]` links (§3 — no
+mechanical fix exists, the vault root is itself the ambiguous stem); `[[env.staging.routes]]` (§2 — not
+a link, and it is archived prose inside `<code>`); and repo-root `AGENTS.md`'s frontmatter (§4 — p6's
+deliberate decision).
