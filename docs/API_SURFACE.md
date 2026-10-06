@@ -1,3 +1,25 @@
+---
+title: "SinaiCamps Business API Surface"
+aliases:
+tags:
+  - type/reference
+  - audience/developer
+  - domain/api
+  - status/live
+created: 2026-08-31
+updated: 2026-10-06
+relates-to:
+  - "[[API_SURFACE_MAP]]"
+  - "[[API_CONTRACT]]"
+  - "[[docs/02-api/README]]"
+  - "[[docs/README]]"
+code-references:
+  - "backend/src/routes/registry.js"
+  - "backend/src/index.js"
+  - "app/src/lib/api.ts"
+  - "app/src/hooks/useQueryHooks.ts"
+verified: never
+---
 # SinaiCamps Business API Surface
 
 Complete mapping of all business-domain API endpoints, frontend functions, backend handlers, database tables, and React Query hooks.

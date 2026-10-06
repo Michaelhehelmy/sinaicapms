@@ -1,3 +1,32 @@
+---
+title: "SinaiCamps — E2E Coverage Gap Analysis (READ-ONLY AUDIT)"
+aliases:
+tags:
+  - type/audit
+  - audience/tester
+  - domain/testing
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[docs/04-testing/TESTING]]"
+  - "[[AUDIT_TEST_COVERAGE_FINDINGS]]"
+  - "[[TESTING_ROADMAP]]"
+code-references:
+  - "app/src/components/admin/AdminApp.tsx"
+  - "tests/e2e/specs/admin/tenant-admin-tabs.spec.ts"
+  - "tests/e2e/specs/admin/navigation.spec.ts"
+  - "tests/e2e/specs/admin/deep-dive.spec.ts:164"
+  - "tests/e2e/specs/auth/admin-login-form-deep.spec.ts"
+  - "tests/e2e/specs/auth/registration-lifecycle.spec.ts"
+  - "tests/e2e/specs/auth/password-reset.spec.ts"
+  - "tests/e2e/specs/auth/password-reset-flow.spec.ts"
+  - "tests/e2e/specs/auth/token-lifecycle.spec.ts"
+  - "tests/e2e/specs/auth/registration.spec.ts"
+verified: never
+---
 # SinaiCamps — E2E Coverage Gap Analysis (READ-ONLY AUDIT)
 
 **Date:** 2026-09-05

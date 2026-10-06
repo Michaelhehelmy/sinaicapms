@@ -1,3 +1,23 @@
+---
+title: "G6.5 Staging Validation — SATISFIED (2026-09-22)"
+aliases:
+tags:
+  - type/report
+  - audience/owner
+  - domain/operations
+  - status/done
+created: 2026-09-21
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/sessions/README]]"
+  - "[[FINAL-CLOSURE-v2]]"
+  - "[[RUNBOOK]]"
+code-references:
+  - "backend/wrangler.toml"
+  - "deploy.sh"
+  - "scripts/check-deploy-parity.sh"
+verified: never
+---
 # G6.5 Staging Validation — SATISFIED (2026-09-22)
 
 - Step 1 reachability: PASS (staging live, tenant guard 400)

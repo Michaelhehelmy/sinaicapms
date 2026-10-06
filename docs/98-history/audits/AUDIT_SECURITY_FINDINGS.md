@@ -1,3 +1,32 @@
+---
+title: "SinaiCamps — Security Audit Findings"
+aliases:
+tags:
+  - type/audit
+  - audience/owner
+  - domain/security
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[security-guide]]"
+  - "[[AUTH_SYSTEM_AUDIT]]"
+code-references:
+  - "backend/wrangler.toml"
+  - "deploy.sh"
+  - "backend/src/api/onboarding.js:237-252"
+  - "backend/src/api/admin-settings.js:57-76"
+  - "backend/src/api/pos-barcode.js:21"
+  - "backend/src/api/admin-supply.js:31"
+  - "backend/src/api/reservations.js:51"
+  - "backend/src/api/orders.js:176"
+  - "backend/src/api/paymob-webhook.js:193"
+  - "backend/src/api/auth.js"
+verified: never
+---
 # SinaiCamps — Security Audit Findings
 
 **Audit type:** Read-only automated + manual review of the Cloudflare Worker backend

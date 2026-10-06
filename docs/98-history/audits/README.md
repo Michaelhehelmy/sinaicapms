@@ -1,3 +1,26 @@
+---
+title: "docs/98-history/audits"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/audit
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/README]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[API_CONTRACT_AUDIT]]"
+  - "[[AUTH_SYSTEM_AUDIT]]"
+  - "[[DEEP_AUDIT_2026_08_27]]"
+  - "[[docs/05-operations/AUDIT_MASTER_FINDINGS]]"
+code-references:
+  - "backend/src/routes/registry.js"
+  - "app/src/lib/api.ts"
+  - "backend/src/index.js"
+verified: never
+---
 # docs/98-history/audits
 
 Audits — executed and superseded

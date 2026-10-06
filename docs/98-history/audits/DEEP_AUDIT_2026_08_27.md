@@ -1,3 +1,31 @@
+---
+title: "SinaiCamps Deep Audit Report"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/audit
+  - status/archived
+created: 2026-08-31
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_DEEP_DIVE_2026-09-06]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+code-references:
+  - "backend/src/index.js:45"
+  - "backend/src/api/admin.js"
+  - "backend/src/api/admin-financials.js:14"
+  - "backend/src/api/admin-hr.js:14"
+  - "backend/src/api/admin-crm.js:15"
+  - "backend/src/api/admin-ai.js:14"
+  - "backend/src/middleware/sharedAuth.js:236-276"
+  - "backend/src/routes/pos/index.js:806-815"
+  - "app/src/components/pos/views/CartPanel.tsx:91-93"
+  - "backend/src/api/categories.js:166-167"
+verified: never
+---
 # SinaiCamps Deep Audit Report
 **Date:** 2026-08-27  
 **Truth update 2026-09-21:** F-A14-2, F-A2-1, F-A3-2, F-A18-09, F-A15-2 do not exist in this file (scheme here is C1–C4 + W1–W10) — marked WITHDRAWN per Wave 6a false-positive review.  

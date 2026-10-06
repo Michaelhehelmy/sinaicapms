@@ -1,3 +1,23 @@
+---
+title: "Schema Direction Plan — P1-8"
+aliases:
+tags:
+  - type/plan
+  - audience/developer
+  - domain/data
+  - status/superseded
+created: 2026-08-08
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/migrations/README]]"
+  - "[[migrations]]"
+  - "[[DATABASE_SCHEMA_AUDIT]]"
+  - "[[AUDIT_DATABASE_FINDINGS]]"
+code-references:
+  - "backend/src/api/camps.js:160"
+  - "backend/src/api/orders.js:156"
+verified: never
+---
 # Schema Direction Plan — P1-8
 
 **Date:** 2026-07-19

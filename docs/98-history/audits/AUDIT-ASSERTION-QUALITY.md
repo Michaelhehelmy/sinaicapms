@@ -1,3 +1,31 @@
+---
+title: "QA Assertion Quality Audit — Comprehensive Report"
+aliases:
+tags:
+  - type/audit
+  - audience/tester
+  - domain/testing
+  - domain/audit
+  - status/archived
+created: 2026-08-08
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[docs/04-testing/TESTING]]"
+  - "[[AUDIT_TEST_COVERAGE_FINDINGS]]"
+code-references:
+  - "tests/unit/emailService.test.js"
+  - "tests/search-filter-pagination.test.js"
+  - "tests/concurrency.test.js"
+  - "tests/core/meals-ingredients-full.test.js"
+  - "tests/core/security-extended.test.js"
+  - "tests/core/api-response-format.test.js"
+  - "tests/core/settings.test.js"
+  - "tests/core/rate-limiting.test.js"
+  - "tests/core/categories-crud.test.js"
+  - "tests/core/meal-categories-crud.test.js"
+verified: never
+---
 # QA Assertion Quality Audit — Comprehensive Report
 
 **Date:** 2026-07-18

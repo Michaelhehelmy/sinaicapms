@@ -1,3 +1,25 @@
+---
+title: "Audit — monitor custom-domain 404 (2026-09-30, read-only, no fixes)"
+aliases:
+tags:
+  - type/worksheet
+  - audience/developer
+  - domain/operations
+  - status/done
+created: 2026-09-30
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/worksheets/README]]"
+  - "[[RUNBOOK]]"
+  - "[[docs/98-history/sessions/AGENT_LOGBOOK_HISTORY]]"
+code-references:
+  - "monitor/wrangler.toml"
+  - "backend/wrangler.toml"
+  - "monitor/src/index.js:665"
+  - "backend/src/utils/response.js:87"
+  - "backend/src/index.js:908"
+verified: never
+---
 # Audit — monitor custom-domain 404 (2026-09-30, read-only, no fixes)
 
 Tmp agent `mon-b1-diagnose` per `.opencode/agents/tmp/2026-09-30-mnb1.md`.

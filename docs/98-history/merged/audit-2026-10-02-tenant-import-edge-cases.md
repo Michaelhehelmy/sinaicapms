@@ -1,3 +1,29 @@
+---
+title: "Audit — tenant-import edge-case matrix (edge, 2026-09-30)"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/tenant-import
+  - domain/audit
+  - status/merged
+created: 2026-10-02
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/merged/README]]"
+  - "[[tenant-import-appendix]]"
+  - "[[audit-2026-09-30-tenant-import-parity]]"
+  - "[[BLOCKED-pos-products-composite-pk]]"
+code-references:
+  - "package.json"
+  - "package-lock.json"
+  - "backend/src/api/tenant-import.js:782"
+  - "backend/src/utils/response.js:41"
+  - "backend/tests/tenant-import.test.js:787-1038"
+  - "deploy.sh"
+  - "backend/src/api/tenant-import.js:829-832"
+verified: never
+---
 # Audit — tenant-import edge-case matrix (edge, 2026-09-30)
 
 Verdict: **PASS** — 7/7 edge steps green, plus **3 measured residual findings** that

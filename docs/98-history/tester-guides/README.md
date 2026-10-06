@@ -1,3 +1,25 @@
+---
+title: "docs/98-history/tester-guides"
+aliases:
+tags:
+  - type/index
+  - audience/tester
+  - audience/owner
+  - domain/testing
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/README]]"
+  - "[[testing-guide-owner]]"
+  - "[[testing-guide-tester]]"
+  - "[[docs/04-testing/TESTING]]"
+code-references:
+  - "playwright.config.ts"
+  - "scripts/seed-test-users.js"
+  - "app/src/lib/routeZones.ts"
+verified: never
+---
 # docs/98-history/tester-guides
 
 Tester guides

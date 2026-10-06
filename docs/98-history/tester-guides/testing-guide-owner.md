@@ -1,3 +1,23 @@
+---
+title: "SinaiCamps — Owner Testing Guide (Human-Testing Phase)"
+aliases:
+  - "TESTING_GUIDE_OWNER"
+tags:
+  - type/guide
+  - audience/owner
+  - domain/testing
+  - status/archived
+created: 2026-09-09
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/tester-guides/README]]"
+  - "[[docs/04-testing/TESTING]]"
+  - "[[testing-guide-tester]]"
+  - "[[TESTING_ROADMAP]]"
+code-references:
+  - "scripts/seed-test-users.js"
+verified: never
+---
 # SinaiCamps — Owner Testing Guide (Human-Testing Phase)
 
 This guide is **only for you (the owner)**. Testers get `docs/TESTING_GUIDE_TESTER.md` — share that file, not this one. It covers your super-admin credentials, the Feedback panel in-box, and the dashboard areas you test personally.

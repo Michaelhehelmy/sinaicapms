@@ -1,3 +1,24 @@
+---
+title: "docs/98-history/deploys"
+aliases:
+tags:
+  - type/index
+  - audience/owner
+  - domain/operations
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/README]]"
+  - "[[RUNBOOK]]"
+  - "[[ASTRO_DEPLOY_CUTOVER]]"
+  - "[[PROD-DEPLOY-CHECKLIST-2026-09-22]]"
+code-references:
+  - "deploy.sh"
+  - "app/wrangler.toml"
+  - "scripts/check-deploy-parity.sh"
+verified: never
+---
 # docs/98-history/deploys
 
 Deploys — cutover history

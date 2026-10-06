@@ -1,3 +1,30 @@
+---
+title: "SinaiCamps — Full Test Report"
+aliases:
+tags:
+  - type/report
+  - audience/tester
+  - domain/testing
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/test-runs/README]]"
+  - "[[docs/04-testing/TESTING]]"
+  - "[[AGENT_LOGBOOK_HISTORY]]"
+code-references:
+  - "tests/e2e/specs/admin/admin-orders.spec.ts:113"
+  - "tests/e2e/specs/admin/admin-reservation-log.spec.ts:12"
+  - "tests/e2e/specs/admin/admin-settings.spec.ts:100"
+  - "tests/e2e/specs/admin/camp-flow.spec.ts:25"
+  - "tests/e2e/specs/admin/console-errors.spec.ts:98"
+  - "tests/e2e/specs/admin/crud-e2e.spec.ts:109"
+  - "tests/e2e/specs/admin/crud-execution.spec.ts:100"
+  - "tests/e2e/specs/admin/crud-mutations.spec.ts:156"
+  - "tests/e2e/specs/admin/crud-workflows.spec.ts:110"
+  - "tests/e2e/specs/admin/dashboard-stats.spec.ts:113"
+verified: never
+---
 # SinaiCamps — Full Test Report
 
 - **Date:** 2026-09-09 22:20:26

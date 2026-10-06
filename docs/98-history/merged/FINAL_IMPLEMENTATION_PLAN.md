@@ -1,3 +1,31 @@
+---
+title: "FINAL IMPLEMENTATION PLAN v2 — SinaiCamps Deep Audit"
+aliases:
+tags:
+  - type/plan
+  - audience/owner
+  - domain/plans
+  - status/superseded
+created: 2026-09-18
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/merged/README]]"
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_appendices]]"
+  - "[[docs/09-plans/README]]"
+code-references:
+  - "tests/core/payments.test.js:94"
+  - "tests/core/migration-integrity.test.js"
+  - "app/src/lib/api.ts"
+  - "deploy.sh:42"
+  - "app/wrangler.toml"
+  - "backend/src/middleware/rateLimit.js:125"
+  - "backend/src/middleware/requireAuth.js:103"
+  - "backend/src/api/payments.js:44-48"
+  - "backend/src/utils/response.js:87"
+  - "backend/src/api/storefront.js:300"
+verified: never
+---
 # FINAL IMPLEMENTATION PLAN v2 — SinaiCamps Deep Audit
 
 **Last updated:** 2026-09-16T21:00Z (v2 — owner review round 1 applied)  

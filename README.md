@@ -1,3 +1,33 @@
+---
+title: "SinaiCamps — Multi-Tenant Camp Management Platform"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - audience/owner
+  - domain/root
+  - status/live
+created: 2026-08-08
+updated: 2026-10-06
+relates-to:
+  - "[[docs/README]]"
+  - "[[ARCHITECTURE]]"
+  - "[[API_CONTRACT]]"
+  - "[[AGENT_LOGBOOK]]"
+  - "[[docs/05-operations/RUNBOOK]]"
+code-references:
+  - "app/src/lib/api.ts"
+  - "app/src/middleware/tenant.ts"
+  - "app/src/lib/api-types.ts"
+  - "backend/openapi.json"
+  - "backend/wrangler.toml"
+  - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "app/src/components/ui/SafeImage.astro"
+  - "deploy.sh"
+  - "app/src/lib/routeZones.ts"
+  - "app/src/lib/rbac.ts"
+verified: never
+---
 # SinaiCamps — Multi-Tenant Camp Management Platform
 
 A full-stack serverless SaaS platform for managing summer camps, wilderness lodges, and outdoor adventure facilities. Each camp runs an SEO-optimized public website with WhatsApp booking, backed by a unified admin dashboard and POS terminal.

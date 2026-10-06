@@ -1,3 +1,26 @@
+---
+title: "docs/98-history/sessions"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/history
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/README]]"
+  - "[[AGENT_LOGBOOK_HISTORY]]"
+  - "[[WAVE6_EXIT_REPORT]]"
+  - "[[FINAL-CLOSURE-v2]]"
+  - "[[G65_STAGING_VALIDATION]]"
+  - "[[ADMIN_REPAIR_REPORT_2026_09_14]]"
+code-references:
+  - "playwright.config.ts"
+  - "backend/wrangler.toml"
+  - "tests/core/migration-integrity.test.js"
+verified: never
+---
 # docs/98-history/sessions
 
 Sessions — dated records and closures

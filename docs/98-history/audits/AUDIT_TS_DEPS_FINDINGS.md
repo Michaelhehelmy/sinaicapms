@@ -1,3 +1,31 @@
+---
+title: "SinaiCamps — TypeScript & Dependency Audit Findings"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/frontend
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
+  - "[[docs/03-frontend/PERF_BASELINE]]"
+code-references:
+  - "app/src/lib/api-types.ts"
+  - "backend/openapi.json"
+  - "app/src/components/admin/TenantPerformancePanel.tsx"
+  - "app/src/components/admin/SystemHealthPanel.tsx"
+  - "app/src/components/admin/SuperReportsPanel.tsx"
+  - "app/src/components/admin/SubscriptionsPanel.tsx"
+  - "app/src/components/admin/AuditLogPanel.tsx"
+  - "app/package.json"
+  - "backend/package.json"
+  - "package.json"
+verified: never
+---
 # SinaiCamps — TypeScript & Dependency Audit Findings
 
 **Audit type:** READ-ONLY (no source changes made)

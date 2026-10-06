@@ -1,3 +1,31 @@
+---
+title: "Admin Panel & Storefront Improvements Report — 2026-09-14"
+aliases:
+tags:
+  - type/report
+  - audience/developer
+  - domain/frontend
+  - status/done
+created: 2026-09-14
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/sessions/README]]"
+  - "[[restaurant-guide]]"
+  - "[[supermarket-guide]]"
+  - "[[WAVE6_EXIT_REPORT]]"
+code-references:
+  - "backend/openapi.json"
+  - "app/src/lib/api-types.ts"
+  - "backend/src/api/storefront.js"
+  - "backend/src/api/reservations.js"
+  - "backend/migrations/legacy/0098_storefront_paymob.sql"
+  - "app/src/lib/routeZones.ts"
+  - "app/src/lib/storefrontSession.ts"
+  - "app/src/components/public/ShopCatalog.tsx"
+  - "app/src/components/public/StorefrontCart.tsx"
+  - "app/src/components/public/StorefrontCheckout.tsx"
+verified: never
+---
 # Admin Panel & Storefront Improvements Report — 2026-09-14
 
 Scope: repair of broken/fake/mock logic across the admin panels, honest

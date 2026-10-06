@@ -1,3 +1,30 @@
+---
+title: "SinaiCamps — Full Implementation Plan (post-audit remediation)"
+aliases:
+tags:
+  - type/plan
+  - audience/developer
+  - domain/plans
+  - status/superseded
+created: 2026-08-26
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/plans/README]]"
+  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+code-references:
+  - "backend/src/api/onboarding.js"
+  - "backend/tests/onboarding.test.js"
+  - "backend/src/index.js:700-737"
+  - "backend/src/api/storefront.js"
+  - "backend/tests/pos-tables.test.js"
+  - "backend/src/api/services.js:440"
+  - "backend/src/api/admin-audit.js:31"
+  - "backend/src/api/admin-settings.js:150"
+  - "backend/src/api/admin-subscriptions.js:141"
+  - "backend/src/api/admin-payouts.js:78"
+verified: never
+---
 # SinaiCamps — Full Implementation Plan (post-audit remediation)
 
 **Source:** 8 read-only audits (2026-09-05) + `AUDIT_MASTER_FINDINGS.md`

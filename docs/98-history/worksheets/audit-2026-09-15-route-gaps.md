@@ -1,3 +1,27 @@
+---
+title: "A1 Route-Surface Gap Worksheet — 2026-09-15 deep-audit round"
+aliases:
+tags:
+  - type/worksheet
+  - audience/developer
+  - domain/api
+  - status/done
+created: 2026-09-16
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/worksheets/README]]"
+  - "[[service-guide]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
+code-references:
+  - "backend/src/api/services.js"
+  - "backend/src/middleware/rateLimit.js"
+  - "app/src/pages/camps.astro:20"
+  - "app/src/components/public/MenuPage.astro"
+  - "deploy.sh"
+  - "backend/src/middleware/requireAuth.js"
+verified: never
+---
 # A1 Route-Surface Gap Worksheet — 2026-09-15 deep-audit round
 
 > **Task**: `auditfix-a1-route-gap-doc` (T10) — the permanent record of the A1 audit's route-surface findings.

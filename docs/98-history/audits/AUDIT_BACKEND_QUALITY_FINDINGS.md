@@ -1,3 +1,32 @@
+---
+title: "Backend Code Quality Audit — Findings Report"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/backend
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[docs/98-history/audits/BACKEND_UNIFICATION_AUDIT]]"
+  - "[[docs/02-api/API_CONTRACT]]"
+code-references:
+  - "backend/src/routes/registry.js"
+  - "backend/src/routes/pos/index.js:34"
+  - "backend/src/index.js:143"
+  - "backend/src/durable/broadcaster.js"
+  - "app/src/lib/api.ts"
+  - "app/src/lib/api-types.ts"
+  - "backend/src/api/admin-settings.js:150"
+  - "backend/src/utils/errors.js"
+  - "backend/src/api/admin-subscriptions.js:141"
+  - "backend/src/api/admin-payouts.js:78"
+verified: never
+---
 # Backend Code Quality Audit — Findings Report
 
 - **Task**: `audit-t2-backend-quality` (`.opencode/agents/tmp/2026-09-05-audit-t2-backend-quality.md`)

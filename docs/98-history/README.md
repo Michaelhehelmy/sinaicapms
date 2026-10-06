@@ -1,3 +1,33 @@
+---
+title: "docs/98-history — archived, not deleted"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/history
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[docs/98-history/sessions/README]]"
+  - "[[docs/98-history/plans/README]]"
+  - "[[docs/98-history/merged/README]]"
+  - "[[docs/98-history/worksheets/README]]"
+  - "[[docs/98-history/deploys/README]]"
+  - "[[docs/98-history/migrations/README]]"
+  - "[[docs/98-history/tester-guides/README]]"
+  - "[[docs/98-history/test-runs/README]]"
+  - "[[docs/README]]"
+code-references:
+  - "backend/src/index.js"
+  - "app/src/lib/api.ts"
+  - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "scripts/validate-manifest.mjs"
+  - "tests/e2e/specs/admin/super-panel-coverage.spec.ts"
+  - "backend/wrangler.toml"
+verified: never
+---
 # docs/98-history — archived, not deleted
 
 Everything in this folder is **history**. Nothing here is deleted content: each file was moved

@@ -1,3 +1,30 @@
+---
+title: "escHtml usage inventory + classification (2026-09-30, esc-s1)"
+aliases:
+tags:
+  - type/worksheet
+  - audience/developer
+  - domain/security
+  - domain/frontend
+  - status/done
+created: 2026-09-30
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/worksheets/README]]"
+  - "[[security-guide]]"
+  - "[[docs/98-history/audits/AUDIT_FRONTEND_FINDINGS]]"
+code-references:
+  - "app/src/components/public/CampsSection.astro:267"
+  - "app/src/components/public/TenantLanding.astro:12"
+  - "app/src/components/public/MarketplaceHome.astro:9"
+  - "app/src/pages/contact.astro:4"
+  - "app/src/pages/rooms.astro:7"
+  - "app/src/pages/faq.astro:4"
+  - "app/src/pages/gallery.astro:4"
+  - "app/src/pages/about.astro:4"
+  - "app/src/lib/utils.ts:3"
+verified: never
+---
 # escHtml usage inventory + classification (2026-09-30, esc-s1)
 
 Parent: escHtml double-escape 2026-09-30 — Step 1 inventory. Docs only; no source touched.

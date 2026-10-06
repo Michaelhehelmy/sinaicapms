@@ -1,3 +1,24 @@
+---
+title: "Astro Deploy Cutover — Pages → Workers (`campmaster-marketplace`)"
+aliases:
+tags:
+  - type/runbook
+  - audience/owner
+  - domain/operations
+  - status/done
+created: 2026-09-07
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/deploys/README]]"
+  - "[[RUNBOOK]]"
+  - "[[docs/98-history/plans/ASTRO_UPGRADE_PLAN]]"
+  - "[[PROD-DEPLOY-CHECKLIST-2026-09-22]]"
+code-references:
+  - "deploy.sh"
+  - "app/public/_routes.json"
+  - "app/wrangler.toml"
+verified: never
+---
 # Astro Deploy Cutover — Pages → Workers (`campmaster-marketplace`)
 
 This document is the **deploy-time** checklist for repointing the frontend from

@@ -1,3 +1,24 @@
+---
+title: "Tenant-import Zod schema — field-by-field reference (2026-09-30, mani-a1-schema)"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/tenant-import
+  - domain/audit
+  - status/merged
+created: 2026-09-30
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/merged/README]]"
+  - "[[tenant-import-schema]]"
+  - "[[audit-2026-09-30-tenant-manifest-gaps]]"
+  - "[[audit-2026-09-30-tenant-manifest-types]]"
+code-references:
+  - "backend/src/api/tenant-import.js"
+  - "docs/examples/tenant-manifest.example.json"
+verified: never
+---
 # Tenant-import Zod schema — field-by-field reference (2026-09-30, mani-a1-schema)
 
 Parent: Manifest audit 2026-09-30 — A.1 schema extract. Docs only; no source touched.

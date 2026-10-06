@@ -1,3 +1,32 @@
+---
+title: "SinaiCamps Database & Migration Audit — Findings"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/data
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[docs/07-data/migrations]]"
+  - "[[DATABASE_SCHEMA_AUDIT]]"
+  - "[[SCHEMA_DIRECTION_PLAN]]"
+code-references:
+  - "backend/migrations/legacy/0001_init.sql"
+  - "backend/migrations/legacy/0091_rate_plans_camp_id.sql"
+  - "backend/migrations/legacy/0002_seed.sql"
+  - "backend/migrations/legacy/0003_add_tenant_branding.sql"
+  - "backend/migrations/legacy/0004_seed_tenants.sql"
+  - "backend/migrations/legacy/0005_rich_branding.sql"
+  - "backend/migrations/legacy/0006_room_type_images.sql"
+  - "backend/migrations/legacy/0007_admin_passphrase.sql"
+  - "backend/migrations/legacy/0008_hacker_passphrase.sql"
+  - "backend/migrations/legacy/0009_user_username.sql"
+verified: never
+---
 # SinaiCamps Database & Migration Audit — Findings
 
 **Task:** `audit-t3-database` (read-only) | **Date:** 2026-09-05

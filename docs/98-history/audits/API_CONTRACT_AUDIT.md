@@ -1,3 +1,32 @@
+---
+title: "API Contract Audit — Unified API Suite Merge Plan"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/api
+  - domain/audit
+  - status/archived
+created: 2026-08-23
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[docs/98-history/audits/BACKEND_UNIFICATION_AUDIT]]"
+  - "[[docs/02-api/API_CONTRACT]]"
+  - "[[API_CONTRACT_AUDIT]]"
+code-references:
+  - "backend/src/index.js"
+  - "backend/src/routes/pos/index.js"
+  - "app/src/lib/api.ts"
+  - "app/src/lib/api-types.ts"
+  - "backend/openapi.json"
+  - "backend/src/routes/registry.js:1516"
+  - "backend/src/api/payments.js"
+  - "app/src/hooks/useAdminData.ts"
+  - "app/src/components/public/ReservationSummary.tsx:181"
+  - "app/src/pages/contact.astro:141"
+verified: never
+---
 # API Contract Audit — Unified API Suite Merge Plan
 
 > **Scope**: full read of `backend/src/index.js`, all 18 `backend/src/api/*` modules, `backend/src/routes/pos/index.js`, `backend/src/utils/{response,errors,pagination}.js`, `backend/src/middleware/{tenant,sharedAuth}.js`, `app/src/lib/api.ts`, `app/src/lib/api-types.ts` (generated from `backend/openapi.json` v2.1.0 — 70 paths, 107 schemas), plus usage analysis of every `app/src/lib/api.ts` export across `app/src`.

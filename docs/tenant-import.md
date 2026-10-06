@@ -1,3 +1,27 @@
+---
+title: "Tenant Import — one manifest, one call"
+aliases:
+tags:
+  - type/reference
+  - audience/developer
+  - domain/tenant-import
+  - status/live
+created: 2026-09-15
+updated: 2026-10-06
+relates-to:
+  - "[[tenant-import-schema]]"
+  - "[[tenant-import-types]]"
+  - "[[tenant-import-appendix]]"
+  - "[[docs/10-tenant-import/README]]"
+  - "[[BACKLOG_VOID_REFUND]]"
+  - "[[docs/07-data/migrations]]"
+code-references:
+  - "backend/src/api/tenant-import.js"
+  - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "backend/src/index.js:244-251"
+  - "backend/wrangler.toml"
+verified: never
+---
 # Tenant Import — one manifest, one call
 
 `POST /api/tenants/import` provisions or fills a tenant from a single JSON

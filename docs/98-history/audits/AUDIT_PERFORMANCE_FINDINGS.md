@@ -1,3 +1,32 @@
+---
+title: "SinaiCamps — Performance & Architecture Audit Findings"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/performance
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[docs/03-frontend/PERF_BASELINE]]"
+  - "[[audit-2026-10-02-bundle-investigation]]"
+code-references:
+  - "app/budget.json"
+  - "backend/src/routes/pos/index.js:542-565"
+  - "backend/src/api/financials.js:239-244"
+  - "backend/src/api/services.js:451-456"
+  - "backend/src/api/supply.js:399-417"
+  - "backend/src/api/hr.js:383-389"
+  - "backend/src/api/inbox.js:119-131"
+  - "backend/src/api/marketplace.js:45-63"
+  - "backend/src/api/admin-audit.js:152-154"
+  - "app/src/components/admin/AnalyticsPanel.tsx:90-123"
+verified: never
+---
 # SinaiCamps — Performance & Architecture Audit Findings
 
 - **Date:** 2026-09-05

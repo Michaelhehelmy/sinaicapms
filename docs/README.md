@@ -1,3 +1,29 @@
+---
+title: "SinaiCamps Documentation"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - audience/tenant-admin
+  - domain/vault
+  - status/live
+created: 2026-08-25
+updated: 2026-10-06
+relates-to:
+  - "[[docs/01-architecture/QUICK_START]]"
+  - "[[ARCHITECTURE]]"
+  - "[[API_CONTRACT]]"
+  - "[[camp-guide]]"
+  - "[[security-guide]]"
+  - "[[migrations]]"
+  - "[[TESTING]]"
+  - "[[docs/98-history/README]]"
+  - "[[tenant-import]]"
+  - "[[SinaiCamps Business API Surface]]"
+code-references:
+  - "app/src/lib/api.ts"
+verified: never
+---
 # SinaiCamps Documentation
 
 Welcome to the SinaiCamps documentation. This guide covers everything from quick setup to detailed user guides for each business module.

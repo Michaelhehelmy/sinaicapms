@@ -1,3 +1,32 @@
+---
+title: "Authentication System Audit — Unifying Admin & POS Auth"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/security
+  - domain/audit
+  - status/archived
+created: 2026-08-23
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[security-guide]]"
+  - "[[AUDIT_SECURITY_FINDINGS]]"
+  - "[[BACKEND_UNIFICATION_AUDIT]]"
+code-references:
+  - "backend/src/middleware/sharedAuth.js"
+  - "app/src/lib/auth.tsx"
+  - "app/src/components/pos/POSApp.tsx"
+  - "tests/e2e/specs/auth/tenant-admin-login.spec.ts"
+  - "app/src/lib/session.ts"
+  - "app/src/lib/api-types.ts"
+  - "backend/openapi.json"
+  - "backend/src/api/auth.js"
+  - "backend/src/routes/pos/index.js"
+  - "backend/src/index.js"
+verified: never
+---
 # Authentication System Audit — Unifying Admin & POS Auth
 
 **Date:** 2026-08-22

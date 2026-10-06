@@ -1,3 +1,32 @@
+---
+title: "AUDIT — Test Coverage Findings"
+aliases:
+tags:
+  - type/audit
+  - audience/tester
+  - domain/testing
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[docs/04-testing/TESTING]]"
+  - "[[AUDIT_E2E_GAPS_FINDINGS]]"
+  - "[[AUDIT-ASSERTION-QUALITY]]"
+code-references:
+  - "backend/src/api/ai.js"
+  - "backend/src/api/crm.js"
+  - "backend/src/api/hr.js"
+  - "backend/src/api/supply.js"
+  - "backend/src/api/storefront.js"
+  - "backend/src/api/financials.js"
+  - "backend/src/api/admin-ai.js"
+  - "backend/src/api/admin-crm.js"
+  - "backend/src/api/admin-hr.js"
+  - "backend/src/api/admin-supply.js"
+verified: never
+---
 # AUDIT — Test Coverage Findings
 
 **Date:** 2026-09-05

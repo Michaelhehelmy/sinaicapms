@@ -1,3 +1,24 @@
+---
+title: "SinaiCamps — Tester Guide (Human-Testing Phase)"
+aliases:
+  - "TESTING_GUIDE_TESTER"
+tags:
+  - type/guide
+  - audience/tester
+  - domain/testing
+  - status/archived
+created: 2026-08-23
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/tester-guides/README]]"
+  - "[[docs/04-testing/TESTING]]"
+  - "[[testing-guide-owner]]"
+  - "[[TESTING_ROADMAP]]"
+code-references:
+  - "scripts/seed-test-users.js"
+  - "app/src/lib/routeZones.ts"
+verified: never
+---
 # SinaiCamps — Tester Guide (Human-Testing Phase)
 
 > Truth 2026-09-21: credentials + `?debug=1` + zone hosts verified against `scripts/seed-test-users.js` and `routeZones.ts`; sub-tabs not individually re-verified.

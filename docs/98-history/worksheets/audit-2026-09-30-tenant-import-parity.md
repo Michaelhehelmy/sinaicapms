@@ -1,3 +1,26 @@
+---
+title: "Audit — tenant-import round-trip parity (rtp, 2026-09-30)"
+aliases:
+tags:
+  - type/worksheet
+  - audience/developer
+  - domain/tenant-import
+  - status/done
+created: 2026-10-01
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/worksheets/README]]"
+  - "[[tenant-import-appendix]]"
+  - "[[audit-2026-10-02-tenant-import-edge-cases]]"
+  - "[[audit-2026-09-30-tenant-manifest-gaps]]"
+code-references:
+  - "package.json"
+  - "package-lock.json"
+  - "scripts/export-tenant.mjs:265"
+  - "deploy.sh"
+  - "scripts/export-tenant.mjs:189-194"
+verified: never
+---
 # Audit — tenant-import round-trip parity (rtp, 2026-09-30)
 
 Verdict: **PASS** on counts + round-trip parity, with **6 honest drift items** (2 newly

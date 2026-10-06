@@ -1,3 +1,32 @@
+---
+title: "AUDIT_FRONTEND_FINDINGS.md — Read-Only Frontend Code Quality Audit"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/frontend
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[FRONTEND_UNIFICATION_AUDIT]]"
+  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
+code-references:
+  - "app/src/components/ui/SafeImage.astro"
+  - "app/src/components/admin/AdminApp.tsx:399"
+  - "app/src/components/admin/CampsPanel.tsx"
+  - "app/src/components/admin/SuperTenantsPanel.tsx"
+  - "app/src/hooks/useAdminData.ts"
+  - "app/src/pages/camps.astro:89"
+  - "app/src/components/public/CampsSection.astro:285"
+  - "app/src/components/public/MarketplaceHome.astro:204"
+  - "app/src/components/admin/AuditLogPanel.tsx:86"
+  - "app/src/lib/session.ts"
+verified: never
+---
 # AUDIT_FRONTEND_FINDINGS.md — Read-Only Frontend Code Quality Audit
 
 **Repo**: SinaiCamps · **Scope**: `app/src` (Astro 5 + React 19 + TanStack Query + Tailwind v4)

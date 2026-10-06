@@ -1,3 +1,31 @@
+---
+title: "SinaiCamps — Deep-Dive Audit #2 (2026-09-06)"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/audit
+  - status/archived
+created: 2026-09-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[DEEP_AUDIT_2026_08_27]]"
+  - "[[docs/98-history/audits/AUDIT_SECURITY_FINDINGS]]"
+code-references:
+  - "app/src/lib/api.ts:2316-2350"
+  - "backend/src/index.js:260"
+  - "backend/src/api/admin-payouts.js:226"
+  - "tests/e2e/specs/cross-cutting/payouts.spec.ts"
+  - "backend/src/api/storefront.js:293"
+  - "backend/src/utils/response.js:87"
+  - "backend/src/api/admin-subscriptions.js:279"
+  - "backend/src/api/admin-audit.js:190"
+  - "backend/src/api/admin-settings.js:274"
+  - "backend/src/api/tenant-billing.js:89"
+verified: never
+---
 # SinaiCamps — Deep-Dive Audit #2 (2026-09-06)
 
 Six parallel read-only audit streams (security · backend API contract · database/schema · frontend a11y/UX · test coverage · spec-parity/ops). Everything from AUDIT_*_FINDINGS.md (audit #1, remediated via T1–T38) was re-verified first. Uncommitted working tree = 224 files; nothing below is deployed to prod until the ship step (H1).

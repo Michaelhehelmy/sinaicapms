@@ -1,3 +1,30 @@
+---
+title: "Astro 7 Upgrade Plan — SinaiCamps (`app/`)"
+aliases:
+tags:
+  - type/plan
+  - audience/developer
+  - domain/frontend
+  - status/done
+created: 2026-09-07
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/plans/README]]"
+  - "[[ASTRO_DEPLOY_CUTOVER]]"
+  - "[[docs/01-architecture/QUICK_START]]"
+code-references:
+  - "vitest.config.ts"
+  - "app/src/middleware/tenant.ts:197"
+  - "app/wrangler.toml:3"
+  - "deploy.sh:367-373"
+  - "app/astro.config.mjs:46"
+  - "app/public/_routes.json"
+  - "backend/wrangler.toml"
+  - "wrangler.toml"
+  - "app/tsconfig.json"
+  - "app/tests/unit/middleware-tenant.test.ts"
+verified: never
+---
 # Astro 7 Upgrade Plan — SinaiCamps (`app/`)
 
 **Branch:** `feat/astro-7` (currently at `538abf7`)

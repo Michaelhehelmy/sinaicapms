@@ -1,3 +1,22 @@
+---
+title: "Wave 6 Exit Report — Doc-Truth (2026-09-21)"
+aliases:
+tags:
+  - type/report
+  - audience/owner
+  - domain/audit
+  - status/done
+created: 2026-09-21
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/sessions/README]]"
+  - "[[AUDIT_MASTER_FINDINGS]]"
+  - "[[ADMIN_REPAIR_REPORT_2026_09_14]]"
+code-references:
+  - "backend/migrations/legacy/0099_normalize_marketplace_payouts_ids.sql"
+  - "backend/wrangler.toml"
+verified: never
+---
 # Wave 6 Exit Report — Doc-Truth (2026-09-21)
 
 All 18 docs verified against code. Counts: 99 migrations (`0099_normalize_marketplace_payouts_ids.sql`), Astro 7.3.1, backend 2225 / frontend 3416 (2026-09-21 gold run).

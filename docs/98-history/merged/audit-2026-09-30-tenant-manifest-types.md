@@ -1,3 +1,27 @@
+---
+title: "Tenant-import tenant-type coverage matrix (2026-09-30, mani-a3-matrix)"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/tenant-import
+  - domain/audit
+  - status/merged
+created: 2026-09-30
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/merged/README]]"
+  - "[[tenant-import-types]]"
+  - "[[audit-2026-09-30-tenant-manifest-gaps]]"
+  - "[[audit-2026-09-30-tenant-manifest-schema]]"
+code-references:
+  - "backend/src/api/tenant-import.js"
+  - "backend/migrations/0001_core.sql:19"
+  - "backend/src/api/tenants.js:19"
+  - "backend/src/api/camps.js:43"
+  - "backend/migrations/0001_core.sql"
+verified: never
+---
 # Tenant-import tenant-type coverage matrix (2026-09-30, mani-a3-matrix)
 
 Parent: Manifest audit 2026-09-30 — A.3 type matrix. Docs only; no source touched.

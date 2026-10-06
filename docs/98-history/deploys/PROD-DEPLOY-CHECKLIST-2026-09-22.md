@@ -1,3 +1,22 @@
+---
+title: "PROD Deploy Checklist — 2026-09-22"
+aliases:
+tags:
+  - type/checklist
+  - audience/owner
+  - domain/operations
+  - status/done
+created: 2026-09-22
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/deploys/README]]"
+  - "[[RUNBOOK]]"
+  - "[[ASTRO_DEPLOY_CUTOVER]]"
+  - "[[FINAL-CLOSURE-v2]]"
+code-references:
+  - "backend/wrangler.toml"
+verified: never
+---
 # PROD Deploy Checklist — 2026-09-22
 
 Staging G6.5 is SATISFIED. This checklist runs the production cutover.

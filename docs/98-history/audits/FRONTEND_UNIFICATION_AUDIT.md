@@ -1,3 +1,32 @@
+---
+title: "Frontend Unification Audit — POS · Tenant · Marketplace · Admin"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/frontend
+  - domain/audit
+  - status/archived
+created: 2026-08-23
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_FRONTEND_FINDINGS]]"
+  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
+  - "[[docs/01-architecture/ARCHITECTURE]]"
+code-references:
+  - "app/src/lib/api.ts:34"
+  - "app/src/hooks/useAdminData.ts"
+  - "app/src/layouts/PublicLayout.astro"
+  - "app/src/layouts/AdminLayout.astro"
+  - "app/src/layouts/POSLayout.astro"
+  - "app/src/pages/camps.astro"
+  - "app/src/pages/rooms.astro"
+  - "app/src/pages/about.astro"
+  - "app/src/pages/contact.astro"
+  - "app/src/pages/faq.astro"
+verified: never
+---
 # Frontend Unification Audit — POS · Tenant · Marketplace · Admin
 
 > **Scope**: Deep audit of `app/src` (Astro 5.18 + React 19 islands + Tailwind v4, `output: 'server'` on Cloudflare Pages) to answer whether and how the four product concerns can be unified into ONE frontend.

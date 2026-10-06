@@ -1,3 +1,26 @@
+---
+title: "docs/98-history/merged"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/history
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/README]]"
+  - "[[FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[TESTING_ROADMAP]]"
+  - "[[audit-2026-09-30-tenant-manifest-schema]]"
+  - "[[audit-2026-10-02-bundle-investigation]]"
+code-references:
+  - "backend/src/api/tenant-import.js"
+  - "scripts/export-tenant.mjs"
+  - "app/src/lib/browser-ai.ts"
+  - "scripts/seed-test-users.js"
+verified: never
+---
 # docs/98-history/merged
 
 Merged — sources retired into a canonical target

@@ -1,3 +1,32 @@
+---
+title: "Backend Unification Audit — SinaiCamps API"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/backend
+  - domain/audit
+  - status/archived
+created: 2026-08-23
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[API_CONTRACT_AUDIT]]"
+  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[docs/98-history/audits/AUTH_SYSTEM_AUDIT]]"
+code-references:
+  - "wrangler.toml"
+  - "backend/src/api/admin.js:55-68"
+  - "backend/src/api/tenants.js:74-87"
+  - "backend/src/api/pos-users.js:134-148"
+  - "backend/src/api/camps.js:98"
+  - "backend/src/services/emailService.js"
+  - "backend/tests/email-service.test.js"
+  - "backend/src/api/others.js"
+  - "app/src/lib/api-types.ts"
+  - "app/src/lib/api.ts"
+verified: never
+---
 # Backend Unification Audit — SinaiCamps API
 
 > **Date**: 2026-08-22 · **Author**: tmp agent (`ox-alpha`)

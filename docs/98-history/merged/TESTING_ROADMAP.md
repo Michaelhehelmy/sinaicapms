@@ -1,3 +1,25 @@
+---
+title: "SinaiCamps — Manual Testing Roadmap"
+aliases:
+tags:
+  - type/plan
+  - audience/tester
+  - domain/testing
+  - status/superseded
+created: 2026-08-23
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/merged/README]]"
+  - "[[docs/04-testing/TESTING]]"
+  - "[[testing-guide-owner]]"
+  - "[[testing-guide-tester]]"
+code-references:
+  - "playwright.config.ts"
+  - "tests/e2e/specs/admin/crud-e2e.spec.ts"
+  - "vitest.integration.config.ts"
+  - "scripts/seed-test-users.js"
+verified: never
+---
 # SinaiCamps — Manual Testing Roadmap
 
 ## Login Credentials

@@ -1,3 +1,29 @@
+---
+title: "Frontend Bundle Investigation — 2026-10-02"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/performance
+  - domain/audit
+  - status/merged
+created: 2026-10-02
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/merged/README]]"
+  - "[[docs/03-frontend/PERF_BASELINE]]"
+  - "[[AUDIT_PERFORMANCE_FINDINGS]]"
+code-references:
+  - "app/src/components/ui/LineChart.tsx"
+  - "app/src/components/admin/AdminApp.tsx:60-107"
+  - "app/src/components/public/BookPage.astro:45"
+  - "app/src/components/public/MenuPage.astro:48"
+  - "app/src/lib/browser-ai.ts:237"
+  - "deploy.sh"
+  - "package.json"
+  - "package-lock.json"
+verified: never
+---
 # Frontend Bundle Investigation — 2026-10-02
 
 Task: `.opencode/agents/tmp/2026-10-02-a6.md` (`ws-a6-bundle`). Method: measured baseline →

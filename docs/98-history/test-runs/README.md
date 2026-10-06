@@ -1,3 +1,23 @@
+---
+title: "docs/98-history/test-runs"
+aliases:
+tags:
+  - type/index
+  - audience/tester
+  - domain/testing
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/README]]"
+  - "[[2026-09-09-full-suite-run]]"
+  - "[[docs/04-testing/TESTING]]"
+code-references:
+  - "scripts/run-all-tests.sh"
+  - "playwright.config.ts"
+  - "vitest.integration.config.ts"
+verified: never
+---
 # docs/98-history/test-runs
 
 Test runs — preserved reports

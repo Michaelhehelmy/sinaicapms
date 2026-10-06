@@ -1,3 +1,29 @@
+---
+title: "SinaiCamps — Final Polish Plan (Locked)"
+aliases:
+tags:
+  - type/plan
+  - audience/developer
+  - domain/plans
+  - status/superseded
+created: 2026-08-09
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/plans/README]]"
+  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+code-references:
+  - "backend/src/routes/pos/index.js:230-242"
+  - "app/src/components/pos/views/CartPanel.tsx:27"
+  - "backend/src/api/leads.js:11-18"
+  - "backend/migrations/legacy/0050_add_pos_idempotency.sql"
+  - "backend/src/api/orders.js:590-636"
+  - "backend/migrations/legacy/0005_rich_branding.sql"
+  - "backend/src/api/payments.js:41"
+  - "app/src/components/public/CampsSection.astro"
+  - "app/src/layouts/PublicLayout.astro"
+  - "app/src/components/public/CampBooking.tsx"
+verified: never
+---
 # SinaiCamps — Final Polish Plan (Locked)
 
 > **Implementation status**: Waves 1–3 shipped (2026-08-09 → 2026-08-12 sprint; T1–T7; see `AGENT_LOGBOOK.md`). §3.10 PWA/offline POS is PLANNED, not shipped — no service-worker.js / manifest.webmanifest on disk.

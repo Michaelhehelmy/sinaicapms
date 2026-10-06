@@ -1,3 +1,29 @@
+---
+title: "Tenant-import doc-vs-code gap analysis (2026-09-30, mani-a2-gaps)"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/tenant-import
+  - domain/audit
+  - status/merged
+created: 2026-09-30
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/merged/README]]"
+  - "[[tenant-import]]"
+  - "[[audit-2026-09-30-tenant-manifest-schema]]"
+  - "[[audit-2026-09-30-tenant-manifest-types]]"
+code-references:
+  - "docs/examples/tenant-manifest.example.json"
+  - "backend/src/api/tenant-import.js"
+  - "backend/src/index.js:244-251"
+  - "backend/tests/tenant-import-smoke.test.js"
+  - "app/src/components/admin/TenantImportPanel.tsx"
+  - "app/src/components/admin/AdminApp.tsx:154"
+  - "backend/src/middleware/resolveScope.js:46-79"
+verified: never
+---
 # Tenant-import doc-vs-code gap analysis (2026-09-30, mani-a2-gaps)
 
 Parent: Manifest audit 2026-09-30 — A.2 gap analysis. Docs only; no source touched.

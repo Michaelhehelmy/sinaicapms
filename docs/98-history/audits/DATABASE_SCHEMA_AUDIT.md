@@ -1,3 +1,30 @@
+---
+title: "Database Schema Audit — SinaiCamps"
+aliases:
+tags:
+  - type/audit
+  - audience/developer
+  - domain/data
+  - domain/audit
+  - status/archived
+created: 2026-08-23
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/audits/README]]"
+  - "[[AUDIT_DATABASE_FINDINGS]]"
+  - "[[docs/07-data/migrations]]"
+  - "[[SCHEMA_DIRECTION_PLAN]]"
+code-references:
+  - "backend/migrations/legacy/0001_init.sql"
+  - "backend/migrations/legacy/0054_fix_room_rate_plan_fk_to_pos_products.sql"
+  - "app/src/lib/api.ts"
+  - "backend/src/api/inventory.js"
+  - "backend/tests/inventory-low-stock.test.js"
+  - "backend/src/api/reports.js"
+  - "backend/src/api/camps.js"
+  - "backend/wrangler.toml"
+verified: never
+---
 # Database Schema Audit — SinaiCamps
 
 **Date:** 2026-08-22

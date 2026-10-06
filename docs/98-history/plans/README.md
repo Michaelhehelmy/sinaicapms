@@ -1,3 +1,25 @@
+---
+title: "docs/98-history/plans"
+aliases:
+tags:
+  - type/index
+  - audience/developer
+  - domain/plans
+  - status/archived
+created: 2026-10-06
+updated: 2026-10-06
+relates-to:
+  - "[[docs/98-history/README]]"
+  - "[[ASTRO_UPGRADE_PLAN]]"
+  - "[[IMPLEMENTATION_PLAN]]"
+  - "[[POLISH_PLAN]]"
+  - "[[docs/09-plans/README]]"
+code-references:
+  - "app/astro.config.mjs"
+  - "deploy.sh"
+  - "app/src/middleware/tenant.ts"
+verified: never
+---
 # docs/98-history/plans
 
 Plans — spent
