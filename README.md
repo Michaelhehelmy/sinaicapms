@@ -4,7 +4,7 @@ A full-stack serverless SaaS platform for managing summer camps, wilderness lodg
 
 **Production:** [sinaicamps.com](https://sinaicamps.com) · **Repo:** [Michaelhehelmy/campmaster](https://github.com/Michaelhehelmy/campmaster) (private)
 
-**Docs:** [Architecture](docs/ARCHITECTURE.md) · [API Contract](docs/API_CONTRACT.md) · [Runbook](docs/RUNBOOK.md) · [Security Guide](docs/security-guide.md) · [Tenant Import](docs/tenant-import.md) · [Component Catalog](docs/COMPONENT_CATALOG.md) · [Migration Guide](docs/MIGRATION_GUIDE.md) · [Quick Start](docs/QUICK_START.md) · [Testing](docs/TESTING.md) · [Developer Roadmap](docs/DEVELOPER_ROADMAP.md) · [Performance Baseline](docs/PERF_BASELINE.md)
+**Docs:** [Architecture](docs/01-architecture/ARCHITECTURE.md) · [API Contract](docs/02-api/API_CONTRACT.md) · [Runbook](docs/05-operations/RUNBOOK.md) · [Security Guide](docs/06-security/security-guide.md) · [Tenant Import](docs/tenant-import.md) · [Component Catalog](docs/03-frontend/COMPONENT_CATALOG.md) · [Migration Guide](docs/07-data/migrations.md) · [Quick Start](docs/01-architecture/QUICK_START.md) · [Testing](docs/04-testing/TESTING.md) · [Developer Roadmap](docs/09-plans/DEVELOPER_ROADMAP.md) · [Performance Baseline](docs/03-frontend/PERF_BASELINE.md)
 
 ---
 
@@ -192,7 +192,7 @@ Custom domains (e.g. `acaciacamp.com`) resolve to their tenant zone automaticall
 
 ## Getting Started
 
-Full setup: [`docs/QUICK_START.md`](docs/QUICK_START.md).
+Full setup: [`docs/QUICK_START.md`](docs/01-architecture/QUICK_START.md).
 
 ### Prerequisites
 - Node.js 20+, npm
@@ -279,12 +279,12 @@ carry the same table.
 > --remote`), not the file count, and **apply a migration before deploying code
 > that depends on its new shape**: the code half of a table rebuild is written
 > against the post-migration column list, so the wrong order fails at runtime,
-> not at boot. §Drift detection in [`docs/RUNBOOK.md`](docs/RUNBOOK.md) §8 is
+> not at boot. §Drift detection in [`docs/RUNBOOK.md`](docs/05-operations/RUNBOOK.md) §8 is
 > the gate for this.
 
 Record **both** Worker version ids after every deploy (`campmaster-backend`
 **and** `campmaster-marketplace`) — only the backend has a scripted rollback.
-[`docs/RUNBOOK.md`](docs/RUNBOOK.md) §4a and §6.
+[`docs/RUNBOOK.md`](docs/05-operations/RUNBOOK.md) §4a and §6.
 
 **Output URLs:**
 - Frontend / marketplace: `https://sinaicamps.com`
@@ -297,7 +297,7 @@ Record **both** Worker version ids after every deploy (`campmaster-backend`
 ## API Endpoints
 
 > The API is the **only** connection between frontend and backend. All routes are under `/api/*` and are rate-limited; public read routes are allowlisted, everything else requires JWT + tenant context (enforced by the catch-all in `backend/src/index.js`).
-> The authoritative machine-readable contract is `backend/openapi.json` (regenerate with `cd backend && npm run gen:openapi`; typed client with `cd app && npm run gen:types`). See [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md).
+> The authoritative machine-readable contract is `backend/openapi.json` (regenerate with `cd backend && npm run gen:openapi`; typed client with `cd app && npm run gen:types`). See [`docs/API_CONTRACT.md`](docs/02-api/API_CONTRACT.md).
 
 ### Authentication
 | Method | Endpoint | Description |
@@ -357,17 +357,17 @@ One Cloudflare D1 database (`campmaster-db`, **40 numbered migrations** in `back
 | `leads` | Booking lead captures |
 | `plans_new` | Activity planning records |
 
-Gotchas and migration workflow: [`docs/MIGRATION_GUIDE.md`](docs/MIGRATION_GUIDE.md) or the `db-migration` skill.
+Gotchas and migration workflow: [`docs/MIGRATION_GUIDE.md`](docs/07-data/migrations.md) or the `db-migration` skill.
 
 ---
 
 ## Rate Limiting & KV (Free-Plan Warning)
 
-- Rate limiting is distributed by default via the `RATE_LIMIT_KV` namespace (1 KV write per request), keyed `${cf-connecting-ip}:${path}` from a ~20-entry policy table matched in declaration order (first hit wins), with a second tenant-scoped layer on 7 prefixes. Full table: [`docs/security-guide.md`](docs/security-guide.md).
+- Rate limiting is distributed by default via the `RATE_LIMIT_KV` namespace (1 KV write per request), keyed `${cf-connecting-ip}:${path}` from a ~20-entry policy table matched in declaration order (first hit wins), with a second tenant-scoped layer on 7 prefixes. Full table: [`docs/security-guide.md`](docs/06-security/security-guide.md).
 - The Cloudflare **free plan caps KV writes at 1,000/day** — sustained API traffic exhausts it, and the limiter fails **closed** (`429 Rate limit check failed`) until the quota resets. This hit production on 2026-08-03.
 - A toggle `RATE_LIMIT_KV_ENABLED` (`backend/wrangler.toml` `[vars]`, and `[env.staging.vars]`) switches to the **in-memory per-isolate fallback** (zero KV writes). It is currently `"false"` in both environments; set it to `"true"` only after upgrading to **Workers Paid** (1M writes/day) or otherwise eliminating the quota constraint.
 - `KV_CACHE` is bound but **never written** — read caching for public marketplace responses is done with `Cache-Control` headers (`cachedJsonResponse` in `backend/src/utils/response.js`), which costs no KV writes. This is why the monitor Worker (§Architecture) also caches in memory instead of in KV.
-- **D1 has a separate daily free-tier ceiling** (row reads). Unlike the KV one it does not fail the API — it refuses *operator* read commands (`wrangler d1 … --remote`) with `code: 7500` until the window resets at midnight UTC. Triage: [`docs/RUNBOOK.md`](docs/RUNBOOK.md) §9a.
+- **D1 has a separate daily free-tier ceiling** (row reads). Unlike the KV one it does not fail the API — it refuses *operator* read commands (`wrangler d1 … --remote`) with `code: 7500` until the window resets at midnight UTC. Triage: [`docs/RUNBOOK.md`](docs/05-operations/RUNBOOK.md) §9a.
 
 ---
 

@@ -1,0 +1,678 @@
+# SinaiCamps — Full Test Report
+
+- **Date:** 2026-09-09 22:20:26
+- **Mode:** full
+- **Result:** ❌ 9 suite(s) failed — see below
+
+## Suite summary
+
+| Suite | Result | Duration | Details |
+| --- | --- | --- | --- |
+| app-unit | ✅ passed | see log | 3300 passed  |
+| backend-unit | ✅ passed | see log | 2099 passed  |
+| integration | ❌ failed | see log | 235 passed 1 failed 20 skipped  |
+| astro-build | ✅ passed | see log | — |
+| playwright-admin | ❌ failed | see log | 15 passed 201 failed  |
+| playwright-auth | ❌ failed | see log | 5 passed 71 failed  |
+| playwright-cross-cutting | ❌ failed | see log | 86 passed 147 failed  |
+| playwright-marketplace | ❌ failed | see log | — |
+| playwright-pos | ❌ failed | see log | 5 passed 100 failed  |
+| playwright-public | ❌ failed | see log | 1 passed 117 failed  |
+| playwright-routing | ❌ failed | see log | 7 failed  |
+| playwright-tenant | ❌ failed | see log | — |
+
+## Findings — failed tests
+
+The following test files/lines failed or were listed in failure output:
+
+- `[admin] › tests/e2e/specs/admin/admin-orders.spec.ts:113:7 › Admin Orders Panel — State Change › order state change modal opens `
+- `[admin] › tests/e2e/specs/admin/admin-orders.spec.ts:134:7 › Admin Orders Panel — Delete › delete order shows confirmation dialog `
+- `[admin] › tests/e2e/specs/admin/admin-orders.spec.ts:33:7 › Admin Orders Panel — Read › orders panel renders with data table `
+- `[admin] › tests/e2e/specs/admin/admin-orders.spec.ts:44:7 › Admin Orders Panel — Read › orders panel shows stats cards `
+- `[admin] › tests/e2e/specs/admin/admin-orders.spec.ts:58:7 › Admin Orders Panel — Create › create new order via modal `
+- `[admin] › tests/e2e/specs/admin/admin-orders.spec.ts:90:7 › Admin Orders Panel — Filter › status filter dropdown works `
+- `[admin] › tests/e2e/specs/admin/admin-reservation-log.spec.ts:12:7 › Admin Reservation Log › reservation log tab renders with title and table or empty state `
+- `[admin] › tests/e2e/specs/admin/admin-reservation-log.spec.ts:28:7 › Admin Reservation Log › reservation log table has expected columns when data exists `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:100:7 › Admin Password Panel › password form renders with all fields `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:114:7 › Admin Password Panel › password validation: empty current password shows error `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:143:7 › Admin Password Panel › password validation: mismatched new passwords shows error `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:169:7 › Admin Password Panel › password validation: short password shows error `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:195:7 › Admin Password Panel › wrong current password shows error and keeps session alive `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:225:7 › Admin Password Panel › successful password change: change → verify still logged in `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:23:7 › Admin Settings Panel › settings panel renders with form fields `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:32:7 › Admin Settings Panel › settings form has camp name input `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:43:7 › Admin Settings Panel › settings form has currency selector `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:56:7 › Admin Settings Panel › save button is visible and clickable `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:67:7 › Admin Settings Panel › save settings without changes succeeds `
+- `[admin] › tests/e2e/specs/admin/admin-settings.spec.ts:86:7 › Admin Settings Panel › settings form has contact fields `
+- `[admin] › tests/e2e/specs/admin/camp-flow.spec.ts:25:7 › Camp Flow — end-to-end › step 1: create a camp `
+- `[admin] › tests/e2e/specs/admin/console-errors.spec.ts:98:5 › affected admin tabs produce zero console errors with 2 admins on the tenant `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:109:7 › Admin CRUD End-to-End — Rooms › rooms tab → rows have data or empty state `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:123:7 › Admin CRUD End-to-End — Meals › meals tab → list loads `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:133:7 › Admin CRUD End-to-End — Meals › meals tab → add button present `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:144:7 › Admin CRUD End-to-End — Settings › settings tab → form fields load `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:153:7 › Admin CRUD End-to-End — Settings › settings tab → save button exists `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:164:7 › Admin CRUD End-to-End — Reports › reports tab → sub-tabs load `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:174:7 › Admin CRUD End-to-End — Reports › reports tab → occupancy report renders `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:17:7 › Admin CRUD End-to-End — Camps › create camp via form → verify in table `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:50:7 › Admin CRUD End-to-End — Camps › cancel camp creation → form closes `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:75:7 › Admin CRUD End-to-End — Rooms › rooms tab → table loads with columns `
+- `[admin] › tests/e2e/specs/admin/crud-e2e.spec.ts:87:7 › Admin CRUD End-to-End — Rooms › rooms tab → add button opens form `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:100:7 › Admin CRUD Execution — Meals › meals tab loads with list `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:110:7 › Admin CRUD Execution — Meals › meals has add button `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:120:7 › Admin CRUD Execution — Plans › planning tab loads `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:131:7 › Admin CRUD Execution — Orders/Reservations › reservations tab loads with content `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:140:7 › Admin CRUD Execution — Orders/Reservations › orders has filter dropdown `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:150:7 › Admin CRUD Execution — Settings › settings tab loads with form `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:159:7 › Admin CRUD Execution — Settings › settings has save button `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:169:7 › Admin CRUD Execution — Reports › reports tab loads with data sections `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:23:7 › Admin CRUD Execution — Camps › camps tab loads with content `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:33:7 › Admin CRUD Execution — Camps › add project button available for tenant with existing camps (multi-project) `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:45:7 › Admin CRUD Execution — Camps › edit camp form opens `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:61:7 › Admin CRUD Execution — Rooms › rooms tab loads with content `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:71:7 › Admin CRUD Execution — Rooms › create room button exists `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:81:7 › Admin CRUD Execution — Rate Plans › rateplans tab loads `
+- `[admin] › tests/e2e/specs/admin/crud-execution.spec.ts:90:7 › Admin CRUD Execution — Rate Plans › rateplans has add button `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:156:7 › Admin CRUD Mutations — Meals › create a new meal and verify it appears in the list `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:267:5 › Admin CRUD Mutations — Rate Plans › create a new rate plan and verify it appears `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:370:7 › Admin CRUD Mutations — Form Validation › room create rejects empty required fields `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:389:7 › Admin CRUD Mutations — Form Validation › meal create rejects empty name `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:408:7 › Admin CRUD Mutations — Form Validation › rate plan create rejects empty name `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:429:7 › Admin CRUD Mutations — Cancel Discards › cancel on room form closes modal without saving `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:447:7 › Admin CRUD Mutations — Cancel Discards › cancel on meal form closes modal without saving `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:465:7 › Admin CRUD Mutations — Cancel Discards › cancel on rate plan form closes modal without saving `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:485:7 › Admin CRUD Mutations — Success Toast Notifications › room creation shows success toast `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:511:7 › Admin CRUD Mutations — Success Toast Notifications › meal creation shows success toast `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:535:7 › Admin CRUD Mutations — Success Toast Notifications › rate plan creation shows success toast `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:571:7 › Admin CRUD Mutations — Error Handling › room form validation error shows warning toast `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:588:7 › Admin CRUD Mutations — Error Handling › meal form validation error shows warning toast `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:605:7 › Admin CRUD Mutations — Error Handling › rate plan form validation error shows warning toast `
+- `[admin] › tests/e2e/specs/admin/crud-mutations.spec.ts:62:7 › Admin CRUD Mutations — Rooms › create a new room and verify it appears in the list `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:110:7 › Admin CRUD Workflow — Settings › settings tab: navigate, verify form, save button exists `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:123:7 › Admin CRUD Workflow — Settings › settings tab: branding section visible `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:135:7 › Admin CRUD Workflow — Orders/Reservations › orders tab: navigate, verify table, filter exists `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:144:7 › Admin CRUD Workflow — Orders/Reservations › orders tab: has status filter `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:156:7 › Admin CRUD Workflow — Reports › reports tab: navigate, verify content, report type selector exists `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:23:7 › Admin CRUD Workflow — Rooms › rooms tab: navigate, verify table, click add `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:47:7 › Admin CRUD Workflow — Meals › meals tab: navigate, verify list, click add `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:68:7 › Admin CRUD Workflow — Rate Plans › rateplans tab: navigate, verify content, click add `
+- `[admin] › tests/e2e/specs/admin/crud-workflows.spec.ts:89:7 › Admin CRUD Workflow — Planning › planning tab: navigate, verify content, click add `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:113:7 › Dashboard Stats › tenant dashboard stat values are present `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:124:7 › Dashboard Stats › tenant dashboard shows recent reservations section `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:141:7 › Dashboard Stats › super dashboard quick action buttons exist `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:25:7 › Dashboard Stats › super dashboard shows stat cards `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:39:7 › Dashboard Stats › stat values are numeric and not NaN `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:63:7 › Dashboard Stats › revenue stat contains currency sign `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:75:7 › Dashboard Stats › dashboard loads without errors `
+- `[admin] › tests/e2e/specs/admin/dashboard-stats.spec.ts:91:7 › Dashboard Stats › tenant dashboard stat cards show labels `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:102:7 › Admin Role-Based Access › tenant admin can access settings `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:112:7 › Admin Role-Based Access › super admin can access tenants management `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:122:7 › Admin Role-Based Access › super admin can view admin users list `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:133:7 › Admin Dashboard Deep-Dive › super dashboard → stat cards show multiple metrics `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:141:7 › Admin Dashboard Deep-Dive › super dashboard → quick action buttons exist `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:152:7 › Admin Dashboard Deep-Dive › super dashboard → content area is not empty `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:164:7 › Admin Navigation Deep-Dive › all sidebar tabs are clickable and load content `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:190:7 › Admin Navigation Deep-Dive › sidebar footer shows logout button `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:200:7 › Admin Settings Deep-Dive › settings tab → camp name field loads `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:208:7 › Admin Settings Deep-Dive › settings tab → branding section visible `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:219:7 › Admin Settings Deep-Dive › settings tab → password section visible `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:232:7 › Admin Orders/Reservations Deep-Dive › orders tab → table has expected columns `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:23:7 › Admin Reservation Status Changes › reservations tab → status filter exists `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:259:7 › Admin Orders/Reservations Deep-Dive › orders tab → row count is reasonable `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:33:7 › Admin Reservation Status Changes › reservations tab → order rows have status badges `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:47:7 › Admin Reservation Status Changes › reservations tab → row click opens detail/action `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:66:7 › Admin Reservation Status Changes › reservations tab → export button exists `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:79:7 › Admin Role-Based Access › super admin sees super_admin nav items `
+- `[admin] › tests/e2e/specs/admin/deep-dive.spec.ts:91:7 › Admin Role-Based Access › super admin sees the full super nav tabs `
+- `[admin] › tests/e2e/specs/admin/inbox.spec.ts:126:7 › Inbox panel (tenant admin) › nav unread badge shows the seeded unread count `
+- `[admin] › tests/e2e/specs/admin/login.spec.ts:17:7 › Admin Login › shows login overlay on load with correct fields `
+- `[admin] › tests/e2e/specs/admin/login.spec.ts:38:7 › Admin Login › valid credentials load dashboard directly (no passcode step) `
+- `[admin] › tests/e2e/specs/admin/login.spec.ts:51:7 › Admin Login › invalid credentials keep login overlay or show error `
+- `[admin] › tests/e2e/specs/admin/login.spec.ts:72:7 › Admin Login › valid credentials loads dashboard with content-area visible `
+- `[admin] › tests/e2e/specs/admin/low-stock.spec.ts:93:7 › Low-stock journey — deplete → alert → restock → clear › admin LowStockPanel reflects the alert for the seeded product `
+- `[admin] › tests/e2e/specs/admin/meals-management.spec.ts:14:7 › Admin Meals Management › navigates to menu/meals tab `
+- `[admin] › tests/e2e/specs/admin/meals-management.spec.ts:25:7 › Admin Meals Management › meals list or empty state is displayed `
+- `[admin] › tests/e2e/specs/admin/meals-management.spec.ts:37:7 › Admin Meals Management › add meal button is present `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:113:7 › Admin Navigation › sidebar shows branding in header `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:119:7 › Admin Navigation › tab switching uses pushState (no page reload) and updates the URL `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:154:7 › Admin Navigation › legacy #tab= deep links still resolve during the Phase 7 migration window `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:165:7 › Admin Navigation › sidebar footer has logout button `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:17:7 › Admin Navigation › super admin sees all expected tabs `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:40:7 › Admin Navigation › clicking each tab changes content area `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:63:7 › Admin Navigation › mobile toggle shows and hides sidebar `
+- `[admin] › tests/e2e/specs/admin/navigation.spec.ts:92:7 › Admin Navigation › logout returns to login overlay `
+- `[admin] › tests/e2e/specs/admin/orders-crud.spec.ts:14:7 › Admin Orders CRUD › navigates to orders tab and table loads `
+- `[admin] › tests/e2e/specs/admin/orders-crud.spec.ts:22:7 › Admin Orders CRUD › shows stats cards with counts `
+- `[admin] › tests/e2e/specs/admin/orders-crud.spec.ts:32:7 › Admin Orders CRUD › filter dropdown has status options `
+- `[admin] › tests/e2e/specs/admin/orders-crud.spec.ts:45:7 › Admin Orders CRUD › empty state shows no reservations message `
+- `[admin] › tests/e2e/specs/admin/planning.spec.ts:14:7 › Admin Planning › navigates to planning tab `
+- `[admin] › tests/e2e/specs/admin/planning.spec.ts:22:7 › Admin Planning › plan list or empty state is displayed `
+- `[admin] › tests/e2e/specs/admin/planning.spec.ts:33:7 › Admin Planning › add plan button is present `
+- `[admin] › tests/e2e/specs/admin/project-type-subjects.spec.ts:135:7 › Project type subjects: transportation primary project › 2 UI — transportation project row renders in the camps table `
+- `[admin] › tests/e2e/specs/admin/reports.spec.ts:14:7 › Admin Reports › navigates to reports tab `
+- `[admin] › tests/e2e/specs/admin/reports.spec.ts:28:7 › Admin Reports › shows occupancy/revenue/bookings tabs `
+- `[admin] › tests/e2e/specs/admin/reports.spec.ts:45:7 › Admin Reports › report data loads without error `
+- `[admin] › tests/e2e/specs/admin/reservation-log.spec.ts:109:7 › Reservation Log › reservation rows contain date-like values `
+- `[admin] › tests/e2e/specs/admin/reservation-log.spec.ts:132:7 › Reservation Log › reservation status column contains valid statuses `
+- `[admin] › tests/e2e/specs/admin/reservation-log.spec.ts:156:7 › Reservation Log › export CSV button exists on reservation log `
+- `[admin] › tests/e2e/specs/admin/reservation-log.spec.ts:168:7 › Reservation Log › reservation detail opens when clicking a row `
+- `[admin] › tests/e2e/specs/admin/reservation-log.spec.ts:17:7 › Reservation Log › super reservations tab shows title and table `
+- `[admin] › tests/e2e/specs/admin/reservation-log.spec.ts:38:7 › Reservation Log › reservation table has correct column headers `
+- `[admin] › tests/e2e/specs/admin/reservation-log.spec.ts:68:7 › Reservation Log › reservation table rows contain valid data or empty state `
+- `[admin] › tests/e2e/specs/admin/restaurant-flow.spec.ts:25:7 › Restaurant Flow — end-to-end › step 1: services panel loads with tabs `
+- `[admin] › tests/e2e/specs/admin/rooms-management.spec.ts:14:7 › Admin Rooms Management › navigates to rooms tab `
+- `[admin] › tests/e2e/specs/admin/rooms-management.spec.ts:22:7 › Admin Rooms Management › rooms table or empty state is displayed `
+- `[admin] › tests/e2e/specs/admin/rooms-management.spec.ts:39:7 › Admin Rooms Management › create room button is present `
+- `[admin] › tests/e2e/specs/admin/service-flow.spec.ts:24:7 › Service Flow — end-to-end › step 1: navigate to services panel — definitions tab `
+- `[admin] › tests/e2e/specs/admin/settings.spec.ts:102:7 › Admin Settings › settings values persist after page reload `
+- `[admin] › tests/e2e/specs/admin/settings.spec.ts:145:7 › Admin Settings › password change section exists `
+- `[admin] › tests/e2e/specs/admin/settings.spec.ts:15:7 › Admin Settings › settings tab shows form fields `
+- `[admin] › tests/e2e/specs/admin/settings.spec.ts:35:7 › Admin Settings › settings form has save button `
+- `[admin] › tests/e2e/specs/admin/settings.spec.ts:47:7 › Admin Settings › save settings shows success message `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:102:9 › Admin User CRUD via SuperTenantsPanel › Create Admin User › Create Admin form has role and tenant selectors `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:123:9 › Admin User CRUD via SuperTenantsPanel › Create Admin User › Create Admin form validates empty email `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:143:9 › Admin User CRUD via SuperTenantsPanel › Create Admin User › Create Admin form submits with valid data and shows new admin `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:179:9 › Admin User CRUD via SuperTenantsPanel › Edit Admin User › Edit button opens inline edit form `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:201:9 › Admin User CRUD via SuperTenantsPanel › Edit Admin User › Edit form pre-fills with admin data `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:229:9 › Admin User CRUD via SuperTenantsPanel › Edit Admin User › Cancel edit discards changes `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:253:9 › Admin User CRUD via SuperTenantsPanel › Toggle Admin Active Status › Deactivate button appears for active admins `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:285:9 › Admin User CRUD via SuperTenantsPanel › Delete Admin User › Delete button shows confirmation dialog `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:311:9 › Admin User CRUD via SuperTenantsPanel › Delete Admin User › Cancel delete dismisses dialog without removing admin `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:342:9 › Admin User CRUD via SuperTenantsPanel › Delete Admin User › Confirm delete removes admin from list `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:44:9 › Admin User CRUD via SuperTenantsPanel › Admin Users Section › Show Admin Users button exists and toggles list `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:62:9 › Admin User CRUD via SuperTenantsPanel › Admin Users Section › Create Admin button appears after showing admin list `
+- `[admin] › tests/e2e/specs/admin/super-admin-crud.spec.ts:79:9 › Admin User CRUD via SuperTenantsPanel › Create Admin User › Create Admin button opens form with required fields `
+- `[admin] › tests/e2e/specs/admin/supermarket-flow.spec.ts:25:7 › Supermarket Flow — end-to-end › step 1: camps panel shows products/room types `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_ai renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_audit renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_crm renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_financials renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_health renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_hr renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_performance renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_reports renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_settings renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_storefront renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_subscriptions renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_supply renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/super-panel-coverage.spec.ts:72:9 › Blind super-admin panels — 13/13 render and load › panel super_users renders with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › camps tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › dashboard tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › meals tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › planning tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › rateplans tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › reports tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › reservations tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › rooms tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:28:9 › Tenant Admin Tabs › settings tab loads and contains tab-specific keywords `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:53:7 › Tenant Admin Tabs › dashboard tab shows stat cards with numeric values `
+- `[admin] › tests/e2e/specs/admin/tenant-admin-tabs.spec.ts:76:7 › Tenant Admin Tabs › each tab renders unique content `
+- `[admin] › tests/e2e/specs/admin/tenant-management.spec.ts:101:7 › Admin Tenant Management › edit tenant button toggles edit form `
+- `[admin] › tests/e2e/specs/admin/tenant-management.spec.ts:17:7 › Admin Tenant Management › super dashboard shows stat cards with numeric values `
+- `[admin] › tests/e2e/specs/admin/tenant-management.spec.ts:39:7 › Admin Tenant Management › super tenants tab shows tenant directory `
+- `[admin] › tests/e2e/specs/admin/tenant-management.spec.ts:61:7 › Admin Tenant Management › tenant cards show status badges `
+- `[admin] › tests/e2e/specs/admin/tenant-management.spec.ts:81:7 › Admin Tenant Management › edit tenant button exists `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel ai renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel analytics renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel billing renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel calendar renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel crm renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel financials renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel hr renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel staff renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel storefront renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-panel-coverage.spec.ts:59:9 › Blind tenant admin panels — 10/10 render and load › panel supply renders its own root with data loading finished `
+- `[admin] › tests/e2e/specs/admin/tenant-project-isolation.spec.ts:160:7 › Super admin project drill-down (marketplace-wide control) › drilling into a tenant shows exactly that tenant's projects `
+- `[admin] › tests/e2e/specs/admin/tenant-project-isolation.spec.ts:398:7 › Camps visibility in the admin UI per tenant › acacia admin camps tab hides another tenant's project `
+- `[admin] › tests/e2e/specs/admin/tenant-project-isolation.spec.ts:423:7 › Camps visibility in the admin UI per tenant › fresh tenant admin camps tab shows only their own project `
+- `[admin] › tests/e2e/specs/admin/tenant-project-lifecycle.spec.ts:73:7 › Tenant project lifecycle › 1 super admin — create a camp tenant through the UI `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:110:7 › Admin Login — UI Elements › Forgot Password link is visible `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:122:7 › Admin Login — UI Elements › submit button shows "Sign In" text `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:138:7 › Admin Login — Error Handling › wrong password keeps user on login overlay `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:157:7 › Admin Login — Error Handling › wrong password does not navigate to dashboard `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:181:7 › Admin Login — Error Handling › submit button shows loading state during authentication `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:202:7 › Admin Login — Already Authenticated › auto-redirects to dashboard when token exists `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:21:7 › Admin Login — Client-Side Validation › submitting empty form shows validation error `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:235:7 › Admin Login — Page Errors › admin login page loads without critical JavaScript errors `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:39:7 › Admin Login — Client-Side Validation › submitting with empty password shows validation error `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:55:7 › Admin Login — Client-Side Validation › submitting with empty email shows validation error `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:75:7 › Admin Login — UI Elements › login overlay shows SinaiCamps branding `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:88:7 › Admin Login — UI Elements › email input has correct type and placeholder `
+- `[auth] › tests/e2e/specs/auth/admin-login-form-deep.spec.ts:99:7 › Admin Login — UI Elements › password input has type password `
+- `[auth] › tests/e2e/specs/auth/password-flow.spec.ts:23:7 › Auth Password Flow › valid email/password logs in successfully `
+- `[auth] › tests/e2e/specs/auth/password-flow.spec.ts:36:7 › Auth Password Flow › empty form submission shows validation `
+- `[auth] › tests/e2e/specs/auth/password-flow.spec.ts:6:7 › Auth Password Flow › invalid credentials show error on login `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:13:7 › Password Reset Flow › forgot password has email input `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:22:7 › Password Reset Flow › forgot password has submit button `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:31:7 › Password Reset Flow › forgot password has back to login link `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:39:7 › Password Reset Flow › reset password page loads `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:4:7 › Password Reset Flow › forgot password page loads `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:48:7 › Password Reset Flow › reset password has new password input `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:59:7 › Password Reset Flow › reset password has submit button `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:68:7 › Password Reset Flow › reset password has back to login link `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:76:7 › Password Reset Flow › forgot password page has no critical JS errors `
+- `[auth] › tests/e2e/specs/auth/password-reset-flow.spec.ts:87:7 › Password Reset Flow › reset password page has no critical JS errors `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:12:7 › Forgot Password — Request Flow › validation: empty email shows error `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:20:7 › Forgot Password — Request Flow › successful request: shows check-your-email message `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:31:7 › Forgot Password — Request Flow › non-existent email: still shows success (no user enumeration) `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:43:7 › Forgot Password — Request Flow › back-to-login link navigates to login page `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:4:7 › Forgot Password — Request Flow › renders forgot password page with email field `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:56:7 › Reset Password — Token & Form › no token: shows error about missing token `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:63:7 › Reset Password — Token & Form › with fake token: form renders, submit shows server error `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:77:7 › Reset Password — Token & Form › password too short: shows validation error `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:87:7 › Reset Password — Token & Form › passwords mismatch: shows validation error `
+- `[auth] › tests/e2e/specs/auth/password-reset.spec.ts:97:7 › Reset Password — Token & Form › back-to-login link navigates to login page `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:108:7 › Registration Edge Cases › submit button disables after first click `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:11:7 › Registration Lifecycle - Register -> Approve -> Login › step 1: register new user via form `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:129:7 › Registration Edge Cases › mismatched passwords shows client-side error `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:141:7 › Registration Edge Cases › empty name shows validation error `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:152:7 › Registration Edge Cases › short password shows validation error `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:164:7 › Registration Edge Cases › empty email shows validation error `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:175:7 › Registration Edge Cases › invalid email format shows validation error `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:190:7 › Registration Redirects › login link navigates to admin login `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:199:7 › Registration Redirects › registration page shows form heading `
+- `[auth] › tests/e2e/specs/auth/registration-lifecycle.spec.ts:92:7 › Registration Edge Cases › successful submission shows pending approval `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:102:7 › Registration Form — Validation & Submission › login link navigates to login page `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:18:7 › Registration Form — Validation & Submission › validation: empty name shows error `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:29:7 › Registration Form — Validation & Submission › validation: empty email shows error `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:40:7 › Registration Form — Validation & Submission › validation: short password shows error `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:52:7 › Registration Form — Validation & Submission › validation: passwords mismatch shows error `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:64:7 › Registration Form — Validation & Submission › all fields empty: shows first validation error on submit `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:75:7 › Registration Form — Validation & Submission › successful registration: shows pending approval message `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:8:7 › Registration Form — Validation & Submission › renders registration page with all fields `
+- `[auth] › tests/e2e/specs/auth/registration.spec.ts:89:7 › Registration Form — Validation & Submission › duplicate email: shows error or success (no user enumeration) `
+- `[auth] › tests/e2e/specs/auth/super-admin-login.spec.ts:10:7 › POS Login — Valid & Invalid Credentials › invalid login: fill identifier + wrongpass → error message visible OR login overlay stays `
+- `[auth] › tests/e2e/specs/auth/super-admin-login.spec.ts:29:7 › POS Login — Valid & Invalid Credentials › invalid login: verify URL still on POS login `
+- `[auth] › tests/e2e/specs/auth/super-admin-login.spec.ts:39:7 › POS Login — Valid & Invalid Credentials › empty fields: click Sign In without filling → HTML5 validation (required attr) or error message `
+- `[auth] › tests/e2e/specs/auth/super-admin-login.spec.ts:59:7 › POS Login — Valid & Invalid Credentials › POS branding: verify "SinaiCamps POS" text visible on login page `
+- `[auth] › tests/e2e/specs/auth/tenant-admin-login.spec.ts:103:7 › Tenant Admin Login (post-0028) › session lands in the ADMIN realm: no pos_token written `
+- `[auth] › tests/e2e/specs/auth/tenant-admin-login.spec.ts:123:7 › Tenant Admin Login (post-0028) › stored user object reflects the scoped tenant `
+- `[auth] › tests/e2e/specs/auth/tenant-admin-login.spec.ts:50:7 › Tenant Admin Login (post-0028) › wrong password: valid email + wrong pass → error visible → still on login `
+- `[auth] › tests/e2e/specs/auth/tenant-admin-login.spec.ts:67:7 › Tenant Admin Login (post-0028) › non-existent email: bogus address → error → still on login `
+- `[auth] › tests/e2e/specs/auth/tenant-admin-login.spec.ts:84:7 › Tenant Admin Login (post-0028) › valid credentials: dashboard loads + sinaicamps_token stored `
+- `[auth] › tests/e2e/specs/auth/token-lifecycle.spec.ts:112:7 › POS Token Lifecycle › POS login → token stored in localStorage `
+- `[auth] › tests/e2e/specs/auth/token-lifecycle.spec.ts:139:7 › POS Token Lifecycle › POS token survives page reload `
+- `[auth] › tests/e2e/specs/auth/token-lifecycle.spec.ts:175:7 › Concurrent Sessions › two browser contexts can login simultaneously `
+- `[auth] › tests/e2e/specs/auth/token-lifecycle.spec.ts:27:7 › Auth Token Lifecycle › login → token stored in localStorage `
+- `[auth] › tests/e2e/specs/auth/token-lifecycle.spec.ts:34:7 › Auth Token Lifecycle › login → user object stored in localStorage `
+- `[auth] › tests/e2e/specs/auth/token-lifecycle.spec.ts:43:7 › Auth Token Lifecycle › token survives page reload `
+- `[auth] › tests/e2e/specs/auth/token-lifecycle.spec.ts:87:7 › Auth Token Lifecycle › logout → token removed from localStorage `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:105:7 › Accessibility — High Contrast Mode › tenant page renders correctly in forced-colors mode `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:114:7 › Accessibility — High Contrast Mode › POS login renders in forced-colors mode `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:127:7 › Accessibility — Print Stylesheet › page renders without error in print media `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:136:7 › Accessibility — Print Stylesheet › tenant page renders without error in print media `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:145:7 › Accessibility — Print Stylesheet › navigation elements are hidden or de-emphasized in print `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:158:7 › Accessibility — Print Stylesheet › footer is visible in print mode on tenant page `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:173:7 › Accessibility — Reduced Motion › page respects prefers-reduced-motion `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:17:7 › Accessibility — ARIA Landmarks › marketplace page has a <main> or role="main" element `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:182:7 › Accessibility — Reduced Motion › animations are disabled with reduced-motion `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:25:7 › Accessibility — ARIA Landmarks › marketplace nav has role="navigation" or is a <nav> element `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:33:7 › Accessibility — ARIA Landmarks › tenant page has landmark roles (header/nav/main/footer) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:43:7 › Accessibility — ARIA Landmarks › all images on tenant homepage have alt text `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:55:7 › Accessibility — ARIA Landmarks › page lang attribute is set on marketplace `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:63:7 › Accessibility — ARIA Landmarks › page lang attribute is set on tenant `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:73:7 › Accessibility — High Contrast Mode › page renders correctly with forced-colors: active `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:7:7 › Accessibility — ARIA Landmarks › marketplace page has at least one landmark role `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility-deep.spec.ts:86:7 › Accessibility — High Contrast Mode › buttons remain visible in forced-colors mode `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:102:7 › Accessibility › focused element has tag a/button/input/select or tabindex `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:127:7 › Accessibility › heading colors are not transparent (h1, h2, h3 on marketplace) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:158:7 › Accessibility › POS login: Tab to identifier → type → Tab to password → type → Enter → dashboard `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:196:7 › Accessibility › marketplace nav links are focusable `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:218:7 › Accessibility › all buttons have visible text content (not empty) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:250:7 › Accessibility › form submit buttons have type="submit" or are inside a form `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:282:7 › Accessibility › no elements with role="button" missing accessible name `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:31:7 › Accessibility › booking form inputs have labels, aria-label, or placeholder `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:76:7 › Accessibility › Tab key moves focus to interactive elements on marketplace `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/accessibility.spec.ts:9:7 › Accessibility › all marketplace images have non-null alt attribute `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/axe-accessibility.spec.ts:100:7 › Accessibility — Automated axe Checks › marketplace has no label violations on form inputs `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/axe-accessibility.spec.ts:116:7 › Accessibility — Automated axe Checks › marketplace has no link-name violations `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/axe-accessibility.spec.ts:35:7 › Accessibility — Automated axe Checks › tenant homepage has no critical axe violations `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/axe-accessibility.spec.ts:51:7 › Accessibility — Automated axe Checks › booking page has no critical axe violations `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/axe-accessibility.spec.ts:67:7 › Accessibility — Automated axe Checks › marketplace has no color contrast critical violations `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/axe-accessibility.spec.ts:84:7 › Accessibility — Automated axe Checks › marketplace has no missing-alt violations `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/axe-accessibility.spec.ts:8:7 › Accessibility — Automated axe Checks › marketplace homepage has no critical axe violations `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:107:7 › Browser Back/Forward Navigation › POS: login → dashboard, back returns to login `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:126:7 › No Horizontal Scroll on Any Page › marketplace: no horizontal scroll at 375px `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:135:7 › No Horizontal Scroll on Any Page › marketplace: no horizontal scroll at 1280px `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:144:7 › No Horizontal Scroll on Any Page › tenant: no horizontal scroll at 375px `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:155:7 › No Horizontal Scroll on Any Page › admin: no horizontal scroll at 1280px `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:166:7 › No JavaScript Console Errors › marketplace: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:178:7 › No JavaScript Console Errors › tenant: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:191:7 › No JavaScript Console Errors › camp detail: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:207:7 › No JavaScript Console Errors › rooms page: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:20:7 › Page Reload State Persistence › tenant: reload preserves hero content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:221:7 › No JavaScript Console Errors › about page: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:233:7 › No JavaScript Console Errors › FAQ page: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:245:7 › No JavaScript Console Errors › gallery page: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:257:7 › No JavaScript Console Errors › contact page: no critical JS errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:36:7 › Page Reload State Persistence › admin: reload on settings page preserves form state `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:49:7 › Page Reload State Persistence › POS: reload on login page preserves form `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:62:7 › Browser Back/Forward Navigation › marketplace: navigate to camp detail, back returns to home `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:8:7 › Page Reload State Persistence › marketplace: reload preserves camp listing `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/browser-behavior.spec.ts:90:7 › Browser Back/Forward Navigation › tenant: navigate to rooms, back returns to tenant home `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/data-table.spec.ts:125:7 › DataTable Empty State › POS products with no data shows empty state or no rows `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/data-table.spec.ts:32:7 › DataTable Sorting › POS orders table → column headers are clickable for sort `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/data-table.spec.ts:55:7 › DataTable Pagination › POS products table → pagination controls exist `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/data-table.spec.ts:74:7 › DataTable Pagination › POS customers page → loads with content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/data-table.spec.ts:93:7 › DataTable Search › POS products search → filters rows in real-time `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/data-table.spec.ts:9:7 › DataTable Sorting › POS products table → column headers are clickable for sort `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/debug-feedback-widget.spec.ts:23:7 › Debug Feedback Widget › public marketplace: widget stays hidden without ?debug=1 `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/debug-feedback-widget.spec.ts:28:7 › Debug Feedback Widget › public marketplace: ?debug=1 reveals the widget and submits a report `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/debug-feedback-widget.spec.ts:52:7 › Debug Feedback Widget › admin surface: widget submits and the super-admin Feedback panel renders `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/error-handling.spec.ts:113:7 › Error Handling › tenant /booking?tenant=nonexistent: page loads `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/error-handling.spec.ts:11:7 › Error Handling › invalid route /nonexistent-xyz: response status is 404 OR redirects to valid page `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/error-handling.spec.ts:26:7 › Error Handling › POS /dashboard without auth: redirects to /login within 5 seconds `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/error-handling.spec.ts:39:7 › Error Handling › POS /products without auth: redirects to /login `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/error-handling.spec.ts:58:7 › Error Handling › marketplace /camp/nonexistent-id: page loads without JavaScript error `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/error-handling.spec.ts:78:7 › Error Handling › marketplace /camp/nonexistent-id: body is visible (no white screen) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/error-handling.spec.ts:94:7 › Error Handling › tenant /?tenant=nonexistent: page loads without crash `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:12:9 › Internationalization (i18n) › English Language (Default) › lang attribute defaults to "en" `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:18:9 › Internationalization (i18n) › English Language (Default) › English headings use LTR direction `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:35:9 › Internationalization (i18n) › Page Load (English) › marketplace loads with content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:41:9 › Internationalization (i18n) › Page Load (English) › camp detail page loads with content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:47:9 › Internationalization (i18n) › Page Load (English) › about page loads with content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:53:9 › Internationalization (i18n) › Page Load (English) › faq page loads with content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:59:9 › Internationalization (i18n) › Page Load (English) › gallery page loads with content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:65:9 › Internationalization (i18n) › Page Load (English) › contact page loads with content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:6:9 › Internationalization (i18n) › English Language (Default) › marketplace loads in English by default `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/i18n.spec.ts:71:9 › Internationalization (i18n) › Page Load (English) › page content is consistent across reloads `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:122:9 › Keyboard Navigation › Admin Panel › Tab through admin login form fields `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:12:9 › Keyboard Navigation › Marketplace › Tab through marketplace nav links sequentially `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:139:9 › Keyboard Navigation › Admin Panel › Enter on admin login form submits `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:163:9 › Keyboard Navigation › POS Terminal › Tab through POS login form fields `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:180:9 › Keyboard Navigation › POS Terminal › Enter on POS login with credentials navigates to dashboard `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:194:9 › Keyboard Navigation › POS Terminal › Escape key on POS does not trigger errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:29:9 › Keyboard Navigation › Marketplace › Enter on focused camp card link navigates to camp detail `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:63:9 › Keyboard Navigation › Marketplace › Escape key closes any open modal/dropdown on marketplace `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:79:9 › Keyboard Navigation › Tenant Pages › Tab through tenant nav links `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/keyboard-nav.spec.ts:99:9 › Keyboard Navigation › Tenant Pages › Enter on FAQ question toggles answer `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/live-sse.spec.ts:180:7 › Live SSE order stream › new-booking broadcast reaches a live stream `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/live-sse.spec.ts:224:7 › Live SSE order stream › new-lead broadcast reaches a live stream `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:31:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke marketplace: / has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:36:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke marketplace: /camps has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:41:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke marketplace: /camp/:id has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:46:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke tenant: /book has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:51:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke tenant: /menu has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:56:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke tenant: /rooms has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:61:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke admin: login screen has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:66:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke admin: dashboard + Tenants panel have no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:87:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke pos: /pos has no horizontal overflow `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts:92:9 › Mobile Responsive — no horizontal overflow at 390px › 390×844 phone viewport › @smoke admin: sidebar drawer toggles via hamburger at 390px `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:140:9 › Multi-Tenancy Isolation › Marketplace vs Tenant Visual Distinction › marketplace (no tenant param) shows camp listing grid `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:148:9 › Multi-Tenancy Isolation › Marketplace vs Tenant Visual Distinction › tenant page (with tenant param) shows tenant-specific hero `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:156:9 › Multi-Tenancy Isolation › Marketplace vs Tenant Visual Distinction › marketplace and tenant pages have different body content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:15:9 › Multi-Tenancy Isolation › Tenant Data Isolation › tenant B (nonexistent) shows empty/error state, not tenant A data `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:29:9 › Multi-Tenancy Isolation › Tenant Data Isolation › tenant A rooms page shows only tenant A rooms `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:37:9 › Multi-Tenancy Isolation › Tenant Data Isolation › tenant A camp detail page shows only tenant A camp `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:45:9 › Multi-Tenancy Isolation › Tenant URL Parameter Preservation › navigating from tenant home to rooms preserves tenant param `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:57:9 › Multi-Tenancy Isolation › Tenant URL Parameter Preservation › navigating from tenant home to about preserves tenant param `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:68:9 › Multi-Tenancy Isolation › Tenant URL Parameter Preservation › navigating from tenant home to FAQ preserves tenant param `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:79:9 › Multi-Tenancy Isolation › Tenant URL Parameter Preservation › navigating from tenant home to gallery preserves tenant param `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:90:9 › Multi-Tenancy Isolation › Tenant URL Parameter Preservation › navigating from tenant home to contact preserves tenant param `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/multi-tenancy.spec.ts:9:9 › Multi-Tenancy Isolation › Tenant Data Isolation › tenant A homepage loads with distinct content `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/payout-panel.spec.ts:109:7 › SuperFinancialsPanel — payouts ledger (panel-level contract) › payouts empty state renders with zero console or network errors `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/payout-panel.spec.ts:76:7 › SuperFinancialsPanel — payouts ledger (panel-level contract) › super financials panel opens and the Payouts ledger section renders `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/payout-panel.spec.ts:91:7 › SuperFinancialsPanel — payouts ledger (panel-level contract) › payout list renders rows and opens the detail view when a payout exists `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:115:9 › Responsive Design › Tablet (768px) › marketplace: cards can be side-by-side (y positions similar) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:143:9 › Responsive Design › Tablet (768px) › tenant: body width >= 760, no horizontal scroll `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:159:9 › Responsive Design › Tablet (768px) › POS: sidebar is visible at tablet width `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:184:9 › Responsive Design › Desktop (1280px) › marketplace: grid width > 800px `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:203:9 › Responsive Design › Desktop (1280px) › marketplace: 3+ cards in grid (unique x positions >= 2) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:228:9 › Responsive Design › Desktop (1280px) › POS: sidebar width > 150px with visible menu text `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:23:9 › Responsive Design › Mobile (375px) › marketplace: camp cards stack vertically (second card y >= first card y) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:250:9 › Responsive Design › Desktop (1280px) › admin: content area is full width `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:48:9 › Responsive Design › Mobile (375px) › marketplace: hero text is visible and readable `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:72:9 › Responsive Design › Mobile (375px) › admin: mobile toggle is visible on mobile `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:84:9 › Responsive Design › Mobile (375px) › POS: sidebar is hidden on mobile `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/responsive.spec.ts:96:9 › Responsive Design › Tablet (768px) › marketplace: grid width > 400px `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security-headers.spec.ts:37:7 › Security Headers › marketplace page does not leak API keys in HTML `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security-headers.spec.ts:47:7 › Security Headers › marketplace page does not expose env vars in script tags `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security-headers.spec.ts:59:7 › Security Headers › admin page does not leak secrets in HTML source `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security-headers.spec.ts:67:7 › Security Headers › POS page does not leak secrets in HTML source `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security-headers.spec.ts:81:7 › Security Headers › marketplace page has no mixed content (HTTP on HTTPS) `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:11:7 › Security › XSS in marketplace search: type <script>alert(1)</script> → no dialog fires `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:118:7 › Security › Auth token in localStorage (not cookies): verify via page.evaluate `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:153:7 › Security › admin login rate limiting: 6 rapid wrong attempts → stays on login or rate limit message `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:183:7 › Security › SQL injection in search: type '; DROP TABLE users; -- → no error/crash `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:218:7 › Security › SQL injection in booking: type 1' OR '1'='1 in date → no error `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:252:7 › Security › password fields are type="password" (not text) on both POS and admin `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:38:7 › Security › XSS in booking check-in date: type malicious input → no dialog fires `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/security.spec.ts:64:7 › Security › XSS in contact form: type <script>alert("xss")</script> in name → no dialog `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/visual-regression.spec.ts:12:7 › Visual Regression — Page Snapshots › marketplace homepage matches baseline `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/visual-regression.spec.ts:21:7 › Visual Regression — Page Snapshots › tenant homepage matches baseline `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/visual-regression.spec.ts:30:7 › Visual Regression — Page Snapshots › tenant booking page matches baseline `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/visual-regression.spec.ts:39:7 › Visual Regression — Page Snapshots › marketplace homepage mobile matches baseline `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/visual-regression.spec.ts:49:7 › Visual Regression — Page Snapshots › tenant homepage mobile matches baseline `
+- `[cross-cutting] › tests/e2e/specs/cross-cutting/visual-regression.spec.ts:59:7 › Visual Regression — Page Snapshots › POS login page matches baseline `
+- `[pos] › tests/e2e/specs/pos/dashboard.spec.ts:33:7 › POS Dashboard › dashboard page loads with stat cards `
+- `[pos] › tests/e2e/specs/pos/dashboard.spec.ts:38:7 › POS Dashboard › revenue stat card is visible `
+- `[pos] › tests/e2e/specs/pos/dashboard.spec.ts:45:7 › POS Dashboard › orders stat card is visible `
+- `[pos] › tests/e2e/specs/pos/dashboard.spec.ts:50:7 › POS Dashboard › low stock stat card is visible `
+- `[pos] › tests/e2e/specs/pos/dashboard.spec.ts:55:7 › POS Dashboard › recent orders section is visible `
+- `[pos] › tests/e2e/specs/pos/dashboard.spec.ts:60:7 › POS Dashboard › dashboard has no critical JS errors `
+- `[pos] › tests/e2e/specs/pos/dashboard.spec.ts:72:7 › POS Dashboard › sidebar navigation is visible on dashboard `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:116:7 › POS Login › empty credentials → stays on login `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:126:7 › POS Login › nonexistent user → stays on login with error `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:138:7 › POS Login › successful login → no JS errors `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:156:7 › POS Login › page reload after login stays on dashboard `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:16:7 › POS Login › login page shows SinaiCamps POS branding `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:173:7 › POS Login › valid login navigates to /dashboard (pushState path routing) `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:185:7 › POS Login › valid login: verify localStorage has pos_token `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:198:7 › POS Login › session persistence: login → reload → still on /dashboard `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:215:7 › POS Login › session persistence: verify pos_token in localStorage after reload `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:25:7 › POS Login › identifier input renders and is focusable `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:34:7 › POS Login › password input renders with type password `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:43:7 › POS Login › sign in button renders and is clickable `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:52:7 › POS Login › valid credentials → navigates to dashboard or shift overlay `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:65:7 › POS Login › valid credentials → localStorage has pos_token `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:79:7 › POS Login › valid credentials → localStorage has pos_user object `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:96:7 › POS Login › wrong password → stays on login with error `
+- `[pos] › tests/e2e/specs/pos/login.spec.ts:9:7 › POS Login › login page loads at /login ────────`
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:116:7 › POS Order Payment Flow — Full Lifecycle › pay button shows total amount `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:130:7 › POS Order Payment Flow — Full Lifecycle › checkout with cash payment navigates to orders `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:157:7 › POS Order Payment Flow — Full Lifecycle › orders page shows completed order after payment `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:183:7 › POS Order Payment Flow — Full Lifecycle › order status badge shows correct status `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:201:7 › POS Order Payment Flow — Search & Filter › products search filters product grid `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:217:7 › POS Order Payment Flow — Empty Cart › pay button is disabled when cart is empty `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:228:7 › POS Order Payment Flow — Empty Cart › empty cart shows "Click products to add" message `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:240:7 › POS Order Payment Flow — No JS Errors › POS order flow has no critical JS errors `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:43:7 › POS Order Payment Flow — Full Lifecycle › navigate to products → add item to cart → cart shows item `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:59:7 › POS Order Payment Flow — Full Lifecycle › cart shows correct subtotal calculation `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:72:7 › POS Order Payment Flow — Full Lifecycle › cart shows tax (10%) line item `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:85:7 › POS Order Payment Flow — Full Lifecycle › cart shows total with $ symbol `
+- `[pos] › tests/e2e/specs/pos/order-payment-flow.spec.ts:99:7 › POS Order Payment Flow — Full Lifecycle › quantity +/- buttons work in cart `
+- `[pos] › tests/e2e/specs/pos/orders.spec.ts:37:7 › POS Orders › orders page loads with table ──`
+- `[pos] › tests/e2e/specs/pos/orders.spec.ts:44:7 › POS Orders › orders table has column headers `
+- `[pos] › tests/e2e/specs/pos/orders.spec.ts:50:7 › POS Orders › order rows are displayed when orders exist `
+- `[pos] › tests/e2e/specs/pos/orders.spec.ts:57:7 › POS Orders › order status badges are rendered `
+- `[pos] › tests/e2e/specs/pos/orders.spec.ts:64:7 › POS Orders › orders page has no critical JS errors `
+- `[pos] › tests/e2e/specs/pos/pos-e2e-flow.spec.ts:122:7 › POS Split Payment Flow › split payment: cash + card combination `
+- `[pos] › tests/e2e/specs/pos/pos-e2e-flow.spec.ts:178:7 › POS Cart Quantity Controls › increase and decrease cart item quantity `
+- `[pos] › tests/e2e/specs/pos/pos-e2e-flow.spec.ts:217:7 › POS Product Search › search filters products `
+- `[pos] › tests/e2e/specs/pos/pos-e2e-flow.spec.ts:247:7 › POS Receipt Modal › receipt modal shows after payment and allows navigation back `
+- `[pos] › tests/e2e/specs/pos/pos-e2e-flow.spec.ts:290:7 › POS Guard — No Shift Blocks Cart › cannot checkout without open shift `
+- `[pos] › tests/e2e/specs/pos/pos-e2e-flow.spec.ts:47:7 › POS Full E2E Flow — End to End › open shift, create order, verify in orders, close shift `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:110:7 › POS — Sidebar Navigation › URL updates when navigating between views `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:127:7 › POS — Products View › products view renders product grid `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:144:7 › POS — Products View › product search input is visible `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:158:7 › POS — Products View › product items are rendered in the grid `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:178:7 › POS — Orders View › orders view renders orders table `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:198:7 › POS — Logout › sign out button is visible in sidebar `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:206:7 › POS — Logout › clicking sign out returns to login page `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:219:7 › POS — Logout › after logout, localStorage pos_token is cleared `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:234:7 › POS — Logout › after logout, localStorage pos_user is cleared `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:249:7 › POS — Logout › after logout, URL returns to /pos/login `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:264:7 › POS — Page Errors › POS app loads without critical JavaScript errors `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:40:7 › POS — Dashboard View › dashboard loads after login `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:45:7 › POS — Dashboard View › dashboard shows stat cards `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:57:7 › POS — Sidebar Navigation › sidebar is visible on desktop `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:64:7 › POS — Sidebar Navigation › sidebar shows all navigation items `
+- `[pos] › tests/e2e/specs/pos/pos-products-navigation.spec.ts:82:7 › POS — Sidebar Navigation › clicking sidebar nav items changes the view `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:116:7 › POS Reports — Date Range › date range inputs are visible `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:127:7 › POS Reports — Date Range › setting date range and switching report type uses date params `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:150:7 › POS Reports — Date Range › clearing date range resets to default period `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:178:7 › POS Reports — Occupancy Report Content › occupancy report shows table with expected columns `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:202:7 › POS Reports — Occupancy Report Content › occupancy rate is color-coded `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:225:7 › POS Reports — Revenue Report Content › revenue report shows table with expected columns `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:255:7 › POS Reports — Bookings Report Content › bookings report shows table with expected columns `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:284:7 › POS Reports — Empty States & Errors › empty state message appears when no data `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:303:7 › POS Reports — Empty States & Errors › panel loads without critical JavaScript errors `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:37:7 › POS Reports — Panel Loading › reports panel loads and shows report type selector `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:48:7 › POS Reports — Panel Loading › default report type is occupancy `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:57:7 › POS Reports — Panel Loading › occupancy report content loads `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:67:7 › POS Reports — Report Type Switching › switching to revenue report loads revenue content `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:82:7 › POS Reports — Report Type Switching › switching to bookings report loads bookings content `
+- `[pos] › tests/e2e/specs/pos/pos-reports.spec.ts:97:7 › POS Reports — Report Type Switching › switching back to occupancy reloads occupancy `
+- `[pos] › tests/e2e/specs/pos/products.spec.ts:37:7 › POS Products › products page loads with product grid `
+- `[pos] › tests/e2e/specs/pos/products.spec.ts:44:7 › POS Products › product items are displayed in grid `
+- `[pos] › tests/e2e/specs/pos/products.spec.ts:50:7 › POS Products › product search input exists and is functional `
+- `[pos] › tests/e2e/specs/pos/products.spec.ts:55:7 › POS Products › product search filters the grid `
+- `[pos] › tests/e2e/specs/pos/products.spec.ts:68:7 › POS Products › clicking a product adds it to cart `
+- `[pos] › tests/e2e/specs/pos/products.spec.ts:82:7 › POS Products › products page has no critical JS errors `
+- `[pos] › tests/e2e/specs/pos/shift-lifecycle.spec.ts:196:7 › POS Shift Lifecycle — Guards › cannot process sale without open shift `
+- `[pos] › tests/e2e/specs/pos/shift-lifecycle.spec.ts:238:7 › POS Shift Lifecycle — History › shift history displays previous shifts `
+- `[pos] › tests/e2e/specs/pos/shift-lifecycle.spec.ts:51:7 › POS Shift Lifecycle — Full Flow › POS user can open a new shift `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:102:7 › POS Cart Workflows › add product → cart updates with item and total `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:125:7 › POS Cart Workflows › quantity increase button works in cart `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:147:7 › POS Cart Workflows › quantity decrease button removes item when qty reaches 0 `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:171:7 › POS Navigation Workflows › sidebar nav switches between views `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:190:7 › POS Navigation Workflows › sign out returns to login page `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:197:7 › POS Navigation Workflows › user name is displayed in sidebar `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:27:7 › POS Product Workflows › products page → product grid displays items `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:37:7 › POS Product Workflows › products page → search filters product grid `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:52:7 › POS Product Workflows › products page → clicking product adds to cart `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:71:7 › POS Order Workflows › orders page → table shows order data `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:80:7 › POS Order Workflows › orders page → order status badges render `
+- `[pos] › tests/e2e/specs/pos/workflows.spec.ts:93:7 › POS Cart Workflows › cart is empty on fresh navigation to products `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:104:9 › Booking Submission Flow › Guest Count › increase button increments guest count `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:114:9 › Booking Submission Flow › Guest Count › decrease button decrements guest count `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:124:9 › Booking Submission Flow › Guest Count › guest count cannot go below 1 `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:136:9 › Booking Submission Flow › Add to Reservation › clicking Add to Reservation closes modal and shows reservation bar `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:148:9 › Booking Submission Flow › Add to Reservation › submit button shows "Added!" feedback before modal closes `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:157:9 › Booking Submission Flow › Add to Reservation › reservation bar shows correct total for multiple rooms `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:176:9 › Booking Submission Flow › Add to Reservation › clear button removes all items from reservation `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:192:9 › Booking Submission Flow › Confirmation & Summary Page › navigates to reservation summary after adding a room `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:205:9 › Booking Submission Flow › Confirmation & Summary Page › summary page shows added room details `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:220:9 › Booking Submission Flow › Confirmation & Summary Page › summary page shows guest info form `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:232:9 › Booking Submission Flow › Confirmation & Summary Page › summary page shows WhatsApp and Copy Summary buttons `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:244:9 › Booking Submission Flow › Confirmation & Summary Page › summary page shows total amount `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:256:9 › Booking Submission Flow › Confirmation & Summary Page › remove button deletes a room from the summary `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:276:9 › Booking Submission Flow › Form Validation › WhatsApp button is disabled when guest name is empty `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:289:9 › Booking Submission Flow › Form Validation › WhatsApp button enables after entering guest name `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:301:9 › Booking Submission Flow › Form Validation › summary page requires at least one room `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:306:9 › Booking Submission Flow › Form Validation › empty state shows back to camp link `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:318:9 › Booking Submission Flow › Error Handling › booking modal survives API failure on lead capture `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:32:9 › Booking Submission Flow › Modal Opening › opens booking modal when clicking Book on a room `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:336:9 › Booking Submission Flow › Error Handling › page loads without critical JavaScript errors `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:353:9 › Booking Submission Flow › Error Handling › booking summary page loads without critical JavaScript errors `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:370:9 › Booking Submission Flow › Error Handling › invalid tenant ID camp detail page renders gracefully `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:38:9 › Booking Submission Flow › Modal Opening › shows room name in modal title `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:45:9 › Booking Submission Flow › Modal Opening › modal has accessible role and aria attributes `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:55:9 › Booking Submission Flow › Date Selection › check-in and check-out inputs are visible `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:61:9 › Booking Submission Flow › Date Selection › selecting valid dates shows night count `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:71:9 › Booking Submission Flow › Date Selection › total price updates when dates change `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:88:9 › Booking Submission Flow › Date Selection › submit button is disabled when no dates are selected `
+- `[public] › tests/e2e/specs/public/booking-submission.spec.ts:98:9 › Booking Submission Flow › Guest Count › guest count displays with default value `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:104:7 › Camps Listing Page — Client-Side Filtering › search input filters camps by name `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:119:7 › Camps Listing Page — Client-Side Filtering › type filter narrows results `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:132:7 › Camps Listing Page — Client-Side Filtering › location filter narrows results `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:13:7 › Camps Listing Page — Hero & Layout › hero banner is visible with correct title `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:147:7 › Camps Listing Page — Client-Side Filtering › capacity filter narrows results `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:164:7 › Camps Listing Page — Client-Side Filtering › activity filter narrows results `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:175:7 › Camps Listing Page — Client-Side Filtering › no results message appears when filters match nothing `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:186:7 › Camps Listing Page — Navigation › clicking explore camp link navigates away `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:201:7 › Camps Listing Page — Error Handling › page loads without critical JavaScript errors `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:217:7 › Camps Listing Page — Error Handling › filter API failure shows error state `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:21:7 › Camps Listing Page — Hero & Layout › hero description mentions browsing/filtering `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:29:7 › Camps Listing Page — Hero & Layout › browse camps link exists and points to #camps `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:35:7 › Camps Listing Page — Hero & Layout › filter form is visible with all filter fields `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:45:7 › Camps Listing Page — Hero & Layout › camps grid section is visible `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:57:7 › Camps Listing Page — SSR Camp Cards › renders at least one camp card from SSR `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:64:7 › Camps Listing Page — SSR Camp Cards › camp card shows name, description, location, and type badge `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:73:7 › Camps Listing Page — SSR Camp Cards › camp card has explore link `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:80:7 › Camps Listing Page — SSR Camp Cards › camp cards show capacity badge `
+- `[public] › tests/e2e/specs/public/camps-listing.spec.ts:94:7 › Camps Listing Page — Client-Side Filtering › submitting empty filters reloads all camps `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:102:7 › Contact Page — Form Submission › form resets after successful submission `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:115:7 › Contact Page — Form Submission › submit button shows "Sending..." while request is in flight `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:14:7 › Contact Page — Hero & Layout › hero banner is visible with correct title `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:148:7 › Contact Page — Validation › submitting empty form triggers browser validation `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:160:7 › Contact Page — Validation › invalid email format triggers browser validation `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:176:7 › Contact Page — Error Handling › API failure shows error message `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:196:7 › Contact Page — Error Handling › page loads without critical JavaScript errors `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:19:7 › Contact Page — Hero & Layout › hero description mentions getting in touch `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:25:7 › Contact Page — Hero & Layout › contact info section shows address, phone, email `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:41:7 › Contact Page — Form Fields › contact form is visible with all fields `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:48:7 › Contact Page — Form Fields › name field is required `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:53:7 › Contact Page — Form Fields › email field is required and has email type `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:59:7 › Contact Page — Form Fields › message field is required `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:64:7 › Contact Page — Form Fields › submit button shows "Send Message" `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:79:7 › Contact Page — Form Submission › filling and submitting form shows success message `
+- `[public] › tests/e2e/specs/public/contact-form.spec.ts:90:7 › Contact Page — Form Submission › success message includes the submitted name and email `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:106:7 › Gallery Page — Lightbox › lightbox displays the enlarged image `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:122:7 › Gallery Page — Lightbox › lightbox shows correct counter "1 / N" `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:12:7 › Gallery Page — Hero › hero banner is visible with photo gallery title `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:135:7 › Gallery Page — Lightbox › clicking next button advances to next photo `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:153:7 › Gallery Page — Lightbox › clicking previous button goes to previous photo `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:171:7 › Gallery Page — Lightbox › clicking close button closes the lightbox `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:189:7 › Gallery Page — Lightbox › pressing Escape closes the lightbox `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:207:7 › Gallery Page — Lightbox › pressing ArrowRight navigates to next photo `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:21:7 › Gallery Page — Hero › hero description mentions campsite/scenery `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:225:7 › Gallery Page — Lightbox › pressing ArrowLeft navigates to previous photo `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:243:7 › Gallery Page — Lightbox › lightbox wraps around from last to first photo `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:268:7 › Gallery Page — Empty State & Errors › page loads without critical JavaScript errors `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:29:7 › Gallery Page — Hero › view accommodations link is visible `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:43:7 › Gallery Page — Gallery Grid › gallery grid is visible when images exist `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:55:7 › Gallery Page — Gallery Grid › gallery items are clickable buttons `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:70:7 › Gallery Page — Gallery Grid › each gallery item has aria-label for accessibility `
+- `[public] › tests/e2e/specs/public/gallery-navigation.spec.ts:89:7 › Gallery Page — Lightbox › clicking a gallery item opens the lightbox `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:110:7 › Menu Page — Search Filtering › search is case-insensitive `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:122:7 › Menu Page — Search Filtering › search filters by category name `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:136:7 › Menu Page — Search Filtering › clearing search shows all meals `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:153:7 › Menu Page — Search Filtering › no results state shows when search matches nothing `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:16:7 › Menu Page — Layout & Hero › menu page renders with tenant name in hero `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:172:7 › Menu Page — Meal Cards › meal cards show name, description, and price `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:185:7 › Menu Page — Meal Cards › prices display in EGP format `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:197:7 › Menu Page — Meal Cards › add button increases quantity `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:209:7 › Menu Page — Meal Cards › decrease button removes one quantity `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:225:7 › Menu Page — Meal Cards › add button appears for items not in cart `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:22:7 › Menu Page — Layout & Hero › menu page shows "Menu" subtitle `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:244:7 › Menu Page — Cart › cart button appears when items are added `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:255:7 › Menu Page — Cart › clicking cart button opens drawer `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:282:7 › Menu Page — Empty State & Errors › page loads without critical JavaScript errors `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:28:7 › Menu Page — Layout & Hero › search input is visible with correct placeholder `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:44:7 › Menu Page — Category Navigation › category chips are visible `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:50:7 › Menu Page — Category Navigation › clicking a category chip scrolls to that section `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:74:7 › Menu Page — Category Navigation › category chips highlight active category `
+- `[public] › tests/e2e/specs/public/menu-filtering.spec.ts:96:7 › Menu Page — Search Filtering › typing in search filters meals by name `
+- `[public] › tests/e2e/specs/public/public-booking-order.spec.ts:115:7 › Public booking → order conversion journey › converted order is visible in the tenant admin reservations panel `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:107:7 › ReservationSummary — Interactions › Send Booking via WhatsApp opens wa.me link with reservation data `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:138:7 › ReservationSummary — Interactions › remove button deletes the room and shows empty state `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:148:7 › ReservationSummary — Interactions › Confirm & Pay Online button disabled when guest name is empty `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:155:7 › ReservationSummary — Interactions › Confirm & Pay Online button enables when guest name is entered `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:162:7 › ReservationSummary — Interactions › summary page shows room details with meal plan `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:172:7 › ReservationSummary — Interactions › summary page shows total amount `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:179:7 › ReservationSummary — Interactions › Back to Camp link navigates correctly `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:190:7 › ReservationSummary — Empty State › empty reservation shows empty state message `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:201:7 › ReservationSummary — Empty State › empty state shows hint text `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:213:7 › ReservationSummary — Error Handling › page loads without critical JavaScript errors `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:43:7 › ReservationSummary — Interactions › guest name input is visible and editable `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:50:7 › ReservationSummary — Interactions › guest phone input is visible and editable `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:57:7 › ReservationSummary — Interactions › WhatsApp button disabled when guest name is empty `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:64:7 › ReservationSummary — Interactions › WhatsApp button enables after entering guest name `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:71:7 › ReservationSummary — Interactions › Copy Booking Summary button enables after entering guest name `
+- `[public] › tests/e2e/specs/public/reservation-summary-interactions.spec.ts:78:7 › ReservationSummary — Interactions › Copy Booking Summary writes reservation text to clipboard `
+- `[routing] › tests/e2e/specs/routing/zone-exclusivity.spec.ts:15:7 › Zone exclusivity (marketplace vs tenant) › tenant zone forbids marketplace-only routes with a branded 404 `
+- `[routing] › tests/e2e/specs/routing/zone-exclusivity.spec.ts:30:7 › Zone exclusivity (marketplace vs tenant) › marketplace routes render on the marketplace zone `
+- `[routing] › tests/e2e/specs/routing/zone-exclusivity.spec.ts:38:7 › Zone exclusivity (marketplace vs tenant) › tenant routes render on the tenant zone `
+- `[routing] › tests/e2e/specs/routing/zone-exclusivity.spec.ts:49:7 › Zone exclusivity (marketplace vs tenant) › system routes are never zone-restricted `
+- `[routing] › tests/e2e/specs/routing/zone-exclusivity.spec.ts:59:7 › Zone exclusivity (marketplace vs tenant) › pos renders on the tenant zone `
+- `[routing] › tests/e2e/specs/routing/zone-exclusivity.spec.ts:65:7 › Zone exclusivity (marketplace vs tenant) › shared routes render in both zones `
+- `[routing] › tests/e2e/specs/routing/zone-exclusivity.spec.ts:7:7 › Zone exclusivity (marketplace vs tenant) › marketplace zone forbids tenant-only routes with a branded 404 `
+
+## Known / expected annotations
+
+- Root integration can hit the pre-existing `/api/auth` 30-min login-limit 429 flake (documented in AGENT_LOGBOOK.md). A failure whose log shows that signature + otherwise green assertions should be re-run targeted/per-file.
+- E2E: local `wrangler dev` under sustained load has a documented crash window (~15–17 min). The full `CI=true` gate is the canonical environment; per-project runs are the safe local alternative.
+- Raw logs are in this directory.
+
+_Generated by scripts/run-all-tests.sh_

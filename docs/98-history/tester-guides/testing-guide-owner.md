@@ -53,6 +53,17 @@ Only you test these tabs; testers cannot reach them:
 
 Capture anything odd with the same Feedback widget (it is always visible on your admin session too) — or fix it directly.
 
+### Create a tenant admin (owner-only prerequisite)
+| # | Action | Expected Result |
+|---|---|---|
+| 6.1 | In Tenants panel, click **+ Create Tenant** | Modal opens |
+| 6.2 | Fill: Name = "Test Camp", subdomain = "testcamp" | Fields accepted |
+| 6.3 | Set admin email = `testcamp-admin@test.com`, password = `Test1234!` | Credentials set |
+| 6.4 | Submit | Tenant created with admin account |
+| 6.5 | Verify admin can login at `/admin` with those credentials | Login succeeds, tenant panels load |
+
+---
+
 ## 5. Wrapping up the phase
 
 1. Close every report in the Feedback panel (resolve or archive).

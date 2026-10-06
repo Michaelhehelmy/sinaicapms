@@ -2,7 +2,7 @@
 
 ## 1. What migrations are
 
-Cloudflare D1 (SQLite) schema lives as numbered `.sql` files in `backend/migrations/`. **Current head: `0123_storefront_order_items_fk_pos_products.sql`** (37 files total: `0001`–`0014` + `0100`–`0123` minus reserved-absent `0109`, filesystem-verified; `SCHEMA_DIRECTION_PLAN.md` in the same dir is a planning note, not a migration). The pre-squash `0001`–`0099` lineage is archived in `backend/migrations/legacy/` (+ README) — archaeology only, wrangler scans the top level and ignores it.
+Cloudflare D1 (SQLite) schema lives as numbered `.sql` files in `backend/migrations/`. **Current head: `0123_storefront_order_items_fk_pos_products.sql`** (37 files total: `0001`–`0014` + `0100`–`0123` minus reserved-absent `0109`, filesystem-verified; `SCHEMA_DIRECTION_PLAN.md` is a planning note, not a migration — it now lives at [../98-history/migrations/SCHEMA_DIRECTION_PLAN.md](../98-history/migrations/SCHEMA_DIRECTION_PLAN.md)). The pre-squash `0001`–`0099` lineage is archived in `backend/migrations/legacy/` (+ README) — archaeology only, wrangler scans the top level and ignores it.
 
 Migrations are applied in filename order. Never edit an applied migration — create a new numbered file.
 

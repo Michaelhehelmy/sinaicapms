@@ -2,29 +2,34 @@
 
 Welcome to the SinaiCamps documentation. This guide covers everything from quick setup to detailed user guides for each business module.
 
+> **Restructured 2026-10-06** into an Obsidian-style vault: docs are grouped into numbered folders
+> (`01-architecture/` … `10-tenant-import/`) with everything that is history under `98-history/`.
+> Each numbered folder has its own `README.md` index. Three documents keep their original path as
+> split entry points — `tenant-import.md`, `API_SURFACE.md` — and each links to its siblings.
+
 ---
 
 ## Table of Contents
 
 ### Getting Started
-- [Quick Start](QUICK_START.md) — Prerequisites, environment setup, running locally
-- [Architecture](ARCHITECTURE.md) — Four-layer contract, isolation rules, data flow
-- [API Contract](API_CONTRACT.md) — Endpoint reference, request/response schemas
+- [Quick Start](01-architecture/QUICK_START.md) — Prerequisites, environment setup, running locally
+- [Architecture](01-architecture/ARCHITECTURE.md) — Four-layer contract, isolation rules, data flow
+- [API Contract](02-api/API_CONTRACT.md) — Endpoint reference, request/response schemas
 
 ### User Guides
-- [Camp Management](camp-guide.md) — Rooms, bookings, rate plans, room status lifecycle
-- [Supermarket / POS](supermarket-guide.md) — Products, promotions, inventory management
-- [Restaurant Management](restaurant-guide.md) — Tables, reservations, kitchen workflow, billing
-- [Service Management](service-guide.md) — Service definitions, items, bookings, reviews
-- [Analytics & Reports](analytics-guide.md) — Dashboard tabs, revenue breakdown, customer metrics
+- [Camp Management](08-guides/camp-guide.md) — Rooms, bookings, rate plans, room status lifecycle
+- [Supermarket / POS](08-guides/supermarket-guide.md) — Products, promotions, inventory management
+- [Restaurant Management](08-guides/restaurant-guide.md) — Tables, reservations, kitchen workflow, billing
+- [Service Management](08-guides/service-guide.md) — Service definitions, items, bookings, reviews
+- [Analytics & Reports](08-guides/analytics-guide.md) — Dashboard tabs, revenue breakdown, customer metrics
 
 ### Developer Resources
-- [Component Catalog](COMPONENT_CATALOG.md) — UI component reference
-- [Migration Guide](MIGRATION_GUIDE.md) — Database schema changes
-- [Testing](TESTING.md) — Unit, integration, and E2E test guides
-- [Developer Roadmap](DEVELOPER_ROADMAP.md) — Feature planning and roadmap
-- [Performance Baseline](PERF_BASELINE.md) — Performance metrics and benchmarks
-- [Security Guide](security-guide.md) — Auth, CSRF, XSS, rate limiting, CORS
+- [Component Catalog](03-frontend/COMPONENT_CATALOG.md) — UI component reference
+- [Migration Guide](07-data/migrations.md) — Database schema changes
+- [Testing](04-testing/TESTING.md) — Unit, integration, and E2E test guides
+- [Developer Roadmap](09-plans/DEVELOPER_ROADMAP.md) — Feature planning and roadmap
+- [Performance Baseline](03-frontend/PERF_BASELINE.md) — Performance metrics and benchmarks
+- [Security Guide](06-security/security-guide.md) — Auth, CSRF, XSS, rate limiting, CORS
 
 ---
 

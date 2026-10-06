@@ -121,6 +121,79 @@ Option 3 is the status quo and is the honest default; the parity-D3 identifier
 blocker is therefore **still open for `pos_products.id`** and should not be
 reported as closed. `meals.id` is closed by item 1.
 
+## Parity D3, identifier half — measured again 2026-10-02 (tenant-import edge-case matrix)
+
+`0126` re-scoped `pos_products.sku` and `pos_users.email`/`username`. It deliberately did
+**not** re-scope the two identifier primary keys (`pos_products.id TEXT PRIMARY KEY`,
+`meals.id TEXT PRIMARY KEY`) — a PK cannot be re-scoped without rewriting every
+`meal_lang` / `meal_schedules` reference.
+
+Consequence, measured: **a manifest that ships explicit ids cannot be loaded into a
+second tenant.** Step 5c returns `409 "One or more products already exist (duplicate SKU
+or ID)"`, and the `meals` half already answers a clear `400` naming the meal and the id
+(the `0126` probe). So the manifest *authoring* rule stands: strip tenant-local `id`s
+before loading the same catalogue twice. Carried forward from parity finding D3, which
+`0126` only partially closed.
+
+## Identity-path rollback assessment — **SKIPPED** (Wave 8 item)
+
+**Decision: do not implement the identity-path try/catch rollback.** Both spec
+preconditions fail, and the second one is decisive.
+
+### 5.1 Existing test coverage of the identity path is insufficient
+
+`backend/tests/tenant-import.test.js:787-1038` is the only identity-path suite
+(16 tests). It covers the happy path (201 + the created ids, the tenant/admin/org/project
+INSERTs, the project-block reuse, the identity-strip) and every **pre-provisioning**
+rejection (403 non-super-admin, 400 bad subdomain format / taken subdomain / duplicate
+email / missing fields).
+
+**Nothing exercises the branch that would carry the rollback** — the post-provisioning
+failure at `tenant-import.js:829-832`, where `importTenantManifest` returns `status >= 400`
+*after* steps 1–4 have committed. There is no fixture that makes `runImport` fail on the
+identity path, so a rollback would land with zero safety net and no way to prove it works.
+
+### 5.2 The change is not small
+
+"Delete only the newly-created tenant" is not a small try/catch here:
+
+- **D1 has no cross-request transaction.** Provisioning commits `tenants`, `admins`,
+  the POS org + store + `tenant_org_mapping` (via `ensureTenantOrg`) and `projects` as
+  four independent writes, and `runImport` then commits each section in its own
+  `DB.batch`. A catch block cannot un-commit them.
+- **The committed data rows are FK children of what you would delete.**
+  `pos_products.project_id` / `rooms_new.project_id` / `rate_plans_new.project_id` /
+  `meals.project_id` are `ON DELETE SET NULL`, but `pos_users` → `pos_organizations`,
+  `rooms_new`/`rate_plans_new` → `projects` and `meal_lang` → `meals` are plain
+  `RESTRICT`/`NO ACTION`. Deleting just the tenant row trips
+  `FOREIGN KEY constraint failed`; deleting the whole set is a wide multi-table sweep
+  over the same 9–10 tables the d4/d5 tests enumerate, each needing its own ordering.
+- **That is exactly the surface F-A17-02 declined to authorise** —
+  `tenant-import.js:723-726` records "Imported *rows* are not rolled back (the plan's
+  'or' option — two-phase upload-then-insert-with-cleanup — was chosen; **no D1 rollback
+  was authorized**)", and the R2 rollback that *was* built is scoped to `MEDIA_BUCKET`
+  keys only.
+- **A partial rollback is worse than the honest orphan.** §3.2 shows the current residue
+  is a clean tenant shell: an admin who retries with a fresh subdomain succeeds, and an
+  admin who notices the orphan can delete one row. A rollback that deletes the tenant
+  first and then fails open on the FKs would leave a half-deleted shell that is harder
+  to reason about and impossible to retry.
+
+### 5.3 Wave 8 item to carry forward
+
+> **Identity-path rollback on a post-provisioning failure.** The
+> `if (result.status >= 400)` branch at `backend/src/api/tenant-import.js:829-832` carries
+> the comment *"If import returned an error response, clean up partial provisioning"*
+> but performs **no cleanup**. Measured on a fresh 0126 local D1 (2026-09-30 edge audit):
+> a rejected identity import leaves an `admins` row, a POS organization + store, a
+> `tenant_org_mapping` row and a default `project` behind. Any fix must (a) cover all
+> nine import-written tables plus the four provisioning tables in FK-safe order, or wrap
+> provisioning + import in one `DB.batch` (D1 batches are transactional, but a single
+> batch cannot span the R2 uploads and `hashPassword`), and (b) ship with a fixture that
+> fails `runImport` on the identity path — which does not exist today.
+
+---
+
 ## Constraints honoured
 
 No `wrangler d1 *`, no `deploy.sh`, no staging/prod curl, no migration file
