@@ -9,10 +9,10 @@ tags:
 created: 2026-08-31
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[AUDIT_DEEP_DIVE_2026-09-06]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
-  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
 code-references:
   - "backend/src/index.js:45"
   - "backend/src/api/admin.js"

@@ -10,10 +10,10 @@ tags:
 created: 2026-08-23
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[API_CONTRACT_AUDIT]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
-  - "[[docs/98-history/audits/AUTH_SYSTEM_AUDIT]]"
+  - "[[02-api/API_SURFACE_MAP]]"
+  - "[[98-history/audits/AUTH_SYSTEM_AUDIT]]"
 code-references:
   - "wrangler.toml"
   - "backend/src/api/admin.js:55-68"

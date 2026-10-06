@@ -9,7 +9,7 @@ tags:
 created: 2026-08-08
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/migrations/README]]"
+  - "[[98-history/migrations/README]]"
   - "[[migrations]]"
   - "[[DATABASE_SCHEMA_AUDIT]]"
   - "[[AUDIT_DATABASE_FINDINGS]]"

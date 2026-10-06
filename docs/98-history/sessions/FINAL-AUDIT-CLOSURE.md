@@ -9,9 +9,9 @@ tags:
 created: 2026-09-21
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/sessions/README]]"
+  - "[[98-history/sessions/README]]"
   - "[[FINAL-CLOSURE-v2]]"
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
 code-references:
   - "backend/wrangler.toml"
   - "tests/e2e/playwright.production.config.ts"

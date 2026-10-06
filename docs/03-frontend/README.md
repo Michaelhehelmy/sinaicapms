@@ -13,7 +13,7 @@ updated: 2026-10-06
 relates-to:
   - "[[COMPONENT_CATALOG]]"
   - "[[PERF_BASELINE]]"
-  - "[[docs/README]]"
+  - "[[README]]"
   - "[[ARCHITECTURE]]"
 code-references:
   - "app/src/components/admin/AdminApp.tsx:60-107"

@@ -10,9 +10,9 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
-  - "[[docs/03-frontend/PERF_BASELINE]]"
+  - "[[03-frontend/PERF_BASELINE]]"
   - "[[audit-2026-10-02-bundle-investigation]]"
 code-references:
   - "app/budget.json"

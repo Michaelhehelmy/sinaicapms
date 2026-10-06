@@ -9,8 +9,8 @@ tags:
 created: 2026-08-26
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/plans/README]]"
-  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[98-history/plans/README]]"
+  - "[[98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
 code-references:
   - "backend/src/api/onboarding.js"

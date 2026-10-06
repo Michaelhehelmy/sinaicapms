@@ -10,10 +10,10 @@ tags:
 created: 2026-08-23
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[AUDIT_FRONTEND_FINDINGS]]"
-  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
-  - "[[docs/01-architecture/ARCHITECTURE]]"
+  - "[[03-frontend/COMPONENT_CATALOG]]"
+  - "[[01-architecture/ARCHITECTURE]]"
 code-references:
   - "app/src/lib/api.ts:34"
   - "app/src/hooks/useAdminData.ts"

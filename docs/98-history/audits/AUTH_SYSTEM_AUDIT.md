@@ -10,7 +10,7 @@ tags:
 created: 2026-08-23
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[security-guide]]"
   - "[[AUDIT_SECURITY_FINDINGS]]"
   - "[[BACKEND_UNIFICATION_AUDIT]]"

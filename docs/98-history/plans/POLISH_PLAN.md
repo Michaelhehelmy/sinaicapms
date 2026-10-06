@@ -9,8 +9,8 @@ tags:
 created: 2026-08-09
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/plans/README]]"
-  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[98-history/plans/README]]"
+  - "[[98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
 code-references:
   - "backend/src/routes/pos/index.js:230-242"
   - "app/src/components/pos/views/CartPanel.tsx:27"

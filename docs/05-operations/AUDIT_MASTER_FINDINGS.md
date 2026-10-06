@@ -11,14 +11,14 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/05-operations/README]]"
-  - "[[docs/98-history/audits/AUDIT_SECURITY_FINDINGS]]"
-  - "[[docs/98-history/audits/AUDIT_BACKEND_QUALITY_FINDINGS]]"
-  - "[[docs/98-history/audits/AUDIT_DATABASE_FINDINGS]]"
-  - "[[docs/98-history/audits/AUDIT_FRONTEND_FINDINGS]]"
-  - "[[docs/98-history/audits/AUDIT_TEST_COVERAGE_FINDINGS]]"
-  - "[[docs/98-history/audits/AUDIT_E2E_GAPS_FINDINGS]]"
-  - "[[docs/98-history/audits/README]]"
+  - "[[05-operations/README]]"
+  - "[[98-history/audits/AUDIT_SECURITY_FINDINGS]]"
+  - "[[98-history/audits/AUDIT_BACKEND_QUALITY_FINDINGS]]"
+  - "[[98-history/audits/AUDIT_DATABASE_FINDINGS]]"
+  - "[[98-history/audits/AUDIT_FRONTEND_FINDINGS]]"
+  - "[[98-history/audits/AUDIT_TEST_COVERAGE_FINDINGS]]"
+  - "[[98-history/audits/AUDIT_E2E_GAPS_FINDINGS]]"
+  - "[[98-history/audits/README]]"
 code-references:
   - "backend/src/api/onboarding.js:237-252"
   - "backend/src/index.js:143"

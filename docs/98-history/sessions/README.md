@@ -9,7 +9,7 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/README]]"
+  - "[[98-history/README]]"
   - "[[AGENT_LOGBOOK_HISTORY]]"
   - "[[WAVE6_EXIT_REPORT]]"
   - "[[FINAL-CLOSURE-v2]]"

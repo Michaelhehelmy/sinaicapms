@@ -10,9 +10,9 @@ created: 2026-10-06
 updated: 2026-10-06
 relates-to:
   - "[[TESTING]]"
-  - "[[docs/98-history/merged/TESTING_ROADMAP]]"
-  - "[[docs/98-history/test-runs/README]]"
-  - "[[docs/98-history/tester-guides/testing-guide-owner]]"
+  - "[[98-history/merged/TESTING_ROADMAP]]"
+  - "[[98-history/test-runs/README]]"
+  - "[[98-history/tester-guides/testing-guide-owner]]"
 code-references:
   - "playwright.config.ts"
   - "vitest.integration.config.ts"

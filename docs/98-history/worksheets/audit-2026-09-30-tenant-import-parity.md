@@ -9,7 +9,7 @@ tags:
 created: 2026-10-01
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/worksheets/README]]"
+  - "[[98-history/worksheets/README]]"
   - "[[tenant-import-appendix]]"
   - "[[audit-2026-10-02-tenant-import-edge-cases]]"
   - "[[audit-2026-09-30-tenant-manifest-gaps]]"

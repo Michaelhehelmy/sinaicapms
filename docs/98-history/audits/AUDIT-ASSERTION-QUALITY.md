@@ -10,8 +10,8 @@ tags:
 created: 2026-08-08
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
-  - "[[docs/04-testing/TESTING]]"
+  - "[[98-history/audits/README]]"
+  - "[[04-testing/TESTING]]"
   - "[[AUDIT_TEST_COVERAGE_FINDINGS]]"
 code-references:
   - "tests/unit/emailService.test.js"

@@ -14,7 +14,7 @@ relates-to:
   - "[[tenant-import-types]]"
   - "[[tenant-import-appendix]]"
   - "[[BLOCKED-pos-products-composite-pk]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[02-api/API_SURFACE_MAP]]"
 code-references:
   - "backend/src/api/tenant-import.js"
   - "backend/src/index.js:244"

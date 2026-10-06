@@ -10,10 +10,10 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
-  - "[[docs/98-history/audits/BACKEND_UNIFICATION_AUDIT]]"
-  - "[[docs/02-api/API_CONTRACT]]"
+  - "[[98-history/audits/BACKEND_UNIFICATION_AUDIT]]"
+  - "[[02-api/API_CONTRACT]]"
 code-references:
   - "backend/src/routes/registry.js"
   - "backend/src/routes/pos/index.js:34"

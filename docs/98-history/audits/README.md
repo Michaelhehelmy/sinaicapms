@@ -9,12 +9,12 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/README]]"
+  - "[[98-history/README]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
   - "[[API_CONTRACT_AUDIT]]"
   - "[[AUTH_SYSTEM_AUDIT]]"
   - "[[DEEP_AUDIT_2026_08_27]]"
-  - "[[docs/05-operations/AUDIT_MASTER_FINDINGS]]"
+  - "[[05-operations/AUDIT_MASTER_FINDINGS]]"
 code-references:
   - "backend/src/routes/registry.js"
   - "app/src/lib/api.ts"

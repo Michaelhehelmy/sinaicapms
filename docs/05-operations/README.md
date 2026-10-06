@@ -12,8 +12,8 @@ updated: 2026-10-06
 relates-to:
   - "[[RUNBOOK]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
-  - "[[docs/98-history/deploys/README]]"
-  - "[[docs/98-history/sessions/README]]"
+  - "[[98-history/deploys/README]]"
+  - "[[98-history/sessions/README]]"
 code-references:
   - "deploy.sh"
   - "scripts/check-deploy-parity.sh"

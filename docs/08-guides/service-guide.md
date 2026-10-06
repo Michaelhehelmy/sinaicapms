@@ -10,9 +10,9 @@ tags:
 created: 2026-08-25
 updated: 2026-10-06
 relates-to:
-  - "[[docs/08-guides/README]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
-  - "[[docs/98-history/worksheets/audit-2026-09-15-route-gaps]]"
+  - "[[08-guides/README]]"
+  - "[[02-api/API_SURFACE_MAP]]"
+  - "[[98-history/worksheets/audit-2026-09-15-route-gaps]]"
 code-references:
   - "backend/src/api/services.js:80"
   - "backend/src/index.js:579"

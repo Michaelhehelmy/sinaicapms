@@ -12,9 +12,9 @@ created: 2026-10-02
 updated: 2026-10-06
 relates-to:
   - "[[tenant-import]]"
-  - "[[docs/07-data/migrations]]"
-  - "[[docs/10-tenant-import/README]]"
-  - "[[docs/98-history/merged/audit-2026-10-02-tenant-import-edge-cases]]"
+  - "[[07-data/migrations]]"
+  - "[[10-tenant-import/README]]"
+  - "[[98-history/merged/audit-2026-10-02-tenant-import-edge-cases]]"
 code-references:
   - "backend/migrations/0127_meals_tenant_composite_pk.sql"
   - "backend/src/api/tenant-import.js:829-832"

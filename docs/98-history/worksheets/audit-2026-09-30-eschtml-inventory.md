@@ -10,9 +10,9 @@ tags:
 created: 2026-09-30
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/worksheets/README]]"
+  - "[[98-history/worksheets/README]]"
   - "[[security-guide]]"
-  - "[[docs/98-history/audits/AUDIT_FRONTEND_FINDINGS]]"
+  - "[[98-history/audits/AUDIT_FRONTEND_FINDINGS]]"
 code-references:
   - "app/src/components/public/CampsSection.astro:267"
   - "app/src/components/public/TenantLanding.astro:12"

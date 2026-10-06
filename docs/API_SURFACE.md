@@ -11,8 +11,8 @@ updated: 2026-10-06
 relates-to:
   - "[[API_SURFACE_MAP]]"
   - "[[API_CONTRACT]]"
-  - "[[docs/02-api/README]]"
-  - "[[docs/README]]"
+  - "[[02-api/README]]"
+  - "[[README]]"
 code-references:
   - "backend/src/routes/registry.js"
   - "backend/src/index.js"

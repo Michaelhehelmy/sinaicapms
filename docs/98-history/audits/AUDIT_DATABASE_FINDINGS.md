@@ -10,8 +10,8 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
-  - "[[docs/07-data/migrations]]"
+  - "[[98-history/audits/README]]"
+  - "[[07-data/migrations]]"
   - "[[DATABASE_SCHEMA_AUDIT]]"
   - "[[SCHEMA_DIRECTION_PLAN]]"
 code-references:

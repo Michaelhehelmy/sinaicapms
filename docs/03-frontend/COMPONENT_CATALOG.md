@@ -13,7 +13,7 @@ updated: 2026-10-06
 relates-to:
   - "[[PERF_BASELINE]]"
   - "[[ARCHITECTURE]]"
-  - "[[docs/03-frontend]]"
+  - "[[03-frontend/README]]"
   - "[[TESTING]]"
 code-references:
   - "app/src/components/ui/LineChart.tsx:9-14"

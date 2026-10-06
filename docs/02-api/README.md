@@ -14,7 +14,7 @@ relates-to:
   - "[[API_CONTRACT]]"
   - "[[API_SURFACE_MAP]]"
   - "[[API_SURFACE]]"
-  - "[[docs/README]]"
+  - "[[README]]"
 code-references:
   - "app/src/lib/api.ts:1-2838"
   - "backend/src/routes/registry.js:1-3494"

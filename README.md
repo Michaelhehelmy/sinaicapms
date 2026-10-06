@@ -10,11 +10,11 @@ tags:
 created: 2026-08-08
 updated: 2026-10-06
 relates-to:
-  - "[[docs/README]]"
+  - "[[README]]"
   - "[[ARCHITECTURE]]"
   - "[[API_CONTRACT]]"
   - "[[AGENT_LOGBOOK]]"
-  - "[[docs/05-operations/RUNBOOK]]"
+  - "[[05-operations/RUNBOOK]]"
 code-references:
   - "app/src/lib/api.ts"
   - "app/src/middleware/tenant.ts"
@@ -34,7 +34,7 @@ A full-stack serverless SaaS platform for managing summer camps, wilderness lodg
 
 **Production:** [sinaicamps.com](https://sinaicamps.com) · **Repo:** [Michaelhehelmy/campmaster](https://github.com/Michaelhehelmy/campmaster) (private)
 
-**Docs:** [[ARCHITECTURE|Architecture]] · [[API_CONTRACT|API Contract]] · [[RUNBOOK|Runbook]] · [[security-guide|Security Guide]] · [[docs/tenant-import|Tenant Import]] · [[COMPONENT_CATALOG|Component Catalog]] · [[migrations|Migration Guide]] · [[QUICK_START|Quick Start]] · [[TESTING|Testing]] · [[DEVELOPER_ROADMAP|Developer Roadmap]] · [[PERF_BASELINE|Performance Baseline]]
+**Docs:** [[ARCHITECTURE|Architecture]] · [[API_CONTRACT|API Contract]] · [[RUNBOOK|Runbook]] · [[security-guide|Security Guide]] · [[tenant-import|Tenant Import]] · [[COMPONENT_CATALOG|Component Catalog]] · [[migrations|Migration Guide]] · [[QUICK_START|Quick Start]] · [[TESTING|Testing]] · [[DEVELOPER_ROADMAP|Developer Roadmap]] · [[PERF_BASELINE|Performance Baseline]]
 
 ---
 

@@ -13,7 +13,7 @@ updated: 2026-10-06
 relates-to:
   - "[[ARCHITECTURE]]"
   - "[[QUICK_START]]"
-  - "[[docs/README]]"
+  - "[[README]]"
 code-references:
   - "app/src/lib/routeZones.ts:23-69"
   - "backend/src/index.js:123-141"

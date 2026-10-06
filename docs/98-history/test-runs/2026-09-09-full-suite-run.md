@@ -9,8 +9,8 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/test-runs/README]]"
-  - "[[docs/04-testing/TESTING]]"
+  - "[[98-history/test-runs/README]]"
+  - "[[04-testing/TESTING]]"
   - "[[AGENT_LOGBOOK_HISTORY]]"
 code-references:
   - "tests/e2e/specs/admin/admin-orders.spec.ts:113"

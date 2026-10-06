@@ -10,7 +10,7 @@ tags:
 created: 2026-09-30
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/merged/README]]"
+  - "[[98-history/merged/README]]"
   - "[[tenant-import]]"
   - "[[audit-2026-09-30-tenant-manifest-schema]]"
   - "[[audit-2026-09-30-tenant-manifest-types]]"

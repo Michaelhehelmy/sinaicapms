@@ -10,10 +10,10 @@ tags:
 created: 2026-09-21
 updated: 2026-10-06
 relates-to:
-  - "[[docs/09-plans/README]]"
+  - "[[09-plans/README]]"
   - "[[supermarket-guide]]"
-  - "[[docs/10-tenant-import/BLOCKED-pos-products-composite-pk]]"
-  - "[[docs/07-data/migrations]]"
+  - "[[10-tenant-import/BLOCKED-pos-products-composite-pk]]"
+  - "[[07-data/migrations]]"
 code-references:
   - "backend/src/api/folios.js:337"
   - "backend/src/index.js:731"

@@ -10,14 +10,14 @@ tags:
 created: 2026-08-25
 updated: 2026-10-06
 relates-to:
-  - "[[docs/01-architecture/QUICK_START]]"
+  - "[[01-architecture/QUICK_START]]"
   - "[[ARCHITECTURE]]"
   - "[[API_CONTRACT]]"
   - "[[camp-guide]]"
   - "[[security-guide]]"
   - "[[migrations]]"
   - "[[TESTING]]"
-  - "[[docs/98-history/README]]"
+  - "[[98-history/README]]"
   - "[[tenant-import]]"
   - "[[SinaiCamps Business API Surface]]"
 code-references:

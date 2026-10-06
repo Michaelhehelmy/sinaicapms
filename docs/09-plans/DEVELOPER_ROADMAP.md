@@ -9,10 +9,10 @@ tags:
 created: 2026-08-13
 updated: 2026-10-06
 relates-to:
-  - "[[docs/09-plans/README]]"
+  - "[[09-plans/README]]"
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
-  - "[[docs/03-frontend/PERF_BASELINE]]"
-  - "[[docs/06-security/security-guide]]"
+  - "[[03-frontend/PERF_BASELINE]]"
+  - "[[06-security/security-guide]]"
 code-references:
   - "app/src/lib/routeZones.ts"
   - "app/src/hooks/useQueryHooks.ts"

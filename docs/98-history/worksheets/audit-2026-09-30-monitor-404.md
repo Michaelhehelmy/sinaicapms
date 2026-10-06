@@ -9,9 +9,9 @@ tags:
 created: 2026-09-30
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/worksheets/README]]"
+  - "[[98-history/worksheets/README]]"
   - "[[RUNBOOK]]"
-  - "[[docs/98-history/sessions/AGENT_LOGBOOK_HISTORY]]"
+  - "[[98-history/sessions/AGENT_LOGBOOK_HISTORY]]"
 code-references:
   - "monitor/wrangler.toml"
   - "backend/wrangler.toml"

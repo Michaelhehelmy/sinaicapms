@@ -11,8 +11,8 @@ created: 2026-08-25
 updated: 2026-10-06
 relates-to:
   - "[[restaurant-guide]]"
-  - "[[docs/08-guides/README]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[08-guides/README]]"
+  - "[[02-api/API_SURFACE_MAP]]"
   - "[[BACKLOG_VOID_REFUND]]"
 code-references:
   - "backend/src/routes/pos/index.js:402"

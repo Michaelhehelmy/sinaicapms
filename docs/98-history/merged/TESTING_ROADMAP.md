@@ -9,8 +9,8 @@ tags:
 created: 2026-08-23
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/merged/README]]"
-  - "[[docs/04-testing/TESTING]]"
+  - "[[98-history/merged/README]]"
+  - "[[04-testing/TESTING]]"
   - "[[testing-guide-owner]]"
   - "[[testing-guide-tester]]"
 code-references:

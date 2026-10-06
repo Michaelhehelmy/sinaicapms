@@ -13,8 +13,8 @@ relates-to:
   - "[[tenant-import]]"
   - "[[tenant-import-schema]]"
   - "[[tenant-import-appendix]]"
-  - "[[docs/10-tenant-import/README]]"
-  - "[[docs/98-history/merged/audit-2026-09-30-tenant-manifest-types]]"
+  - "[[10-tenant-import/README]]"
+  - "[[98-history/merged/audit-2026-09-30-tenant-manifest-types]]"
 code-references:
   - "backend/migrations/0001_core.sql:19"
   - "backend/src/api/tenants.js:19"

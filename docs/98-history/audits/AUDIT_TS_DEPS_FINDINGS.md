@@ -10,9 +10,9 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
-  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
-  - "[[docs/03-frontend/PERF_BASELINE]]"
+  - "[[98-history/audits/README]]"
+  - "[[03-frontend/COMPONENT_CATALOG]]"
+  - "[[03-frontend/PERF_BASELINE]]"
 code-references:
   - "app/src/lib/api-types.ts"
   - "backend/openapi.json"

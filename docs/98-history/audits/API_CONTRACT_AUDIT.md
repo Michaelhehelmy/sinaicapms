@@ -10,9 +10,9 @@ tags:
 created: 2026-08-23
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
-  - "[[docs/98-history/audits/BACKEND_UNIFICATION_AUDIT]]"
-  - "[[docs/02-api/API_CONTRACT]]"
+  - "[[98-history/audits/README]]"
+  - "[[98-history/audits/BACKEND_UNIFICATION_AUDIT]]"
+  - "[[02-api/API_CONTRACT]]"
   - "[[API_CONTRACT_AUDIT]]"
 code-references:
   - "backend/src/index.js"

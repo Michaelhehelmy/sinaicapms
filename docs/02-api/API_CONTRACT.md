@@ -14,7 +14,7 @@ updated: 2026-10-06
 relates-to:
   - "[[API_SURFACE]]"
   - "[[API_SURFACE_MAP]]"
-  - "[[docs/02-api]]"
+  - "[[02-api/README]]"
   - "[[ARCHITECTURE]]"
   - "[[COMPONENT_CATALOG]]"
   - "[[security-guide]]"

@@ -9,7 +9,7 @@ tags:
 created: 2026-09-14
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/sessions/README]]"
+  - "[[98-history/sessions/README]]"
   - "[[restaurant-guide]]"
   - "[[supermarket-guide]]"
   - "[[WAVE6_EXIT_REPORT]]"

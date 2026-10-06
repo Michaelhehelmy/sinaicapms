@@ -9,9 +9,9 @@ tags:
 created: 2026-09-07
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/deploys/README]]"
+  - "[[98-history/deploys/README]]"
   - "[[RUNBOOK]]"
-  - "[[docs/98-history/plans/ASTRO_UPGRADE_PLAN]]"
+  - "[[98-history/plans/ASTRO_UPGRADE_PLAN]]"
   - "[[PROD-DEPLOY-CHECKLIST-2026-09-22]]"
 code-references:
   - "deploy.sh"

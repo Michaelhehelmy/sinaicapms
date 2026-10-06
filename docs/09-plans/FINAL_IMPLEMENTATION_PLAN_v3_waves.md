@@ -12,9 +12,9 @@ created: 2026-10-06
 updated: 2026-10-06
 relates-to:
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_appendices]]"
-  - "[[docs/98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
-  - "[[docs/09-plans/README]]"
-  - "[[docs/09-plans/DEVELOPER_ROADMAP]]"
+  - "[[98-history/merged/FINAL_IMPLEMENTATION_PLAN]]"
+  - "[[09-plans/README]]"
+  - "[[09-plans/DEVELOPER_ROADMAP]]"
 code-references:
   - "tests/core/migration-integrity.test.js:110"
   - "backend/src/api/storefront.js:195"

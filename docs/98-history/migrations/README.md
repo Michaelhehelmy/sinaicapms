@@ -9,10 +9,10 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/README]]"
+  - "[[98-history/README]]"
   - "[[SCHEMA_DIRECTION_PLAN]]"
   - "[[migrations]]"
-  - "[[docs/07-data/README]]"
+  - "[[07-data/README]]"
 code-references:
   - "backend/wrangler.toml"
   - "backend/migrations/0127_meals_tenant_composite_pk.sql"

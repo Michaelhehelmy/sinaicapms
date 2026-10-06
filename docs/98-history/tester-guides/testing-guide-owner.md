@@ -10,8 +10,8 @@ tags:
 created: 2026-09-09
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/tester-guides/README]]"
-  - "[[docs/04-testing/TESTING]]"
+  - "[[98-history/tester-guides/README]]"
+  - "[[04-testing/TESTING]]"
   - "[[testing-guide-tester]]"
   - "[[TESTING_ROADMAP]]"
 code-references:

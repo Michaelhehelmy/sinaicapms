@@ -11,19 +11,19 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
-  - "[[docs/98-history/sessions/README]]"
-  - "[[docs/98-history/plans/README]]"
-  - "[[docs/98-history/merged/README]]"
-  - "[[docs/98-history/worksheets/README]]"
-  - "[[docs/98-history/deploys/README]]"
-  - "[[docs/98-history/migrations/README]]"
-  - "[[docs/98-history/tester-guides/README]]"
-  - "[[docs/98-history/test-runs/README]]"
-  - "[[docs/README]]"
-  - "[[docs/04-testing/README]]"
-  - "[[docs/09-plans/README]]"
-  - "[[docs/05-operations/README]]"
+  - "[[98-history/audits/README]]"
+  - "[[98-history/sessions/README]]"
+  - "[[98-history/plans/README]]"
+  - "[[98-history/merged/README]]"
+  - "[[98-history/worksheets/README]]"
+  - "[[98-history/deploys/README]]"
+  - "[[98-history/migrations/README]]"
+  - "[[98-history/tester-guides/README]]"
+  - "[[98-history/test-runs/README]]"
+  - "[[README]]"
+  - "[[04-testing/README]]"
+  - "[[09-plans/README]]"
+  - "[[05-operations/README]]"
 code-references:
   - "backend/src/index.js"
   - "app/src/lib/api.ts"
@@ -112,7 +112,7 @@ commit that touched the file's content where no date was recoverable).
 
 | Date | Doc | Bucket | What happened |
 |---|---|---|---|
-| 2026-09-06 | [[AUDIT_BACKEND_QUALITY_FINDINGS]] · [[AUDIT_DATABASE_FINDINGS]] · [[AUDIT_DEEP_DIVE_2026-09-06]] · [[AUDIT_E2E_GAPS_FINDINGS]] · [[AUDIT_FRONTEND_FINDINGS]] · [[AUDIT_PERFORMANCE_FINDINGS]] · [[AUDIT_SECURITY_FINDINGS]] · [[AUDIT_TEST_COVERAGE_FINDINGS]] · [[AUDIT_TS_DEPS_FINDINGS]] | audits | The 8-domain round plus a second deep dive. Its consolidation index survives live as [[docs/05-operations/AUDIT_MASTER_FINDINGS]]. |
+| 2026-09-06 | [[AUDIT_BACKEND_QUALITY_FINDINGS]] · [[AUDIT_DATABASE_FINDINGS]] · [[AUDIT_DEEP_DIVE_2026-09-06]] · [[AUDIT_E2E_GAPS_FINDINGS]] · [[AUDIT_FRONTEND_FINDINGS]] · [[AUDIT_PERFORMANCE_FINDINGS]] · [[AUDIT_SECURITY_FINDINGS]] · [[AUDIT_TEST_COVERAGE_FINDINGS]] · [[AUDIT_TS_DEPS_FINDINGS]] | audits | The 8-domain round plus a second deep dive. Its consolidation index survives live as [[05-operations/AUDIT_MASTER_FINDINGS]]. |
 | 2026-09-07 | [[ASTRO_UPGRADE_PLAN]] | plans | Astro 5→7, executed on `feat/astro-7`. |
 | 2026-09-07 | [[ASTRO_DEPLOY_CUTOVER]] | deploys | Pages → Workers cutover, completed. |
 | 2026-09-09 | [[2026-09-09-full-suite-run]] | test-runs | Full-suite machine report, force-added out of a gitignored `reports/` artifact. 9 suites failed. |
@@ -140,7 +140,7 @@ commit that touched the file's content where no date was recoverable).
 
 | Date | Doc | What happened |
 |---|---|---|
-| 2026-10-06 | [[docs/98-history/README]] · [[docs/98-history/audits/README]] · [[docs/98-history/deploys/README]] · [[docs/98-history/merged/README]] · [[docs/98-history/migrations/README]] · [[docs/98-history/plans/README]] · [[docs/98-history/sessions/README]] · [[docs/98-history/test-runs/README]] · [[docs/98-history/tester-guides/README]] · [[docs/98-history/worksheets/README]] | This index and the nine bucket indexes were written by the vault restructure. |
+| 2026-10-06 | [[98-history/README]] · [[98-history/audits/README]] · [[98-history/deploys/README]] · [[98-history/merged/README]] · [[98-history/migrations/README]] · [[98-history/plans/README]] · [[98-history/sessions/README]] · [[98-history/test-runs/README]] · [[98-history/tester-guides/README]] · [[98-history/worksheets/README]] | This index and the nine bucket indexes were written by the vault restructure. |
 
 ### 2026-08-08 → present — the running task log
 
@@ -207,10 +207,10 @@ here:
 
 ## Related
 
-- [[docs/README]] — vault entry point
-- [[docs/01-architecture/README]] · [[docs/02-api/README]] · [[docs/03-frontend/README]] · [[docs/04-testing/README]] · [[docs/05-operations/README]] — the live tiers this archive answers for
-- [[docs/06-security/README]] · [[docs/07-data/README]] · [[docs/08-guides/README]] · [[docs/09-plans/README]] · [[docs/10-tenant-import/README]] — the remaining live tiers
-- [[docs/98-history/audits/README]] · [[docs/98-history/deploys/README]] · [[docs/98-history/merged/README]] · [[docs/98-history/migrations/README]] · [[docs/98-history/plans/README]] · [[docs/98-history/sessions/README]] · [[docs/98-history/test-runs/README]] · [[docs/98-history/tester-guides/README]] · [[docs/98-history/worksheets/README]] — the buckets this index cuts across
+- [[README]] — vault entry point
+- [[01-architecture/README]] · [[02-api/README]] · [[03-frontend/README]] · [[04-testing/README]] · [[05-operations/README]] — the live tiers this archive answers for
+- [[06-security/README]] · [[07-data/README]] · [[08-guides/README]] · [[09-plans/README]] · [[10-tenant-import/README]] — the remaining live tiers
+- [[98-history/audits/README]] · [[98-history/deploys/README]] · [[98-history/merged/README]] · [[98-history/migrations/README]] · [[98-history/plans/README]] · [[98-history/sessions/README]] · [[98-history/test-runs/README]] · [[98-history/tester-guides/README]] · [[98-history/worksheets/README]] — the buckets this index cuts across
 
 ## Gaps
 

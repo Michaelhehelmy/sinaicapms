@@ -13,9 +13,9 @@ relates-to:
   - "[[tenant-import]]"
   - "[[tenant-import-schema]]"
   - "[[tenant-import-types]]"
-  - "[[docs/10-tenant-import/README]]"
-  - "[[docs/98-history/worksheets/audit-2026-09-30-tenant-import-parity]]"
-  - "[[docs/98-history/merged/audit-2026-10-02-tenant-import-edge-cases]]"
+  - "[[10-tenant-import/README]]"
+  - "[[98-history/worksheets/audit-2026-09-30-tenant-import-parity]]"
+  - "[[98-history/merged/audit-2026-10-02-tenant-import-edge-cases]]"
 code-references:
   - "docs/examples/tenant-manifest.example.json"
   - "backend/src/middleware/resolveScope.js:46-79"

@@ -10,8 +10,8 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
-  - "[[docs/04-testing/TESTING]]"
+  - "[[98-history/audits/README]]"
+  - "[[04-testing/TESTING]]"
   - "[[AUDIT_E2E_GAPS_FINDINGS]]"
   - "[[AUDIT-ASSERTION-QUALITY]]"
 code-references:

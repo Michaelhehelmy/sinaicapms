@@ -10,11 +10,11 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/04-testing/README]]"
-  - "[[docs/98-history/merged/TESTING_ROADMAP]]"
-  - "[[docs/98-history/test-runs/2026-09-09-full-suite-run]]"
-  - "[[docs/98-history/tester-guides/testing-guide-owner]]"
-  - "[[docs/98-history/tester-guides/testing-guide-tester]]"
+  - "[[04-testing/README]]"
+  - "[[98-history/merged/TESTING_ROADMAP]]"
+  - "[[98-history/test-runs/2026-09-09-full-suite-run]]"
+  - "[[98-history/tester-guides/testing-guide-owner]]"
+  - "[[98-history/tester-guides/testing-guide-tester]]"
 code-references:
   - "playwright.config.ts"
   - "vitest.integration.config.ts"

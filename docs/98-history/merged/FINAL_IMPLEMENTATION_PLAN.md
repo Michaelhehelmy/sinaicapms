@@ -9,10 +9,10 @@ tags:
 created: 2026-09-18
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/merged/README]]"
+  - "[[98-history/merged/README]]"
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_appendices]]"
-  - "[[docs/09-plans/README]]"
+  - "[[09-plans/README]]"
 code-references:
   - "tests/core/payments.test.js:94"
   - "tests/core/migration-integrity.test.js"

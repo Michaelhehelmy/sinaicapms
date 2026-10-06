@@ -10,10 +10,10 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
   - "[[FRONTEND_UNIFICATION_AUDIT]]"
-  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
+  - "[[03-frontend/COMPONENT_CATALOG]]"
 code-references:
   - "app/src/components/ui/SafeImage.astro"
   - "app/src/components/admin/AdminApp.tsx:399"

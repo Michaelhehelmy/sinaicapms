@@ -9,7 +9,7 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/README]]"
+  - "[[98-history/README]]"
   - "[[FINAL_IMPLEMENTATION_PLAN]]"
   - "[[TESTING_ROADMAP]]"
   - "[[audit-2026-09-30-tenant-manifest-schema]]"
@@ -25,7 +25,7 @@ verified: never
 
 Merged — sources retired into a canonical target
 
-Each of these had its surviving sections migrated into its target **before** the move. See [[docs/98-history/README]] for the source → target table.
+Each of these had its surviving sections migrated into its target **before** the move. See [[98-history/README]] for the source → target table.
 
 | Doc | What it is |
 |---|---|

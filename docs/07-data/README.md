@@ -10,9 +10,9 @@ created: 2026-10-06
 updated: 2026-10-06
 relates-to:
   - "[[migrations]]"
-  - "[[docs/98-history/migrations/SCHEMA_DIRECTION_PLAN]]"
-  - "[[docs/98-history/sessions/WAVE6_EXIT_REPORT]]"
-  - "[[docs/10-tenant-import/BLOCKED-pos-products-composite-pk]]"
+  - "[[98-history/migrations/SCHEMA_DIRECTION_PLAN]]"
+  - "[[98-history/sessions/WAVE6_EXIT_REPORT]]"
+  - "[[10-tenant-import/BLOCKED-pos-products-composite-pk]]"
 code-references:
   - "backend/wrangler.toml"
   - "backend/migrations/0127_meals_tenant_composite_pk.sql"

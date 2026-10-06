@@ -10,9 +10,9 @@ tags:
 created: 2026-08-25
 updated: 2026-10-06
 relates-to:
-  - "[[docs/08-guides/README]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
-  - "[[docs/03-frontend/COMPONENT_CATALOG]]"
+  - "[[08-guides/README]]"
+  - "[[02-api/API_SURFACE_MAP]]"
+  - "[[03-frontend/COMPONENT_CATALOG]]"
 code-references:
   - "backend/src/api/reports.js:29"
   - "backend/src/api/admin-reports.js:192"

@@ -10,10 +10,10 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/README]]"
+  - "[[98-history/README]]"
   - "[[testing-guide-owner]]"
   - "[[testing-guide-tester]]"
-  - "[[docs/04-testing/TESTING]]"
+  - "[[04-testing/TESTING]]"
 code-references:
   - "playwright.config.ts"
   - "scripts/seed-test-users.js"

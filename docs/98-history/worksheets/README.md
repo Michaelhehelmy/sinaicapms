@@ -9,7 +9,7 @@ tags:
 created: 2026-10-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/README]]"
+  - "[[98-history/README]]"
   - "[[audit-2026-09-15-route-gaps]]"
   - "[[audit-2026-09-30-eschtml-inventory]]"
   - "[[audit-2026-09-30-monitor-404]]"

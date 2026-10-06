@@ -9,10 +9,10 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
   - "[[DEEP_AUDIT_2026_08_27]]"
-  - "[[docs/98-history/audits/AUDIT_SECURITY_FINDINGS]]"
+  - "[[98-history/audits/AUDIT_SECURITY_FINDINGS]]"
 code-references:
   - "app/src/lib/api.ts:2316-2350"
   - "backend/src/index.js:260"

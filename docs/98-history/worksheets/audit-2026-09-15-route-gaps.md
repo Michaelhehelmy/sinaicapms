@@ -9,9 +9,9 @@ tags:
 created: 2026-09-16
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/worksheets/README]]"
+  - "[[98-history/worksheets/README]]"
   - "[[service-guide]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[02-api/API_SURFACE_MAP]]"
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
 code-references:
   - "backend/src/api/services.js"

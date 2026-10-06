@@ -13,7 +13,7 @@ relates-to:
   - "[[BACKLOG_VOID_REFUND]]"
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_waves]]"
   - "[[FINAL_IMPLEMENTATION_PLAN_v3_appendices]]"
-  - "[[docs/98-history/plans/README]]"
+  - "[[98-history/plans/README]]"
 code-references:
   - "app/src/lib/api.ts"
   - "backend/src/api/folios.js"

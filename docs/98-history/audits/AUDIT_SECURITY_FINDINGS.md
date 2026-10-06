@@ -10,7 +10,7 @@ tags:
 created: 2026-09-06
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/audits/README]]"
+  - "[[98-history/audits/README]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
   - "[[security-guide]]"
   - "[[AUTH_SYSTEM_AUDIT]]"

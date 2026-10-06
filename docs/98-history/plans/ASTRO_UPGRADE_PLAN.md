@@ -9,9 +9,9 @@ tags:
 created: 2026-09-07
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/plans/README]]"
+  - "[[98-history/plans/README]]"
   - "[[ASTRO_DEPLOY_CUTOVER]]"
-  - "[[docs/01-architecture/QUICK_START]]"
+  - "[[01-architecture/QUICK_START]]"
 code-references:
   - "vitest.config.ts"
   - "app/src/middleware/tenant.ts:197"

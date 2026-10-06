@@ -10,9 +10,9 @@ tags:
 created: 2026-08-25
 updated: 2026-10-06
 relates-to:
-  - "[[docs/08-guides/README]]"
-  - "[[docs/07-data/migrations]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
+  - "[[08-guides/README]]"
+  - "[[07-data/migrations]]"
+  - "[[02-api/API_SURFACE_MAP]]"
 code-references:
   - "backend/src/api/camps.js:196"
   - "backend/src/api/meal-plans.js"

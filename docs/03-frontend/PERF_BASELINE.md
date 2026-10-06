@@ -13,7 +13,7 @@ updated: 2026-10-06
 relates-to:
   - "[[COMPONENT_CATALOG]]"
   - "[[ARCHITECTURE]]"
-  - "[[docs/03-frontend]]"
+  - "[[03-frontend/README]]"
   - "[[TESTING]]"
   - "[[QUICK_START]]"
 code-references:

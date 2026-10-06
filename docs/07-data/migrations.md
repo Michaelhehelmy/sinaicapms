@@ -10,10 +10,10 @@ tags:
 created: 2026-08-13
 updated: 2026-10-06
 relates-to:
-  - "[[docs/07-data/README]]"
-  - "[[docs/98-history/migrations/SCHEMA_DIRECTION_PLAN]]"
-  - "[[docs/10-tenant-import/tenant-import]]"
-  - "[[docs/05-operations/RUNBOOK]]"
+  - "[[07-data/README]]"
+  - "[[98-history/migrations/SCHEMA_DIRECTION_PLAN]]"
+  - "[[tenant-import]]"
+  - "[[05-operations/RUNBOOK]]"
 code-references:
   - "backend/migrations/0123_storefront_order_items_fk_pos_products.sql"
   - "backend/wrangler.toml"

@@ -9,11 +9,11 @@ tags:
 created: 2026-09-28
 updated: 2026-10-06
 relates-to:
-  - "[[docs/05-operations/README]]"
-  - "[[docs/98-history/deploys/PROD-DEPLOY-CHECKLIST-2026-09-22]]"
-  - "[[docs/98-history/deploys/ASTRO_DEPLOY_CUTOVER]]"
-  - "[[docs/07-data/migrations]]"
-  - "[[docs/98-history/sessions/G65_STAGING_VALIDATION]]"
+  - "[[05-operations/README]]"
+  - "[[98-history/deploys/PROD-DEPLOY-CHECKLIST-2026-09-22]]"
+  - "[[98-history/deploys/ASTRO_DEPLOY_CUTOVER]]"
+  - "[[07-data/migrations]]"
+  - "[[98-history/sessions/G65_STAGING_VALIDATION]]"
 code-references:
   - "backend/wrangler.toml"
   - "scripts/check-deploy-parity.sh"

@@ -13,7 +13,7 @@ created: 2026-08-13
 updated: 2026-10-06
 relates-to:
   - "[[ARCHITECTURE]]"
-  - "[[docs/01-architecture]]"
+  - "[[01-architecture/README]]"
   - "[[TESTING]]"
   - "[[RUNBOOK]]"
   - "[[API_CONTRACT]]"

@@ -12,9 +12,9 @@ relates-to:
   - "[[tenant-import-schema]]"
   - "[[tenant-import-types]]"
   - "[[tenant-import-appendix]]"
-  - "[[docs/10-tenant-import/README]]"
+  - "[[10-tenant-import/README]]"
   - "[[BACKLOG_VOID_REFUND]]"
-  - "[[docs/07-data/migrations]]"
+  - "[[07-data/migrations]]"
 code-references:
   - "backend/src/api/tenant-import.js"
   - "backend/migrations/0127_meals_tenant_composite_pk.sql"

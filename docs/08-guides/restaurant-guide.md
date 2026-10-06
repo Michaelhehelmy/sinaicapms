@@ -10,10 +10,10 @@ tags:
 created: 2026-08-25
 updated: 2026-10-06
 relates-to:
-  - "[[docs/08-guides/README]]"
+  - "[[08-guides/README]]"
   - "[[supermarket-guide]]"
-  - "[[docs/02-api/API_SURFACE_MAP]]"
-  - "[[docs/98-history/sessions/ADMIN_REPAIR_REPORT_2026_09_14]]"
+  - "[[02-api/API_SURFACE_MAP]]"
+  - "[[98-history/sessions/ADMIN_REPAIR_REPORT_2026_09_14]]"
 code-references:
   - "backend/src/api/pos-tables.js:129"
   - "backend/src/api/reservations.js:231"

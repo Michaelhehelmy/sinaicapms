@@ -9,7 +9,7 @@ tags:
 created: 2026-09-21
 updated: 2026-10-06
 relates-to:
-  - "[[docs/98-history/sessions/README]]"
+  - "[[98-history/sessions/README]]"
   - "[[AUDIT_MASTER_FINDINGS]]"
   - "[[ADMIN_REPAIR_REPORT_2026_09_14]]"
 code-references:
