@@ -68,4 +68,10 @@ the real router and panel behind the screen, so a claim here can be checked agai
 
 ## Gaps
 
-<!-- Populated by 99-gaps/code-vs-docs.md -->
+Audited 2026-10-06 against the tree, read-only. This folder's queued doc fixes:
+
+- **[[code-vs-docs]]** — **5** `STALE`/`FALSE` claims, plus **16** `MATCHED` controls this folder's findings rest on. `MATCHED` entries are reproduced at the foot of that note, because a finding that quotes one of them is only auditable if it is readable there.
+- **[[unverified]]** — **2** claims this folder states that the tree cannot answer · **[[unimplemented]]** — **1** item of real code no doc here claims.
+
+Nothing is fixed yet. Each entry carries the `file:line` its claim was measured against and a named action; fix this folder's carriers together, not one file at a time — see [[99-gaps/README]] for the workflow.
+

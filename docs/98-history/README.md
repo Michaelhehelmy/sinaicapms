@@ -222,4 +222,16 @@ here:
 
 ## Gaps
 
-<!-- Populated by 99-gaps/code-vs-docs.md -->
+**This bucket was out of scope for the 2026-10-06 audit sweep, deliberately** — archived is not
+deleted and a dated record is not a claim about the present. Both audits skipped it, so nothing in
+[[code-vs-docs]], [[unverified]] or [[unimplemented]] is filed against a file here.
+
+The one place the archive does appear is **entry #1 of [[code-vs-docs]]**,
+[[WAVE6_EXIT_REPORT|98-history/sessions/WAVE6_EXIT_REPORT.md]]: its header counts
+"99 migrations (`0099_normalize_marketplace_payouts_ids.sql`)" while the tree holds **40** with head
+`0127_meals_tenant_composite_pk.sql`. That record was **true on 2026-09-21**, so the action is an
+annotation, not a correction — mark the 99 as the pre-squash count that now lives in
+`backend/migrations/legacy/`, and leave the record's own figures alone.
+
+If a future pass audits this bucket, the rule is one per doc: a dated claim is checked against the
+tree **as of its `created:` date**, and only a claim that was wrong on its own date is a defect.

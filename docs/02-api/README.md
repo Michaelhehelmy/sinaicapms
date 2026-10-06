@@ -59,4 +59,10 @@ purpose, because it is a statement of rules, not a list of endpoints.
 
 ## Gaps
 
-<!-- Populated by 99-gaps/code-vs-docs.md -->
+Audited 2026-10-06 against the tree, read-only. This folder's queued doc fixes:
+
+- **[[code-vs-docs]]** — **10** `STALE`/`FALSE` claims, plus **11** `MATCHED` controls this folder's findings rest on. `MATCHED` entries are reproduced at the foot of that note, because a finding that quotes one of them is only auditable if it is readable there.
+- **[[unverified]]** — none · **[[unimplemented]]** — **3** items of real code no doc here claims.
+
+Nothing is fixed yet. Each entry carries the `file:line` its claim was measured against and a named action; fix this folder's carriers together, not one file at a time — see [[99-gaps/README]] for the workflow.
+
