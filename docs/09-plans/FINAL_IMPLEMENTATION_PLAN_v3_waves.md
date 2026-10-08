@@ -23,6 +23,15 @@ code-references:
   - "backend/src/middleware/tenant.js:12"
   - "backend/src/middleware/requireAuth.js:185-190"
   - "backend/src/api/camps.js:224-247"
+  - "backend/migrations/0100_add_project_id_nullable.sql"
+  - "backend/migrations/0120_add_tip_amount_to_pos_transactions.sql"
+  - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "backend/vitest.config.ts:21-30"
+  - "tests/lighthouse/run.ts:54"
+  - "app/src/lib/api.ts"
+  - "docs/01-architecture/ARCHITECTURE.md"
+  - "docs/04-testing/TESTING.md"
+  - "docs/07-data/migrations.md"
 verified: never
 ---
 # FINAL IMPLEMENTATION PLAN v3 — Wave Plan, Acceptance Criteria & Risk Register
@@ -71,11 +80,11 @@ Wave 7    future + product backlog                            │
 
 | # | Task | Done condition |
 |---|------|----------------|
-| 0.5.1 | Re-run full backend suite (2158) + frontend (3363) + integration (255) in controlled order | all green |
+| 0.5.1 | Re-run full backend suite + frontend + integration (255) in controlled order | all green. *(The v3 figures here were 2158 / 3363; current recorded baselines are 2743 / 3632 — see §6.)* |
 | 0.5.2 | Run the **full E2E marketplace subset** (22) as the only E2E run this cycle | 22 green |
 | 0.5.3 | Decide **F-A10-1 commit**: apply or revert test-only fix per owner | tree clean |
-| 0.5.4 | **Migration cap**: raise to 200 in `migration-integrity.test.js:110` (pre-decided owner 2026-09-16) | cap raised, migration-integrity green |
-| 0.5.5 | Baseline `tsc` (8 pre-existing errors documented, no new errors) | 8 baseline |
+| 0.5.4 | **Migration cap**: raise to 200 in `migration-integrity.test.js:110` (pre-decided owner 2026-09-16) | cap raised, migration-integrity green — **DONE**, `:110` asserts `<= 200` |
+| 0.5.5 | Baseline `tsc` (8 pre-existing errors documented, no new errors) | 8 baseline — **SUPERSEDED**: T33 took `tsc --noEmit` to **0** on 2026-09-06; the gate is now "zero NEW errors" |
 
 ### Wave 1 — Storefront critical (deploy gate G1)
 
@@ -94,7 +103,7 @@ Wave 7    future + product backlog                            │
 | 2.1 | F-A4-4 payout `z.string()` + frontend type | admin payout 200 |
 | 2.2 | F-A4-3 webhook amount/currency check | mismatch → log + not-paid |
 | 2.3 | F-A2-1 8 catch-blocks 500 | unit test reaches 8 paths |
-| 2.4 | Q4 tip: migration `0100_tip_amount.sql` + persist + reports | tip column + migration applied |
+| 2.4 | Q4 tip: migration + persist + reports | **migration + persist DONE** — the column landed as `0120_add_tip_amount_to_pos_transactions.sql` and the POS INSERT binds it (`routes/pos/index.js:819`). **reports still open**: `tip_amount` is in neither `reports.js` nor `admin-reports.js` nor `ReportsPanel.tsx`. The planned filename `0100_tip_amount.sql` is wrong: `0100` was taken by the project-id migration long before. |
 | 2.5 | F-A4-2 reservation double-count remove | integration test |
 | 2.6 | F-A4-8 webhook select `tenant_id` | regression test |
 | 2.7 | D19e: ledger states consistent after Wave 2 | unit + integration |
@@ -122,7 +131,7 @@ Wave 7    future + product backlog                            │
 | 4d | dependency CVE audit | report |
 | 4e | staging explicit routes + env.example no stale Stripe | docs fixed |
 | 4f | migration consolidation policy (pre-decided: raise cap to 200; consolidation deferred to next cycle if ever needed) | cap raised + noted |
-| 4g | **tsc gate to zero** (8 pre-existing errors) | CI typecheck green |
+| 4g | **tsc gate to zero** (was: 8 pre-existing errors) | CI typecheck green — **the goal is met**: `npx tsc --noEmit` reached 0 at T33 (2026-09-06); CI runs it as a gate |
 | 4h | astro build gate in CI + PERF_BASELINE refresh | CI green |
 | 4i | **Observability**: structured logging, logpush, rollback trigger | logpush to target |
 
@@ -162,30 +171,62 @@ Wave 7    future + product backlog                            │
 
 ### Migration budget (through Waves 1-7)
 
-| Use | Slots | Notes |
-|-----|-------|-------|
-| Current | 99 | head `0099` |
-| Q4 tip (`0100_tip_amount.sql`) | +1 → 100 | within raised cap (200) |
-| Future auth/SSE/logging | +2 → 102 | within raised cap |
+> **This table describes the tree as it stood when v3 was written and is kept for
+> the record. Do not allocate from it.** Derive the real figures:
+> `find backend/migrations -maxdepth 1 -name '*.sql' | wc -l` and
+> `ls backend/migrations/*.sql | sort | tail -1 | xargs basename`. Both are
+> printed in `docs/07-data/migrations.md` §1, which is the authority.
+>
+> - **99 / head `0099` is a pre-squash figure.** `0099` itself now lives in the
+>   excluded `backend/migrations/legacy/` folder, and 99 is that folder's size,
+>   not the applied lineage's. The applied lineage is **40** top-level `.sql`
+>   files, head `0127_meals_tenant_composite_pk.sql`.
+> - **`0100` is NOT a free slot.** The plan reserves it for
+>   `0100_tip_amount.sql`, but `backend/migrations/0100_add_project_id_nullable.sql`
+>   has been live ever since; the tip column landed as
+>   `0120_add_tip_amount_to_pos_transactions.sql`. A follower authoring
+>   `0100_*` would collide with a live migration. **Next free slot is `0128`**;
+>   never reuse the reserved-but-absent `0109` or `0125`.
+> - **The cap of 200 did get applied**, as this plan predicted:
+>   `tests/core/migration-integrity.test.js:110` asserts
+>   `expect(migrationFiles.length).toBeLessThanOrEqual(200)`. R3 below is closed.
 
-**Cap policy (pre-decided, owner 2026-09-16 §4.3): raise `migration-integrity.test.js` cap from 100 → 200 in Wave 0.5. No owner decision required. F-A1-F003 gets NO migration (P4).**
+| Use | Slots (as planned) | Notes |
+|-----|-------|-------|
+| Current | 99 | head `0099` — **pre-squash, superseded; see the callout** |
+| Q4 tip (`0100_tip_amount.sql`) | +1 → 100 | **shipped as `0120_add_tip_amount_to_pos_transactions.sql`**; `0100` was taken by the project-id migration |
+| Future auth/SSE/logging | +2 → 102 | within raised cap (200) |
+
+**Cap policy (pre-decided, owner 2026-09-16 §4.3): raise `migration-integrity.test.js` cap from 100 → 200 in Wave 0.5. No owner decision required. F-A1-F003 gets NO migration (P4).** — applied; `tests/core/migration-integrity.test.js:108-110`.
 
 ---
 
 ## 6. Acceptance Criteria (owner §8 — "not worse than baseline − 0.5%")
 
-Every wave must prove **no regression vs baseline** before the next wave starts. Baseline = the numbers in §2 Verified truths (current, fresh-run this session).
+Every wave must prove **no regression vs baseline** before the next wave starts.
 
-| Metric | Baseline | Wave gate | Fail threshold |
-|--------|----------|-----------|----------------|
-| Backend unit tests | 2158 / 83 files | every wave | any fail → do not proceed |
-| Frontend unit tests | 3363 / 137 files | every wave | any fail → do not proceed |
-| Root integration | 255 / 37 files | every wave (F-A10-1 re-run = 256 after fix) | any fail → do not proceed |
-| E2E marketplace subset | 22 / 22 | every wave | any fail → do not proceed |
-| Backend coverage | 86.77 / 76.30 / 92.88 / 91.64 | every wave | **below threshold pair** (83/72/89/89) → gate |
-| tsc | 8 pre-existing errors | every wave | > 8 → gate |
-| Bundle (A20) | PERF_BASELINE 4.2× | Wave 6/7 refresh | ≥ 5% worse than refreshed baseline |
-| Doc truth | every claim matches baseline | 6a/6b | any false claim → gate |
+> **The baseline numbers below are the v3 session's measurement and are stale as
+> absolute figures. The MECHANISM is the deliverable and it is still correct:
+> "no unexplained drop against the current recorded run".** Re-derive the
+> baselines from `docs/01-architecture/ARCHITECTURE.md` §7 (canonical) and
+> `docs/04-testing/TESTING.md` § *Suites and counts*, each of which names the
+> commit that produced its numbers. Latest committed: backend **127 files /
+> 2743 tests** (`9e58dae`), frontend **155 / 3632** (`88f307a`), root
+> integration **37 / 255** registered (correct both here and in the v3 table).
+> **E2E has no current total on purpose** — `tests/e2e/` holds 96 specs across 8
+> projects and the last recorded full gate is 919 passed / 0 failed / 15
+> env-skipped (2026-09-06). Run the gate; do not quote a remembered number.
+
+| Metric | Baseline (v3 session) | Current | Wave gate | Fail threshold |
+|--------|----------|-----------|----------------|----------------|
+| Backend unit tests | 2158 / 83 files | **2743 / 127** (`9e58dae`) | every wave | any fail → do not proceed |
+| Frontend unit tests | 3363 / 137 files | **3632 / 155** (`88f307a`) | every wave | any fail → do not proceed |
+| Root integration | 255 / 37 files | 255 / 37 — **still correct** | every wave (F-A10-1 re-run = 256 after fix) | any fail → do not proceed |
+| E2E marketplace subset | 22 / 22 | 22 / 22 — reconciled (B9), still correct | every wave | any fail → do not proceed |
+| Backend coverage | 86.77 / 76.30 / 92.88 / 91.64 | thresholds unchanged: **83/72/89/89** (`backend/vitest.config.ts:21-30`) — evaluated only by `npm run test:coverage`, which is what CI runs | every wave | **below threshold pair** → gate |
+| tsc | 8 pre-existing errors | **0** at T33 (2026-09-06), 2 pre-existing on 2026-10-03 | every wave | any NEW error → gate |
+| Bundle (A20) | PERF_BASELINE 4.2× | re-baselined in `docs/03-frontend/PERF_BASELINE.md`; CWV targets at `tests/lighthouse/run.ts:54` with `enforced: false` | Wave 6/7 refresh | ≥ 5% worse than refreshed baseline |
+| Doc truth | every claim matches baseline | — | 6a/6b | any false claim → gate |
 | Deploy | staging green | 6.5 | any red → gate until fixed |
 | Rollback | dry-run pass | 6.5.4 | fail → hold deploy |
 

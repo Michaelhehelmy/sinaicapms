@@ -26,6 +26,8 @@ code-references:
   - "backend/src/durable/broadcaster.js"
   - "app/src/lib/sse.ts"
   - "backend/wrangler.toml"
+  - "backend/tests/orders-unit.test.js"
+  - "docs/01-architecture/ARCHITECTURE.md"
 verified: never
 ---
 # FINAL IMPLEMENTATION PLAN v3 — Governance Closure & Appendices
@@ -36,6 +38,14 @@ verified: never
 ---
 
 ## 1. Governance Incident Closure
+
+> **Read the G-numbering before citing either file.** `G1`–`G4` here are
+> **governance incidents** — closure records of things that went wrong during an
+> audit, kept because the rule each one produced outlives the event. In
+> `FINAL_IMPLEMENTATION_PLAN_v3_waves.md` §5, `G1`/`G2`/`G3`/`G6.5` are
+> **deploy gates** — the stopping points where a wave must be green. Same
+> letters, different axis, and both files are live. `docs/09-plans/README.md`
+> §Concepts disambiguates them; always qualify a `G` reference with its file.
 
 ### G1 — A1 created migrations 0100 and 0101 during the audit
 
@@ -573,6 +583,14 @@ RUN  v4.1.10 /home/michael/devin/opencode-workspace/sinaicamps
 ```
 
 ### 9.5 Test-count calibration — the +3 net (owner §6.1)
+
+> **This is a dated single-session record and is kept as the evidence it is.** Its
+> job is to prove a *delta* (+3, attributable to 3 named test titles), not to
+> publish the suite's size — so the figures are left exactly as measured rather
+> than updated, because updating them would destroy the calibration. **Do not
+> quote 2158 / 83 files as a current baseline**: `docs/01-architecture/ARCHITECTURE.md`
+> §7 is canonical (backend **127 files / 2743 tests**, `9e58dae`). The 3 titles
+> below all still exist verbatim in `backend/tests/orders-unit.test.js`.
 
 | Claim | Evidence |
 |-------|----------|
