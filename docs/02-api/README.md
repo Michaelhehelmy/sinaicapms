@@ -39,8 +39,11 @@ purpose, because it is a statement of rules, not a list of endpoints.
   401 means "not authenticated", 403 means "authenticated but not allowed" — the two are not interchangeable.
 - **Response envelope** — errors are `errorResponse(message, status, errors)`; success is plain JSON.
   Every endpoint answers the same shape so one client error path covers the whole surface.
-- **Per-domain map** — `API_SURFACE_MAP.md` walks 25 domain groups, each as
-  endpoint → client function → handler → table → hook.
+- **Per-domain map** — `API_SURFACE_MAP.md` walks **41** domain groups (`grep -c "^## " API_SURFACE_MAP.md` →
+  41), each as endpoint → client function → handler → table → hook. It records the
+  **frontend's reach**, which is a strict superset of what the OpenAPI registry declares —
+  see `API_CONTRACT.md` §1 for the measured gap (38 of 268 rows registered) and for the
+  three columns of the map that have drifted from the tree.
 
 ## Docs
 

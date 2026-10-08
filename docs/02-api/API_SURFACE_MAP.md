@@ -19,14 +19,21 @@ relates-to:
   - "[[ARCHITECTURE]]"
 code-references:
   - "app/src/lib/api.ts:289-304"
+  - "app/src/lib/api.ts:1264,1549,2681 (the three raw-fetch wrappers named in the header note)"
   - "backend/src/api/camps.js:290"
+  - "backend/src/api/camps.js:476-722 (productsRoutes), :968-1065 (ratePlansRoutes) — no GET-by-id"
+  - "backend/src/api/meal-schedules.js:25,32,92,142 — three verbs, no GET-by-id, no PUT-by-id"
   - "backend/src/api/camps-alias.js:38"
   - "backend/src/index.js:642"
+  - "backend/src/index.js:757-761 (mediaScope: GET/HEAD public, DELETE admin realm)"
   - "backend/src/routes/pos/index.js:127-248"
   - "backend/src/api/upload.js:7-146"
+  - "backend/src/api/upload.js:174-219 (DELETE /api/media/*, added 845a39d)"
   - "backend/src/api/payments.js:16-47"
   - "backend/src/api/paymob-webhook.js:140-190"
   - "backend/src/routes/registry.js:1-3494"
+  - "backend/src/routes/registry.js:285 (the only 'camps' mention in src, and it is a comment)"
+  - "backend/migrations/legacy/0063_rename_camps_to_projects.sql:60"
   - "endpoint: GET /api/media/* → backend/src/api/upload.js:146-222"
 verified: never
 ---
@@ -37,6 +44,40 @@ verified: never
 > the per-domain index stay in that file; this file carries the full mapping tables.
 > Registry scope, the `—` convention and the re-verification method are unchanged — read the
 > header of `docs/API_SURFACE.md` first.
+
+### What this map is, measured (2026-10-06)
+
+The 268 endpoint rows below are a **coverage record of the frontend's reach**, not a
+route registry. Three of its five columns have drifted from the tree and the drift is
+structural, so it is recorded here once instead of being patched cell by cell:
+
+| Column | Rows | Absent from the tree | Derivation |
+|---|---|---|---|
+| **Frontend Function** | 249 distinct names | **64** — never existed in the live client | resolve every cell against the export list of `app/src/lib/api.ts` (287 names) |
+| **React Hook** | 195 distinct `use*` names | **120** — never existed in the live client | resolve every cell against `use*` definitions under `app/src/**` (134) |
+| **DB Tables** | 84 distinct names | **15** — not in the live migration lineage | `grep -r <table> backend/migrations/*.sql backend/src` |
+
+- The 64 missing functions and 120 missing hooks were **deliberately deleted** in
+  `8d626e3` ("dead-code pass — delete 29 wrappers, grep-verified zero consumers"). A row
+  naming one of them describes an interface that existed at authoring time, not today.
+  Keep the row for history; do not read it as a promise.
+- Of the 15 absent tables, **13** (`ai_automation_logs`, `ai_automation_rules`,
+  `ai_predictions`, `ai_price_rules`, `crm_contacts`, `crm_knowledge_articles`,
+  `crm_opportunities`, `crm_ticket_comments`, `crm_tickets`, `storefront_blog_posts`,
+  `storefront_cart`, `storefront_cart_items`, `storefront_pages`) have **0 commits
+  anywhere in `backend/`** — `git log -S '<table>' -- backend/` is empty, so they were
+  invented by this map. The other 2 (`product_lang`, `tenant_usage`) exist **only** in
+  the excluded `backend/migrations/legacy/` folder and were dropped there
+  (`legacy/0095_drop_tenant_usage.sql`). `crm_leads` **does** exist
+  (`backend/migrations/0006_crm.sql`) — the `crm_*` family is not uniformly fictional.
+- **OpenAPI coverage of these rows: 38 of 268 method-pairs over 29 of 183 distinct
+  paths resolve against `backend/openapi.json`.** `openapi.json` is not stale — it
+  renders `routes/registry.js`'s 128 `createRoute` calls with 0 drift in either
+  direction — the registry is simply smaller. See `API_CONTRACT.md` §1.
+- **Three `api.ts` functions use a raw `fetch` outside `apiFetch`, deliberately**
+  (`upload` `:1273` multipart, `exportAuditLog` `:1558` and `exportAdminPerformance`
+  `:2688` both non-JSON), plus `refreshAccessToken` `:150` inside the helper itself.
+  Table with the reasons: `API_CONTRACT.md` §1.
 
 ---
 
@@ -57,7 +98,7 @@ Canonical mount is `/api/projects` (`campsRoutes`, index.js); `/api/camps` is a 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/products` | GET | `getProducts()` | `GET /api/products` | `products`, `product_lang` | `useProductsQuery()` | List all products (room types) |
-| `/products/:id` | GET | — | `GET /api/products/:id` | `products`, `product_lang` | — | Get single product (OpenAPI-registered; no client wrapper/hook found) |
+| `/products/:id` | GET | — | — | `products`, `product_lang` | — | **No such endpoint.** `productsRoutes` (`backend/src/api/camps.js:476`) registers only `GET /` `:478`, `POST /` `:530`, `POST /bulk` `:610`, `PUT /:id` `:664`, `DELETE /:id` `:722`; `openapi.json` `/api/products/{id}` carries `['delete','put']` only. The earlier "OpenAPI-registered" note on this row was wrong, and so was the handler cell |
 | `/products` | POST | `saveProduct(data)` | `POST /api/products` | `products`, `product_lang` | `useSaveProductMutation()` | Create new product |
 | `/products/bulk` | POST | `bulkCreateProducts(items)` | `POST /api/products/bulk` | `products` | — | Create multiple products at once (no hook found) |
 | `/products/:id` | PUT | `saveProduct(data, editId)` | `PUT /api/products/:id` | `products`, `product_lang` | `useSaveProductMutation()` | Update product |
@@ -80,7 +121,7 @@ Canonical mount is `/api/projects` (`campsRoutes`, index.js); `/api/camps` is a 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/rateplans` | GET | `getRatePlans()` | `GET /api/rateplans` | `rate_plans_new` | `useRatePlansQuery()` | List rate plans |
-| `/rateplans/:id` | GET | — | `GET /api/rateplans/:id` | `rate_plans_new` | — | Get single rate plan (no client wrapper/hook found) |
+| `/rateplans/:id` | GET | — | — | `rate_plans_new` | — | **No such endpoint.** `ratePlansRoutes` (`backend/src/api/camps.js:968`) registers only `GET /` `:970`, `POST /` `:984`, `PUT /:id` `:1022`, `DELETE /:id` `:1065`; `openapi.json` `/api/rateplans/{id}` carries `['delete','put']` only |
 | `/rateplans` | POST | `saveRatePlan(data)` | `POST /api/rateplans` | `rate_plans_new` | `useSaveRatePlanMutation()` | Create new rate plan |
 | `/rateplans/:id` | PUT | `saveRatePlan(data, editId)` | `PUT /api/rateplans/:id` | `rate_plans_new` | `useSaveRatePlanMutation()` | Update rate plan |
 | `/rateplans/:id` | DELETE | `deleteRatePlan(id)` | `DELETE /api/rateplans/:id` | `rate_plans_new` | `useDeleteRatePlanMutation()` | Delete rate plan |
@@ -125,9 +166,9 @@ Canonical mount is `/api/projects` (`campsRoutes`, index.js); `/api/camps` is a 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
 | `/meal-schedules` | GET | `getMealSchedules(params?)` | `GET /api/meal-schedules` | `meal_schedules`, `meals`, `projects` | `useMealSchedulesQuery(params?)` | List meal schedules |
-| `/meal-schedules/:id` | GET | — | `GET /api/meal-schedules/:id` | `meal_schedules` | — | Get single meal schedule (no client wrapper/hook found) |
+| `/meal-schedules/:id` | GET | — | — | `meal_schedules` | — | **No such endpoint.** `handleMealSchedulesRoute` (`backend/src/api/meal-schedules.js:25`) branches on three verbs only — `GET` list `:32`, `POST` create `:92`, `DELETE` by id `:142` — and `openapi.json` `/api/meal-schedules/{id}` carries `['delete']` only |
 | `/meal-schedules` | POST | `createMealSchedule(data)` | `POST /api/meal-schedules` | `meal_schedules` | — | Create meal schedule (no hook found) |
-| `/meal-schedules/:id` | PUT | — | `PUT /api/meal-schedules/:id` | `meal_schedules` | — | Update meal schedule (no client wrapper/hook found) |
+| `/meal-schedules/:id` | PUT | — | — | `meal_schedules` | — | **No such endpoint either** — same handler, same three verbs (`meal-schedules.js:32,92,142`) |
 | `/meal-schedules/:id` | DELETE | `deleteMealSchedule(id)` | `DELETE /api/meal-schedules/:id` | `meal_schedules` | — | Delete meal schedule (no hook found) |
 
 ## Promotions
@@ -238,9 +279,9 @@ Canonical mount is `/api/projects` (`campsRoutes`, index.js); `/api/camps` is a 
 
 | Endpoint | Method | Frontend Function | Backend Handler | DB Tables | React Hook | Purpose |
 |----------|--------|-------------------|-----------------|-----------|------------|---------|
-| `/marketplace/projects` | GET | `getMarketplaceProjects(params?)` | `GET /api/marketplace/projects` | `camps`, `tenants`, `project_meta` | `useMarketplaceProjectsQuery(params?)` | Public project listing |
+| `/marketplace/projects` | GET | `getMarketplaceProjects(params?)` | `GET /api/marketplace/projects` | `projects`, `tenants`, `project_meta` | `useMarketplaceProjectsQuery(params?)` | Public project listing. **The table is `projects`, not `camps`** — there is no `FROM`/`JOIN`/`INTO camps` anywhere in `backend/src`; the only two mentions of `camps` are a comment (`backend/src/routes/registry.js:285`) and a comment in `backend/migrations/0104_provision_default_projects.sql:15`. `camps` was renamed to `projects` in the excluded lineage (`backend/migrations/legacy/0063_rename_camps_to_projects.sql:60`) |
 | `/marketplace/categories` | GET | `getMarketplaceCategories()` | `GET /api/marketplace/categories` | `marketplace_categories` | `useMarketplaceCategoriesQuery()` | List marketplace categories |
-| `/marketplace/:slug` | GET | `getMarketplaceTenantProfile(slug)` | `GET /api/marketplace/:slug` | `tenants`, `tenant_meta`, `camps` | `useMarketplaceTenantProfileQuery(slug)` | Public tenant profile |
+| `/marketplace/:slug` | GET | `getMarketplaceTenantProfile(slug)` | `GET /api/marketplace/:slug` | `tenants`, `tenant_meta`, `projects` | `useMarketplaceTenantProfileQuery(slug)` | Public tenant profile. `camps` → `projects` for the same reason as the row above — the table was renamed in the excluded lineage and `backend/src` contains no `camps` SQL |
 | `/marketplace/reviews` | POST | `submitMarketplaceReview(data)` | `POST /api/marketplace/reviews` | `marketplace_reviews` | `useSubmitMarketplaceReviewMutation()` | Submit public review |
 | `/marketplace/reviews/:projectId` | GET | `getMarketplaceReviews(projectId)` | `GET /api/marketplace/reviews/:projectId` | `marketplace_reviews` | `useMarketplaceReviewsQuery(id)` | Get reviews for project |
 
@@ -511,6 +552,7 @@ Canonical mount is `/api/projects` (`campsRoutes`, index.js); `/api/camps` is a 
 |----------|--------|-----------------|-----------|------|---------|
 | `/upload` | POST | `upload.js` | R2 bucket (`MEDIA_BUCKET`) | Auth | Upload image to R2 (multipart or octet-stream, ≤8MB, jpg/png/webp/gif) |
 | `/media/*` | GET | `upload.js` (mediaRoutes) | R2 bucket (`MEDIA_BUCKET`) | Public | Stream stored media object (immutable cache, tenant-scoped keys) |
+| `/media/*` | DELETE | `upload.js` (`mediaRoutes`, `backend/src/api/upload.js:191`, rationale `:174-189`) | R2 bucket (`MEDIA_BUCKET`) | Auth (admin realm) | Purge the R2 object for a tenant-scoped key (Wave 3.6a / `F-A17-01`, commit `845a39d`). Key-scoped: a tenant admin may only delete keys under `media/{tenantId}/` (403 `Forbidden: media key belongs to another tenant` otherwise); `super_admin` may delete any. 401 unauthenticated, 404 malformed key, 503 no bucket, 502 on delete failure, 200 `{ success: true, key }`. Auth comes from the method-branching `mediaScope` at `backend/src/index.js:757` (GET/HEAD public, everything else admin realm). **No client wrapper exists** — no `deleteMedia` in `app/src/lib/api.ts`, and it is not in `openapi.json` (`/api/media/{key}` there carries `['get']` only) |
 
 ## Payments (Retired mock-Stripe — always 501)
 
