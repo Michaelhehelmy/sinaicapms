@@ -47,9 +47,21 @@ verified: never
 
 ### What this map is, measured (2026-10-06)
 
-The 268 endpoint rows below are a **coverage record of the frontend's reach**, not a
-route registry. Three of its five columns have drifted from the tree and the drift is
-structural, so it is recorded here once instead of being patched cell by cell:
+The **311 endpoint rows** below (over **214** distinct paths) are a **coverage record of the
+frontend's reach**, not a route registry. Three of its five columns have drifted from the tree
+and the drift is structural, so it is recorded here once instead of being patched cell by cell:
+
+> **A prior version of this note said "268 endpoint rows" and that figure is wrong.** 268 is
+> the number of rows carrying the full **7-column** shape; the other 43 rows have **6** columns
+> (they omit `Purpose`), and any count that splits on cell count silently drops them. Measured
+> 2026-10-06: `grep -c '^| \`' docs/02-api/API_SURFACE_MAP.md` → **311** rows,
+> `214` distinct `Endpoint` cells. The Frontend-Function / React-Hook / DB-Tables row counts
+> below are reproduced from a naive cell extraction and do not match the same pass either
+> (276 / 238 / 83 measured here vs 249 / 195 / 84 below) — **derive them against
+> `app/src/lib/api.ts` (287 exports) and `app/src/hooks/` before quoting, not from a row count.**
+> The OpenAPI-coverage bullet further down (method-pairs resolving against `openapi.json`) is a
+> SEPARATE, differently-derived number and was **not** re-derived in that pass — do not assume it
+> moves with the row count.
 
 | Column | Rows | Absent from the tree | Derivation |
 |---|---|---|---|
