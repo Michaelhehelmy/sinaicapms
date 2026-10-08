@@ -27,14 +27,30 @@ verified: never
 ---
 # SinaiCamps — Testing
 
-## Suites and counts (verified)
+## Suites and counts (verified 2026-10-06)
 
-| Suite | Command | Count |
-| --- | --- | --- |
-| Backend unit | `cd backend && npx vitest run` | **2610 tests / 115 files** |
-| Frontend unit | `cd app && npx vitest run` | **3561 tests / 149 files** |
-| Root integration | `npx vitest run` | **255 tests / 37 files** (262 registered; 7 dropped by the documented 30-min `/api/auth` login-limit flake)
-| E2E | `CI=true npx playwright test` | **566 total / 552 gate passed, 14 env-skipped** |
+Every figure names the commit that produced it, because a bare number rots
+silently. `ARCHITECTURE.md` §7 is the canonical table — this file restates it for
+testers and must not drift from it.
+
+| Suite | Command | Files | Tests | Last verified |
+| --- | --- | --- | --- | --- |
+| Backend unit | `cd backend && npx vitest run` | **127** | **2743** | `9e58dae` (`a2-saga-status`) |
+| Frontend unit | `cd app && npx vitest run` | **155** | **3632** | `88f307a` (`tenant-outage-vs-404`) |
+| Root integration | `npx vitest run --config vitest.integration.config.ts` | **37** | **255** registered | 2026-09-09; see the caveat below |
+| E2E | `CI=true npx playwright test` | **96** specs, 8 projects | **919 passed / 0 failed / 15 env-skipped** | 2026-09-06, per-project |
+
+Two caveats that used to be stated as numbers and are now stated as facts:
+
+- **The root integration run needs `--config vitest.integration.config.ts`.** Plain
+  `npx vitest run` at the repo root uses `vitest.config.ts`, whose `include` is
+  `tests/unit/**` only — a different suite. The full-config run has a documented
+  pre-existing flake: `/api/auth`'s 30-minute login limit answers 429 and takes the
+  tail of the run with it. Verify targeted or per-file.
+- **CI does not run the full E2E gate.** `.github/workflows/e2e.yml` runs
+  `npx playwright test --grep "@smoke"` — **10 tests**, all in
+  `tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts`. The 919 figure is the
+  last *recorded* local full gate. **Run it; do not quote a remembered number.**
 
 ## E2E specifics
 
@@ -58,9 +74,9 @@ ss -tlnp | grep -E '4320|8787'
 
 Free the ports (or let the config pick alternates) before running.
 
-### Environment-skipped tests (14)
+### Environment-skipped tests (15)
 
-A subset of specs only run against a live staging/prod environment (e.g. production-specific flows). In CI mode they are skipped — the gate is the 552 that run locally.
+A subset of specs only run against a live staging/prod environment (e.g. production-specific flows). In CI mode they are skipped — the gate is the set that runs locally. The last recorded full gate skipped **15** (2026-09-06). "Skipped" is a reported number here so a green run cannot quietly mean "most of the suite did not execute".
 
 ### Tenant page `load` hang
 
@@ -68,11 +84,25 @@ Tenant E2E pages can hang on `load` in `astro dev` because logo/favicon point at
 
 ### Ground truth
 
-`test-results/.last-run.json` records the previous run's results. If `tests/e2e/results/*` disagree with `AGENT_LOGBOOK.md`, the `.last-run.json` and the full log are authoritative.
+Three artifacts, and they answer different questions:
+
+| Artifact | What it is | Trust it for |
+|---|---|---|
+| `test-results/.last-run.json` | Playwright's last-run summary on **this machine** | did the run I just did finish |
+| `tests/e2e/results/html/` | the HTML report from that same local run | which specs failed, with traces |
+| [[98-history/sessions/AGENT_LOGBOOK_HISTORY]] | the committed run records | **the number to quote in a doc** |
+
+Both on-disk paths are **gitignored** (`.gitignore:10`, `:14`), so neither is ever
+committed and neither describes CI or anyone else's machine. **A previous version of
+this section pointed at `AGENT_LOGBOOK.md` for the suite numbers** — that file has
+been the reference tier since the 2026-10-06 restructure and holds **no** run
+results; the task history (with every suite result) moved to
+`AGENT_LOGBOOK_HISTORY.md`. If `tests/e2e/results/*` disagrees with that history,
+the history is the record and the local run is the newer fact — reconcile, don't pick.
 
 ## Writing tests
 
-- **Unit**: Vitest. Backend tests live in `backend/` (**115 files**); frontend in `app/` (**149 files**, colocated or under `app/src/**/__tests__`).
+- **Unit**: Vitest. Backend tests live in `backend/tests/` (**127 files**); frontend in `app/tests/` (**155 files**, under `unit/`, `e2e/` and `mocks/` — `app/src/**` carries **no** colocated tests).
 - **Integration**: `tests/` root, run via `vitest.integration.config.ts` (`npm run test:integration`).
 - **E2E**: Playwright specs in `tests/e2e/specs/` with shared pages/fixtures in `tests/e2e/pages/` and `tests/e2e/fixtures/`.
 - Reusable processes: use the `fix-failing-test` skill (`.opencode/skills/testing/fix-failing-test/SKILL.md`) to debug failures and `new-e2e-test` (`.opencode/skills/testing/new-e2e-test/SKILL.md`) to add specs.
@@ -113,44 +143,124 @@ Tenant E2E pages can hang on `load` in `astro dev` because logo/favicon point at
 
 ## Quick reference: all admin panel tab IDs
 
-### Super Admin (3 tabs)
-| Tab ID | Label | Purpose |
-|---|---|---|
-| `super_dashboard` | Super Dashboard | Platform-wide stats |
-| `super_tenants` | Tenants | Manage all tenants + admins |
-| `super_reservations` | All Orders | Orders across all tenants |
+**Source of truth: the nav arrays in the components, not this table.**
+`AdminApp.tsx` declares `TENANT_NAV` (`:127-155`, **29** entries) and `SUPER_NAV`
+(`:180-196`, **17**) — `grep -c "{ id: '" app/src/components/admin/AdminApp.tsx` → **46**
+in total — and `POSApp.tsx` declares `POS_NAV` (`:39-44`, **6**). Re-derive those
+numbers rather than trusting this table.
 
-### Tenant Admin (15 tabs)
-| Tab ID | Label | Purpose |
-|---|---|---|
-| `dashboard` | Dashboard | Tenant stats and quick actions |
-| `camps` | Camps | Manage camp locations |
-| `rooms` | Rooms | Manage room types and pricing |
-| `rateplans` | Rate Plans | Seasonal and special pricing |
-| `reservations` | Orders | Guest bookings and status |
-| `inbox` | Inbox | Contact form leads and messages |
-| `calendar` | Booking Calendar | Visual booking grid |
-| `meals` | Meals | Food and beverage items |
-| `menu-planner` | Menu Planner | Weekly meal scheduling |
-| `menu` | Menu Page | Public menu preview |
-| `planning` | Planning | Upcoming capacity view |
-| `reports` | Reports | Revenue and analytics |
-| `low-stock` | Low Stock | Inventory alerts |
-| `staff` | Staff | Staff management |
-| `settings` | Settings | Tenant config and password |
+> **This table was wrong in the most expensive way: every ID it listed was real, and
+> it was missing 30.** An earlier version said "3 super-admin / 15 tenant-admin /
+> 4 POS" — correct about its own rows, 30 short of the source. A folder README also
+> claimed the IDs "live only here", which is what stopped anyone diffing it against
+> the arrays. E2E specs do **not** read this table either: they deep-link by path
+> (`tests/e2e/pages/admin/dashboard.page.ts:16` builds `/admin/<tab>?tenant=…`), so a
+> missing row fails navigation silently instead of failing a selector.
 
-### POS (4 tabs)
-| Tab ID | Label | Purpose |
-|---|---|---|
-| `dashboard` | Dashboard | Today's sales overview |
-| `products` | Products | POS product catalog |
-| `orders` | Orders | Transaction history |
-| `shift` | Shift | Open/close shifts, cash reconciliation |
+### Tenant Admin (29 tabs)
+| Tab ID | Label |
+|---|---|
+| `dashboard` | Dashboard |
+| `camps` | Projects |
+| `rooms` | Rooms — needs `project` |
+| `rateplans` | Rate Plans — needs `product` |
+| `reservations` | Orders — needs `room` |
+| `cashdesk` | Cash Desk — needs `room` |
+| `folios` | Folios — needs `room` |
+| `inbox` | Inbox |
+| `calendar` | Booking Calendar — needs `room` |
+| `meals` | Meals — needs `project` |
+| `menu-planner` | Menu Planner — needs `project` |
+| `menu` | Menu Page — needs `project` |
+| `planning` | Planning — needs `project` |
+| `reports` | Reports |
+| `analytics` | Analytics |
+| `low-stock` | Low Stock |
+| `promotions` | Promotions |
+| `services` | Services |
+| `service-bookings` | Service Bookings |
+| `staff` | Staff |
+| `financials` | Financials |
+| `hr` | HR & Payroll |
+| `supply` | Supply Chain |
+| `crm` | CRM |
+| `storefront` | Storefront |
+| `ai` | AI & Intelligence |
+| `billing` | Billing |
+| `import` | Import |
+| `settings` | Settings |
+
+### Super Admin (17 tabs)
+| Tab ID | Label |
+|---|---|
+| `super_dashboard` | Super Dashboard |
+| `super_tenants` | Tenants |
+| `super_reservations` | All Orders |
+| `super_feedback` | Feedback |
+| `super_users` | Users |
+| `super_settings` | System Settings |
+| `super_audit` | Audit Log |
+| `super_subscriptions` | Subscriptions |
+| `super_financials` | Financials |
+| `super_hr` | HR |
+| `super_supply` | Supply Chain |
+| `super_crm` | CRM |
+| `super_storefront` | Storefront |
+| `super_ai` | AI & Insights |
+| `super_reports` | Reports |
+| `super_health` | System Health |
+| `super_performance` | Performance |
+
+### POS (6 tabs)
+| Tab ID | Label |
+|---|---|
+| `dashboard` | Dashboard |
+| `products` | Products |
+| `orders` | Orders |
+| `tables` | Tables |
+| `kitchen` | Kitchen |
+| `shift` | Shift |
+
+**Totals: 46 admin + 6 POS = 52 nav entries.** A `requires` gate in `TENANT_NAV`
+(`'project'` needs ≥1 camp, `'product'` ≥1 product, `'room'` ≥1 room; the field is
+documented at `AdminApp.tsx:118-124`) hides a tab until the tenant owns the rows it
+edits — so a deep link to a gated tab is neither a 404 nor a bug.
 
 ## CI checks before shipping
 
-1. `cd backend && npx vitest run` — green.
-2. `cd app && npx vitest run` — green.
-3. `npx vitest run` (root integration) — green.
-4. `cd app && npm run build` — green.
-5. `CI=true npx playwright test` — 552 passed / 0 failed (14 skipped) unless environment specs apply.
+**These are the checks `.github/workflows/` actually runs, read from
+`ci.yml` (132 lines) and `e2e.yml` on 2026-10-06.** A previous version of this
+section was a five-item local habit list presented as "the CI checks … in order";
+it was missing four of the real gates, and — worse — it implied CI runs the full
+E2E suite, which it does not.
+
+| # | Gate | Command | Workflow job |
+|---|---|---|---|
+| 1 | Backend unit + coverage | `cd backend && npm run test:coverage` | `ci.yml` → `backend-tests` |
+| 2 | Frontend typecheck | `cd app && npx tsc --noEmit` | `ci.yml` → `frontend-tests` |
+| 3 | Frontend unit | `cd app && npx vitest run` | `ci.yml` → `frontend-tests` |
+| 4 | Astro build (PR gate) | `cd app && npm run build` | `ci.yml` → `frontend-tests` |
+| 5 | Root integration | `npx vitest run --config vitest.integration.config.ts` | `ci.yml` → `integration-tests` |
+| 6 | OpenAPI drift | `npx vite-node scripts/generate-openapi.js` then `git diff --exit-code -- openapi.json` | `ci.yml` → `backend-lint` |
+| 7 | `/api/camps` sunset-shim grep | `! grep -rn -E "['\"]/api/camps" src \| grep -v -e "src/api/camps-alias.js" -e "src/routes/registry.js"` | `ci.yml` → `backend-lint` |
+
+Notes that decide whether a local run means anything:
+
+- **`--config` is not optional for #5.** Plain `npx vitest run` at the root uses
+  `vitest.config.ts`, which only includes `tests/unit/**`.
+- **#1 runs with `--coverage`, so the thresholds are evaluated there and nowhere
+  else.** `backend/vitest.config.ts:21-30` = 83/72/89/89; `app/vitest.config.ts:35-40`
+  = 95/80/99/99. A plain `npx vitest run` cannot tell you the coverage gate passed.
+- **#6 is the one gate that fails on an un-regenerated artefact**: change a route in
+  `backend/src/routes/registry.js` without running `npm run gen:openapi` and CI goes
+  red on a spec file, not on code.
+- **CI's E2E job is smoke-only.** `e2e.yml` runs
+  `npx playwright test --grep "@smoke" --reporter=list` with `CI: true` — **10 tests**,
+  all in `tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts`. The full gate
+  (`CI=true npx playwright test`, 8 projects, `playwright.config.ts:34-90`) is a
+  **local/owner** gate and its last recorded result is 919 passed / 0 failed /
+  15 skipped (2026-09-06).
+- Node 22 in every job (`actions/setup-node@v4`, `node-version: 22`), which matches
+  the real floor: `astro` 7.3.1 declares `engines.node ">=22.12.0"`.
+- `scripts/run-all-tests.sh` (`npm run test:all`) is the local runner that wraps all
+  of the above and writes `reports/all-tests-<timestamp>/REPORT.md`.
