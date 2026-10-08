@@ -27,8 +27,9 @@ verified: never
 ## Overview
 
 Security architecture and the rules that follow from it. `security-guide.md` was refreshed
-2026-10-02 and records not only what the defences are but where the escHtml verdict landed —
-a defence that is documented as "not used here" is a decision, and a decision needs a record.
+2026-10-02 and re-verified 2026-10-06, and records not only what the defences are but where the
+escHtml verdict landed — a defence that is documented as "not used here" is a decision, and a
+decision needs a record.
 
 ## Concepts
 
@@ -55,7 +56,7 @@ a defence that is documented as "not used here" is a decision, and a decision ne
 
 | Doc | What it is |
 |---|---|
-| [[security-guide\|security-guide.md]] | **Canonical security architecture prose**, refreshed 2026-10-02: auth, tenant isolation, sanitisation, where the escHtml verdict landed. |
+| [[security-guide\|security-guide.md]] | **Canonical security architecture prose**, refreshed 2026-10-02 and re-verified 2026-10-06: auth (both POS credential paths), tenant isolation, the CSRF exemption and its limits, the rate-limit policy table, and where the escHtml verdict landed. |
 
 ## Related
 

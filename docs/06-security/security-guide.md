@@ -16,12 +16,16 @@ relates-to:
   - "[[98-history/worksheets/audit-2026-09-30-eschtml-inventory]]"
 code-references:
   - "backend/src/middleware/requireAuth.js"
+  - "backend/src/middleware/rateLimit.js:25-97,181-182,211,246"
   - "app/src/lib/utils.ts:3"
-  - "app/src/components/public/CampsSection.astro"
+  - "app/src/components/public/CampsSection.astro:137,195"
   - "app/src/components/admin/HRPanel.tsx"
-  - "app/src/components/public/MarketplaceHome.astro"
+  - "app/src/components/public/MarketplaceHome.astro:201"
+  - "app/src/components/public/TenantLanding.astro:225,227,228"
   - "app/tests/unit/tenant-name-escape.test.tsx"
-  - "backend/src/index.js:147"
+  - "backend/src/index.js:147,149,211,616-626"
+  - "backend/src/api/upload.js:7,9,108,116-118"
+  - "backend/src/routes/pos/index.js:278"
   - "backend/migrations/legacy/0076_sanitize_user_data.sql"
   - "scripts/check-deploy-parity.sh"
   - "backend/src/utils/response.js:108"
@@ -51,6 +55,7 @@ SinaiCamps uses **JWT (HS256) Bearer tokens** for authentication:
 
 - **Admin tokens**: Issued by `POST /api/auth/login` with `role: 'admin'` or `role: 'super_admin'`. Scoped to a tenant via `tenantId` claim.
 - **POS tokens**: Issued by `POST /api/pos/auth/login` with `posType: 'pos'`. Scoped via `organizationId` claim.
+- **There are two POS login paths, and the guide used to name only one.** `POST /api/auth/pos-login` is the second: it is mounted on the **admin** host (`backend/src/index.js:211`, `app.post('/api/auth/pos-login', …)`) and delegates to the *same* handler as the POS-surface route — `handlePosLoginRequest`, imported at `backend/src/index.js:60` and also served by `pos.post('/auth/login', …)` at `backend/src/routes/pos/index.js:278`. Same credential check, same `pos_users` lookup, same token shape; the difference is which origin a POS terminal is pointed at. The rate-limit table carries a **dedicated** entry for it (`'POST /api/auth/pos-login': { max: 15 }`, `rateLimit.js:33`) that must stay above `/api/auth/*` because first-match-wins. Audit either path when you audit the other.
 - **Token storage**: Client-side `localStorage` — tokens are never stored in cookies.
 - **Token transmission**: `Authorization: Bearer <token>` header on every authenticated request.
 
@@ -58,7 +63,7 @@ SinaiCamps uses **JWT (HS256) Bearer tokens** for authentication:
 - Tokens are stateless (no server-side session store).
 - Role-based access control (RBAC) enforced in `backend/src/middleware/requireAuth.js`.
 - Cross-tenant access blocked: admin tokens are bound to a single `tenantId`.
-- **Scope denial returns 403, not 401**: a valid token with the wrong tenant/project scope (`scopeDenied`), a POS↔admin realm mismatch, or insufficient role returns `403 Forbidden`. `401` is only for missing/invalid/expired tokens, deactivated accounts, or missing tenant context. Full matrix: `docs/API_CONTRACT.md` §7 (sourced from `backend/src/middleware/requireAuth.js` `DEFAULT_MESSAGES`).
+- **Scope denial returns 403, not 401**: a valid token with the wrong tenant/project scope (`scopeDenied`), a POS↔admin realm mismatch, or insufficient role returns `403 Forbidden`. `401` is only for missing/invalid/expired tokens, deactivated accounts, or missing tenant context. Full matrix: [[02-api/API_CONTRACT|API_CONTRACT.md]] §7 (sourced from `backend/src/middleware/requireAuth.js` `DEFAULT_MESSAGES`).
 
 ---
 
@@ -72,7 +77,7 @@ SinaiCamps uses **JWT (HS256) Bearer tokens** for authentication:
 |-----------|-----------|-------------|
 | Bearer tokens in `Authorization` header | **None** | Browsers do NOT auto-attach `Authorization` headers in cross-origin form submissions or `<img>` tags. An attacker-controlled `<form action="https://api.sinaicamps.com/api/camps">` will NOT include the JWT. |
 | No cookies for auth | **None** | CSRF relies on the browser auto-attaching cookies. Since SinaiCamps stores tokens in `localStorage` (not cookies), there is nothing for the browser to auto-send. |
-| `Content-Type: application/json` | **Defense-in-depth** | All API requests use JSON bodies. Simple cross-origin form submissions can only send `application/x-www-form-urlencoded`, `multipart/form-data`, or `text/plain`. |
+| `Content-Type: application/json` | **Defense-in-depth, and it has exceptions** | Most API requests use JSON bodies, and a simple cross-origin form can only send `application/x-www-form-urlencoded`, `multipart/form-data` or `text/plain`. **Not all of them do:** `POST /api/upload` accepts `multipart/form-data` **and** a raw `application/octet-stream` body with the filename in `?filename=` (`backend/src/api/upload.js:83-84`, branch at `:108`, raw path `:116-118`), so a cross-origin `<form enctype="multipart/form-data">` reaches it without a preflight. The route is authenticated and tenant-scoped, so an attacker's form still carries no credential — this row is the *second* defence and it does not hold universally. |
 
 ### Comparison: Cookie-based auth (risky)
 
@@ -86,9 +91,12 @@ If SinaiCamps ever migrated to cookie-based sessions:
 ```
 ✅  Bearer token in Authorization header — NOT auto-sent by browsers
 ✅  No session cookies — nothing for CSRF to exploit
-✅  JSON content-type — additional defense layer
+✅  JSON content-type on most routes — additional defense layer (not `POST /api/upload`)
 ⚠️  If switching to cookie-based auth: ADD anti-CSRF token implementation
 ```
+
+The first line is the whole argument. The second reinforces it, and the third is
+a bonus that holds for most routes — never treat it as the load-bearing one.
 
 ---
 
@@ -115,7 +123,8 @@ Rule: sink auto-escapes (Astro/React expression) or is plain text (WhatsApp/`wa.
 grid.innerHTML = '<h3>' + escHtml(t.name) + '</h3>';  // ✅ raw-HTML sink needs escHtml
 ```
 
-When to use which (full inventory: `docs/audit-2026-09-30-eschtml-inventory.md`):
+When to use which (full inventory:
+[[98-history/worksheets/audit-2026-09-30-eschtml-inventory|audit-2026-09-30-eschtml-inventory.md]]):
 
 | Category | Sink | Action |
 |----------|------|--------|
@@ -125,7 +134,16 @@ When to use which (full inventory: `docs/audit-2026-09-30-eschtml-inventory.md`)
 | D — manual HTML string → `innerHTML` / `document.write` | raw HTML | KEEP |
 | E — plain-text sink (WhatsApp/`wa.me`, `textContent`) | plain text | REMOVE wrapper |
 
-Fix commit `af1d69b` unwrapped all 46 A/B/E call sites (inner expressions byte-identical); 18 `escHtml` hits remain, all KEEP. Re-counted 2026-10-02, and the 18 are worth naming because **two of the three definitions are local, not the canonical import**:
+Fix commit `af1d69b` unwrapped **46 lines** carrying **50 A/B/E call sites**
+(the 46 is the inventory table's own unit — lines, not call sites). **42 of the
+46 inner expressions are byte-identical; 4 gained parentheses because Astro
+requires them** around a TS `as` cast inside a ternary branch or template
+literal: `CampsSection.astro:137` and `TenantLanding.astro:225`, `:227`, `:228`.
+Semantically identical, textually different — so this file's earlier "inner
+expressions byte-identical" was true of 42 lines, not all 46. Re-counted
+2026-10-02 and re-diffed 2026-10-06 (18 `escHtml` hits remain, all KEEP), and the
+18 are worth naming because **two of the three definitions are local, not the
+canonical import**:
 
 | File | Hits | Which |
 |---|---|---|
@@ -174,18 +192,29 @@ once as `app.use('/api/*', policyLimiter())` in `backend/src/index.js:147`.
   (`GET /api/projects/*/meal-plans`) compiles to a regex matching exactly one
   path segment; a trailing `*` keeps `startsWith` semantics.
 - **"100 requests/minute" is only the fallback bucket.** It is the `default`
-  entry, used by any path no other entry claims. Real per-surface budgets
-  include `GET /api/marketplace*` 300/min, `GET|HEAD /api/media*` 300/min,
-  `GET /api/availability` 120/min, `/api/pos/*` 60/min, `/api/auth/*` 30/min
-  (dial `RATE_LIMIT_LOGIN`), `/api/admin*` 20/min, `POST /api/tenants` 5/5min,
-  `POST /api/feedback` 6/min, `GET /api/orders/status/*` 5/min. Most entries
-  carry an `envKey` so ops can retune one surface without touching the global
-  dial (`readLimitInt`; a non-positive or unparseable value falls back to the
-  hardcoded `max`).
-- **A second, tenant-scoped layer** (`tenantAwareLimiter`) is mounted on 7
-  prefixes (`/api/tenants/:tenantId/meta/*`, `/api/tenants/import/*`,
-  `/api/admin/*`, `/api/tenant/billing/*`, `/api/pos/*`, `/api/reports/*`,
-  `/api/inventory/*`) with key `t:<ip>:<tenantId>:<path>` and its own
+  entry (100/min, `envKey: RATE_LIMIT_API`), used by any path no other entry
+  claims. The table is **`RATE_LIMIT_POLICIES`, `backend/src/middleware/rateLimit.js:25-97`:
+  23 named entries at `:33-95` plus `default` at `:96`** — derive the count with
+  a grep over that object rather than trusting a figure quoted here. Real
+  per-surface budgets include `GET /api/marketplace*` 300/min, `GET|HEAD
+  /api/media*` 300/min, `GET /api/availability` 120/min, `/api/pos/*` 60/min,
+  `/api/auth/*` 30/min (dial `RATE_LIMIT_LOGIN`), `/api/admin*` 20/min,
+  `POST /api/tenants` 5/5min, `POST /api/feedback` 6/min, `GET
+  /api/orders/status/*` 5/min. Most entries carry an `envKey` so ops can retune
+  one surface without touching the global dial (`readLimitInt`; a non-positive or
+  unparseable value falls back to the hardcoded `max`).
+- **A second, tenant-scoped layer** (`tenantAwareLimiter`) is mounted on **36
+  prefixes**, not the 7 this guide used to name —
+  `grep -c "tenantAwareLimiter())" backend/src/index.js` → **36**, and every
+  match is one `app.use('<prefix>', …)` in `backend/src/index.js`. The original
+  seven were simply the first seven in declaration order:
+  `/api/tenants/:tenantId/meta/*`, `/api/tenants/import/*`, `/api/admin/*`,
+  `/api/tenant/billing/*`, `/api/pos/*`, `/api/reports/*`, `/api/inventory/*`.
+  The other 29 cover `/api/products/*`, `/api/orders/*`, `/api/meals/*`,
+  `/api/services/*`, `/api/inbox/*`, `/api/me/*`, `/api/folios/*`,
+  `/api/financials/*`, `/api/hr/*`, `/api/supply/*`, `/api/crm/*`,
+  `/api/storefront/*`, `/api/ai/*` and others — **auditing the list means
+  re-running the grep**. Key is `t:<ip>:<tenantId>:<path>` with its own
   `RATE_LIMIT_TENANT` dial. It **no-ops for callers with no resolved tenant**
   — an anonymous or tenant-less token is not credited to any tenant bucket.
 - **Failure mode**: **fails closed** — a KV error answers
@@ -328,8 +357,55 @@ in the XSS section — it was in three places the previous pass never covered:
    both halves: the export exists and is unit-tested, but nothing under
    `backend/src` calls it, and the backend has no render step.
 
-*Last updated: 2026-10-02 — CORS + rate-limiting sections rebuilt against
-`backend/src/index.js:123–141` and `backend/src/middleware/rateLimit.js`;
-escHtml/known-patterns table re-verified against the tree (escHtml guidance
-itself unchanged since `fcd0e40`, 2026-09-30: raw-HTML-only + A–E table, fix
-SHA `af1d69b`, regression test `09ff710`).*
+*This section is left as written on 2026-10-02, including its two rate-limit
+figures — item 2 above still said "~20 entries … 7 prefixes", and both were wrong.
+A verification note that quotes the figure it verified becomes a **second copy**
+of that figure, and the second copy is the one the next audit checks. The
+corrections are in the 2026-10-06 note below and in the body of the guide.*
+
+---
+
+## Verification note (2026-10-06)
+
+The 2026-10-02 pass above verified the escHtml guidance added by `fcd0e40`: the
+raw-HTML-only rule, the A–E category table, fix SHA `af1d69b` and regression
+test `09ff710` all still match the tree. What it did **not** do was re-derive the
+two rate-limit figures it had just written — which is how the same two numbers
+(`~20 entries`, `7 prefixes`) stayed wrong in two places at once until this pass.
+
+Re-opened at the cited lines, four claims were stale or false:
+
+1. **The tenant-scoped layer's mount count: 7 → 36.**
+   `grep -c "tenantAwareLimiter())" backend/src/index.js` → **36**. The 7 were the
+   first seven in declaration order; the list grew by 29. Fixed in §Rate Limiting
+   with the grep printed beside the number.
+2. **The policy table's size: "~20 entries" → 23 named + `default`.**
+   `RATE_LIMIT_POLICIES` is `rateLimit.js:25-97`: 23 named entries at `:33-95`,
+   `default` at `:96`. "~20" was a fair reading; the number is now stated exactly
+   and attributed to the file rather than approximated.
+3. **"All API requests use JSON bodies" was false.** `POST /api/upload` takes
+   `multipart/form-data` (`:108`) or a raw `application/octet-stream` body with
+   `?filename=` (`:116-118`), which a cross-origin `<form enctype="multipart/form-data">`
+   can reach. The CSRF exemption does not depend on it — the `Authorization`-header
+   argument is the load-bearing one — but the "Defense-in-depth" row now says which
+   routes it does not cover.
+4. **"46 A/B/E call sites (inner expressions byte-identical)" was wrong on both
+   counts.** 46 **lines** carried **50** call sites, and 4 lines gained required
+   parentheses (`CampsSection.astro:137`, `TenantLanding.astro:225/227/228`).
+   Settled by `git show af1d69b^:<file>` vs `git show af1d69b:<file>` over the 12
+   touched files.
+
+Also fixed in this pass: the second POS credential path
+(`POST /api/auth/pos-login`, `backend/src/index.js:211`) is now documented — it
+was named in `API_SURFACE_MAP.md:483` but absent from this guide entirely — and
+two citations pointed at paths that no longer exist after the 2026-10-06
+restructure (`docs/API_CONTRACT.md` → [[02-api/API_CONTRACT|API_CONTRACT.md]];
+`docs/audit-2026-09-30-eschtml-inventory.md` →
+[[98-history/worksheets/audit-2026-09-30-eschtml-inventory]]).
+
+*Last updated: 2026-10-06 — Authentication, CSRF, Rate Limiting and §Layer 2
+re-verified against the tree (`backend/src/middleware/rateLimit.js:25-97`,
+`backend/src/index.js:211`, `backend/src/api/upload.js:108,116-118`, and
+`git show af1d69b^` for the byte-identical claim). CORS unchanged since
+2026-10-02 and still built against `backend/src/index.js:123–141`. EscHtml
+guidance itself unchanged since `fcd0e40`, 2026-09-30.*
