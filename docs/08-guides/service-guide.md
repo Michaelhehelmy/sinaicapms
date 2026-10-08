@@ -49,19 +49,36 @@ Navigate to the **Services** section in the admin panel:
 
 ### Custom Fields (JSON Schema)
 
-Services support custom fields via a JSON schema for booking forms:
+Each service **definition** carries a `fields_schema` column holding a JSON array
+of field descriptors. What exists, all verified in the tree:
 
-```json
-{
-  "fields": [
-    { "name": "group_size", "type": "number", "label": "Group Size", "min": 1, "max": 20 },
-    { "name": "pickup_time", "type": "time", "label": "Preferred Pickup Time" },
-    { "name": "dietary", "type": "select", "label": "Dietary Requirements", "options": ["None", "Vegetarian", "Vegan", "Halal"] }
-  ]
-}
-```
+- the column — `backend/migrations/0011_services.sql:15`
+  `fields_schema JSON NOT NULL DEFAULT ('[]')`
+- accepted and persisted — `backend/src/api/services.js:32`
+  `fields_schema: z.any().optional()` (no shape validation), `INSERT` at `:101-103`,
+  `UPDATE` at `:121-122`
+- served to the public catalog — `services.js:454` (SELECT) and `:482` (`JSON.parse`
+  of a string column) inside `GET /api/services/public/:slug` (`services.js:441`)
+- typed on the client — `app/src/lib/api.ts:1641` `fieldsSchema: unknown`
 
-This schema drives the dynamic booking form on the public portal.
+**No renderer consumes it, and no booking form is generated from it.** That
+sentence used to be here and was wrong:
+
+- `fieldsSchema` has **zero** references under `app/src/components` or
+  `app/src/pages` — the single declaration at `api.ts:1641` is all there is.
+- **There is no public services page.** `app/src/pages/` has no `service*` route
+  in any form, so `GET /api/services/public/:slug` has no page to be the backing
+  data for. Its only client wrapper, `getPublicServiceCatalog`, was **deleted** in
+  `5599675` ("prune dead exports … zero production/test callers") — a
+  deliberate dead-code sweep, not an oversight.
+- `bookingCreateSchema` (`services.js:50-56`) has **no** field for custom values
+  (`service_item_id`, `customer_name`, `customer_phone`, `scheduled_date`,
+  `notes` — that is the whole list), so a booking cannot carry a custom answer
+  even if something rendered one.
+
+So today `fields_schema` is **stored and returned, never used**: it is a schema
+without a form, and a form is the missing half. Authoring descriptors changes
+nothing a guest sees.
 
 ---
 

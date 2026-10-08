@@ -19,6 +19,16 @@ code-references:
   - "backend/src/index.js"
   - "app/src/components/admin/AdminApp.tsx"
   - "app/src/components/pos/POSApp.tsx"
+  - "app/src/components/admin/ReportsPanel.tsx:17-21"
+  - "app/src/components/admin/AnalyticsPanel.tsx:19-22"
+  - "app/src/components/admin/SuperReportsPanel.tsx"
+  - "app/src/components/admin/SettingsPanel.tsx"
+  - "app/src/components/admin/OrdersPanel.tsx"
+  - "backend/src/api/admin-reports.js:16-79"
+  - "backend/src/api/admin-reports.js:249-278"
+  - "backend/src/api/camps.js:947-964"
+  - "backend/src/api/orders.js:488-492"
+  - "backend/src/api/services.js:50-56"
 verified: never
 ---
 # docs/08-guides — Product guides
@@ -31,6 +41,20 @@ the real router and panel behind the screen, so a claim here can be checked agai
 
 ## Concepts
 
+- **The honesty marker is this folder's standard, not a personal habit** — every guide
+  declares its own gaps inline, in the sentence, where a reader who needs the fact is
+  already looking. Two shapes are recognised and both are load-bearing:
+  - a **caveat clause** in parentheses or after an em dash — `camp-guide.md:86`
+    ("precedence logic UNVERIFIABLE — `GET rate-plans` returns all plans"),
+    `service-guide.md:134` ("worker dashboard inbox UNVERIFIABLE"),
+    `restaurant-guide.md:168` ("Tab not implemented (use split or …)");
+  - a **named absence** — "no dedicated Availability panel" (`service-guide.md:176`),
+    "no single Inventory panel" (`camp-guide.md:208`), "no fixed Restock/Damage/Correction
+    enum" (`supermarket-guide.md:121`), "no export control" (`camp-guide.md`, § *Viewing
+    Reservations`).
+  Marking the gap is the deliverable. **A guide author must never resolve an absence
+  silently** — if you are writing a screen walkthrough and the screen has no
+  implementation, the sentence needs the marker in the same commit that adds the claim.
 - **Pillar ↔ endpoint-group alignment** — each guide maps to a domain group in [[API_SURFACE_MAP]]:
   camp→Camps/Rooms/Rate Plans, restaurant→Tables/Reservations/Kitchen, service→Services,
   supermarket→Products/Promotions/Inventory, analytics→Reports.
@@ -38,15 +62,18 @@ the real router and panel behind the screen, so a claim here can be checked agai
   that assumes a configured tenant is a walkthrough nobody can follow.
 - **Status lifecycles are the load-bearing concept** — rooms (available → reserved → occupied →
   cleaning → out_of_service), bookings, reservations and tables all move through named states, and the
-  state machine is what the UI is really teaching.
+  state machine is what the UI is really teaching. Note that `room_status` (five values, four of them
+  booking-driven) and `cleaning_status` (four values, its own `CHECK`) are **separate axes** — see
+  `camp-guide.md` § *Room Status Lifecycle*.
 - **Pricing is its own step** — rate plans and pricing tiers are separate objects from rooms, services
   or products, and are configured after the thing they price exists.
 - **Promotions and stock are inventory concerns, not pricing ones** — BOGO / percentage / fixed
   discounts, low-stock alerts and manual stock adjustments live in the supermarket pillar.
-- **Custom fields are JSON Schema** — the service pillar's extensibility mechanism, so its UI is
-  schema-driven rather than hardcoded fields.
-- **Exports and scheduled reports are a first-class feature** — the analytics pillar ends in delivery,
-  not just display.
+- **Custom fields are stored, not rendered** — `service_definitions.fields_schema` is a persisted JSON
+  column with no consumer: no renderer, no public services page, no booking field. The service
+  pillar's extensibility mechanism has a schema half and no form half.
+- **Exports and schedules are super-admin only** — the analytics pillar's template pipeline
+  (`/api/admin/reports/*`) has no tenant UI at all, and its schedules never fire.
 
 ## Docs
 
