@@ -20,6 +20,9 @@ code-references:
   - "deploy.sh"
   - "wrangler.toml"
   - "app/wrangler.toml"
+  - "app/public/_routes.json"
+  - "backend/src/index.js:211,616-626"
+  - "backend/src/middleware/rateLimit.js:211,246"
   - "backend/tests/pos-transactions-schema.test.js"
   - "backend/tests/pos-insert-positional.test.js"
 verified: never
@@ -123,7 +126,7 @@ addresses the same Worker for `versions list`.
 `./deploy.sh --rollback` also prints the backend `versions list` command for
 you after a successful pin. It only ever touches the backend.
 
-## 5. Post-deploy Smoke (expect 200/400-guard, never 000/500)
+## 5. Post-deploy Smoke (expect 200, never 000/500)
 
 ```bash
 curl -sS https://sinaicamps.com/ -w "\nHTTP %{http_code}\n" | tail -2
@@ -133,8 +136,28 @@ curl -sS https://acaciacamp.com/admin -w "\nHTTP %{http_code}\n" | tail -2
 curl -sS https://michaelshouse.sinaicamps.com/ -w "\nHTTP %{http_code}\n" | tail -2
 ```
 
+**All five must answer `200`.** `000` means the probe never landed — DNS, TLS or
+network, i.e. your probe is wrong. `500` means it landed and broke — the deploy is
+wrong. Those are different failures with different owners.
+
+This section used to read "expect **200/400-guard**", which implied one probe was
+meant to be refused. **It is not, and the reason is by design**: `GET /api/me` is a
+**public** endpoint. `backend/src/index.js:616-617` states it — *"Mixed visibility:
+GET is public (R-9 — graceful 200 without tenant context), PUT/PATCH are
+tenant-admin only"* — and `meScope` (`:620-623`) routes `GET` to
+`resolveScope({ public: true })` (`:618`) while every other method goes to the
+admin-scoped resolver (`:619`). An unauthenticated `GET /api/me` answering `200`
+is the specified behaviour, so treat a `4xx` there as the surprise, not the norm.
+
+Probed against production on 2026-10-06 (`e731b11`, five owner-approved GETs, no
+bodies): **5/5 answered `200`** — marketplace `/`, `/api/me`, acacia `/`,
+acacia `/admin`, michaelshouse `/`. That `200` on `/api/me` is not a static-asset
+fallback: `app/public/_routes.json` excludes `/api/*` from the `/*` include, so the
+request reaches the SSR function and its `API_BACKEND` service binding.
+
 Open acaciacamp.com/admin and confirm the Settings panel loads with no
-chunk 404.
+chunk 404. **That last step is a browser check no status code can satisfy** — it
+stays open until a human does it.
 
 ## 6. Rollback (only if smoke fails)
 
@@ -201,8 +224,8 @@ Detection routine (staging first, prod only with ack):
   request exhausts it. Keep `RATE_LIMIT_KV_ENABLED="false"` in
   `backend/wrangler.toml` (in-memory fallback). Set `"true"` only on a
   plan with adequate quota. Never add per-request KV writes.
-- **`Your account has exceeded D1's free tier daily row read limit
-  … [code: 7500]`** — the **D1** free tier, not the KV one. Every remote
+- **`Your account has exceeded D1's free tier daily row read limit …`** — the
+  **D1** free tier, not the KV one (5 million rows read/day). Every remote
   read (`d1 execute --remote`, `d1 migrations list --remote`, the census
   queries) is refused until the quota window resets; nothing is broken and
   the production Worker is unaffected (it has its own row budget). See §9a.
@@ -230,8 +253,17 @@ completely differently. Never treat one as the other.
 
 | Limit | Free tier | Symptom when hit | Remedy |
 |---|---|---|---|
-| KV writes | 1,000/day | every API request answers `429 Rate limit check failed` (fail-closed) | not a wait-and-see — set `RATE_LIMIT_KV_ENABLED="false"` so the limiter never writes |
-| D1 rows read | free-tier daily row-read cap | operator-side read commands refuse: `Your account has exceeded D1's free tier daily row read limit … [code: 7500]` | **wait for midnight UTC** (the window resets on the UTC day boundary) or upgrade to Workers Paid |
+| KV writes | **1,000 keys written/day** | every API request answers `429 Rate limit check failed` (fail-closed) | not a wait-and-see — set `RATE_LIMIT_KV_ENABLED="false"` so the limiter never writes |
+| D1 rows read | **5 million rows read/day** | operator-side read commands refuse: `Your account has exceeded D1's free tier daily row read limit. Upgrade to a paid plan or wait for tomorrow (midnight UTC) to continue` | **wait for midnight UTC** (all limits reset daily at 00:00 UTC) or upgrade to Workers Paid |
+
+Both ceilings and the midnight-UTC reset were re-checked against Cloudflare's
+published plan limits on 2026-10-06; this table was previously vaguer than the
+documentation and is now quoted from it.
+
+> **`[code: 7500]` is not in that message.** The string appears in this runbook
+> because it is what wrangler printed here, but Cloudflare's published error text
+> quotes the sentence above and **no numeric code**. Match on the sentence, not
+> the code — a code that no upstream documents may be wrangler-side and may change.
 
 The D1 one is an **operator** outage only: the deployed Worker keeps serving;
 what stops is *your ability to verify*. That distinction matters, because the

@@ -37,8 +37,10 @@ you could paste today.
 - **Pre-flight is read-only by default** — §3 changes nothing. Anything that mutates is opt-in.
 - **Record BOTH version IDs after every deploy** — the backend Worker version and the frontend
   version. One of them is how you roll back; a half-recorded deploy is a half-rollback.
-- **Smoke expects 200 or a 400-guard, never 000 or 500** — `000` means the probe never landed,
-  `500` means it landed and broke. They are different failures with different owners.
+- **Smoke expects 200 from all five probes — `000` means the probe never landed,
+  `500` means it landed and broke.** They are different failures with different
+  owners. (It used to read "200 or a 400-guard"; `GET /api/me` is public by design —
+  `backend/src/index.js:616-617` — so a `4xx` there is the surprise.)
 - **Rollback only if smoke fails** — §6 is the ordered inverse of §4.
 - **Backup, restore, drift** — §7 and §8: D1 restore is a real procedure, and drift detection is how
   you find out the live Worker is not the one in git.
