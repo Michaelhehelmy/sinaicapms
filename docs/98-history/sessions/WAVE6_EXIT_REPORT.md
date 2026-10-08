@@ -14,13 +14,44 @@ relates-to:
   - "[[AUDIT_MASTER_FINDINGS]]"
   - "[[ADMIN_REPAIR_REPORT_2026_09_14]]"
 code-references:
-  - "backend/migrations/legacy/0099_normalize_marketplace_payouts_ids.sql"
+  - "backend/migrations/legacy/0099_normalize_marketplace_payouts_ids.sql (EXCLUDED lineage — archaeology, NOT the applied head; see the callout below)"
   - "backend/wrangler.toml"
+  - "docs/07-data/migrations.md"
+  - "docs/07-data/README.md"
+  - "docs/01-architecture/ARCHITECTURE.md"
+  - "docs/04-testing/TESTING.md"
 verified: never
 ---
 # Wave 6 Exit Report — Doc-Truth (2026-09-21)
 
 All 18 docs verified against code. Counts: 99 migrations (`0099_normalize_marketplace_payouts_ids.sql`), Astro 7.3.1, backend 2225 / frontend 3416 (2026-09-21 gold run).
+
+> ### ⚠️ Every count on this page is a **PRE-SQUASH** figure — do not quote it
+>
+> This is a dated session record and its numbers are deliberately **not** updated,
+> because rewriting a record of what was measured on 2026-09-21 destroys it. What
+> follows is the mapping, so a reader who lands here knows which number is which:
+>
+> - **"99 migrations, head `0099_normalize_marketplace_payouts_ids.sql`"** — the
+>   migrations were later squashed into the current applied lineage, which is
+>   **40 top-level `.sql`, head `0127_meals_tenant_composite_pk.sql`**. `0099`
+>   itself now lives in the excluded `backend/migrations/legacy/` folder — and
+>   **99 is that folder's size**, so the figure was counting archaeology even
+>   then. Derive the real numbers with the two commands printed in
+>   **`docs/07-data/migrations.md` §1** (the authority; `docs/07-data/README.md`
+>   and `docs/01-architecture/ARCHITECTURE.md` §5 publish the same figures).
+>   `0053_camp_ownership.sql` — the "head" the repo-root `AGENTS.md` claimed
+>   until 2026-10-06 — is in `legacy/` for the same reason.
+> - **"backend 2225 / frontend 3416"** — current recorded baselines are backend
+>   **127 files / 2743 tests** (`9e58dae`) and frontend **155 / 3632**
+>   (`88f307a`). `docs/01-architecture/ARCHITECTURE.md` §7 is canonical;
+>   `docs/04-testing/TESTING.md` restates it.
+> - **The `## Commits` list below (`:27`, `:28`) repeats "99 migrations"** and is
+>   left exactly as written: each line records what one commit published at that
+>   time, which is the page's purpose.
+> - The `:59` exit block ("37 migration files, head 0123 … backend 2610/115,
+>   frontend 3561/149 … E2E 566/552/14") is the 2026-09-28 entry and is
+>   likewise a dated record, also left as written.
 
 ## Commits
 - 2385ac6 `docs/POLISH_PLAN.md` — line 5 Waves 1-3 shipped, §3.10 PWA planned (no service-worker/manifest on disk)
