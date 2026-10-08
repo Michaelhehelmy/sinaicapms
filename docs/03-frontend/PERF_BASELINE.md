@@ -18,7 +18,13 @@ relates-to:
   - "[[QUICK_START]]"
 code-references:
   - "app/astro.config.mjs:8-26"
-  - "app/budget.json:1-14"
+  - "app/budget.json:1-14 (5 transferSize budgets; no cls/lcp/tbt)"
+  - "app/package.json:15 (--budget-path=budget.json)"
+  - "tests/lighthouse/run.ts:54 (LIGHTHOUSE_TARGETS … enforced: false)"
+  - "tests/lighthouse/run.ts:30 (import lighthouse — pinned, not npx --yes)"
+  - "package.json:31 (lighthouse ^13.4.1)"
+  - "node_modules/playwright-core/browsers.json (chromium rev 1228)"
+  - "app/src/components/ui/Modal.tsx:2 (the one direct react-dom import)"
   - "app/src/lib/browser-ai.ts:237"
   - "app/src/components/admin/BrowserAIPanel.tsx:18"
   - "app/src/components/admin/SystemHealthPanel.tsx:153-169"
@@ -26,7 +32,7 @@ code-references:
   - "app/src/components/debug/DebugFeedbackWidget.tsx:111-113"
   - "app/src/components/public/BookPage.astro:45"
   - "app/src/components/public/MenuPage.astro:48"
-  - "tests/lighthouse/run.ts:52"
+  - "docs/03-frontend/README.md (9 public-facing island sites)"
 verified: never
 ---
 
@@ -34,7 +40,12 @@ verified: never
 
 > Snapshot 2026-09-22 (current; a newer 2026-10-02 bundle measurement is retained below) — re-run with `ANALYZE=1 npm run build` / `npx tsx tests/lighthouse/run.ts` before quoting. TBT threshold is 300ms in harness (`tests/lighthouse/run.ts`), not 200ms. The 2026-08-07 snapshot is retained below as historical reference. **Measure + update this file on every major islands change** (new `client:*` site, new heavy dep, new admin panel) — stale baselines understate the bundle ~4× (F-A20-01).
 
-> **Status**: snapshot of the 2026-09-22 build. Active enforcement now lives in `app/budget.json` + `npm run lighthouse` (T15, 2026-08-13) — the same targets (CLS < 0.1, LCP < 2.5 s, TBT < 200 ms, resource sizes) are enforced there against a live preview URL.
+> **Status**: snapshot of the 2026-09-22 build. Two different files hold limits, and they are **not** interchangeable:
+>
+> - **Resource sizes are enforced.** `app/budget.json` carries five `transferSize` budgets only (script 300, stylesheet 100, image 1500, font 400, total 2500 KB), and they are enforced by the `lighthouse` script's `--budget-path=budget.json` (`app/package.json:15`). It contains **no CLS, LCP or TBT figure**.
+> - **Core Web Vitals are recorded, not gated.** `tests/lighthouse/run.ts:54` holds `LIGHTHOUSE_TARGETS = { cls: 0.1, lcpMs: 2500, tbtMs: 300, enforced: false }` — `enforced: false` is the harness's own flag.
+>
+> So the correct sentence is: sizes are enforced via `budget.json`; CLS < 0.1 / LCP < 2.5 s / TBT < 300 ms are *targets* in `run.ts`. (This line previously said all four targets including "TBT < 200 ms" were enforced in `budget.json` — wrong file, and 200 was never the target; the 300 ms figure in the blockquote above was the correct one all along.)
 
 - **Build date:** 2026-09-22
 - **App:** `sinaicamps/app` — Astro 7.3.1 (installed), Vite 6.4.3, React 19.2.8, output: `server` (Cloudflare Workers adapter)
@@ -80,6 +91,10 @@ is worth recording there on the next islands change rather than silently folding
 no-op task.
 
 ## Totals (client bundle — what browsers download)
+
+> These are the **2026-09-22** figures and they are superseded by the 2026-10-02 snapshot at the
+> foot of this document (**113** chunks / **2168.8** KiB). Two sets of totals in one file is the
+> point — do not read 106 / 2114.3 KiB as current.
 
 | Metric | Value |
 | --- | --- |
@@ -133,9 +148,14 @@ Storefront islands stay small (all code-split per route): `StorefrontCheckout`
 **Duplicate React: none.** `react/index.js`, `react-dom/index.js` and `react-dom/client.js` each
 appear in exactly one emitted chunk (`react.*` 8.4 KiB, `react-dom.*` 3.5 KiB, and the
 `react-dom/client` build bundled inside `client.*`). The 3.5 KiB `react-dom` top-level entry is not
-a duplicate of `client.*` — it is a *different entry point*, pulled only by `recharts`' internals
-(`flushSync`) and by the `@astrojs/react` renderer; no `app/src` file imports `react-dom`
-directly (verified by grep). Nothing to fix.
+a duplicate of `client.*` — it is a *different entry point*, pulled by `recharts`' internals
+(`flushSync`), by the `@astrojs/react` renderer, and by **one direct application import**:
+`app/src/components/ui/Modal.tsx:2` does `import { createPortal } from 'react-dom'` (for the modal's
+portal rendering). This sentence previously read "no `app/src` file imports `react-dom` directly
+(verified by grep)", which is false — `grep -rn "from 'react-dom'" app/src` returns exactly that one
+line, and it was already there at the measurement HEAD. **The conclusion is unchanged and still
+"nothing to fix"**: three distinct entry points, one emitted chunk each, no second copy of React in
+the graph. Only the supporting evidence was wrong.
 
 **Vendor leaking into the admin chunk: none.** `AdminShell.*` is 23.2 KiB minified / 31.7 KiB
 rendered and is **100% `src/components`** — no `node_modules` at all except React and
@@ -288,7 +308,7 @@ The routes to a real reduction, with honest costs:
    bytes** and adding a request. That is metric gaming, not optimization, and it is not what
    this task should ship. Explicitly rejected.
 4. **Replace `recharts` for the one chart that uses it.** This is the real target, and it is much
-   bigger than #1. `RechartsLine` (344.3 KiB / 100.9 KiB gzip) exists to serve **four
+   bigger than #1. `RechartsLine` (344.3 KiB / **98.5 KiB** gzip) exists to serve **four
    `<LineChart>` sparklines in one panel** — `SystemHealthPanel.tsx:153,157,165,169`, and
    `SystemHealthPanel` is the *only* consumer of `LineChart` in the codebase. For that it drags in
    `@reduxjs/toolkit` (26.0), `immer` (19.9), `decimal.js-light` (24.8), `es-toolkit` (33.4) and
@@ -298,6 +318,13 @@ The routes to a real reduction, with honest costs:
    regression coverage, and it must be judged on whether a sparkline is worth a charting
    dependency at all. It deserves its own scoped workstream, not a drive-by inside a
    bundle-size task.
+
+   *Unit note (corrected 2026-10-06):* the gzip figure above is **98.5 KiB**, not 100.9 KiB. The
+   earlier "100.9 KiB" divided the byte count this document's own table already records
+   (**100,859 B** at "Top 10 client chunks" #2) by 1000 while calling the result KiB. The chunk
+   itself is 352,520 B = **344.26 KiB**, matching the 344.3 quoted throughout. Use bytes or KiB
+   consistently — the two differ by 2.4% here, which is small enough to read as noise and large
+   enough to make a table look internally inconsistent.
 
 **Recommendation:** take #4 as the next bundle workstream (largest real byte win, no product
 change), and treat #1 as a separate product decision. Do not spend further effort on
@@ -313,6 +340,15 @@ change), and treat #1 as a separate product decision. Do not spend further effor
 - **Measured from:** Lighthouse 13.4.1 mobile preset, default simulated throttling
   (Slow 4G + 4x CPU), driven by `tests/lighthouse/run.ts` (`npx tsx`) with
   Chromium 149 (Playwright 1.61.1)
+
+  Both versions are **derivable from the tree** (verified 2026-10-06) — do not record them as
+  "unknown": Lighthouse is a **pinned devDependency**, root `package.json:31` `"lighthouse":
+  "^13.4.1"`, installed `node_modules/lighthouse/package.json` = `13.4.1`, imported (never
+  `npx --yes`-shelled) at `tests/lighthouse/run.ts:30`. Chromium comes from
+  `node_modules/playwright-core/browsers.json` → `chromium` revision **1228** for
+  `playwright-core` **1.61.1**, and that exact binary prints its own version:
+  `~/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome --version` → `Google Chrome for
+  Testing 149.0.7827.55`.
 - **Targets:** flags only, **NOT enforced** this pass: CLS < 0.1, LCP < 2.5 s, TBT < 300 ms
 
 ## How to reproduce
