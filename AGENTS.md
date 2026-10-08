@@ -10,7 +10,7 @@ This file is the primary system prompt instruction manual for OpenCode agents wo
 | --- | --- |
 | **Project Name** | SinaiCamps |
 | **Developer** | Michael Helmy |
-| **Github** | [Michaelhehelmy/campmaster](https://github.com/Michaelhehelmy/campmaster) (private) |
+| **Github** | private. The configured remote is `https://github.com/Michaelhehelmy/sinaicapms.git` (`git remote get-url origin`) — earlier docs and this table called the repo `campmaster`, which no longer matches the remote. |
 | **Production URL** | [sinaicamps.com](https://sinaicamps.com) (staging: `staging.sinaicamps.com` via `./deploy.sh --staging`) |
 | **Frontend** | Astro 7.3.1 + React 19.2.x + Tailwind CSS v4 |
 | **Backend** | Hono on Cloudflare Workers |
@@ -32,10 +32,10 @@ sinaicamps/
 ├── app/                    Unified frontend (Layer 1 — UI only)
 │   └── src/
 │       ├── components/     React components
-│       │   ├── admin/      Admin dashboard panels (18 panels + SPA host)
-│       │   ├── pos/        POS terminal views (8 views)
+│       │   ├── admin/      Admin dashboard panels (63 files, 46 nav tabs, + SPA host)
+│       │   ├── pos/        POS terminal (11 views under components/pos/views/)
 │       │   ├── public/     Public components (ZoneGuard, TenantLanding, CampsSection…)
-│       │   ├── ui/         Shared UI primitives (26 components: DataTable, StatCard, SafeImage…)
+│       │   ├── ui/         Shared UI primitives (20 files: DataTable, StatCard, SafeImage…)
 │       │   ├── feedback/   Toast notifications
 │       │   ├── forms/      Form components
 │       │   ├── layout/     Layout helpers
@@ -49,25 +49,28 @@ sinaicamps/
 │       │   ├── admin/[...rest]/      Admin SPA host
 │       │   └── pos/[...rest]/        POS SPA host
 │       ├── lib/            Shared modules
-│       │   ├── api.ts      Unified API client (100+ functions) — the frontend↔backend contract
+│       │   ├── api.ts      Unified API client (287 exported functions) — the frontend↔backend contract
 │       │   ├── api-types.ts  Generated types (from backend/openapi.json)
 │       │   ├── routeZones.ts  Zone model (marketplace|tenant) — single source of truth
 │       │   ├── auth.tsx    React auth context + role hierarchy
 │       │   ├── sse.ts      SSE client (Durable Object broadcast)
 │       │   └── utils.ts    escHtml, formatCurrency, cn, etc.
-│       ├── hooks/          React hooks (useAdminData, useApiError, useQueryHooks, useSseInbox, useSseOrders)
+│       ├── hooks/          React hooks — exactly 5 files: useAdminData, usePosQueries,
+                   useQueryHooks, useSseInbox, useSseOrders
 │       ├── middleware/     Tenant resolution middleware (+ zone/routeForbidden locals)
 │       └── styles/         Global Tailwind CSS
 │
 ├── backend/                Cloudflare Worker API (Layer 2 — Hono + D1 + KV)
 │   └── src/
 │       ├── index.js        Hono app entry (CORS, routes, middleware, auth catch-all)
-│       ├── api/            Route handlers (9 modules)
-│       ├── routes/pos/     POS routes (8 modules)
+│       ├── api/            Route handlers (57 modules — one file per sub-router/service)
+│       ├── routes/pos/     POS routes (ONE module, routes/pos/index.js — 10 routes)
 │       ├── middleware/      Auth, RBAC, rate limiting, tenant
 │       ├── services/       Business logic
 │       └── utils/          Response helpers, error handling
-│   └── migrations/         D1 schema migrations (53 files — Layer 3)
+│   └── migrations/         D1 schema migrations (40 top-level .sql, head
+                       0127_meals_tenant_composite_pk.sql — Layer 3; `legacy/` is excluded
+                       archaeology, and 0127 is committed but NOT applied)
 │
 ├── tests/                  All test suites
 │   ├── unit/               Backend unit tests
@@ -83,7 +86,10 @@ sinaicamps/
 
 ## 3. Key Gotchas & Persistent Learnings
 
-Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critical items:
+Read `AGENT_LOGBOOK.md` at the start of every session for the persistent-learnings list — it is
+the **reference tier** and holds NO suite results and NO task history. Those moved to
+`docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` (9,800+ lines) in the 2026-10-06 restructure,
+so **the number to quote in a doc lives there**. Critical items:
 
 - **`pos_users.name`** is a GENERATED column (`first_name || ' ' || last_name`). INSERT with `first_name`/`last_name` only.
 - **`pos_users.organization_id`** is `INTEGER NOT NULL` — ALL INSERTs must include it.
@@ -101,7 +107,7 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 - **No i18n** — the frontend is hard-coded English LTR (Arabic RTL cancelled as a product decision; there is no `app/src/i18n/`).
 - **Read caching is header-only**: `cachedJsonResponse` (backend/src/utils/response.js) sets `Cache-Control: public, max-age=300, stale-while-revalidate=600` (availability uses 60s). `KV_CACHE` is bound but NEVER written — do not add KV writes for caching (free-plan 1,000 writes/day quota).
 - **Media lives in R2** (`MEDIA_BUCKET` = `campmaster-media`) and **SSE** broadcasts through the `BROADCASTER` Durable Object (admin inbox/orders) — bindings in `backend/wrangler.toml`.
-- **Only 4 public islands** exist (CampBooking `client:visible`, MarketplaceDirectory `client:visible` on `/marketplace`, ReservationSummary + TenantMenu `client:load`) — add islands sparingly and prefer `client:visible` for below-fold content (T15).
+- **Island discipline — 9 public-facing island sites, not 4** (re-counted 2026-10-06): `client:visible` ×6 (`TenantLanding.astro:203` CampBooking, `marketplace.astro:14` MarketplaceDirectory, and the four storefront pages `index:54` / `cart:52` / `checkout:53` / `order/[orderNumber]/confirmation:54`) + `client:load` ×3 (`BookPage.astro:45` ReservationSummary, `MenuPage.astro:48` TenantMenu, `PublicLayout.astro:778` debug-gated `DebugFeedbackWidget`) = **17 directive sites** in total, including 8 `client:only="react"` full-page SPA hosts. A raw `grep client:` over `app/src` reports 23; the 6 extras are comment mentions in `Storefront*.tsx` ×4, `PosShell.tsx`, `AdminShell.tsx`. **Default `client:visible` for content islands; `client:load` only for above-fold primary interactive content; `client:only` only for full-page SPA hosts. Add islands sparingly** (T15).
 - **Browser AI runs client-side** (`app/src/lib/browser-ai.ts`, T15): models (Transformers.js `@huggingface/transformers@^4.2.0`) load in the admin's browser only when the Browser AI tab in the AI & Intelligence panel is used — lazy dynamic `import()` only, never top-level, so the ONNX runtime stays out of the main/admin bundle. Server math endpoints (`/api/ai/dynamic-price`, `/api/ai/forecast`, `/api/ai/anomaly`, rules/predictions CRUD) remain server-side (D1-backed); `/api/ai/workers-ai/*` and `/api/ai/state/*` stay honest 503 stubs (no `AI` or `STATE_DO` binding in `wrangler.toml`). **LaMini-Flan-T5-248M uses `text2text-generation` not `text-generation`** — this T5 encoder-decoder ships split ONNX files; `text-generation` silently fails with no consolidated model. Do NOT add KV/cache writes for model downloads (free-plan quota).
 - **Tenant Import manifest** (`POST /api/tenants/import`, T1–T5): one camelCase JSON manifest imports tenant branding + products + rooms + rate plans + menu + POS users in a single admin call. Two modes: existing-tenant (requester's tenant, `admin`+ roles) vs **super-admin `identity` provisioning** — `identity: { name, subdomain, type, email, password (≥8), firstName, lastName, businessType? }` creates tenant + active admin + POS org (via `ensureTenantOrg`) + project in one 201 (403 for non-super-admin; a TRUTHY `identity` from anyone else proves it). `rooms`/`ratePlans` land in the **`rooms_new`/`rate_plans_new`** guarded INSERT…SELECT tables; referenced products MUST exist in the tenant (or 400/404) and may be resolved by `productName` — the handler mirrors them into `products` for the FK via `ensureProductInProductsTable`. Meals reference categories by `categoryName`; `pos_users` inserts are `first_name`/`last_name` ONLY (`name` is GENERATED). Base64 `data:image/(jpg|jpeg|png|webp|gif);base64,…` (≤8 MB) auto-uploads to R2 (`MEDIA_BUCKET`) and stores the returned `/api/media/` URL; `http(s)`/`/api/media/` URLs pass through unchanged; **NEVER add KV writes for import** (free-plan quota). Sample + walkthrough: `docs/examples/tenant-manifest.example.json` + `docs/tenant-import.md`; gate: `cd backend && npx vitest run tests/tenant-import-smoke.test.js`.
 
@@ -138,23 +144,56 @@ Read `AGENT_LOGBOOK.md` at the start of every session for the full list. Critica
 
 ## 6. Running Tests
 
+> **A bare test count rots silently, so every figure below names the run that
+> produced it.** `docs/01-architecture/ARCHITECTURE.md` §7 is the canonical table;
+> `docs/04-testing/TESTING.md` restates it with the same provenance; and the
+> committed run records live in
+> **`docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md`** — *not* in
+> `AGENT_LOGBOOK.md`, which has been the reference tier since the 2026-10-06
+> restructure and holds no suite results. **Run the suite; do not quote a
+> remembered number.**
+
+| Suite | Command | Files | Tests | Last verified |
+| --- | --- | --- | --- | --- |
+| Backend unit | `cd backend && npx vitest run` | **127** | **2743** | `9e58dae` |
+| Frontend unit | `cd app && npx vitest run` | **155** | **3632** | `88f307a` |
+| Root integration | `npx vitest run --config vitest.integration.config.ts` | **37** | **255** registered | 2026-09-28; see the caveat below |
+| E2E | `CI=true npx playwright test` | **96** specs, 8 projects | **919 passed / 0 failed / 15 env-skipped** | 2026-09-06, per-project |
+
 ```bash
-# Frontend unit tests (3416 tests / 137 files)
+# Frontend unit — file count is verifiable on disk (155); the test count is from 88f307a
 cd app && npx vitest run
 
-# Backend unit tests (2225 tests / 84 files), coverage gate = `npm run test:coverage` (thresholds 83/72/89/89)
+# Backend unit — coverage gate = `npm run test:coverage` (thresholds 83/72/89/89,
+# backend/vitest.config.ts:21-30). Plain `vitest run` does NOT evaluate the gate.
 cd backend && npx vitest run
 
 # POS integration tests
 cd backend && npx vitest run tests/pos/
 
-# Root integration tests (255 tests / 37 files — full-config run has a pre-existing /api/auth 30-min login-limit 429 flake; verify targeted or per-file)
+# Root integration — the `--config` is REQUIRED: plain `npx vitest run` at the repo
+# root uses vitest.config.ts, whose include is tests/unit/** only, a different suite.
+# Pre-existing flake: /api/auth's 30-minute login limit answers 429 and takes the
+# tail of the run with it. Verify targeted or per-file.
 npx vitest run --config vitest.integration.config.ts
 
-# E2E tests (~929 total — 919 gate passing · 1 flaky (retry-pass) · ≤15 env-skipped in CI mode; boots both servers)
-# Run per-project when wrangler dev is under load (documented workerd crash — see AGENT_LOGBOOK 2026-09-06)
+# E2E — CI does NOT run the full gate: .github/workflows/e2e.yml runs --grep "@smoke"
+# = 10 tests. 919 is the last recorded FULL local gate. Run per-project when wrangler
+# dev is under load (documented workerd crash —
+# docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md, 2026-09-06).
 CI=true npx playwright test
 ```
+
+Three facts that are not counts and used to be recorded as one:
+
+- **There is no current E2E total.** 919 + 1 flaky + 15 skipped does not reconcile with
+  the "~929 total" this section used to print, so the total is gone rather than guessed.
+- **CI runs 10 of the 15 env-skipped E2E tests**, and all 10 live in
+  `tests/e2e/specs/cross-cutting/mobile-responsive.spec.ts`.
+- **The root integration suite is environment-dependent and pre-existing red in a bare
+  workspace**: `tests/globalSetup.ts` boots `wrangler dev` and never applies migrations,
+  so a fresh `.wrangler/state` is a blank DB and the suite 500s on `no such table`.
+  Confirm with `git stash` before attributing it to your diff.
 
 ---
 
