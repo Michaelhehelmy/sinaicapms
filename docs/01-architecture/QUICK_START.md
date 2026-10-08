@@ -26,8 +26,11 @@ code-references:
   - "deploy.sh:292-297"
   - "backend/package.json:24"
   - "app/package.json:13-15"
+  - "app/package-lock.json:6396-6397,6459-6460 (astro 7.3.1 → engines.node >=22.12.0)"
+  - "package-lock.json:4031-4032,4047-4048 (root vite 8.1.5 → engines.node ^20.19.0 || >=22.12.0)"
   - "backend/scripts/generate-openapi.js:1-11"
   - "app/src/lib/routeZones.ts:46-69"
+  - "docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md"
   - "endpoint: GET /api/openapi.json → backend/src/index.js:477"
 verified: never
 ---
@@ -36,7 +39,7 @@ verified: never
 
 ## Prerequisites
 
-- Node.js 20+ and npm
+- Node.js **22.12+** and npm — the locked `astro` **7.3.1** declares `engines.node: ">=22.12.0"` (`app/package-lock.json:6396-6397,6459-6460`) and the root `vite` **8.1.5** declares `"^20.19.0 || >=22.12.0"` (`package-lock.json:4031-4032,4047-4048`), so a Node 20 machine cannot build this app. The floor is **not** enforced by this repo: `engines` is absent from all three manifests (`package.json`, `app/package.json`, `backend/package.json`) — it comes from the dependency tree.
 - A Cloudflare account + `wrangler` login (`npx wrangler login`)
 - For local backend: `JWT_SECRET` set (see below)
 
@@ -76,11 +79,16 @@ Zone behavior: `localhost:4321` is the marketplace zone by default. To exercise 
 ## 4. Tests
 
 ```bash
-cd backend && npx vitest run      # backend unit: 2225 tests / 84 files
-cd app && npx vitest run          # frontend unit: 3416 tests / 137 files
+cd backend && npx vitest run      # backend unit: 2743 tests / 127 files
+cd app && npx vitest run          # frontend unit: 3632 tests / 155 files
 npx vitest run                    # root integration: 255 tests / 37 files
-CI=true npx playwright test       # E2E: 929 total / 919 gate (14 env-skipped)
+CI=true npx playwright test       # E2E: 919 gate passed / 0 failed / 15 env-skipped (2026-09-06)
 ```
+
+Counts are the latest **committed** full runs, recorded in
+`docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` — not re-measured for this line, so re-run the
+suite before quoting a number. `ARCHITECTURE.md` §7 carries the same table with the producing
+commit on each row.
 
 E2E notes (see `TESTING.md`): port hygiene first (`ss -tlnp | grep -E '4320|8787'`); tenant pages hang on `load` in dev → specs use `waitUntil: 'domcontentloaded'`.
 

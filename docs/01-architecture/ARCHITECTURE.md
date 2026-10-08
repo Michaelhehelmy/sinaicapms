@@ -23,11 +23,15 @@ code-references:
   - "app/src/lib/routeZones.ts:23-69"
   - "backend/src/index.js:123-141"
   - "backend/src/middleware/requireAuth.js:133-172"
-  - "backend/src/middleware/rateLimit.js:25-113"
-  - "backend/src/utils/response.js:11-87"
+  - "backend/src/middleware/rateLimit.js:13,25-97,181-182,211,246"
+  - "backend/src/utils/response.js:11-108"
   - "app/src/lib/rbac.ts:7-20"
   - "app/src/lib/browser-ai.ts:237"
   - "backend/migrations/0127_meals_tenant_composite_pk.sql"
+  - "monitor/wrangler.toml:14-41"
+  - "monitor/src/storage.js:48-49"
+  - "monitor/src/index.js:1884-1889,1904-1912"
+  - "docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md"
   - "scripts/check-deploy-parity.sh:57-77"
   - "monitor/src/targets.js:15-41"
 verified: never
@@ -37,7 +41,15 @@ verified: never
 
 > This document describes the **current** architecture. If it disagrees with prose elsewhere in the repo, trust this file (it is verified against code) and update the other prose.
 >
-> Verified against `dbcb382` on 2026-10-02. Where a number can rot (§7 test counts, §5 migration head), it is stated **with the commit that produced it** and with the rule for re-deriving it — so a stale number is visible rather than authoritative.
+> Reconciled against the tree at `1eb2152` (2026-10-02) — the commit that actually wrote §5's
+> migration-head figure. This line used to name `dbcb382`, which is not a valid certification:
+> at `dbcb382` §5 read **39** files / head `0126` (`git show dbcb382:docs/ARCHITECTURE.md`),
+> so the header pointed at a commit whose content the file it certifies did not contain.
+> §5a's rows were last set on substance at `9e809bd` (2026-10-03); the 2026-10-06
+> restructure/frontmatter/wikilink commits are mechanical. Where a number can rot
+> (§7 test counts, §5 migration head),
+> it is stated **with the commit that produced it** and with the rule for re-deriving it — so a
+> stale number is visible rather than authoritative.
 
 > **File head ≠ applied ledger.** `0127_meals_tenant_composite_pk.sql` is
 > committed and its code half is merged, but the migration is **PENDING-APPLY**
@@ -107,13 +119,13 @@ Every request hostname resolves to exactly one **zone** (`app/src/lib/routeZones
 - **Hono on Cloudflare Workers** (`backend/src/index.js`): CORS, routes, middleware, auth catch-all.
 - Route modules: `backend/src/api/` (camps, categories, tenants, orders, …) + `backend/src/routes/pos/` (POS: auth, products, cart, shifts, …).
 - **Auth**: JWT (`env.JWT_SECRET` — no fallback, throws immediately if unset); POS uses a separate `pos_token` realm. The frontend role ladder is `ROLE_HIERARCHY` in `app/src/lib/rbac.ts` — `super_admin` 100 > `admin` 80 > `manager` 50 > `cashier` 30, and `roleAtLeast()` treats any unknown role (including undefined) as failing.
-- **RBAC / rate limiting**: `backend/src/middleware/`. The limiter is a ~20-entry ordered policy table keyed `${cf-connecting-ip}:${path}` (first match wins) with per-entry env dials, plus a tenant-scoped second layer on 7 prefixes; it keys on `cf-connecting-ip` only (not spoofable) and **fails closed** (429 on KV error). `RATE_LIMIT_KV_ENABLED="false"` forces the in-memory fallback — see `MIGRATION_GUIDE.md` for the KV free-plan quota reason and `security-guide.md` for the full policy table.
+- **RBAC / rate limiting**: `backend/src/middleware/`. The limiter is a **23-entry** ordered policy table keyed `${cf-connecting-ip}:${path}` (table `:25-97`, the 23 named entries `:33-95` plus `default` at `:96`; first match wins, `:13`) with per-entry env dials, plus a tenant-scoped second layer on **36** prefixes (`grep -c "tenantAwareLimiter())" backend/src/index.js` → 36); it keys on `cf-connecting-ip` only (not spoofable, `:181-182`) and **fails closed** (429 on KV error, `:211`, `:246`). `RATE_LIMIT_KV_ENABLED="false"` forces the in-memory fallback — see `MIGRATION_GUIDE.md` for the KV free-plan quota reason and `security-guide.md` for the full policy table.
 - **CORS is an async allowlist, not an array** — wildcard regexes plus a 5-minute-cached tenant custom-domain lookup (`backend/src/index.js:123–141`). See `security-guide.md`.
-- **Responses**: `jsonResponse` / `cachedJsonResponse` / `errorResponse` in `backend/src/utils/response.js`. All data is camelCased (`toCamel`) on the way out; the registry (`routes/registry.js`) documents the contract.
+- **Responses**: `jsonResponse` / `cachedJsonResponse` / `errorResponse` in `backend/src/utils/response.js`, plus two thin success-envelope wrappers the module also exports: `ok(data, status)` (`:96`, a pass-through to `jsonResponse`) and `created(id, status)` (`:104`, `{ success: true, id }` at 201). Live usage of the two wrappers is thin and asymmetric — `created()` has exactly **one** production caller (`backend/src/api/pos-tables.js:160`) and `ok()` has **zero** (test-only, `backend/tests/response.test.js`). `escHtml()` (`:108`) is the same-module escape helper. All data is camelCased (`toCamel`) on the way out; the registry (`routes/registry.js`) documents the contract.
 
 ## 5. Database & migrations
 
-- **D1 (SQLite)** — schema lives in `backend/migrations/`. At `dbcb382` that is
+- **D1 (SQLite)** — schema lives in `backend/migrations/`. At `1eb2152` that is
   **40 top-level `.sql` files**, head
   `0127_meals_tenant_composite_pk.sql`. It is *not* a contiguous range:
   `0001`–`0014`, then `0100`–`0127`.
@@ -145,10 +157,10 @@ call `/api/*` with a tenant JWT, and it never touches `campmaster-db`.
 | Item | Value |
 |---|---|
 | Worker | `campmaster-monitor` (`monitor/wrangler.toml`) |
-| D1 | `campmaster-monitor-db`, `migrations_dir = migrations` |
+| Storage | **R2 only** — `[[r2_buckets]]` binding `MONITOR_BUCKET` = `campmaster-monitor-media` (`monitor/wrangler.toml:39-41`). There is **no `[[d1_databases]]` block and no `migrations/`** on this worker any more: probe runs, intake reports, alert state, the uptime rollup, the per-target rings and the per-IP PIN counter are all objects under `MONITOR_BUCKET`, keyed by prefix (`monitor/wrangler.toml:14-32`, layout owned by `monitor/src/storage.js`). The database that used to hold `checks`/`reports`/`login_attempts` still exists in the account and is deleted by hand, not by this repo (`monitor/wrangler.toml:18-21`) |
 | Cron | `*/5 * * * *` — a scheduled handler that probes the configured targets |
 | Targets | 5 public URLs, listed **in code** (`monitor/src/targets.js`), not in the DB. **No self-check target**: a Worker fetching a Worker through the same zone is answered with 522 at the edge, so the monitor probing its own hostname reported a false outage — watch the panel from outside the zone instead (see the comment in `monitor/src/targets.js`) |
-| Retention | cron-written tables are pruned (`checks` 14d, `reports` 30d, orphaned `alert_state`) |
+| Retention | cron-written objects are swept by `runRetention` (`monitor/src/index.js:1904`), **once a day at UTC hour 0** (`:1905-1907`) — a sweep must `LIST` keys, so it is not affordable every 5 minutes. Windows unchanged from the row-based policy: `checks` **14d** and `reports/{errors,feedback}` **30d** (`monitor/src/storage.js:48-49`), plus per-IP `login_attempts` counters (`monitor/src/index.js:1911`). `state/` is **never** swept except `state/history` — alert state, the rollup and the per-target rings are not dated and must survive a quiet period (`monitor/src/index.js:1884-1889`) |
 
 It exists because the free-tier KV/D1 write quotas make a KV-backed health
 cache impossible (§5), so its short TTLs are **per-isolate, in-memory** and
@@ -167,9 +179,9 @@ bare number rots silently:
 
 | Suite | Command | Files | Tests | Last verified |
 | --- | --- | --- | --- | --- |
-| Backend unit | `cd backend && npx vitest run` | **124** | **2701** | `3f66503` (`saga-rollback`) |
-| Frontend unit | `cd app && npx vitest run` | **154** | **3611** | `09ff710` (`tenant-name-escape`) |
-| Monitor unit | `cd monitor && npx vitest run` | **7** | **72** | `921e871` (`perf-d-retention`) |
+| Backend unit | `cd backend && npx vitest run` | **127** | **2743** | `9e58dae` (`a2-saga-status`) |
+| Frontend unit | `cd app && npx vitest run` | **155** | **3632** | `88f307a` (`tenant-outage-vs-404`) |
+| Monitor unit | `cd monitor && npx vitest run` | **7** | **191** | `9e809bd` (`mon-probe-selfcheck`) |
 | Root integration | `npx vitest run --config vitest.integration.config.ts` | **37** | **255** registered | 2026-09-28; see the caveat below |
 | E2E (Playwright) | `CI=true npx playwright test` | **96** specs, 8 projects | not re-run for this pass | see below |
 
@@ -177,8 +189,11 @@ Two honest caveats, because the alternative is a number that looks verified
 and is not:
 
 - **E2E has no current gate number.** The last full gate recorded in
-  `AGENT_LOGBOOK.md` is 919 passed / 0 failed / 15 env-skipped (2026-09-06,
-  per-project). `tests/e2e/` now holds 96 spec files across 8 Playwright
+  `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` is 919 passed / 0 failed / 15
+  env-skipped (2026-09-06, per-project). (The pointer used to be `AGENT_LOGBOOK.md`;
+  that file is now the reference tier and holds no suite results — the
+  per-task history moved to `AGENT_LOGBOOK_HISTORY.md` in the 2026-10-06 restructure
+  (`AGENT_LOGBOOK.md` § *Task history*). `tests/e2e/` holds 96 spec files across 8 Playwright
   projects (`marketplace`, `tenant`, `admin`, `auth`, `cross-cutting`, `pos`,
   `public`, `routing`). Run the gate; do not quote a remembered number, and do
   not debug on a stale server (`docs/RUNBOOK.md` §8).
