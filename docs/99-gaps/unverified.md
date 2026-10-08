@@ -13,6 +13,7 @@ relates-to:
   - "[[99-gaps/README]]"
   - "[[code-vs-docs]]"
   - "[[unimplemented]]"
+  - "[[code-vs-code]]"
   - "[[PERF_BASELINE]]"
   - "[[QUICK_START]]"
   - "[[security-guide]]"
@@ -23,8 +24,11 @@ code-references:
   - "app/budget.json"
   - "app/astro.config.mjs"
   - "app/src/lib/browser-ai.ts"
+  - "app/src/components/ui/Modal.tsx"
+  - "app/src/components/admin/SystemHealthPanel.tsx"
   - "backend/src/middleware/rateLimit.js"
   - "backend/wrangler.toml"
+  - "tests/core/migration-integrity.test.js"
   - "deploy.sh"
   - "backend/src/api/services.js"
   - "backend/src/api/promotions.js"
@@ -36,8 +40,39 @@ Claims that **could not be checked from the tree** — because the check needs a
 build, a live host, or a Cloudflare console — plus the few where the audit's own check was sound but
 the claim sits outside what any repository can answer. **15 entries.**
 
+## Status as of 2026-10-06
+
 These are not defects and are not filed as such. They are the honest boundary of an audit that ran
-read-only, and they are what a later pass with a runtime would pick up. Split by why:
+read-only, and they are what a later pass with a runtime would pick up. Fifteen entries, **two** of
+which are still open; the rest closed or parked on 2026-10-06.
+
+| Status | Count | Entries |
+|---|---|---|
+| `RESOLVED-DOC` | **7** | `Q‑6`, `P‑3`, `P‑8`, `P‑13`, **`O‑7`**, `S‑18`, `G‑18` — the tree settled them and the cited doc was wrong |
+| `DEFERRED` | **6** | `P‑2`, `P‑5`, `T‑13`, `O‑12`, `O‑13`, `G‑20` — correct as labelled, or a human gate no repo can answer |
+| `OPEN` | **2** | **`Q‑5`**, **`P‑6`** — still undecidable, and **no probe was authorised for either** |
+| `RESOLVED-REJECTED` | **0** | |
+| `RESOLVED-CODE` | **0** | the owner chose FIX DOCS ONLY, so not one closed by changing source |
+| **Total** | **15** | |
+
+**The one entry that changed class rather than closed is `O‑7`, and the direction matters.** It was
+`UNKNOWN (external)` because no audit pass had ever issued its five `curl`s. Five owner-approved GETs
+were issued (`e731b11`) and **all five returned `200` — 5 / 5 MATCH, 0 DIFFERS**, no `000`, no `500`.
+So it closes as `RESOLVED-DOC`, and the finding is *positive*: the runbook's smoke contract holds
+against production on every host. The only imprecision was the §5 heading's `expect 200/400-guard`
+wording, because `GET /api/me` is **public by design** and a `4xx` was never the expected answer
+(`backend/src/index.js:616-617`). That phrasing was tightened in `b06990c`. **It is recorded here as
+a documentation imprecision, not a defect**, and the runbook quotes the probe rather than restating a
+guard that would mislead the next deploy.
+
+**Neither `OPEN` entry was promoted to a finding on the strength of "cannot check it here."** That
+rule is the reason this note is small: `Q‑5` is a Cloudflare-console DNS fact the owner chose to
+confirm himself rather than have probed, and `P‑6` is four byte figures against a gitignored,
+unpinned build artefact. `edb07db` **removed** the `P‑6` figures and recorded why they cannot be
+verified, keeping the structural half (four `client:visible` storefront islands) which is checkable
+from source. Recording a number nobody can reproduce would have been worse than recording its absence.
+
+Split by why:
 
 | Why it could not be verified | Entries |
 |---|---|
@@ -47,13 +82,15 @@ read-only, and they are what a later pass with a runtime would pick up. Split by
 | A claim that needs diffing against a pinned SHA, or tracing one call path further | **S‑18**, **G‑18**, **G‑20** |
 
 Two of these are worth reading for the wrong reason: **P‑5** is a claim that is *correct* precisely
-because it is labelled a snapshot, and **Q‑6** is the only entry in this note whose action is
+because it is labelled a snapshot, and **Q‑6** was the only entry in this note whose action was
 `UPDATE-DOC` — "Node.js 20+" is documented in one place, unenforced everywhere (`engines` is absent
-from all three `package.json` files), and the logbook's own `node:sqlite` local-replay path needs
-Node 22.
+from all three `package.json` files), *and* wrong: `astro` 7.3.1 declares `engines.node
+">=22.12.0"`, so the real floor is Node **22.12**+, and the logbook's own `node:sqlite` local-replay
+path needs Node 22. `3b753e4` corrected it.
 
 Each entry below reproduces its source audit's text verbatim. `Class` is the audit's; where the entry
-also matched something, the Class line names both.
+also matched something, the Class line names both. The **Status** line above each entry is this
+note's, added 2026-10-06, and is the only line not from the audit.
 
 # Entries by folder
 
@@ -72,6 +109,26 @@ also matched something, the Class line names both.
   `backend/wrangler.toml:92-149`. The DNS claim is inherently a Cloudflare-console fact.
 - **Class** UNVERIFIED (external state) · **Severity** P3 · **Action** VERIFY-RUNTIME
 - **Severity** P3 · **Action** VERIFY-RUNTIME
+
+> ### Status — `OPEN` 2026-10-06, and it stays open by choice.
+>
+> **No probe was issued.** The code half was re-verified and holds: `deploy.sh:39-40` sets
+> `DEPLOY_ENV="staging"` on `--staging`, and `backend/wrangler.toml:92` `[env.staging]` exists with
+> its own `d1_databases` / `kv_namespaces` / `r2_buckets` / `durable_objects` / `migrations` blocks
+> (`:124-149`). What remains unverified is the one thing the tree cannot hold: **whether the
+> `staging.sinaicamps.com` DNS record exists in the Cloudflare dashboard.** That is a console fact
+> about a control plane, and the owner elected to confirm it directly rather than have it probed.
+>
+> **This is the correct state for an `UNVERIFIED` entry and the reason the class exists.** The
+> temptation was to promote it on the reasoning that a staging deploy is the riskiest single step in
+> `deploy.sh` — but *"important"* is not *"measurable from here"*, and `VERIFY-RUNTIME` means exactly
+> what it says. A wrong `200` here would be a fabricated finding; a wrong `OPEN` here costs one
+> console lookup.
+>
+> **To close it:** one DNS check — `dig +short staging.sinaicamps.com`, or the record in the
+> Cloudflare dashboard's DNS page — confirming the record resolves to the staging Worker route. The
+> note's own `Claim` needs no edit either way: it already says "(human action)", which is the
+> honest labelling of a step the repository cannot perform.
 
 ### Q‑6 · Prerequisites — "Node.js 20+ and npm"
 
@@ -93,6 +150,16 @@ also matched something, the Class line names both.
 
 <!-- 6 entries from this folder -->
 
+> **`RESOLVED-DOC` 2026-10-06 (`3b753e4`) — and the finding got *stronger*, not weaker.** The
+> audit recorded the floor as unenforced; re-derivation showed it is also **wrong**. `engines` is
+> absent from all three manifests (`package.json`, `app/package.json`, `backend/package.json` →
+> `undefined` in all three), *and* the dependency tree sets a higher floor than the doc does:
+> **`astro` 7.3.1 declares `engines.node ">=22.12.0"`** (`app/node_modules/astro/package.json`)
+> and root `vite` 8.1.5 declares `"^20.19.0 || >=22.12.0"`. A Node-20 machine cannot build this
+> app at all, so "Node.js 20+" was not merely aspirational — it was false. `QUICK_START.md`
+> Prerequisites now say **Node 22.12+** and explain both sources. `engines` was deliberately
+> **not** added to any manifest: that is a code change and the owner chose FIX DOCS ONLY.
+
 ### P‑2 · [[PERF_BASELINE]] — the eager/lazy classification method and result
 
 - **Origin** audit A entry `P‑2` · baseline `dee3124` · source `docs/03-frontend/PERF_BASELINE.md`
@@ -112,6 +179,18 @@ also matched something, the Class line names both.
 - **UNVERIFIED (P3)** the exact module counts (1095/1096) and KiB split (10.6 / 2166.8) require a fresh
   `ANALYZE=1 npm run build` with a graph walk; not re-run. The *totals* they must sum to are verified by
   P‑4.
+
+> **`DEFERRED` 2026-10-06 — the totals corroborate exactly; the module-level split still needs a
+> build.** `ls app/dist/client/_astro/*.js | wc -l` → **113** = 5 + 108, and the emitted JS sums
+> to **2177.4 KiB** = 10.6 + 2166.8 to the decimal. The *method* claim is corroborated
+> structurally: `app/astro.config.mjs` wires `rollup-plugin-visualizer` as a rollup plugin, which
+> can only see static edges, and `client.D3SnGAPC.js` exists as a real 176.4 KiB emitted file,
+> confirming the "island renderer referenced by URL" reasoning. What remains unverified is the
+> **module-level** 1095/1096 split, which needs a fresh `ANALYZE=1 npm run build` plus a graph
+> walk — and `app/dist` is gitignored and currently one `app/src` commit behind. **Also noted, not
+> fixed:** the doc contradicts itself elsewhere — §Totals says `JS chunks 106 / Total JS 2114.3
+> KiB`. That self-contradiction is the strongest argument for the defer: a build is what settles
+> it, and guessing would settle it wrongly.
 
 ### P‑3 · [[PERF_BASELINE]] — "Three questions" investigation
 
@@ -133,6 +212,17 @@ also matched something, the Class line names both.
   `react-dom/client` vs `react-dom` being different entry points rather than a duplicate is correct on its
   face. Only the attribution evidence needs a re-run.
 
+> **`RESOLVED-DOC` 2026-10-06 (`8b01b00`) — the *conclusion* was right and the *evidence* was
+> false.** "No `app/src` file imports `react-dom` directly (verified by grep)" does not hold:
+> `app/src/components/ui/Modal.tsx:2` is `import { createPortal } from 'react-dom';` — and it did
+> so at the doc's own measurement HEAD (`git show 921e871:app/src/components/ui/Modal.tsx`, line
+> 2, added `b164048`). The size half is exact and unaffected: `app/dist/client/_astro/` holds
+> exactly one `react.*` chunk (8.4 KiB) and one `react-dom.*` chunk (3.5 KiB), and
+> `client.D3SnGAPC.js` (176.4 KiB) carries `react-dom/client` — so the reasoning that
+> `react-dom/client` and `react-dom` are different entry points rather than a duplicate stands,
+> and **"Nothing to fix" survives**. Only the supporting sentence was corrected, because a grep
+> claim in a perf doc is the kind of sentence a reader re-runs and cites.
+
 ### P‑5 · [[PERF_BASELINE]] — 2026-09-22 and 2026-08-07 historical tables
 
 - **Origin** audit A entry `P‑5` · baseline `dee3124` · source `docs/03-frontend/PERF_BASELINE.md`
@@ -150,17 +240,55 @@ also matched something, the Class line names both.
 - **Reason for DEFER not UPDATE-DOC** these are explicitly snapshot-labelled and the doc instructs the
   reader not to quote them. That is the correct handling of an un-rotting number.
 
+> **`DEFERRED` 2026-10-06 — no edit, deliberately.** These are correctly-handled dated artefacts:
+> the 08-07 table sits under `## Historical snapshot 2026-08-07 (retained …)`, the 2026-09-22
+> total under `## Totals`, and the doc instructs "re-run with `ANALYZE=1 npm run build` / `npx tsx
+> tests/lighthouse/run.ts` before quoting". No build from either date exists in the tree
+> (`app/dist` is gitignored), so the figures are **unreproducible by construction** — and that is
+> the correct treatment of a number that should not rot. Rewriting them to today's build would
+> convert a dated record into a false one. This is the source entry's own `Action`: `DEFER`.
+
 ### P‑6 · [[PERF_BASELINE]] — storefront island sizes
 
 - **Origin** audit A entry `P‑6` · baseline `dee3124` · source `docs/03-frontend/PERF_BASELINE.md`
 - **Source** `docs/03-frontend/PERF_BASELINE.md` — the section named in the heading above
-- **Claim** "Storefront islands stay small (all code-split per route): `StorefrontCheckout` 5.8 KiB,
-  `ShopCatalog` 3.6 KiB, `StorefrontCart` 3.3 KiB, `StorefrontConfirmation` 2.7 KiB."
+- **Claim** "Storefront islands stay small (all code-split per route)", followed by four per-island
+  byte sizes. **The four figures were removed from `PERF_BASELINE.md` in `edb07db`; the qualitative
+  claim and the structural evidence below are what remains.**
 - **Expected** four small chunks in `dist`.
-- **Actual** The four directive sites exist (**A‑8**). Chunk presence in `dist` is confirmed for the three
-  named suspects but the storefront chunks were not individually sized here.
+- **Actual** The structural half verifies and is kept: **all four storefront islands are
+  `client:visible`** — `app/src/pages/storefront/checkout.astro:53`, `cart.astro:52`, `index.astro:54`,
+  `order/[orderNumber]/confirmation.astro:54` — and a chunk is emitted for each. That half is
+  derivable from source and re-verified in `edb07db`; it is the part of the claim worth keeping.
 - **Class** UNVERIFIED · **Severity** P3 · **Action** VERIFY-RUNTIME
 - **Severity** P3 · **Action** VERIFY-RUNTIME
+
+> ### Status — `OPEN`, 2026-10-06. The byte figures are gone; the question is not answered.
+>
+> **`edb07db` removed the four figures** (`StorefrontCheckout`, `ShopCatalog`, `StorefrontCart`,
+> `StorefrontConfirmation`) from `PERF_BASELINE.md` rather than restating or defending them, and
+> added the reason to the file: **byte figures unverifiable against unpinned `dist/`**. `app/dist` is
+> gitignored (`.gitignore:2`) and its build provenance is not recorded, so any measurement taken from
+> it describes exactly one unreproducible build.
+>
+> **Why that is the honest outcome and not a dodge.** Measured for the record against the only tree
+> artefact (113 chunks, `stat -c%s`): raw **6.00 / 3.94 / 3.63 / 6.17 KiB** for Checkout / ShopCatalog
+> / Cart / Confirmation. **Three of the four land within ~0.3 KiB of the removed figures and one is
+> off by 2.3×.** That pattern is the argument for removal rather than for picking a winner: the three
+> close values establish that **the build has drifted**, which makes the outlier as likely to be a
+> real regression as a different build. With no recorded provenance there is no way to say *which*
+> number is wrong, and a doc that picks one is making an unverifiable claim in the act of fixing an
+> unverifiable one.
+>
+> **To close this entry, someone has to make a build reproducible first** — record the commit a
+> `dist` was built from, or quote the figures from a CI run that pins both. Until then:
+>
+> - the four `client:visible` directive sites are **verified** and stay in the doc;
+> - the per-island byte sizes are **withdrawn**, and any later reader wanting them must produce them
+>   from a pinned build;
+> - a tenant or an owner reading `PERF_BASELINE.md` for a size budget today gets the structural claim
+>   and an honest "not measured here", which is strictly better than the previous state — a confident
+>   number that cannot be reproduced.
 
 ### P‑8 · [[PERF_BASELINE]] — `RechartsLine` size, vendor breakdown, and the four sparklines
 
@@ -184,6 +312,16 @@ also matched something, the Class line names both.
 - **Credit** the causal chain (one consumer → one chart → the whole recharts/d3/redux graph) is the
   actionable finding in this file, and it is structurally verified rather than recalled. It is also the
   basis of recommendation #4.
+
+> **`RESOLVED-DOC` 2026-10-06 (`8b01b00`) — every structural claim verifies exactly; one figure
+> was a unit slip.** `SystemHealthPanel.tsx` has the import at `:6` and render sites at precisely
+> **`:153`, `:157`, `:165`, `:169`**; a repo-wide search for `LineChart` outside
+> `LineChart.tsx`/`RechartsLine.tsx` returns `SystemHealthPanel.tsx` and nothing else; the emitted
+> `RechartsLine.CM2YhkQa.js` is 352 520 B = **344.26 KiB** ✓. The prose at `:291` said "100.9 KiB
+> gzip" while the doc's own table at `:209` records **100 859 B** = **98.5 KiB** — the prose
+> converted bytes as if kilobytes were kibibytes. Still needing the treemap: the per-vendor
+> `renderedLength` split, which is **pre-minify** and therefore not comparable to any KiB figure
+> in the doc.
 
 ### P‑13 · [[PERF_BASELINE]] — Lighthouse harness targets and the committed baseline
 
@@ -212,6 +350,20 @@ also matched something, the Class line names both.
 
 <!-- 1 entry from this folder -->
 
+> **`RESOLVED-DOC` 2026-10-06 (`8b01b00`) — both halves of the "not derivable" premise were
+> false.** Lighthouse is a **pinned devDependency**: root `package.json` `"lighthouse":
+> "^13.4.1"`, installed `node_modules/lighthouse` = **13.4.1**, and `tests/lighthouse/run.ts:30`
+> does `import lighthouse from 'lighthouse'` — it is never shelled out to `npx`, which is where
+> the "unpinned" reading came from. Chromium **149** is derivable *and correct*:
+> `node_modules/playwright-core/browsers.json` pins chromium revision **1228** for
+> `playwright-core` **1.61.1**, and that exact binary
+> (`~/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome --version`) prints **`Google Chrome
+> for Testing 149.0.7827.55`**. Everything else the entry called unverifiable checks out verbatim,
+> including `lighthouse-baseline.json`'s `targets` and its `/admin?tenant=marketplace` row
+> `55/95/96/82 · cls 0 · lcp 25043 · tbt 115`. **`PERF_BASELINE.md`'s claim is correct; the
+> entry's "cannot verify" framing was what needed correcting.** The sibling `200 ms` vs `300 ms`
+> contradiction is `P‑1` in [[code-vs-docs]].
+
 ### T‑13 · [[TESTING]] §Cross-cutting manual steps 32–34 · UNVERIFIED
 
 - **Origin** audit B entry `T‑13` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
@@ -232,6 +384,14 @@ also matched something, the Class line names both.
 
 <!-- 3 entries from this folder -->
 
+> **`DEFERRED` 2026-10-06 — counts verified exactly; a manual checklist is not a finding.** `grep
+> -cE '^\| 32\.[0-9]' TESTING.md` → **7**, `33.x` → **5**, `34.x` → **4**, and the section header
+> at `:80` is verbatim "Cross-cutting concerns (manual steps 32–34)". The steps are consistent
+> with the auth model (`app/src/lib/session.ts` localStorage JWT). Manual by construction, and
+> `04-testing/README.md` already states the risk correctly — "Not automatable, and skipped
+> silently is the same as passed unless you do them" — which is precisely why this is not a
+> defect. **Nothing to build.**
+
 ### O‑7 · [[RUNBOOK]] §5 — post-deploy smoke · UNVERIFIED
 
 - **Origin** audit B entry `O‑7` · baseline `ddc63c6` · source `docs/05-operations/RUNBOOK.md`
@@ -247,6 +407,52 @@ also matched something, the Class line names both.
 - **Severity** P3 · **Action** VERIFY-RUNTIME
 - **Credit** the `000` vs `500` framing is the right one — it separates "my probe is wrong" from
   "the deploy is broken", which are different owners.
+
+> ### Status — `RESOLVED-DOC` 2026-10-06 (`e731b11`, `b06990c`)
+>
+> **Both halves are now settled, and the live half settled *positively*.** Five owner-approved GETs —
+> the budget was spent in full, no sixth request, no response bodies, no `deploy.sh`, no D1/KV/R2, no
+> non-GET method — returned:
+>
+> | endpoint (`RUNBOOK.md:129-133`) | documented | actual | verdict |
+> |---|---|---|---|
+> | `https://sinaicamps.com/` | `200` | **`200`** | **MATCH** |
+> | `https://sinaicamps.com/api/me` | `200` / `400`-guard | **`200`** | **MATCH** |
+> | `https://acaciacamp.com/` | `200` | **`200`** | **MATCH** |
+> | `https://acaciacamp.com/admin` | `200` | **`200`** | **MATCH** |
+> | `https://michaelshouse.sinaicamps.com/` | `200` | **`200`** | **MATCH** |
+>
+> **5 / 5 MATCH, 0 DIFFERS.** No probe produced `000` or `500`, so the §5 contract holds against
+> production on every host. Probe record: `.opencode/audits/O7-probe-2026-10-06.md`, commit
+> `e731b11`.
+>
+> **The one imprecision was in the doc's wording, not in the service — this is not a defect.** The
+> §5 heading read `expect 200/400-guard`, a *disjunction* that invited a `4xx` on `/api/me`. But
+> `GET /api/me` is **public by design**: `backend/src/index.js:616-617` states it in the source —
+> *"Mixed visibility: GET is public (R-9 — graceful 200 without tenant context), PUT/PATCH are
+> tenant-admin only"* — with `meScope` (`:619-624`) routing `GET` to `resolveScope({ public: true })`
+> (`:618`) and every other method to the admin resolver. A `200` there is the designed answer, so
+> `b06990c` tightened `RUNBOOK.md` §5 to state the expected code outright (`## 5. Post-deploy Smoke
+> (expect 200, never 000/500)`), kept the `000`-vs-`500` distinction it was already making, and
+> recorded the probe result. **`05-operations/README.md` carried the same phrase and was tightened
+> identically.**
+>
+> **Two things the runbook now says that a status code alone would not have earned**, both worth
+> keeping so a future reader does not re-derive them:
+>
+> 1. The `200` on `/api/me` did **not** come from a static-asset fallback swallowing an unrouted
+>    `/api/*` path. `app/public/_routes.json` explicitly `exclude`s `/api/*` from the `/*` include,
+>    so the request reached the SSR function and its backend service binding (`API_BACKEND`,
+>    `app/wrangler.toml`). Without this, a `200` on an `/api/*` path would have been an ambiguous
+>    row — the classic "did it work or did it fall through?" artifact.
+> 2. `acaciacamp.com/admin` answering `200` unauthenticated is consistent with the SPA host serving
+>    its shell. The runbook's follow-up instruction — open `/admin` and confirm the Settings panel
+>    loads with no chunk `404` — is a **browser** check that **no status code can satisfy**, and it
+>    remains unverified. It is *not* closed by this entry, and closing it is the one piece of §5 that
+>    still needs a human with a browser.
+>
+> **Class as it now stands: `MATCHED`.** The audit's `UNVERIFIED (external)` was an artefact of a
+> read-only pass, not a property of the claim.
 
 ### O‑12 · [[RUNBOOK]] §9a — the two-limit table · MATCHED (code side) / UNVERIFIED (plan facts)
 
@@ -267,6 +473,17 @@ also matched something, the Class line names both.
 - **Severity** P3 · **Action** VERIFY-RUNTIME
   VERIFY-RUNTIME
 
+> **`DEFERRED` 2026-10-06, with the one residue closed (`b06990c`) — externally confirmed, not
+> recalled.** Cloudflare's published Free-plan limits were retrieved: KV "Keys written **1,000 /
+> day**" ✓ and "All limits reset daily at **00:00 UTC**" ✓; D1 "Rows read **5 million / day**" ✓,
+> enforced since the 2026-09-01 changelog, with error text *"Upgrade to a paid plan or wait for
+> tomorrow (midnight UTC) to continue"* — which **is** the runbook's quoted sentence ✓. Code side
+> ✓: `rateLimit.js:211`/`:246` return `429 Rate limit check failed`, and `wrangler.toml:56`/`:97`
+> keep `RATE_LIMIT_KV_ENABLED = "false"`, so the KV row is unreachable in normal operation. **The
+> residue:** the runbook's `[code: 7500]` appears **nowhere** in Cloudflare's published text,
+> which quotes a sentence and no numeric code. `b06990c` replaced both cells with the real figures
+> and added a callout to match the *sentence* rather than a code no upstream documents.
+
 ### O‑13 · [[RUNBOOK]] §10 + §9a — the 24-hour watch window and the "never" clauses · UNVERIFIED
 
 - **Origin** audit B entry `O‑13` · baseline `ddc63c6` · source `docs/05-operations/RUNBOOK.md`
@@ -286,6 +503,13 @@ also matched something, the Class line names both.
 ## docs/06-security
 
 <!-- 1 entry from this folder -->
+
+> **`DEFERRED` 2026-10-06 — no edit, and marking it "not implemented" would have been the opposite
+> of true.** Process, not code: a human gate no repository can answer. Each of §10's five items
+> maps to a failure mode documented elsewhere in the same file (§5 chunk 404s, §9 KV write rate,
+> §9 auth), and `05-operations/README.md`'s premise — "a deploy that passes smoke in the first
+> five minutes is not a deploy that passed" — is the right framing for an owner-facing runbook.
+> **It is implemented, by a person.**
 
 ### S‑18 · [[security-guide]] — the fix/regression SHAs it pins · UNVERIFIED
 
@@ -309,6 +533,17 @@ also matched something, the Class line names both.
 
 <!-- 2 entries from this folder -->
 
+> **`RESOLVED-DOC` 2026-10-06 (`ff264db`) — the "byte-identical" property is false for 4 of 46
+> lines.** Both SHAs resolve and the test exists (`af1d69b`, `09ff710`), and the "18 `escHtml`
+> hits remain" figure is exact. Diffing `af1d69b^` → `af1d69b` across all 12 touched files and
+> unwrapping every balanced `escHtml(…)`: **46 lines** lost a wrapper (matching the inventory's
+> own wording "46 **lines** (A+B+E)") but they carried **50 call sites**, not 46 — and of those 46
+> lines only **42** have their inner expression byte-identical in the child. **4 gained required
+> parentheses**: `CampsSection.astro:137` and `TenantLanding.astro:225/227/228`. Semantically
+> equivalent, **not** byte-identical. The doc's security claim is unaffected; the sentence that
+> asserted an exact property is what was corrected, because "byte-identical" is a claim a reviewer
+> will trust rather than check.
+
 ### G‑18 · [[service-guide]] §Custom Fields (JSON Schema) · UNVERIFIED
 
 - **Origin** audit B entry `G‑18` · baseline `ddc63c6` · source `docs/08-guides/service-guide.md`
@@ -324,6 +559,20 @@ also matched something, the Class line names both.
   rather than failed.
 - **Class** UNVERIFIED · **Severity** P3 · **Action** VERIFY-RUNTIME
 - **Severity** P3 · **Action** VERIFY-RUNTIME
+
+> **`RESOLVED-DOC` 2026-10-06 (`0f0c09a`) — half real, half invented, and the invented half was
+> the load-bearing sentence.** Real: the column exists (`service_definitions.fields_schema JSON
+> NOT NULL DEFAULT ('[]')`), is accepted and persisted (`api/services.js:32` zod `fields_schema:
+> z.any().optional()`, INSERT at `:101-103`, UPDATE at `:121-122`), is served to the public
+> catalog (SELECT `:454`, `JSON.parse` `:482`), and the frontend carries the type
+> (`app/src/lib/api.ts:1641 fieldsSchema: unknown`). Invented: **no renderer consumes it** — `grep
+> -rn 'fieldsSchema\|fields_schema' app/src/components app/src/pages` → **0 hits**; **no public
+> services page has ever existed** (`git log --all --diff-filter=A -- 'app/src/pages/service*'` →
+> nothing); and `bookingCreateSchema` (`services.js:50-56`) has no field for custom values, so a
+> booking cannot carry them. The only public-portal wrapper, `getPublicServiceCatalog`, was
+> **deleted** in `5599675` ("prune dead exports … zero production/test callers") — deliberate. The
+> doc now documents the column and route that exist and drops the "drives the dynamic booking
+> form" sentence.
 
 ### G‑20 · [[supermarket-guide]] §Promotions — "only the best eligible promotion applies per line item (no stacking)" · UNVERIFIED
 
@@ -342,3 +591,16 @@ also matched something, the Class line names both.
 - **Credit** "fixed logic, not configurable X/Y" and "no stacking" are precisely the claims a reader
   would otherwise have to reverse-engineer; they are stated, dated, and checkable. Given the guide's
   record on negatives elsewhere (**G‑16**), these are likely right.
+
+> **`DEFERRED` 2026-10-06 — verified correct, so there was never anything to fix.** The entry was
+> over-cautious and the tree settles it clause by clause. Engine:
+> `backend/src/routes/pos/index.js:565-635`, comment `:566` "Best promo per item wins; discounts
+> are applied BEFORE tax"; eligibility filter `:579-585` (day_of_week, start/end date,
+> `min_purchase`); single-winner selection `:610-616` (`if (discount > 0 && (!best || discount >
+> best.discount)) best = {…}`) — exactly one winner per line and one `discountRows` entry per
+> line, so **no stacking** ✓. Types `:597-605`: `percentage` = `unitPrice×qty×value/100`, `fixed`
+> = `min(value, unitPrice)×qty`, `bogo` = `floor(quantity/2) × unitPrice` — i.e. **every 2nd item
+> free, hard-coded 2, not configurable X/Y** ✓. The identical engine is mirrored in the preview
+> path (`api/promotions.js:285-315`) and the type enum is `z.enum(['percentage','fixed','bogo'])`
+> at `promotions.js:36`. This is the note's cleanest example of why "left unverified rather than
+> failed" is the right default: it was right.

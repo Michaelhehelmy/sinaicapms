@@ -13,6 +13,7 @@ relates-to:
   - "[[99-gaps/README]]"
   - "[[unverified]]"
   - "[[unimplemented]]"
+  - "[[code-vs-code]]"
   - "[[ARCHITECTURE]]"
   - "[[API_SURFACE_MAP]]"
   - "[[migrations]]"
@@ -35,9 +36,13 @@ verified: 2026-10-06
 # Code vs docs — STALE and FALSE claims
 
 Every verifiable claim in ten of the vault's eleven domain folders, checked against the code and
-filed here when it did not hold. **Nothing in this note has been fixed.** These are the queued edits,
-with the `file:line` each one rests on, so a reconciliation pass can work from a list instead of
-re-running two audits.
+filed here when it did not hold. These are the queued edits, with the `file:line` each one rests on,
+so a reconciliation pass can work from a list instead of re-running two audits.
+
+**That pass has now run** — see `## Status as of 2026-10-06` for the ledger and
+[[code-vs-docs#Resolved]] for the closed entries, each with the commit that closed it. Entries are
+never deleted from this note; a resolved one is *moved to a fixed state*, because a queue that forgets
+what it caught cannot tell a reader whether a gap was closed or never seen.
 
 Two source audits are consolidated here. Their full narrative lives outside the vault, in
 `.opencode/audits/gaps-arch-api-frontend-2026-10-06.md` (audit A, baseline `dee3124`) and
@@ -51,7 +56,87 @@ scripts from `/tmp`; where a whole table could be checked mechanically it was, r
 names, all 84 `DB Tables` names, the 46 admin + 6 POS nav-tab ids, the 88-field tenant-import schema
 census, and every `code-references` entry in all 34 audited files.
 
+## Status as of 2026-10-06
+
+The reconciliation pass that followed these two audits has landed. **The owner chose FIX DOCS ONLY**,
+so every entry closed below was closed by **editing the doc that made the claim** — 18 doc-fix commits,
+`3b753e4` … `edb07db`, plus the `O‑7` probe `e731b11` — and **not one** by changing code. That is the
+single most important fact about this table, and it is why `RESOLVED-CODE` is **0** rather than
+`RESOLVED-DOC` being 0: several findings were *implementation* findings (a metric that does not
+exist, a raw `fetch`, an unsafe `DROP TABLE`), and the pass closed them by making the docs stop
+claiming them or by filing the code half as a queue item in [[code-vs-code]].
+
+**Scope of the ledger.** Every row below is one *triaged* gap entry across the folder's four notes:
+the **75** rows triage A produced for this note (73 class-bearing `###` entries + `Entry #1` + the
+`D‑13` nested inside it), the **25** rows triage B+C produced for [[unimplemented]] (10) and
+[[unverified]] (15), and the **6** new rows in [[code-vs-code]]. Entries carrying no action are
+outside it: the seven `MATCHED`-only bodies under *Entries by folder* (`A‑6`, `A‑13`, `S‑7`, `P‑4`,
+`P‑10`, `O‑25`, `N‑19`), the 112 foot controls, and `T‑0`, which is the provenance table every
+test-count entry is measured against rather than a claim.
+
+| Status | Count | Definition | Where |
+|---|---|---|---|
+| `RESOLVED-DOC` | **87** | the cited doc was corrected; the claim was wrong and the code was right | 71 here · 9 in [[unimplemented]] · 7 in [[unverified]] |
+| `RESOLVED-REJECTED` | **1** | the alleged artefact never existed, so no doc edit was warranted | `A‑11`, in [[unimplemented]] |
+| `DEFERRED` | **16** | real, or correct as labelled, and **owner-parked** rather than closed | 4 here · 6 in [[unverified]] · 6 in [[code-vs-code]] |
+| `OPEN` | **2** | still undecidable from the tree, and no probe was authorised | `Q‑5`, `P‑6`, both in [[unverified]] |
+| `RESOLVED-CODE` | **0** | closed by changing source — **none**, by owner decision | — |
+| **Total triaged** | **106** | | |
+
+**How the ledger divides by note.** This note holds **75** rows: 71 `RESOLVED-DOC` (moved to
+[[code-vs-docs#Resolved]] at the foot, each with its fixing SHA), **4** `DEFERRED` (kept in place —
+`G‑1`, `G‑2`, `G‑3` under `docs/08-guides` and `R‑16` under `docs/09-plans`), and **0** `OPEN`. So the
+stale `STALE`/`FALSE` count of **80** this note opened with is a *pre-fix* census, not a queue length;
+`## Totals` keeps it as the record of what the audits found.
+
+**What the four `DEFERRED` rows in this note actually are** — the distinction matters, because
+"deferred" here is not "we did not get to it":
+
+- **`G‑1`, `G‑2`, `G‑3`** (`analytics-guide.md`: Customer Lifetime Value, automatic segmentation,
+  30/90-day and annual retention). Three fabricated capabilities in a `status/live` +
+  `audience/tenant-admin` guide, in the same table format as the three metrics that are real. The
+  guide's claims were corrected in `0f0c09a`; the **features** the owner deferred on 2026-10-06
+  (P3) and are now tracked, with design source and reason, in [[unimplemented#advanced-analytics]].
+  The status is `DEFERRED` rather than `RESOLVED-DOC` precisely so the deferred work is not read as
+  done: the doc no longer lies, and the metric still does not exist.
+- **`R‑16`** (`FINAL_IMPLEMENTATION_PLAN_v3_appendices.md` §9.5, the +3-net calibration). A
+  correctly-labelled *dated measurement*; `ae7162b` added a banner pointing at `ARCHITECTURE.md` §7
+  and deliberately restated **no figure**, because updating the numbers would destroy the evidence
+  the section exists to carry. `DEFER` is the source entry's own `Action`.
+
+**What `OPEN` means here.** Both open rows are in [[unverified]] and neither was promoted to a
+finding on the strength of "cannot check it here". `Q‑5` is a Cloudflare-console DNS fact the owner
+chose to confirm himself rather than have probed. `P‑6` is four island byte figures against an
+unpinned, gitignored `dist/` — `edb07db` removed the figures and stated why they are unverifiable
+rather than picking a winner, and the structural half of the claim (four `client:visible` storefront
+islands) is kept and re-verified. `O‑7` was the third `UNKNOWN` and is now **closed**: five
+owner-approved GETs (`e731b11`) returned `200` on all five hosts, and the only imprecision was the
+`RUNBOOK.md` §5 heading's "200/400-guard" phrasing, tightened in `b06990c` because `GET /api/me` is
+public *by design* (`backend/src/index.js:616-617`). It is recorded as `RESOLVED-DOC`, **not** as a
+defect.
+
+**One residue the doc pass could not close, and did not pretend to.** `O‑21`'s M21 half claimed "20
+unsafe `DROP TABLE` in 11 migrations", all eleven of which live in the excluded `legacy/` lineage.
+The doc is corrected (`b06990c`), but the *applied* lineage's own residue is a **code** finding, and
+this folder is not where code findings go. It is filed as six rows in [[code-vs-code]] — verified
+`file:line` by `file:line`, `Severity` **P2**, `Action` `FIX-CODE`, deferred to **Wave 9** — together
+with the code-side observation that the test which claims to police this
+(`tests/core/migration-integrity.test.js:80`) greps raw file text and therefore counts SQL `--`
+comments, so its `:90` assertion cannot pass as written. That finding is **recorded, not edited**.
+
 ## The three worst things in this note
+
+1. **Entry #1**, below — three docs, three different migration counts, two of them issuing
+   instructions computed from the wrong one.
+2. **`S‑2` + `S‑3` + `S‑4`** — `API_SURFACE_MAP.md`'s Frontend Function, React Hook and DB Tables
+   columns name **64 + 120 + 13** things that exist nowhere, sitting beside an Endpoint column where
+   all 268 rows resolve (`S‑11`). The table is authoritative about the wire and invented about the
+   code that calls it.
+3. **`T‑5` + `T‑6`** — `TESTING.md`'s admin/POS tab-ID table is missing **28 of 46** admin IDs and
+   **2 of 6** POS IDs, 12 of which E2E specs actually select on, and `04-testing/README.md` nominates
+   that table as the only place in the repo carrying them.
+
+*All three are now closed — see [[code-vs-docs#Resolved]] for the fixing commit on each.*
 
 1. **Entry #1**, below — three docs, three different migration counts, two of them issuing
    instructions computed from the wrong one.
@@ -115,8 +200,9 @@ itself an instance of the defect this folder exists to catch:
 - Severity is reported per audit as audited; the per-entry `**Severity**` line below is the source
   entry's own figure, and where an entry carries two severities (a gap plus a `P3` nit) both are kept.
 
-Nothing was fixed. Both audits were explicitly read-only: no doc edited, no source edited, no test
-suite re-run, no `wrangler`, no deploy, no remote call.
+*As of the audits, 2026-10-06:* nothing was fixed. Both were explicitly read-only — no doc edited, no
+source edited, no test suite re-run, no `wrangler`, no deploy, no remote call. **The fixes came later
+and are recorded in `## Status as of 2026-10-06`; the census below is the audits', unchanged.**
 
 ## How to read an entry
 
@@ -145,62 +231,6 @@ stale citation, a count, a line range.
 **Action** — `UPDATE-DOC` the doc is wrong and the fix is an edit; `VERIFY-RUNTIME` the claim is
 checkable only by running something expensive or contacting something external; `DEFER` the claim is
 correct as labelled and should not be "fixed"; `none` nothing to do.
-
-## Entry #1 — the migration-head drift
-
-**This is the first entry because it is the only gap with three independent carriers and a live
-destructive consequence.** Every other entry is one doc disagreeing with the code. This one is three
-docs disagreeing with each other *and* with the code, and two of them issue instructions computed from
-the wrong number — so an agent that trusts any one of them authors a migration into a slot that has
-been taken for months.
-
-| Doc | Claim | Truth | Action |
-|---|---|---|---|
-| `AGENTS.md:70` §2 project-structure tree | 53 files, i.e. head `0053_camp_ownership.sql` | **40** files, head `0127_meals_tenant_composite_pk.sql` | `UPDATE-DOC` `AGENTS.md` — rewrite the tree's `migrations/` row to **40** files, head `0127`, and say `legacy/` = 99 |
-| `docs/07-data/migrations.md:29` §1 | **"Current head: `0123_storefront_order_items_fk_pos_products.sql`** (37 files total: `0001`–`0014` + `0100`–`0123` minus reserved-absent `0109`, filesystem-verified" | **40** files, head `0127` — three migrations landed after this paragraph | `UPDATE-DOC` `migrations.md` §1 — 40 files / `0127_meals_tenant_composite_pk.sql`, and state the `0124`/`0126`/`0127` additions |
-| `docs/98-history/sessions/WAVE6_EXIT_REPORT.md:23` | **"All 18 docs verified against code. Counts: 99 migrations (`0099_normalize_marketplace_payouts_ids.sql`)"** (repeated at `:27` and `:28`) | **40** files; 99 is the size of `legacy/` | `UPDATE-DOC` `WAVE6_EXIT_REPORT.md` — annotate the 99 as the pre-squash count that now lives in `legacy/`, keeping the 2026-09-21 record honest as of its own date |
-
-- **Origin** consolidation entry, 2026-10-06 · the three carriers are named above · baselines `dee3124`
-  (audit A) and `ddc63c6` (audit B) · re-verified directly against the tree for this entry
-- **Source** `AGENTS.md` §2 · `docs/07-data/migrations.md` §1 "What migrations are" and §2 step 1 ·
-  `docs/98-history/sessions/WAVE6_EXIT_REPORT.md` (header + Commits list)
-- **Claim** three claims, quoted in the table above: 53 / `0053`, 37 / `0123`, 99 / `0099`
-- **Expected** one migration ledger. Whichever number a doc states, it should be the number in
-  `backend/migrations/`
-- **Actual** `ls backend/migrations/*.sql | wc -l` → **40**. Highest-numbered:
-  `0127_meals_tenant_composite_pk.sql`. Full sequence, all 40:
-  `0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0100 0101 0102 0103 0104
-  0105 0106 0107 0108 0110 0111 0112 0113 0114 0115 0116 0117 0118 0119 0120 0121 0122 0123 0124 0126
-  0127` — the two blocks `0001`–`0014` then `0100`–`0127` with **`0109` and `0125` deliberately
-  absent** (entry **A‑2**). There is **no top-level `0053*`** and **no top-level `0099*`**;
-  `backend/migrations/legacy/` holds **99** files including `0053_camp_ownership.sql`,
-  `0099_normalize_marketplace_payouts_ids.sql` and the never-applied
-  `0076_sanitize_user_data.sql`, and is excluded from the lineage (entry **A‑3** / **D‑9**).
-  `docs/07-data/migrations.md:37` §2 step 1 still instructs "Create
-  `backend/migrations/0124_<slug>.sql` with the next number (head is `0123`)" while
-  `backend/migrations/0124_guest_folios.sql` **exists** — entry **D‑2**, whose failure mode is
-  destructive. `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md` reserves `0100_tip_amount.sql` as
-  a free slot while `0100_add_project_id_nullable.sql` has been live for six migrations — entry
-  **R‑12**.
-- **The correct figures are already published in the vault**, twice, and both are right:
-  `docs/01-architecture/ARCHITECTURE.md` §5 (**A‑1**: "40 top-level `.sql` files, head
-  `0127_meals_tenant_composite_pk.sql`… It is *not* a contiguous range: `0001`–`0014`, then
-  `0100`–`0127`") and `docs/07-data/README.md:64-69` (**D‑12**: "⚠️ **Migration-head drift is still
-  live.** … The tree has **40** migrations with head `0127_meals_tenant_composite_pk.sql`"). The
-  folder index caught it; the guide it indexes was missed. Keep the `07-data` callout until all three
-  carriers are corrected, then delete it in the same commit that fixes the last one.
-- **One distinction no doc carries** (`D‑13`): `0127`'s own header says **"⚠️ PENDING-APPLY. This
-  file is committed but NOT applied to any database."** (`backend/migrations/0127_meals_tenant_composite_pk.sql:4-6`).
-  So "head" means *highest in the tree*, not *applied*. Three docs state a head; none distinguishes
-  the two meanings, and the tenant-import folder already reasons about `0127` as a landed change
-  ("Reusable across tenants since 0127").
-- **Class** STALE (all three claims — each was true of the pre-squash tree) → **FALSE in consequence**:
-  the instructions derived from two of them (**D‑2**, **R‑12**) name slots that are taken
-- **Severity** **P1**
-- **Action** `UPDATE-DOC` — three separate edits, one per carrier, as itemised in the table above;
-  then remove the `docs/07-data/README.md` drift callout
-- **Controls** **A‑1**, **A‑2**, **A‑3**, **D‑9**, **D‑12** (all `MATCHED`) — reproduced under
-  *Matched controls* below
 
 ## Test-count provenance (`T‑0`, audit B)
 
@@ -232,45 +262,26 @@ visible rather than authoritative (**A‑20**).
 
 # Entries by folder
 
+**What is left here is what is still open.** Every `STALE`/`FALSE` finding whose carrier doc
+was corrected in the 2026-10-06 reconciliation has moved to [[code-vs-docs#Resolved]] at the
+foot of this note, each with the commit that fixed it — see `## Status as of 2026-10-06`
+immediately above. What remains under each folder is:
+
+- the **`DEFERRED`** rows (`G‑1`, `G‑2`, `G‑3` in `docs/08-guides`, `R‑16` in `docs/09-plans`)
+  — claims that were *corrected as documentation* and whose underlying feature or measurement
+  the owner parked, so the entry is closed as a defect but not as a question;
+- the seven **`MATCHED`-only** bodies that sit at the end of a folder block because they are
+  controls for another entry rather than findings in their own right (`A‑6`, `A‑13`, `S‑7`,
+  `P‑4`, `P‑10`, `O‑25`, `N‑19`). These carry no action and are never triaged.
+
+The `STALE`/`FALSE` class total this note opened with — **80 entries** — was the *pre-fix*
+figure. It is not restated here, because every row of it is now either below in this
+section or at the foot; `## Totals` keeps the original census as the record of what the
+audits found.
+
 ## docs/01-architecture
 
-<!-- 9 entries from this folder -->
-
-### A‑4 · [[ARCHITECTURE]] §5a — monitor D1 binding · **FALSE**
-
-- **Origin** audit A entry `A‑4` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
-- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
-- **Claim** "| D1 | `campmaster-monitor-db`, `migrations_dir = migrations` |"
-- **Expected** a `[[d1_databases]]` binding in `monitor/wrangler.toml` naming `campmaster-monitor-db`
-  with `migrations_dir = migrations`.
-- **Actual** **`monitor/wrangler.toml` has no `[[d1_databases]]` block at all** (64 lines, full file
-  read). Lines 14–21 say so explicitly: *"there is NO relational binding on this worker any more, and
-  no `migrations/`"*. Storage is a single R2 bucket, `MONITOR_BUCKET` = `campmaster-monitor-media`
-  (`monitor/wrangler.toml:39-41`). `monitor/migrations/` no longer exists and `monitor/src/db.js` was
-  deleted. `campmaster-monitor-db` survives only as an orphaned Cloudflare resource the owner must delete
-  manually.
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Note** this is a *known* deferral, not a new discovery: the 2026-10-03 `mon-probe-selfcheck` logbook
-  entry records it verbatim — *"the rest of that same `docs/ARCHITECTURE.md` monitor block still
-  describes `D1 | campmaster-monitor-db, migrations_dir = migrations` … both untrue since the monitor's
-  D1 migration completed (phases 1–7 …), i.e. this block has been describing a pre-R2 worker."*
-
-### A‑5 · [[ARCHITECTURE]] §5a — monitor retention wording · STALE
-
-- **Origin** audit A entry `A‑5` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
-- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
-- **Claim** "| Retention | cron-written tables are pruned (`checks` 14d, `reports` 30d, orphaned
-  `alert_state`) |"
-- **Expected** a daily prune over D1 tables named `checks` and `reports`, 14 and 30 days, plus
-  orphaned alert state.
-- **Actual** The day counts are still correct constants — `CHECKS_RETENTION_DAYS = 14`,
-  `REPORTS_RETENTION_DAYS = 30` (`monitor/src/storage.js:48-49`), swept by `runRetention`
-  (`monitor/src/index.js:1881-1882`). But the substrate is no longer tables: they are R2 objects under
-  key prefixes `checks/<YYYY-MM-DD>/<HH-MM>.json` and `reports/…` (`monitor/wrangler.toml:26-27`).
-  "tables" is a pre-R2 word for objects that no longer exist as tables.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
+<!-- 2 entries still in this folder: A‑6 · A‑13 -->
 
 ### A‑6 · [[ARCHITECTURE]] §5a — monitor targets
 
@@ -298,305 +309,9 @@ visible rather than authoritative (**A‑20**).
 - **Severity** P3 · **Action** UPDATE-DOC
   restructure) · **Severity** P3 · **Action** UPDATE-DOC
 
-### A‑16 · [[ARCHITECTURE]] §4 — rate-limit policy table · prefix count FALSE
-
-- **Origin** audit A entry `A‑16` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
-- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
-- **Claim** "The limiter is a ~20-entry ordered policy table keyed `${cf-connecting-ip}:${path}` (first
-  match wins) with per-entry env dials, plus a tenant-scoped second layer on **7 prefixes**; it keys on
-  `cf-connecting-ip` only (not spoofable) and **fails closed** (429 on KV error)."
-- **Expected** ~20 ordered entries; a tenant-scoped layer on 7 prefixes.
-- **Actual** The table is `RATE_LIMIT_POLICIES` at `backend/src/middleware/rateLimit.js:25-112` — **23**
-  entries (line range matches the doc's `rateLimit.js:25-113` code-reference), so "~20" is fair.
-  First-match-wins confirmed by the header comment at `rateLimit.js:13`. Keying confirmed at
-  `rateLimit.js:181-182`: `const ip = c.req.header('cf-connecting-ip') || 'unknown'`. Fail-closed
-  confirmed at `:211` and `:246`: `c.json({ success: false, error: 'Rate limit check failed' }, 429)`.
-  **The prefix count is wrong: the tenant-scoped second layer is mounted on 36 prefixes, not 7** —
-  `grep -oE "app\.use\('/api/[^']*', tenantAwareLimiter\(\)\)"` over `backend/src/index.js` returns 36
-  distinct mounts (`/api/admin/*`, `/api/ai/*`, `/api/audit/*`, `/api/categories/*`, `/api/crm/*`,
-  `/api/financials/*`, `/api/folios/*`, `/api/hr/*`, `/api/inbox/*`, `/api/inventory/*`,
-  `/api/leads/*`, `/api/meal-categories/*`, `/api/meals/*`, `/api/me/*`, `/api/orders/*`,
-  `/api/plans/*`, `/api/pos-tables/*`, `/api/pos/*`, `/api/price-overrides/*`, `/api/products/*`,
-  `/api/projects/items/*`, `/api/projects/links/*`, `/api/projects/:projectId/meta/*`,
-  `/api/projects/:projectId/tags/*`, `/api/promotions/*`, `/api/rateplans/*`, `/api/reports/*`,
-  `/api/rooms/*`, `/api/services/*`, `/api/storefront/*`, `/api/supply/*`, `/api/tags/*`,
-  `/api/tenant/billing/*`, `/api/tenants/import/*`, `/api/tenants/:tenantId/meta/*`, `/api/upload/*`).
-- **Class** FALSE (the 7-prefix figure) · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Why it matters** 7 vs 36 understates the tenant-scoped surface by 5×, and this is the layer that makes
-  multi-tenant rate limiting real. It was probably true when a handful of mounts existed and was never
-  re-counted.
-
-### A‑20 · [[ARCHITECTURE]] §7 — test-count table · three STALE rows
-
-- **Origin** audit A entry `A‑20` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
-- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
-- **Claim** (table) Backend unit **124** files / **2701** tests (`3f66503`) · Frontend unit **154** /
-  **3611** (`09ff710`) · Monitor unit **7** / **72** (`921e871`) · Root integration **37** files /
-  **255** registered.
-- **Expected** the latest committed suite result for each suite.
-- **Actual** Suites were **not** re-run (the mission says to read them, not to spend 90s+ per suite).
-  Source: the latest suite result recorded per suite in
-  `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` — `cd backend && npx vitest run` → **127 files /
-  2743 tests** PASS (2026-10-02 `a2-saga-status`, re-confirmed same day by `a7-workstream-closure`);
-  `cd app && npx vitest run` → **155 files / 3632 tests** PASS (2026-10-03 `tenant-outage-vs-404`);
-  `cd monitor && npx vitest run` → **7 files / 191 tests** PASS (2026-10-03 `mon-probe-selfcheck`).
-  So backend is **3 files / 42 tests** behind, frontend **1 file / 21 tests** behind, monitor **119
-  tests** behind — monitor's count is off by more than 2×. Root integration 37/255 is the only row still
-  current.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Mitigation already in the doc** each row is labelled with its producing commit, which is exactly why
-  the drift is visible rather than authoritative. That design choice worked; it just needs a refresh.
-- **Cross-doc** `QUICK_START.md` §4 carries a *third*, older set of numbers. See **Q‑4**.
-
-### A‑21 · [[ARCHITECTURE]] §7 — E2E spec count and the `AGENT_LOGBOOK.md` pointer · STALE
-
-- **Origin** audit A entry `A‑21` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
-- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
-- **Claim** "`tests/e2e/` now holds 96 spec files across 8 Playwright projects (`marketplace`, `tenant`,
-  `admin`, `auth`, `cross-cutting`, `pos`, `public`, `routing`)." and "The last full gate recorded in
-  `AGENT_LOGBOOK.md` is 919 passed / 0 failed / 15 env-skipped (2026-09-06, per-project)."
-- **Expected** 96 specs, 8 projects, and the gate figure still findable in `AGENT_LOGBOOK.md`.
-- **Actual** `find tests/e2e -name "*.spec.ts" | wc -l` → **96**. Eight projects named exactly as listed,
-  `playwright.config.ts:…`. **The gate figure is no longer in `AGENT_LOGBOOK.md`** — that file is 182
-  lines and now holds only the persistent-learnings tier; the append-only task history (9,725 lines)
-  moved to `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` in the 2026-10-06 restructure, and the
-  919/0/15 line lives there. The pointer is dangling.
-- **Class** STALE (pointer) · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Credit where due** the counts themselves are exact and the decision to publish *no* E2E total rather
-  than a remembered one is the right call. Only the citation needs re-pointing.
-
-### A‑26 · [[ARCHITECTURE]] — header provenance
-
-- **Origin** audit A entry `A‑26` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
-- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
-- **Claim** "Verified against `dbcb382` on 2026-10-02." while §5 in the same file says "At `dbcb382` that is
-  **40 top-level `.sql` files**, head `0127`".
-- **Expected** the named commit is an ancestor and its content matches the file.
-- **Actual** `dbcb382` resolves in history, but the file has been edited since (the 0127 half was
-  committed later) and HEAD is now `dee3124`. So the header names a commit that no longer matches the
-  file's own §5, which cites the same commit for a number that commit did not have.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### Q‑4 · §4 — test counts · **a third, older set** · STALE
-
-- **Origin** audit A entry `Q‑4` · baseline `dee3124` · source `docs/01-architecture/QUICK_START.md`
-- **Source** `docs/01-architecture/QUICK_START.md` — the section named in the heading above
-- **Claim** (block) "backend unit: 2225 tests / 84 files · frontend unit: 3416 tests / 137 files · root
-  integration: 255 tests / 37 files · E2E: 929 total / 919 gate (14 env-skipped)"
-- **Expected** agreement with `ARCHITECTURE.md` §7 and with the logbook.
-- **Actual** Latest committed results (`AGENT_LOGBOOK_HISTORY.md`, same source as **A‑20**): backend
-  **127 / 2743**, frontend **155 / 3632**, monitor **7 / 191**. Root integration 37/255 is the one row
-  still right. E2E: `ARCHITECTURE.md` §7 deliberately publishes **no** total, while this file still
-  prints "929 total / 919 gate" and says **14** env-skipped where `ARCHITECTURE.md` says **15** — the two
-  in-scope docs disagree with each other on a number neither can source.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** raised above P3 because this is not one drifted number in one doc: three
-  different count sets for the same suites are live in the same folder, and the E2E total this file
-  preserves is precisely the figure the sibling doc's design decision deleted for being unverifiable.
-
 ## docs/02-api
 
-<!-- 10 entries from this folder -->
-
-### C‑1 · [[API_CONTRACT]] §1 — exported function count · STALE
-
-- **Origin** audit A entry `C‑1` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
-- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
-- **Claim** "`app/src/lib/api.ts` — a typed client with **~276 exported functions** covering every
-  endpoint the frontend uses."
-- **Expected** ≈276.
-- **Actual** `app/src/lib/api.ts` is **2,838 lines** (the `api.ts:1-2838` code-reference is exact).
-  `export … function` declarations: **286**. Plus one exported const (`API_BASE`) → 287 exported
-  callables/symbols. Plus 60 `export type|interface`.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Direction** the client has *grown* past the stated figure, so the claim understates coverage. The
-  repo `README.md` was already corrected to "~290" by the same 2026-10-02 pass; this file was missed.
-
-### C‑2 · [[API_CONTRACT]] §2 + §5 — generated types and the system row · **`/api/health` is FALSE**
-
-- **Origin** audit A entry `C‑2` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
-- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
-- **Claim** §2: "`backend/openapi.json` — generated OpenAPI 3 document … `npm run gen:openapi` …
-  `npm run gen:types` … the Worker serves the schema at `/api/openapi.json`." §5 table, System row:
-  "`/api/openapi.json`, `/api/health` | schema + health".
-- **Expected** both endpoints exist; `/api/health` at that path.
-- **Actual** `index.js:477` `app.get('/api/openapi.json', …)` ✓ and `backend/openapi.json` exists
-  (OpenAPI 3.0.0, 88 paths, `servers[0] = https://sinaicamps.com`). **The health endpoint is `/healthz`,
-  not `/api/health`** — `backend/src/index.js:164` `app.get('/healthz', async (c) => {` returning
-  `{ status, version: '3.0.0', checks: { database, kv, r2 } }`. `grep -E "app\.(get|post)\('/(api/)?health"`
-  returns that one line only. Neither `/healthz` nor `/api/openapi.json` appears in `openapi.json`.
-- **Class** FALSE (the `/api/health` path) · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** a wrong URL in the one table a client author reads before wiring a monitor or
-  an uptime check.
-
-### C‑3 · [[API_CONTRACT]] §3 — RBAC hierarchy · **FALSE, and it contradicts [[ARCHITECTURE]]**
-
-- **Origin** audit A entry `C‑3` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
-- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
-- **Claim** "| Admin dashboard | JWT (`env.JWT_SECRET`) | `Authorization: Bearer <jwt>` | Admin/owner
-  panel, RBAC hierarchy: `admin` > `staff` |"
-- **Expected** a two-rank hierarchy naming `staff`.
-- **Actual** **There is no `staff` role.** `app/src/lib/rbac.ts:7-12` is `super_admin: 100, admin: 80,
-  manager: 50, cashier: 30`, mirroring `ROLE_RANKS` in `backend/src/middleware/requireAuth.js`. The
-  string `'staff'` appears in the frontend only as a **nav-tab id** (`AdminApp.tsx:146` `{ id: 'staff',
-  label: 'Staff', icon: IconStaff }`, `:437` `case 'staff':`) and a drilldown view name
-  (`TenantDrilldown.tsx:35,160`) — a UI grouping over the `pos_users`-backed `StaffPanel`, not a rank.
-- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Note** this exact error was found and fixed in `ARCHITECTURE.md` by the 2026-10-02 `a5` pass — whose
-  logbook entry says *"**role hierarchy admin > staff** — there is no `staff` role"* — and left in place
-  here. The two docs in this audit now disagree about the authorization model of the admin dashboard.
-
-### C‑7 · [[API_CONTRACT]] §7 — 401 vs 403 · **all eleven strings verbatim**
-
-- **Origin** audit A entry `C‑7` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
-- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
-- **Claim** The 401/403 message table, and "Checks run in this order — signature → token-type → realm →
-  role → activity → tenant scope (`evaluate`, requireAuth.js) — so the FIRST failure wins."
-- **Expected** every message byte-identical, and the order.
-- **Actual** **All eleven messages match verbatim**, in both files:
-  `requireAuth.js:66` `'Missing or invalid Authorization header'` (401),
-  `:67` `'Session expired or invalid signature'` (401),
-  `:68` `'Forbidden: POS sessions are not allowed to access admin routes'` (403),
-  `:69` `'Forbidden: Insufficient permissions'` (403),
-  `:70` `'Account deactivated'` (401),
-  `:71` `'Forbidden: Access denied to this tenant partition'` (403);
-  `resolveScope.js:200` `'Forbidden: project scope mismatch'` (403),
-  `:208,236` `'Unauthorized: missing tenant context'` (401),
-  plus `'Invalid token type'` as the documented `typeMismatch` override. The role-scope claims hold:
-  `pos-users.js:100` `roles: ['super_admin', 'admin']`; the SSE gate at `index.js:431-440` is
-  `realm: 'admin'`, `roles: ['admin','super_admin']`, so POS sessions and non-admins get 403 as documented.
-  **The stated order is incomplete**: `evaluate()` inserts a **1b NULL-tenant hard guard**
-  (`requireAuth.js:160-163`, `if (decoded.role !== 'super_admin' && !decoded.tenantId) return
-  deny(options, 'scopeDenied')`) *before* the token-type check, with a comment saying it runs "before
-  type/realm/role checks". So the true order is signature → null-tenant → token-type → realm → role →
-  activity → tenant.
-- **Class** MATCHED (messages) + STALE (the order sentence) · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Credit** this is the most carefully written section in the three folders: every string is right, and
-  the doc's own "Where" column points at real lines. The single omission is an *extra* gate, not a
-  missing one — the doc errs toward understating the strictness of the gate, never toward overstating it.
-
-### S‑2 · [[API_SURFACE_MAP]] — Frontend Function column · **64 of 249 do not exist** · **P1**
-
-- **Origin** audit A entry `S‑2` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
-- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
-- **Claim** 268 rows each naming a `Frontend Function` from `app/src/lib/api.ts`, e.g. `createCategory(data)`,
-  `getSettings()`, `updateSettings(data)`, `getMarketplaceProjects(params?)`,
-  `addCrmTicketComment(ticketId, content, internal?)`, `getPublicServices(slug)`, `createPlan(data)`.
-- **Expected** every named export resolves in `app/src/lib/api.ts`.
-- **Actual** 249 distinct function names are referenced across the section. **64 have no definition
-  anywhere under `app/src`.** Verified two ways: (a) absence from the 287-symbol export set, and (b) a
-  direct search for six spot-checks — `addCrmTicketComment`, `getSettings`, `updateSettings`,
-  `getMarketplaceProjects`, `createPlan`, `getPublicServices` — across every `.ts`/`.tsx`/`.astro` file in
-  `app/src`, which returned **nothing**. Full list of the 64: `addCrmTicketComment`, `adjustSupplyStock`,
-  `assignServiceBooking`, `confirmSupplyTransfer`, `createAiAutomationRule`, `createAiPriceRule`,
-  `createCategory`, `createCrmContact`, `createCrmKnowledgeArticle`, `createCrmLead`,
-  `createCrmOpportunity`, `createCrmTask`, `createCrmTicket`, `createInventoryAdjustment`, `createPlan`,
-  `createServiceAvailabilitySlot`, `createServiceDefinition`, `createServiceItem`,
-  `createStorefrontBlogPost`, `createStorefrontPage`, `createSupplyBom`,
-  `createSupplyManufacturingOrder`, `createSupplyPurchaseOrder`, `createSupplyTransfer`,
-  `createSupplyWarehouse`, `deleteAiPriceRule`, `deleteInboxItem`, `deleteTag`, `getAiForecast`,
-  `getInventoryAdjustments`, `getMarketplaceProjects`, `getMarketplaceReviews`,
-  `getMarketplaceTenantProfile`, `getPublicServices`, `getReorderSuggestions`, `getServiceAvailability`,
-  `getServiceBooking`, `getServiceDefinition`, `getServiceItem`, `getServiceReviews`, `getSettings`,
-  `getTag`, `getTenantMeta`, `progressSupplyManufacturingOrder`, `receiveSupplyPurchaseOrder`,
-  `setProjectTags`, `setTenantMeta`, `submitMarketplaceReview`, `submitServiceReview`, `updateAiPriceRule`,
-  `updateCategory`, `updateCrmContact`, `updateCrmLeadStatus`, `updateCrmOpportunityStage`,
-  `updateCrmTaskStatus`, `updatePlan`, `updateServiceBookingStatus`, `updateServiceDefinition`,
-  `updateServiceItem`, `updateServicePricing`, `updateSettings`, `updateStorefrontBlogPost`,
-  `updateStorefrontPage`, `updateTag`.
-  They cluster by domain: all of Services (12), CRM (8), Supply (8), Financial (7), Tags (5), Meta (4),
-  Storefront CMS (4), Inventory (3), AI (5), Marketplace (4), Plans (2), Categories (2).
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** the Endpoint column of the same rows is real (S‑11), so a reader has no internal
-  signal that this column is not. Following it produces TypeScript that will not compile, in 30+ domains.
-  The correct fix is per-row: replace the name with `—`, or point at whatever the client actually calls.
-
-### S‑3 · [[API_SURFACE_MAP]] — React Hook column · **120 of 195 do not exist** · **P1**
-
-- **Origin** audit A entry `S‑3` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
-- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
-- **Claim** 195 distinct `use*` names across the same rows, e.g. `useTagsQuery()`, `useCrmContactsQuery()`,
-  `useStorefrontProductsQuery()`, `useSuperCRMOverviewQuery()`, `useTaxRatesQuery()`.
-- **Expected** every named hook is exported from `app/src/hooks/`.
-- **Actual** `app/src/hooks/` holds exactly five files: `useAdminData.ts`, `usePosQueries.ts`,
-  `useQueryHooks.ts`, `useSseInbox.ts`, `useSseOrders.ts`. Enumerating every `export const|function` in
-  all 632 exported `use*` symbols across `app/src/**/*.ts{,x}` (plus `export {}` blocks) leaves **120**
-  of the 195 documented hooks unaccounted for, including every `useTag*`, `useStorefront*`,
-  `useSuper*`, `useTax*`, `useFinancial*`, `useHr*`, `useSupply*`, `useCr*`, `useService*`,
-  `useAi{Automation,Prediction,Price}*` and `useMarketplace*` hook. `useQueryHooks.ts` is 1,891 lines with
-  113 top-level exports, and `useCrmContactsQuery` genuinely exists at `useQueryHooks.ts:1549` — which is
-  why the sample count (75/195) looks plausible until you check all 195. Full 120-name list is
-  reproducible with the method in S‑2.
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** same as S‑2 and worse in one respect: the hooks file is the documented
-  integration surface ("TanStack Query hooks generated per endpoint group"), so a reader concludes the
-  generation is incomplete rather than that the table is wrong.
-
-### S‑4 · [[API_SURFACE_MAP]] — DB Tables column · **13 of 84 tables do not exist** · **P1**
-
-- **Origin** audit A entry `S‑4` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
-- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
-- **Claim** 84 distinct table names in the `DB Tables` column, including `ai_predictions`,
-  `ai_price_rules`, `ai_automation_rules`, `ai_automation_logs`, `crm_contacts`, `crm_leads`,
-  `crm_opportunities`, `crm_tickets`, `crm_ticket_comments`, `crm_knowledge_articles`,
-  `storefront_pages`, `storefront_cart`, `storefront_cart_items`, `storefront_blog_posts`.
-- **Expected** each named table exists in the migration lineage.
-- **Actual** Harvesting every `CREATE TABLE` from all 139 `.sql` files under `backend/migrations/`
-  (40 top-level + 99 legacy) yields 199 distinct table names; **13 of the 84 claimed tables are in
-  neither set**, and a wider `grep -rl "\b<table>\b" backend/migrations --include=*.sql` returns **0
-  files** for each — so they appear under no SQL verb at all, in either lineage. The 13 are exactly:
-  `ai_automation_logs`, `ai_automation_rules`, `ai_predictions`, `ai_price_rules`, `crm_contacts`,
-  `crm_knowledge_articles`, `crm_opportunities`, `crm_ticket_comments`, `crm_tickets`,
-  `storefront_blog_posts`, `storefront_cart`, `storefront_cart_items`, `storefront_pages`.
-  (`crm_leads` *does* exist and is not in the failing set.)
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** combined with S‑2 and S‑3 this means a third independent column of the same
-  table is also unbacked. Three columns of asserted plumbing, none of the three cross-checkable against
-  the code.
-
-### S‑5 · [[API_SURFACE_MAP]] — `/products/:id` GET marked "OpenAPI-registered" · FALSE
-
-- **Origin** audit A entry `S‑5` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
-- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
-- **Claim** "| `/products/:id` | GET | — | `GET /api/products/:id` | `products`, `product_lang` | — |
-  Get single product (**OpenAPI-registered**; no client wrapper/hook found) |"
-- **Expected** a `get` operation on `/api/products/{id}` in `backend/openapi.json`.
-- **Actual** `backend/openapi.json` → `/api/products/{id}` has operations **put, delete** only. No `get`.
-  The same annotation error repeats twice more: `/rateplans/:id` GET is called "OpenAPI-registered" but
-  `/api/rateplans/{id}` has **put, delete** only; and `/meal-schedules/:id` GET and PUT are both listed
-  while `/api/meal-schedules/{id}` has **delete** only.
-- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** "OpenAPI-registered" is the annotation a reader uses to decide whether a route is
-  documented or accidental. Three rows tell them the opposite of the truth.
-
-### S‑6 · [[API_SURFACE_MAP]] — Marketplace rows list the `camps` table · **FALSE**
-
-- **Origin** audit A entry `S‑6` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
-- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
-- **Claim** "| `/marketplace/projects` | GET | `getMarketplaceProjects(params?)` | … | `camps`, `tenants`,
-  `project_meta` |" and the two rows below it list `camps`.
-- **Expected** `camps` to be a real table, or to be `projects`.
-- **Actual** `camps` exists **only** in the excluded `legacy/` lineage — `legacy/0001_init.sql:20`
-  `CREATE TABLE camps`, dropped by `legacy/0063_rename_camps_to_projects.sql:60`. No `FROM camps` /
-  `JOIN camps` / `INTO camps` exists in `backend/src`; the only occurrence outside legacy is a *comment*,
-  `backend/src/routes/registry.js:285` `// Wire rows: \`SELECT * FROM camps\``, and a comment in
-  `backend/migrations/0104_provision_default_projects.sql:15`. **This file contradicts itself 200 lines
-  earlier**: its own Camps section says "There is no `camps` table — the table is `projects`".
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
+<!-- 1 entry still in this folder: S‑7 -->
 
 ### S‑7 · [[API_SURFACE_MAP]] — POS route table
 
@@ -619,114 +334,7 @@ visible rather than authoritative (**A‑20**).
 
 ## docs/03-frontend
 
-<!-- 10 entries from this folder -->
-
-### F‑2 · [[COMPONENT_CATALOG]] §2 — admin panel count · **STALE by 38 files** · **P1**
-
-- **Origin** audit A entry `F‑2` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
-- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
-- **Claim** "## 2. Admin — `components/admin/` (**25 files**) `AdminApp.tsx` + panels: `BookingCalendar`,
-  `CampsPanel`, `DashboardPanel`, `InboxPanel`, `ListingWizard` (+ `PhotosStep`), `LowStockPanel`,
-  `MealsPanel`, `MenuPanel`, `MenuPlannerPanel`, `OrdersPanel`, `PasswordPanel`, `PlanningPanel`,
-  `RatePlansPanel`, `ReportsPanel`, `RoomsPanel`, `SettingsPanel`, `StaffPanel`, `SuperDashboardPanel`,
-  `SuperOrdersPanel`, plus auth pages (`ForgotPasswordPage`, `RegisterPage`, `ResetPasswordPage`) and
-  `icons.tsx`."
-- **Expected** 25 files; every named file present.
-- **Actual** `find app/src/components/admin -type f` → **63 files** (all `.tsx`). Every one of the 23 named
-  components exists (verified individually), so the enumeration is correct — it is the *count* and the
-  *coverage* that are wrong. **40 files are undocumented**, including every major feature area added
-  since: `AIPanel`, `AnalyticsPanel`, `AuditLogPanel`, `BillingPanel`, `BrowserAIPanel`, `CashDeskPanel`,
-  `CRMPanel`, `DynamicForm`, `FeedbackPanel`, `FinancialPanel`, `FolioDetail`, `FolioReceipt`, `FoliosPanel`,
-  `HRPanel`, `PaymentReceipt`, `ProjectItemsPanel`, `PromotionsPanel`, `RecordPaymentModal`,
-  `ServiceBookingsPanel`, `ServicesPanel`, `StorefrontPanel`, `SubscriptionsPanel`, `SuperAIPanel`,
-  `SuperCRMPanel`, `SuperFinancialsPanel`, `SuperHRPanel`, `SuperReportsPanel`, `SuperStorefrontPanel`,
-  `SuperSupplyPanel`, `SuperTenantsPanel`, `SupplyPanel`, `SystemHealthPanel`, `SystemSettingsPanel`,
-  `TenantDrilldown`, `TenantImportPanel`, `TenantPerformancePanel`, `UsersPanel`, plus `AdminShell.tsx`
-  (one of the two `client:only` shell islands, A‑8).
-- **Class** STALE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** the front-matter tag already says `needs-refresh`, so the doc knows — but this is
-  the layer-1 inventory a reader uses to find a panel, and 40 of 63 panels (64%) are invisible in it. Note
-  that `PERF_BASELINE.md` (P‑9) counts "**All 48** admin/super-admin panels" as `React.lazy` from
-  `AdminApp.tsx:60-107` — a number that contradicts both 25 and 63, and is the one that is actually
-  right about the render graph. The doc set has three different answers and no reconciliation.
-
-### F‑4 · [[COMPONENT_CATALOG]] §3 — POS views count · STALE
-
-- **Origin** audit A entry `F‑4` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
-- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
-- **Claim** "## 3. POS — `components/pos/` (**8 views**) `CartPanel`, `DashboardView`, `LoginView`,
-  `OrdersView`, `ProductsView`, `ReceiptModal`, `ShiftDashboard`, `ShiftOverlay` + supporting files."
-- **Expected** 8 view files; the eight named present.
-- **Actual** `ls app/src/components/pos/views/` → **11**: the eight named, plus **`KitchenView.tsx`**,
-  **`ProjectPicker.tsx`**, **`TableView.tsx`**. (Total under `components/pos/` is 14 files: 11 views +
-  `POSApp.tsx` + `PosShell.tsx` + `types.ts`.) `PosShell.tsx` is the second `client:only` island (A‑8).
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **UNDOCUMENTED (P3)** the three extra views. `TableView.tsx` is the restaurant-table surface that
-  `API_SURFACE_MAP.md` documents as `/pos-tables/*`, so its absence from the catalog means the POS table
-  feature has no layer-1 entry point anywhere in scope.
-
-### F‑5 · [[COMPONENT_CATALOG]] §5 — hooks
-
-- **Origin** audit A entry `F‑5` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
-- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
-- **Claim** "## 5. Hooks — `hooks/` (**5**) `useAdminData`, `useApiError`, `useQueryHooks`, `useSseInbox`,
-  `useSseOrders`."
-- **Expected** 5 files; the five named present.
-- **Actual** `ls app/src/hooks/ | wc -l` → **5**: `useAdminData.ts`, `usePosQueries.ts`, `useQueryHooks.ts`,
-  `useSseInbox.ts`, `useSseOrders.ts`. **Four of the five names are right; `useApiError` does not exist**
-  and `usePosQueries` — the entire POS data layer, a real 5th file — is not listed.
-- **Class** STALE (one wrong name, one omission) · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Note** the `useApiError` error is a known repo-wide one: the 2026-10-02 `a5` logbook entry records it
-  as *"REPORTED-NOT-FIXED … `AGENTS.md` §2 and `README.md` still list a `useApiError` hook that does not
-  exist on disk"*. This file is a third carrier of the same phantom. It is P3 rather than P2 precisely
-  because it is already documented as a known defect elsewhere — but that also means it has now survived
-  three separate documentation passes.
-
-### F‑7 · [[COMPONENT_CATALOG]] §7 — stories · **all eight named stories do not exist** · **P2**
-
-- **Origin** audit A entry `F‑7` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
-- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
-- **Claim** "`stories/` mirrors the UI primitives — **8 new a11y stories were added with the T9 expansion
-  (Checkbox, Radio, Switch, Textarea, FormField, Separator, Tooltip, Accordion)** alongside the
-  pre-existing set."
-- **Expected** 8 story files for those 8 components.
-- **Actual** `find app -name "*.stories.*" -not -path "*/node_modules/*"` → **10 files** in
-  `app/src/stories/`: `Badge`, `Button`, `Card`, `DataTable`, `EmptyState`, `Input`, `LoadingSpinner`,
-  `Modal`, `StatCard`, `Toast`. **Not one of the eight named components has a story** — and per **F‑1**,
-  none of the eight even has a source file, so a story for them could not exist. Every real story belongs
-  to a component that *does* have a file.
-- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** the claim has a specific shape — a named PR-era deliverable with an exact
-  component list — and every element of that shape is wrong. It also inverts the catalog's own honest §1
-  finding ("these 9 have no file") by then claiming stories for them.
-
-### P‑1 · [[PERF_BASELINE]] header vs §Status — the TBT threshold contradicts itself · **FALSE**
-
-- **Origin** audit A entry `P‑1` · baseline `dee3124` · source `docs/03-frontend/PERF_BASELINE.md`
-- **Source** `docs/03-frontend/PERF_BASELINE.md`, header block and the `**Status**:` paragraph
-- **Claim** (header) "TBT threshold is **300ms** in harness (`tests/lighthouse/run.ts`), **not 200ms**."
-  vs (Status) "Active enforcement now lives in `app/budget.json` + `npm run lighthouse` (T15, 2026-08-13) —
-  the same targets (**CLS < 0.1, LCP < 2.5 s, TBT < 200 ms**, resource sizes) are enforced there against a
-  live preview URL."
-- **Expected** the two paragraphs to agree.
-- **Actual** Three separate facts, none matching the Status paragraph. (1) `tests/lighthouse/run.ts:52`
-  `const LIGHTHOUSE_TARGETS = { cls: 0.1, lcpMs: 2500, tbtMs: 300, enforced: false };` — **300 ms**, and
-  **`enforced: false`**. (2) `app/budget.json` (33 lines) contains **no CLS, LCP or TBT target at all** —
-  only Lighthouse *resource* budgets: `script` 300, `stylesheet` 100, `image` 1500, `font` 400, `total`
-  2500, all `metric: "transferSize"`. There is no 200 ms anywhere in `budget.json`. (3) The committed
-  `tests/lighthouse/lighthouse-baseline.json` records `"targets":{"cls":0.1,"lcpMs":2500,"tbtMs":300,
-  "enforced":false}` and `"note":"Dev/preview server baseline … Not enforced this pass."`
-- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** "Active enforcement now lives in app/budget.json" is the sentence that tells an
-  operator where the perf gate *is*. It is wrong about which metrics live there, wrong about the TBT
-  number (200 vs the actual 300, which the same file's header corrects two paragraphs earlier), and wrong
-  about `enforced: false` being "active". The file's own header is the accurate one — the doc contradicts
-  itself, which is worse than either version being merely stale.
+<!-- 2 entries still in this folder: P‑4 · P‑10 -->
 
 ### P‑4 · [[PERF_BASELINE]] — the 2026-10-02 bundle snapshot · **verifiable, and verified**
 
@@ -773,353 +381,13 @@ visible rather than authoritative (**A‑20**).
 - **Credit** keeping a reverted experiment and its null result in the file, so it is not repeated blind,
   is the single most valuable thing in this document.
 
-### Y‑1 · [[03-frontend/README]] — "four public islands exist by design" · **FALSE**
-
-- **Origin** audit A entry `Y‑1` · baseline `dee3124` · source `docs/03-frontend/README.md`
-- **Source** `docs/03-frontend/README.md` §Concepts
-- **Claim** "**Islands are rationed** — **four** public islands exist by design. `client:visible` for
-  below-fold content, and adding an island is a deliberate cost, not a default."
-- **Expected** 4 public islands.
-- **Actual** **9** public-facing island directive sites, from the census in **A‑8**:
-  `client:visible` ×6 — `CampBooking` inside `TenantLanding.astro:203`, `MarketplaceDirectory` in
-  `marketplace.astro:14`, and the four storefront islands at `storefront/index.astro:54`,
-  `storefront/cart.astro:52`, `storefront/checkout.astro:53`,
-  `storefront/order/[orderNumber]/confirmation.astro:54`; `client:load` ×3 —
-  `ReservationSummary` in `BookPage.astro:45`, `TenantMenu` in `MenuPage.astro:48`, and the debug-gated
-  `DebugFeedbackWidget` in `PublicLayout.astro:778`. The 8 `client:only` sites are SPA hosts, not content
-  islands. So the honest figures are **8** public content islands plus 1 debug-gated widget, or **9** if the
-  debug widget counts.
-- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** the number 4 comes from the repo's `AGENTS.md`, which predates the storefront
-  islands. `ARCHITECTURE.md` §3 in this same audit counts 17 total sites (6 visible / 3 load) and is
-  right; this README is wrong in a way that would let the next agent add four more "since there are only
-  four" — the exact failure the rationing rule exists to prevent. The "islands are rationed" *intent* is
-  correct and worth keeping; only the count needs the storefronts folded in.
-
-### Y‑2 · [[03-frontend/README]] — "nothing fetches data outside `@/lib/api`"
-
-- **Origin** audit A entry `Y‑2` · baseline `dee3124` · source `docs/03-frontend/README.md`
-- **Source** `docs/03-frontend/README.md` — the section named in the heading above
-- **Claim** "**Hooks are the data layer** — `useAdminData`, `useQueryHooks`, `useApiError`, `useSseInbox`,
-  `useSseOrders`. The admin SPA runs entirely on TanStack Query; nothing fetches data outside `@/lib/api`."
-- **Expected** the hook list to be the real one; no data fetch bypassing the client.
-- **Actual** Three of the five names are right; `useApiError` does not exist and `usePosQueries` is
-  missing — the same defect as **F‑5**. The TanStack Query / `@/lib/api` claim is confirmed by **F‑3**
-  (zero network `fetch` under admin and pos; all 9 `fetch(`-shaped hits are `refetch()`).
-- **Class** STALE (hook names) / MATCHED (the fetch claim) · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### Y‑3 · [[03-frontend/README]] — "app/budget.json holds the enforced limits"
-
-- **Origin** audit A entry `Y‑3` · baseline `dee3124` · source `docs/03-frontend/README.md`
-- **Source** `docs/03-frontend/README.md` — the section named in the heading above
-- **Claim** "**Bundle budget** — `app/budget.json` holds the enforced limits; `PERF_BASELINE.md` records
-  what browsers actually download, the top-15 chunks and the top-3 suspects."
-- **Expected** `budget.json` to hold the enforced limits.
-- **Actual** `app/budget.json` holds five Lighthouse **resource-size** budgets (`script` 300,
-  `stylesheet` 100, `image` 1500, `font` 400, `total` 2500 KB, all `metric: "transferSize"`). It is
-  genuinely consumed by the tool — `app/package.json`'s `lighthouse` script passes
-  `--budget-path=budget.json` — so "enforced" is right **for resource sizes** and wrong as an unqualified
-  statement: the CLS/LCP/TBT targets the sibling doc attributes to this file are in
-  `tests/lighthouse/run.ts:52` and are `enforced: false`.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Note** this is the same defect as **P‑1** seen from the third doc that carries it. The
-  `budget.json` → "CLS/LCP/TBT" → "200 ms" → "enforced" chain is stated three times across two folders and
-  is wrong in each.
-
 ## docs/04-testing
 
-<!-- 9 entries from this folder -->
-
-### T‑1 · [[TESTING]] suite table — backend and frontend rows · STALE
-
-- **Origin** audit B entry `T‑1` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** "| Backend unit | `cd backend && npx vitest run` | **2610 tests / 115 files** |" ·
-  "| Frontend unit | `cd app && npx vitest run` | **3561 tests / 149 files** |"
-- **Expected** the latest committed result for each.
-- **Actual** Backend **2743 / 127**, frontend **3632 / 155** (**T‑0**). Backend is 3 files / 133
-  tests behind; frontend 1 file / 71 tests behind. The header of the very table these sit under
-  says "Suites and counts (verified)".
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-
-### T‑2 · [[TESTING]] suite table — the E2E row is two months and one generation stale · STALE
-
-- **Origin** audit B entry `T‑2` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** "| E2E | `CI=true npx playwright test` | **566 total / 552 gate passed, 14
-  env-skipped** |"
-- **Expected** the latest committed full gate.
-- **Actual** **919 passed / 0 failed / 15 skipped** (**T‑0**), from the 2026-09-06 per-project run.
-  The 566/552/14 figure traces to `AGENT_LOGBOOK_HISTORY.md:6630` — **2026-08-12**, "CLEAN RE-RUN
-  (verified 2026-08-12, ~07:10) … 552 passed / 0 failed / 14 skipped (17.8m), 566 total". So the row
-  is a verbatim, correctly-transcribed result from two months and roughly 350 tests ago.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Worse than the arithmetic** the number is not just wrong, it is *wrong in the direction that
-  understates*: a reader sizing the E2E gate reads 566 where the suite now runs 919+.
-
-### T‑4 · [[TESTING]] "Writing tests" — the two file counts · STALE
-
-- **Origin** audit B entry `T‑4` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** "**Unit**: Vitest. Backend tests live in `backend/` (**115 files**); frontend in `app/`
-  (**149 files**, colocated or under `app/src/**/__tests__`)."
-- **Expected** 115 backend test files, 149 frontend.
-- **Actual** Backend is **127** files, frontend **155** (**T‑0**) — the same drift as **T‑1**, stated
-  a second time so a single correction does not fix the doc.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### T‑5 · [[TESTING]] §"Quick reference: all admin panel tab IDs" — **28 of 46 admin IDs and 2 of 6 POS IDs are missing** · **P1**
-
-- **Origin** audit B entry `T‑5` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** Three tables: "Super Admin (**3 tabs**)": `super_dashboard`, `super_tenants`,
-  `super_reservations`. "Tenant Admin (**15 tabs**)": `dashboard`, `camps`, `rooms`, `rateplans`,
-  `reservations`, `inbox`, `calendar`, `meals`, `menu-planner`, `menu`, `planning`, `reports`,
-  `low-stock`, `staff`, `settings`. "POS (**4 tabs**)": `dashboard`, `products`, `orders`, `shift`.
-- **Expected** every nav tab in the app to appear.
-- **Actual** The nav arrays were enumerated exhaustively, not sampled:
-  `app/src/components/admin/AdminApp.tsx` carries **46** `{ id: '…', label: … }` entries —
-  **29 tenant** and **17 super**. `app/src/components/pos/POSApp.tsx:39-44` carries **6** POS views.
-  Every documented ID exists in code (0 documented-but-missing), so this is incompleteness, not
-  invention. Missing:
-  - **14 tenant IDs** — `cashdesk`, `folios`, `analytics`, `promotions`, `services`,
-    `service-bookings`, `financials`, `hr`, `supply`, `crm`, `storefront`, `ai`, `billing`, `import`
-  - **14 super IDs** — `super_feedback`, `super_users`, `super_settings`, `super_audit`,
-    `super_subscriptions`, `super_financials`, `super_hr`, `super_supply`, `super_crm`,
-    `super_storefront`, `super_ai`, `super_reports`, `super_health`, `super_performance`
-  - **2 POS views** — `tables`, `kitchen`
-- **Class** STALE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** the table's own purpose is stated twice — as the reference E2E selectors
-  "depend on", and as the "only place in the repo" carrying these IDs (**T‑6**). A reader using it
-  to find a tab finds 39% of them, and the missing set is precisely the post-T13 feature areas.
-  Twelve of the missing IDs are actually selected on by E2E specs (verified: `'analytics'`,
-  `'billing'`, `'crm'`, `'financials'`, `'hr'`, `'promotions'`, `'service-bookings'`, `'storefront'`,
-  `'supply'`, `'super_audit'`, `'super_health'`, `'super_performance'` all appear quoted in
-  `tests/e2e/**`), so the dependency the README asserts is real *and* the table cannot service it.
-
-### T‑6 · [[04-testing/README]] — "Admin tab IDs live only here" · **FALSE**
-
-- **Origin** audit B entry `T‑6` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** "**Admin tab IDs live only here** — the 3 super-admin / 15 tenant-admin / 4 POS tab IDs
-  are the only place in the repo that carries them; E2E selectors depend on this table staying put."
-- **Expected** no other place in the repo enumerates them.
-- **Actual** `AdminApp.tsx` carries all 46 and `POSApp.tsx` carries all 6, by definition — they are
-  the source the table transcribes. The counts (3/15/4) are the stale half (**T‑5**).
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** this is the sentence that makes the stale table authoritative. It tells a
-  reader the table cannot drift from the code because nothing else carries the data — which is the
-  opposite of the situation, and the reason the drift went unnoticed.
-
-### T‑7 · [[04-testing/README]] — env-skipped count · STALE
-
-- **Origin** audit B entry `T‑7` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** "**Env-skipped tests are counted, not hidden** — 14 tests skip on missing env."
-- **Expected** 14.
-- **Actual** **15** in the latest committed full gate (**T‑0**). The 14 traces to the 2026-08-12 run
-  (line 6630) — the same stale source as **T‑2**.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Note** `docs/01-architecture/ARCHITECTURE.md` §7 says 15 and `docs/01-architecture/QUICK_START.md`
-  §4 says 14, per Part 8a entries **A‑21**/**Q‑4**. So the vault now carries 14 and 15 for the same
-  suite in two different folders, and this is one of the two places 14 survives.
-
-### T‑8 · [[TESTING]] §"Ground truth" — two gitignored paths and a moved file · STALE
-
-- **Origin** audit B entry `T‑8` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** "`test-results/.last-run.json` records the previous run's results. If
-  `tests/e2e/results/*` disagree with `AGENT_LODBOOK.md`, the `.last-run.json` and the full log are
-  authoritative."
-- **Expected** both paths to be locatable, and `AGENT_LOGBOOK.md` to hold the suite results.
-- **Actual** **Both artifact paths are gitignored and absent from the tree** —
-  `git check-ignore` confirms `tests/e2e/results/` matches `.gitignore:14`, and `.gitignore:10`
-  ignores `test-results/`; `ls test-results/` returns an empty directory. The advice is correct as
-  operator practice but points at nothing a reader can inspect. And **`AGENT_LOGBOOK.md` no longer
-  holds suite results**: it is now the 188-line reference tier, and the append-only history with
-  every suite result moved to `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` in the 2026-10-06
-  restructure (Part 8a **A‑21** records the same dangling pointer in `ARCHITECTURE.md`).
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-
-### T‑12 · [[TESTING]] §CI checks before shipping · MATCHED
-
-- **Origin** audit B entry `T‑12` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** Five ordered gates: backend unit · app unit · root integration · `cd app && npm run build`
-  · `CI=true npx playwright test` with a passed/failed/skipped figure.
-- **Expected** all five real; the build script real.
-- **Actual** `app/package.json` has a `build` script; the three vitest commands are real;
-  `npx playwright test` is the config's `testDir`. The figure on the last line is stale (**T‑2**).
-- **Class** MATCHED (the five gates) / STALE (the figure) · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### T‑14 · [[04-testing/README]] — "verified counts, not remembered counts" · FALSE as stated
-
-- **Origin** audit B entry `T‑14` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
-- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
-- **Claim** "**Verified counts, not remembered counts** — the suite table is filesystem-verified and
-  dated. A count in this file is a claim with a date on it."
-- **Expected** the suite table to carry a date or a producing commit per count.
-- **Actual** `TESTING.md`'s table carries **no date and no commit** on any of its four rows, and the
-  file's front matter says `verified: never`. `docs/01-architecture/ARCHITECTURE.md` §7 — which made
-  the opposite design choice, "each row is labelled with its producing commit, which is exactly why
-  the drift is visible rather than authoritative" (Part 8a **A‑20**) — does the labelling this README
-  claims for it. The 566/552/14 row (**T‑2**) is a **2026-08-12** result with nothing in the file
-  saying so.
-- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** this is a meta-claim about the folder's own reliability, and it is the
-  reason **T‑1**/**T‑2**/**T‑4** could rot unnoticed for two months. The claim is what a reader would
-  use to decide *not* to re-run a suite; it should not be there unless each count carries its date.
+<!-- every entry in this folder block is now RESOLVED or DEFERRED — see below -->
 
 ## docs/05-operations
 
-<!-- 8 entries from this folder -->
-
-### O‑16 · [[AUDIT_MASTER_FINDINGS]] PART 1 — all six P0s are fixed in the tree, and the doc still presents them as open · STALE · P2
-
-- **Origin** audit B entry `O‑16` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
-- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md`, PART 1 "TOP PRIORITY FINDINGS
-  (deploy-blocking / money / data-integrity)" and PART 6 "RECOMMENDED FIX SEQUENCE (proposed — needs
-  your go-ahead)"
-- **Claim** Six P0s requiring fixes: P0.1 onboarding SQL interpolation · P0.2 `sanitizeInput()` is a
-  silent no-op · P0.3 storefront leaks `cost_price` · P0.4 `orders.kitchen_status` CHECK omits
-  `'canceled'` · P0.5 `/api/services/public/:slug` queries columns that don't exist on `tenants` ·
-  P0.6 public signup mints live unverified admins.
-- **Expected** each P0 to be open, given PART 6 asks for go-ahead.
-- **Actual** **All six are fixed**, and each fix is present in the tree with a comment naming the
-  finding:
-  - P0.1 — `backend/src/api/onboarding.js:31-38` `tenantUpdateSchema` is a `z.object({...}).strip()`
-    whitelist of six keys, with `:29` "Any key outside this list is stripped by `.strip() and can never
-    reach the UPDATE". The interpolation at `:241` survives but is unreachable for attacker keys.
-    `:254` records the token burn ("T1 (P0.1): the onboarding token is cleared once consumed").
-  - P0.2 — `backend/src/middleware/sanitize.js` **does not exist**; the removal note is at
-    `index.js:149-154`.
-  - P0.3 — `backend/src/api/storefront.js:73-76` "T3 (M1): public product projection — explicitly
-    excludes `cost_price`", and `:198` selects named columns.
-  - P0.4 — the live CHECK **includes** `'canceled'`: `0002_orders.sql:29` and `0004_pos.sql:156`
-    (`CHECK(kitchen_status IN ('pending','confirmed','preparing','ready','served','canceled'))`),
-    re-asserted in `0112:238`.
-  - P0.5 — `services.js:443-450` "T5 (M2): tenants has no `slug`/`is_active` columns — the tenant
-    handle is its `subdomain`, liveness is `status = 'active'`".
-  - P0.6 — `onboarding.js:22` `password: z.string().min(8, …)`, and `:123` "gate `is_active = 1`
-    (auth.js), so the account cannot be used until …".
-- **Class** STALE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** above P3 because of the shape, not the content. PART 6 is written as a
-  proposal awaiting an owner's go-ahead, listing "Wave 1 — Security & correctness fires
-  (deploy-blocking) … 1. P0.1 Onboarding SQL injection → zod `.strip()` whitelist". A reader who
-  opens this file to decide what to fix next finds six deploy-blocking items, all six already done
-  months ago. The doc is correctly tagged `status/archived` and dated 2026-09-05 — the defect is
-  that the *fix sequence* section reads in the present tense and nothing marks it spent.
-
-### O‑17 · [[AUDIT_MASTER_FINDINGS]] P0.4 — the cited migration is in the excluded lineage
-
-- **Origin** audit B entry `O‑17` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
-- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
-- **Claim** "**Where:** `backend/migrations/0069_restaurant_tables.sql:47` (also
-  `pos_transactions.kitchen_status` at `:55`)"
-- **Expected** the CHECK to be located in a migration that is actually applied.
-- **Actual** `backend/migrations/0069_restaurant_tables.sql` exists **only under
-  `backend/migrations/legacy/`**, which is excluded from the applied lineage (**D‑9**). The CHECK an
-  operator would find is `0002_orders.sql:29` (`orders`) and `0004_pos.sql:156`
-  (`pos_transactions`). The finding is stale in the same way as **D‑1** — it was written before the
-  squash.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### O‑18 · [[AUDIT_MASTER_FINDINGS]] PART 5 — the test-count green light · STALE
-
-- **Origin** audit B entry `O‑18` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
-- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
-- **Claim** "Backend unit **1,988/1,988 pass** (72 files) · Frontend unit **3,489/3,489 pass** (137
-  files) · Root unit **158/158 pass** (10 files)"
-- **Expected** current counts, or a date.
-- **Actual** **2743 / 127**, **3632 / 155**, **255 / 37** (**T‑0**). The green-light block carries no
-  date and no commit, and PART 4's `tsc` row is similarly undated (**O‑20**).
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### O‑19 · [[AUDIT_MASTER_FINDINGS]] PART 5 — the migration-count green light · STALE
-
-- **Origin** audit B entry `O‑19` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
-- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
-- **Claim** "91/91 migrations sequential & fully applied; `PRAGMA foreign_key_check` = 0 violations."
-- **Expected** 91 applied migrations.
-- **Actual** The applied lineage is **40 top-level files**, head `0127` (**D‑1**). 91 was the
-  pre-squash `0001`–`0099`-era count (the `legacy/` folder holds 99 files today). The
-  `foreign_key_check` claim is not re-derivable without a replay and was not run.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### O‑20 · [[AUDIT_MASTER_FINDINGS]] PART 4 — `tsc` counts, and PART 5's `DB.batch`/index/`escHtml` figures · STALE
-
-- **Origin** audit B entry `O‑20` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
-- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
-- **Claim** PART 4: "`tsc --noEmit` **426 errors**: 97 src (90 non-story) + 329 tests + 7 stories.
-  77% is test-fixture debt" and the five src hotspots. PART 5: "`escHtml()` used 67×,
-  `normalizeAssetUrl()` 39×"; "`DB.batch` already used in 27 places"; "~167 indexes cover every hot
-  query".
-- **Expected** the current values, or a date.
-- **Actual** The `tsc` figure is dead: `AGENT_LOGBOOK_HISTORY.md` records `npx tsc --noEmit` → **0
-  errors TOTAL (src + tests)** at the 2026-09-06 `T33 TEST-FIXTURE TSC DEBT: DONE (329 → 0)` entry
-  (line 9086), and the latest recorded run (2026-10-03, `tenant-outage-vs-404`) reports "the same
-  **2 PRE-EXISTING** errors in `tests/unit/tenant-name-escape.test.tsx`". `escHtml()` is now **18**
-  (**S‑8**) not 67 — corrected by the security guide. `DB.batch` is now in **48** call sites under
-  `backend/src`, not 27. The index figure was measured on the 91-migration lineage; the current
-  top-level lineage contains 550 `CREATE INDEX` statements (many are re-creations inside rebuilds, so
-  distinct index names are fewer — the exact number needs a replay).
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Note** `tsc` was **not** run by this audit, so "0 then 2" is quoted from the logbook, not
-  re-derived — the same source discipline as **T‑0**.
-
-### O‑21 · [[AUDIT_MASTER_FINDINGS]] M3 and M21 — two PART 2 findings that are now moot
-
-- **Origin** audit B entry `O‑21` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
-- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
-- **Claim** M3: "Feature flags are window dressing: `FEATURE_USER_REGISTRATION`/`FEATURE_TWO_FACTOR_AUTH`
-  have zero code usages" (citing `wrangler.toml [vars]`). M21: "Regression:
-  `tests/core/migration-integrity.test.js` — **20 unsafe `DROP TABLE`** (no `IF EXISTS`) in 11
-  migrations | `0014/0039/0040/0042/0046/0047/0054/0069/0091`"
-- **Expected** both open.
-- **Actual** M3: neither `FEATURE_USER_REGISTRATION` nor `FEATURE_TWO_FACTOR_AUTH` appears anywhere
-  in `backend/` or `app/src`, **including `backend/wrangler.toml`** — the flags are gone from the
-  config, so the finding's premise no longer exists. M21: every one of the 11 cited files is under
-  `backend/migrations/legacy/`; in the applied top-level lineage there are now **6** `DROP TABLE`
-  without `IF EXISTS`, across **6** files (`0107`, `0108`, `0111`, `0112`, `0115`, `0126`) — and
-  `tests/core/migration-integrity.test.js` exists and passes.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Note** M21's live residue (6 unsafe drops) is **not** claimed by the doc, so the finding is
-  *resolved* rather than merely restated; a reader who trusts "20 in 11 migrations" will
-  under-protect the 6 that remain.
-
-### O‑22 · [[AUDIT_MASTER_FINDINGS]] M11 — "4th public island (`MarketplaceDirectory client:load`)" · STALE
-
-- **Origin** audit B entry `O‑22` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
-- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
-- **Claim** "| M11 | Frontend | MED | 4th public island (`MarketplaceDirectory client:load`) beyond
-  documented 3; sibling `/camps` is fully SSR | `app/src/pages/marketplace.astro:14` |"
-- **Expected** `client:load` at `marketplace.astro:14`.
-- **Actual** `app/src/pages/marketplace.astro:14` is **`client:visible`**, and the directive census
-  (Part 8a **A‑8**) is 17 real sites — 8 `client:only` / 6 `client:visible` / 3 `client:load`. So M11
-  both mis-names the directive and describes a 3-island world that no longer exists.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Cross-doc** this is the **fourth** doc in the vault to carry a stale public-island count, after
-  `AGENTS.md` (4), `03-frontend/README.md` (4, Part 8a **Y‑1**) and this one — while
-  `01-architecture/ARCHITECTURE.md` §3 counts 17 and is right.
+<!-- 1 entry still in this folder: O‑25 -->
 
 ### O‑25 · [[05-operations/README]] / [[RUNBOOK]] — all `code-references` · MATCHED
 
@@ -1138,167 +406,15 @@ visible rather than authoritative (**A‑20**).
 
 ## docs/06-security
 
-<!-- 4 entries from this folder -->
-
-### S‑2 · [[security-guide]] §Rate Limiting — "the second, tenant-scoped layer … is mounted on 7 prefixes" · **FALSE** · P2
-
-- **Origin** audit B entry `S‑2` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
-- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
-- **Claim** "**A second, tenant-scoped layer** (`tenantAwareLimiter`) is mounted on 7 prefixes
-  (`/api/tenants/:tenantId/meta/*`, `/api/tenants/import/*`, `/api/admin/*`,
-  `/api/tenant/billing/*`, `/api/pos/*`, `/api/reports/*`, `/api/inventory/*`)"
-- **Expected** 7 `app.use(…, tenantAwareLimiter())` mounts.
-- **Actual** **36.** `grep -oE "app\.use\('[^']*', tenantAwareLimiter\(\)\)" backend/src/index.js`
-  returns 36 distinct mounts. The 7 named are the **first 7 in declaration order** — the list grew
-  by 29 and was never re-counted. Full set: `/api/tenants/:tenantId/meta/*`,
-  `/api/tenants/import/*`, `/api/admin/*`, `/api/tenant/billing/*`, `/api/pos/*`, `/api/reports/*`,
-  `/api/inventory/*`, `/api/price-overrides/*`, `/api/plans/*`, `/api/meal-categories/*`,
-  `/api/categories/*`, `/api/meals/*`, `/api/promotions/*`, `/api/services/*`, `/api/inbox/*`,
-  `/api/leads/*`, `/api/me/*`, `/api/products/*`, `/api/rooms/*`, `/api/rateplans/*`,
-  `/api/projects/links/*`, `/api/projects/items/*`, `/api/orders/*`, `/api/folios/*`,
-  `/api/upload/*`, `/api/projects/:projectId/meta/*`, `/api/tags/*`,
-  `/api/projects/:projectId/tags/*`, `/api/audit/*`, `/api/pos-tables/*`, `/api/financials/*`,
-  `/api/hr/*`, `/api/supply/*`, `/api/crm/*`, `/api/storefront/*`, `/api/ai/*`.
-- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** 7 vs 36 understates the tenant-scoped rate-limit surface by 5×, and this is
-  the layer that makes per-tenant limiting real. An auditor sizing blast radius reads 7.
-- **Cross-doc** `docs/01-architecture/ARCHITECTURE.md` §4 carries the *same* 7-prefix figure (Part
-  8a **A‑16**), and the security guide's own §Verification note repeats it a second time
-  ("plus a second tenant-scoped layer on 7 prefixes"). **This is now a three-site defect**, and the
-  security guide is the one an auditor is most likely to read.
-
-### S‑3 · [[security-guide]] §Rate Limiting — the policy-table size · STALE
-
-- **Origin** audit B entry `S‑3` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
-- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
-- **Claim** "a ~20-entry ordered policy table keyed `${cf}:${path}`"
-- **Expected** ~20 entries.
-- **Actual** `RATE_LIMIT_POLICIES` (`rateLimit.js:25-97`) holds **23 non-`default` entries plus
-  `default`** — lines 33, 34, 35, 36, 37, 38, 39, 41, 43, 44, 45, 46, 49, 51, 56, 85, 86, 87, 88, 92,
-  93, 94, 95 and the `default` at 96.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Credit** "~20" is a fair reading of 23, and the doc's insistence on naming the *mechanism*
-  (first-match-wins, per-entry `envKey`, mid-path vs trailing `*`) is what makes the table auditable
-  at all. Only the number is loose.
-
-### S‑13 · [[security-guide]] §CSRF table — "All API requests use JSON bodies" · STALE
-
-- **Origin** audit B entry `S‑13` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
-- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
-- **Claim** "| `Content-Type: application/json` | **Defense-in-depth** | **All API requests use JSON
-  bodies.** Simple cross-origin form submissions can only send
-  `application/x-www-form-urlencoded`, `multipart/form-data`, or `text/plain`. |"
-- **Expected** every mutating API to take JSON.
-- **Actual** **`POST /api/upload` accepts `application/octet-stream`** with a `?filename=` query —
-  `backend/src/api/upload.js:84` documents that path, alongside the multipart branch, with the
-  ≤8 MB cap (`:7`) and the five MIME types (`:15-19`). A cross-origin `<form enctype="multipart/
-  form-data">` can therefore reach it, so the third mechanism's stated basis does not hold for the
-  one endpoint where a file is expected.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Severity rationale** low, because the primary defence (bearer header, no cookie) is unaffected —
-  the request still arrives without the JWT. But the sentence says **all**, and an auditor reading a
-  "defense-in-depth" row wants the exceptions.
-
-### S‑16 · [[security-guide]] — two stale pre-restructure paths · STALE
-
-- **Origin** audit B entry `S‑16` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
-- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
-- **Claim** §Token lifecycle: "Full matrix: `docs/API_CONTRACT.md` §7 (sourced from
-  `backend/src/middleware/requireAuth.js` `DEFAULT_MESSAGES`)". §XSS Layer 2: "full inventory:
-  `docs/audit-2026-09-30-eschtml-inventory.md`".
-- **Expected** both paths to resolve.
-- **Actual** Neither. `docs/API_CONTRACT.md` → **no such file**; the doc is at
-  `docs/02-api/API_CONTRACT.md`. `docs/audit-2026-09-30-eschtml-inventory.md` → **no such file**; it
-  is at `docs/98-history/worksheets/audit-2026-09-30-eschtml-inventory.md`. Both *targets* are real
-  and both *claims* are correct — the prose paths were not converted in the 2026-10-06 restructure
-  (which fixed *wikilinks* but left these two markdown-path citations).
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
+<!-- every entry in this folder block is now RESOLVED or DEFERRED — see below -->
 
 ## docs/07-data
 
-<!-- 5 entries from this folder -->
-
-### D‑1 · [[migrations]] §1 — migration head and count · **FALSE as written** · STALE
-
-- **Origin** audit B entry `D‑1` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
-- **Source** `docs/07-data/migrations.md` §1 "What migrations are"
-- **Claim (verbatim)** "**Current head: `0123_storefront_order_items_fk_pos_products.sql`** (37
-  files total: `0001`–`0014` + `0100`–`0123` minus reserved-absent `0109`, filesystem-verified)"
-- **Expected** 37 top-level `.sql` files; highest-numbered `0123_*`.
-- **Actual** `ls backend/migrations/*.sql | wc -l` → **40**. Highest =
-  `0127_meals_tenant_composite_pk.sql`. Sequence `0001…0014 0100…0108 0110…0124 0126 0127`.
-  Three migrations landed after this paragraph was written: `0124_guest_folios.sql`,
-  `0126_tenant_scoped_unique_sku_email.sql`, `0127_meals_tenant_composite_pk.sql`.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Note the folder contradicts itself.** `docs/07-data/README.md:64-69` carries an explicit callout
-  naming this exact drift and stating the correct figures ("The tree has **40** migrations with head
-  `0127_meals_tenant_composite_pk.sql`"), and correctly attributes the fix to an owner content edit
-  deliberately left out of the 2026-10-06 restructure. The live guide was missed; the index caught
-  it.
-
-### D‑2 · [[migrations]] §2 step 1 — the "create the next migration" instruction now names a taken slot · **P1**
-
-- **Origin** audit B entry `D‑2` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
-- **Source** `docs/07-data/migrations.md` — the section named in the heading above
-- **Claim** "1. Create `backend/migrations/0124_<slug>.sql` with the next number (head is `0123`;
-  never reuse reserved-absent `0109`)."
-- **Expected** either the real head, or a slot that is free.
-- **Actual** `backend/migrations/0124_guest_folios.sql` **exists** (a real, applied migration
-  creating `folios` / `folio_charges` / `folio_settlements`, header dated 2026-09/10). An agent
-  following this instruction literally authors a second `0124_*`, which `wrangler d1 migrations
-  apply` orders ambiguously (filename sort) and `scripts/check-deploy-parity.sh` will flag as a
-  ledger mismatch. The correct next free slot is **`0128`**.
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** unlike every other stale count in this audit, this one is an *instruction*
-  with a destructive failure mode. It is the first thing the guide tells a reader to do, and the
-  doc it is filed under is `status/live` with `type/guide`.
-
-### D‑3 · [[migrations]] §6 — verification test counts · STALE
-
-- **Origin** audit B entry `D‑3` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
-- **Source** `docs/07-data/migrations.md` — the section named in the heading above
-- **Claim** (code block) `cd backend && npx vitest run` → `# 2610 tests / 115 files` ·
-  `cd app && npx vitest run` → `# 3561 tests / 149 files` · root integration `# 255 tests / 37 files`
-- **Expected** the latest committed result for each suite.
-- **Actual** Not re-run (source note on **T‑1**). Backend is **127 files / 2743 tests**, app is
-  **155 / 3632**. Root integration 37/255 is the one row still correct. Backend is **3 files / 133
-  tests** behind; frontend **1 file / 71 tests** behind.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-
-### D‑5 · [[migrations]] §5 "earlier" row — the series range understates by one
-
-- **Origin** audit B entry `D‑5` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
-- **Source** `docs/07-data/migrations.md` — the section named in the heading above
-- **Claim** "`0100`–`0118` project-scoping series (+ `0111` SET NULL idiom)"
-- **Expected** the project-scoping series ends at 0118.
-- **Actual** `backend/migrations/0119_pos_shifts_store_id.sql` is part of the same project-scoping
-  work (POS shifts get `store_id`), and `DEVELOPER_ROADMAP.md` T20 groups `0118`+`0119`+`0120`
-  together as "Phase 4 project-scoping". The series runs 0100–0119.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### D‑11 · [[07-data/README]] §Concepts — the lineage range glosses a deliberate gap
-
-- **Origin** audit B entry `D‑11` · baseline `ddc63c6` · source `docs/07-data/README.md`
-- **Source** `docs/07-data/README.md` — the section named in the heading above
-- **Claim** "the live top level (`0001`–`0014` + `0100`–`0127`) is what wrangler scans"
-- **Expected** the two ranges to be accurate as ranges.
-- **Actual** Accurate as ranges, but it reads as contiguous. `0125` is **absent and deliberately so**
-  (the same fact `docs/01-architecture/ARCHITECTURE.md` §5 documents with its reason). A reader who
-  takes the range as contiguous will conclude a migration is missing.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
+<!-- every entry in this folder block is now RESOLVED or DEFERRED — see below -->
 
 ## docs/08-guides
 
-<!-- 5 entries from this folder -->
+<!-- 3 entries still in this folder: G‑1 · G‑2 · G‑3 -->
 
 ### G‑1 · [[analytics-guide]] §Customer Metrics — **Customer Lifetime Value (CLV) does not exist** · FALSE · P2
 
@@ -1350,258 +466,9 @@ visible rather than authoritative (**A‑20**).
   would be planning against three numbers the API never returns. **This is the single worst content
   defect in the guides folder.**
 
-### G‑4 · [[analytics-guide]] §Exporting Data — "no PDF" is FALSE
-
-- **Origin** audit B entry `G‑4` · baseline `ddc63c6` · source `docs/08-guides/analytics-guide.md`
-- **Source** `docs/08-guides/analytics-guide.md` — the section named in the heading above
-- **Claim** "Navigate to the desired report tab (**tenant panel has no Export button — exports live
-  in super-admin templates as CSV/JSON, no PDF**)". And §Scheduled Reports: "reports are generated
-  from templates (schedules persist in memory only, no email delivery)".
-- **Expected** the tenant-panel half true; the format list accurate.
-- **Actual** The **first half is MATCHED**: neither `reports.js` nor `admin-reports.js` declares any
-  `/export` route, so the tenant panel genuinely has no export endpoint. The **"no PDF" half is
-  FALSE**: `backend/src/api/admin-reports.js` `REPORT_TEMPLATES` declares `formats: ['csv', 'pdf']` on
-  **five of seven** templates — `:24` (`revenue_by_tenant`), `:32` (`tenant_performance`), `:43`
-  (`occupancy_report`), `:59` (`inventory_value`), `:69` (`crm_pipeline`) — and `['csv']` only on
-  `:51` (`employee_headcount`) and `:77` (`system_health`). The in-memory-store half is MATCHED:
-  `admin-reports.js:81-82` "In-memory report job store (ephemeral — lost on worker restart)".
-- **Class** FALSE (the "no PDF" clause) / MATCHED (the rest) · **Severity** P2 · **Action**
-- **Severity** P2 · **Action** UPDATE-DOC
-  UPDATE-DOC
-- **Severity rationale** a tenant admin told "no PDF" will not build a PDF workflow; five templates
-  offer the format. Note the guide is otherwise admirably honest here — it invented no export button
-  and invented no email delivery — so this is a one-clause fix.
-
-### G‑8 · [[camp-guide]] §Room Status Lifecycle — "four-state" is stale · STALE
-
-- **Origin** audit B entry `G‑8` · baseline `ddc63c6` · source `docs/08-guides/camp-guide.md`
-- **Source** `docs/08-guides/camp-guide.md` — the section named in the heading above
-- **Claim** "Rooms follow a four-state lifecycle: `available → reserved → occupied → cleaning →
-  available`", with a four-row table.
-- **Expected** the state set the admin API accepts.
-- **Actual** `PATCH /api/rooms/:id/status` (`backend/src/api/camps.js:946-961`) accepts **five**
-  values: `:952` `const allowed = ['available', 'reserved', 'occupied', 'cleaning', 'out_of_service']`.
-  The endpoint also writes **two** columns — `:955` `SET status = ?, room_status = ?` — and a separate
-  `cleaning_status` column exists with its own four-value CHECK
-  (`0003_products.sql:44` `CHECK(cleaning_status IN ('dirty','in_progress','clean','inspected'))`),
-  maintained by a **different** endpoint (`:907` rejects an invalid `cleaning_status`). The guide
-  mentions neither `out_of_service` nor `cleaning_status`.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Cross-doc** `tenant-import-schema.md`'s `rooms.roomStatus` row gets this exactly right — "**no DB
-  CHECK**, so this enum is a policy choice mirroring the values `PATCH /api/rooms/:id/status`
-  accepts" — and its `cleaningStatus` row gets the CHECK right. So the correct, complete state model
-  exists in the vault; the walkthrough that a tenant admin reads does not have it.
-
 ## docs/09-plans
 
-<!-- 13 entries from this folder -->
-
-### R‑1 · [[DEVELOPER_ROADMAP]] T9 — "ui library is now 26 components" · STALE
-
-- **Origin** audit B entry `R‑1` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
-- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
-- **Claim** "| T9 | Design-system expansion | +8 a11y-first UI primitives (Accordion, Checkbox,
-  FormField, Radio, Separator, Switch, Textarea, Tooltip) + 8 stories; **ui library is now 26
-  components** |"
-- **Expected** 26 files under `app/src/components/ui/`.
-- **Actual** `ls app/src/components/ui/ | wc -l` → **20**. The 8 named primitives **do not exist** as
-  files (`test -f` → no match for each), so the "+8" was never realised; the "+8 stories" was not
-  either (Part 8a **F‑7**: `find app -name "*.stories.*"` → 10 files, none for those 8). So the row
-  marks as **Done** a task whose deliverables are absent, and miscounts the result by 6.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Cross-doc** `docs/03-frontend/COMPONENT_CATALOG.md` §1 gets this right and is self-aware about it
-  ("9 cataloged entries have no file … 3 present files were undocumented"), and Part 8a **F‑1** rates
-  it "the single most honest count claim in the three folders". This roadmap row is the same number
-  stated wrongly by a document that has no way to check it.
-
-### R‑2 · [[DEVELOPER_ROADMAP]] T13 — "16/16 panels use `@/lib/api`" · STALE
-
-- **Origin** audit B entry `R‑2` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
-- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
-- **Claim** "| T13 | Admin query migration | Verified already complete: admin SPA fully on TanStack
-  Query, zero raw `fetch` data loads, zero `window.*` globals, **16/16 panels use `@/lib/api`** |"
-- **Expected** 16 panels.
-- **Actual** `AdminApp.tsx` carries **46** nav tabs and **48** `lazy()` calls in `:60-107` (Part 8a
-  **P‑9**, verified exact), and `find app/src/components/admin -type f` → **63** files. The row's
-  *substantive* claims all still hold: Part 8a **F‑3** confirmed zero network `fetch` under
-  `components/admin` + `components/pos` (all 9 `fetch(`-shaped hits are `refetch()`) and zero
-  `window.*` data globals (**A‑11**). Only the denominator is stale.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### R‑3 · [[DEVELOPER_ROADMAP]] T14 — "8 POS views" · STALE
-
-- **Origin** audit B entry `R‑3` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
-- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
-- **Claim** "| T14 | POS terminal | Shipped (**8 POS views**, `pos_token` auth, shifts, cart/checkout) |"
-- **Expected** 8 view files.
-- **Actual** `ls app/src/components/pos/views/` → **11**: the eight named in `COMPONENT_CATALOG.md`
-  plus `KitchenView.tsx`, `ProjectPicker.tsx`, `TableView.tsx` (Part 8a **F‑4**). `POSApp.tsx:17-25`
-  lazy-imports **nine** view modules plus `CartPanel`.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### R‑4 · [[DEVELOPER_ROADMAP]] T19 — "53 migrations, 18 admin panels, 552 E2E gate" · STALE
-
-- **Origin** audit B entry `R‑4` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
-- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
-- **Claim** "| T19 | Docs refresh | README + AGENTS + … updated to match the codebase (repo now
-  `campmaster`, no i18n, **53 migrations**, **18 admin panels**, **552 E2E gate**, R2/DO bindings) |"
-- **Expected** 53 migrations / 18 panels / 552 E2E.
-- **Actual** **40** migrations, head `0127` (**D‑1**); **46** admin nav tabs / **63** component files
-  (**R‑2**); **919** E2E gate / 15 skipped (**T‑2**). All three numbers describe the pre-squash,
-  pre-T13, pre-2026-09-06 tree.
-- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** raised above the other roadmap rows because this is the row that *establishes
-  the codebase description every other row inherits*. It is the doc's own summary of "what matches
-  the codebase", and three of its five figures no longer do.
-
-### R‑7 · [[DEVELOPER_ROADMAP]] §Remaining — "Push blocked on OAuth `workflow` scope" · FALSE
-
-- **Origin** audit B entry `R‑7` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
-- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
-- **Claim** "| Git remote + push | **Repo created** — `github.com/Michaelhehelmy/campmaster`
-  (private), `origin` set; commit `5d11305` local. **Push blocked on OAuth `workflow` scope** — approve
-  the `gh auth refresh -h github.com -s workflow` device flow, or drop `.github/workflows/*` from
-  pushed history |"
-- **Expected** pushes to be blocked.
-- **Actual** **Pushes land.** This audit's baseline check (`git branch -r --contains ddc63c6` →
-  `origin/main`) is itself a push to `origin/main`, and the six preceding vault commits
-  (`2dba33a`…`ddc63c6`) are all on the remote. The blocker is resolved and the row still lists it as
-  open.
-- **Class** FALSE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Credit** the row is honest about *how* to unblock it ("or drop `.github/workflows/*` from pushed
-  history") — which is the kind of alternative an owner action should carry.
-
-### R‑8 · [[DEVELOPER_ROADMAP]] §"Known pre-existing type errors" — the 153-error baseline · FALSE
-
-- **Origin** audit B entry `R‑8` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
-- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
-- **Claim** "`BookPage.astro` (`apiBase` prop) and `MenuPage.astro` (meal/mealCategory types) have LSP
-  errors that predate this backlog batch (part of the known **153-error baseline**). They do not block
-  `astro build` or the test suites."
-- **Expected** a 153-error `tsc` baseline with the named files in it.
-- **Actual** **The baseline is dead twice over.** (1) `AGENT_LOGBOOK_HISTORY.md:9086` is the 2026-09-06
-  heading **"T33 TEST-FIXTURE TSC DEBT: DONE (329 → 0)"** with `npx tsc --noEmit` → **0 errors TOTAL
-  (src + tests)**; the latest recorded run (2026-10-03) reports "the same **2 PRE-EXISTING** errors in
-  `tests/unit/tenant-name-escape.test.tsx`". (2) **`tsc` cannot type-check `.astro` files at all** —
-  the same 2026-10-03 entry says so explicitly ("`tsc` does not type-check `.astro` files at all, and
-  `@astrojs/check` is NOT installed"). So the two named "errors" are LSP-level, outside `tsc`'s
-  reach, and the 153 figure predates a session that drove it to 0.
-- **Class** FALSE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Note** the claim "They do not block `astro build`" is *correct* and is the only part that matters
-  operationally — that sentence should be kept and the number dropped.
-
-### R‑9 · [[BACKLOG_VOID_REFUND]] §Current — "`POST /api/pos/orders/:id/void` exists (manager-gated, stock restore, audit)" · **FALSE** · **P1**
-
-- **Origin** audit B entry `R‑9` · baseline `ddc63c6` · source `docs/09-plans/BACKLOG_VOID_REFUND.md`
-- **Source** `docs/09-plans/BACKLOG_VOID_REFUND.md` — the section named in the heading above
-- **Claim** "## Current — `POST /api/pos/orders/:id/void` exists (manager-gated, stock restore,
-  audit). No partial refund, no Paymob refund call, no `refunds` ledger table."
-- **Expected** a POS order-void route.
-- **Actual** **It does not exist.** The POS router's complete route list is ten entries —
-  `pos/index.js:278` POST `/auth/login`, `:305` POST `/auth/refresh`, `:402` GET `/products`,
-  `:426` POST `/orders`, `:1032` GET `/orders`, `:1064` GET `/orders/:id`, `:1098` GET `/dashboard`,
-  `:1212` GET `/shifts/active`, `:1238` POST `/shifts/open`, `:1277` POST `/shifts/close` — **no
-  void**. A repo-wide search for a void route finds exactly one:
-  `backend/src/api/folios.js:337` `foliosRoutes.post('/:id/void', …)` → `POST /api/folios/:id/void`,
-  an **admin-only folio** status flip (`:351` `UPDATE folios SET status = 'voided' …`), added by
-  `0124_guest_folios.sql`. Nothing ever writes `status = 'voided'` on a POS transaction: the
-  `status != 'voided'` filters at `pos/index.js:1163,1168,1308` and `reports.js:183,220,235,294,317`
-  are defensive exclusions for a value no writer produces.
-- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
-- **Severity** P1 · **Action** UPDATE-DOC
-- **Severity rationale** the file's own header is "Status: proposal only — no code changed", and the
-  §Current block is the *present-state* half of a proposal — the half a reader trusts to be true and
-  builds the rest of the proposal on. Its first bullet describes an endpoint that does not exist, and
-  the *second* bullet ("no partial refund…") is true. A reader concludes void-then-refund is a
-  one-route extension when it is a greenfield build. Note the related claim is falsifiable in the
-  wrong direction too: the folder README calls this file "**Live 18-line backlog proposal**" whose
-  "current state" is "the most falsifiable sentence in the repo".
-- **Positive**: the third bullet, "Booking-order tips persist (`PATCH /api/orders/:id/tip`); POS tips
-  receipt-only", is **MATCHED** (`orders.js:1382`, and `pos_transactions.tip_amount` exists) —
-  though **R‑10** shows the "next cycle" list contradicts it.
-
-### R‑10 · [[BACKLOG_VOID_REFUND]] §Next cycle item 3 — a "proposed" migration that already shipped · FALSE · P2
-
-- **Origin** audit B entry `R‑10` · baseline `ddc63c6` · source `docs/09-plans/BACKLOG_VOID_REFUND.md`
-- **Source** `docs/09-plans/BACKLOG_VOID_REFUND.md` — the section named in the heading above
-- **Claim** "3. POS tip persistence: **add `tip_amount` to `pos_transactions` via migration** +
-  backfill 0, surface in reports."
-- **Expected** `pos_transactions.tip_amount` to be absent.
-- **Actual** **It shipped**, as this same file's own `code-references` block admits: it lists
-  `backend/migrations/0120_add_tip_amount_to_pos_transactions.sql` — and that file exists, adding
-  `tip_amount REAL DEFAULT 0`, with the bind already present (Part 8a **A‑23** notes the same
-  migration as the fix for the `tip_amount` drift). `pos/index.js` binds `tipAmount || 0`; the only
-  genuinely open half is "surface in reports", which **G‑13** confirms is still not done ("no tip
-  handling in `admin-reports.js`").
-- **Class** FALSE (the migration half) / MATCHED (the reports half) · **Severity** **P2** · **Action**
-- **Severity** P2 · **Action** UPDATE-DOC
-  UPDATE-DOC
-- **Severity rationale** paired with **R‑9** this is the second way the same 43-line file
-  misdescribes the present: an endpoint that does not exist, and a migration that does. Both sit in
-  a document whose §Next-cycle item 7.3 in the wave plan points at as the canonical void/refund
-  backlog.
-
-### R‑11 · [[BACKLOG_VOID_REFUND]] §A11y/Perf notes — "4 islands" and a stale path · STALE
-
-- **Origin** audit B entry `R‑11` · baseline `ddc63c6` · source `docs/09-plans/BACKLOG_VOID_REFUND.md`
-- **Source** `docs/09-plans/BACKLOG_VOID_REFUND.md` — the section named in the heading above
-- **Claim** "Island discipline recorded in ARCHITECTURE.md (**4 islands**, prefer `client:visible`)."
-  And "F-A19 / F-A20 IDs do not exist in repo (DEEP_AUDIT uses C/W scheme) — no per-component commits
-  to make."
-- **Expected** 4 islands; a resolvable path.
-- **Actual** **9** public-facing island directive sites, not 4 (Part 8a **A‑8**/**Y‑1**: 6
-  `client:visible` + 3 `client:load`, 17 total including the two `client:only` SPA hosts). And
-  `ARCHITECTURE.md` as a bare filename no longer resolves — it is at
-  `docs/01-architecture/ARCHITECTURE.md`. The second note (the F-A19/F-A20 IDs genuinely do not exist)
-  is **MATCHED** and is the right way to close a stale backlog line: name the ID, say it is absent.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### R‑12 · [[FINAL_IMPLEMENTATION_PLAN_v3_waves]] §"Migration budget" — "Current 99, head `0099`" · **FALSE** · P2
-
-- **Origin** audit B entry `R‑12` · baseline `ddc63c6` · source `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md`
-- **Source** `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md` §"Migration budget (through Waves
-  1-7)"
-- **Claim** (table) "| Current | **99** | head `0099` |" · "| Q4 tip (`0100_tip_amount.sql`) | +1 →
-  **100** | within raised cap (200) |" · "| Future auth/SSE/logging | +2 → **102** | within raised cap |"
-- **Expected** a budget anchored on the real migration count.
-- **Actual** The applied lineage is **40 top-level files**, head
-  `0127_meals_tenant_composite_pk.sql` (**D‑1**). The table is anchored on the pre-squash
-  `0001`–`0099` world — the same 99 that survives as `legacy/` (**D‑9**). Worse, the tip slot it
-  reserves is **`0100_add_project_id_nullable.sql`**, a file that already exists and is part of the
-  project-scoping series; the tip column landed as
-  `0120_add_tip_amount_to_pos_transactions.sql` (**D‑4**/**R‑10**). So a reader following the budget
-  would author a second `0100_*`.
-- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** this is the second **actionable** stale instruction in this audit after
-  **D‑2**, and it is worse in one respect: it names `0100_*` as a *free* slot when that slot has been
-  taken for ~6 migrations. A migration budget is only useful while it is true.
-
-### R‑14 · [[FINAL_IMPLEMENTATION_PLAN_v3_waves]] §6 — the acceptance-criteria baselines · STALE
-
-- **Origin** audit B entry `R‑14` · baseline `ddc63c6` · source `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md`
-- **Source** `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md` — the section named in the heading above
-- **Claim** (table) "Backend unit tests | **2158 / 83 files** | every wave | any fail → do not
-  proceed" · "Frontend unit tests | **3363 / 137 files**" · "Root integration | **255 / 37 files**" ·
-  "tsc | **8 pre-existing errors**"
-- **Expected** the baseline every wave is measured against to be the current one.
-- **Actual** Backend **2743 / 127** and frontend **3632 / 155** (**T‑0**); `tsc` **0 → 2**, not 8
-  (**R‑8**/**O‑20**). Root integration 255/37 is still exact (**T‑3**). The gate thresholds
-  ("**below threshold pair** (83/72/89/89)", "> 8 → gate") are the durable part and match
-  `AGENTS.md` §6.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Severity rationale** kept at P3 because the *mechanism* is intact — the thresholds are the
-  enforceable half and they are unchanged. But a "not worse than baseline − 0.5%" rule measured
-  against a 755-test-old baseline cannot detect a regression in the 585 tests added since.
+<!-- 1 entry still in this folder: R‑16 -->
 
 ### R‑16 · [[FINAL_IMPLEMENTATION_PLAN_v3_appendices]] §9.5 — the +3-net calibration · MATCHED as a dated record / STALE as a current figure
 
@@ -1622,164 +489,9 @@ visible rather than authoritative (**A‑20**).
 - **Credit** this section is the model the rest of the vault's test counts should follow: a delta
   claim, its diff evidence, the exact titles, and the run it came from.
 
-### R‑19 · [[09-plans/README]] §Docs — "Live 18-line backlog proposal" · STALE
-
-- **Origin** audit B entry `R‑19` · baseline `ddc63c6` · source `docs/09-plans/README.md`
-- **Source** `docs/09-plans/README.md` — the section named in the heading above
-- **Claim** "| [[BACKLOG_VOID_REFUND|BACKLOG_VOID_REFUND.md]] | Live **18-line** backlog proposal for
-  the next POS cycle. |"
-- **Expected** `BACKLOG_VOID_REFUND.md` to be 18 lines.
-- **Actual** **43 lines.** (Its substantive claims are audited at **R‑9**/**R‑10**/**R‑11**.)
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Severity rationale** small on its own, but it is a count in the very table whose purpose is to
-  let a reader size the folder before opening a file — and **R‑9** shows what the file it points at
-  contains.
-
 ## docs/10-tenant-import
 
-<!-- 7 entries from this folder -->
-
-### N‑3 · [[tenant-import-types]] §3 — the matrix row and its own evidence note contradict each other · FALSE · P2
-
-- **Origin** audit B entry `N‑3` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-types.md`
-- **Source** `docs/10-tenant-import/tenant-import-types.md`
-- **Claim** The matrix row "| project | **O** | O | O | O† | O† |" with the legend "**O** = optional,
-  accepted and processed identically … **I** = schema-valid but never read — **zero cells since the
-  `project` block became a real writer**". But per-section evidence note 2: "**project (I × 5).**
-  Schema `.optional()` at `:92`. `runImport` contains **zero references to `data.project`** (A.2 F1,
-  **re-verified by grep this session**). **Inert** in both modes for every type".
-- **Expected** the row and the note to agree, and the note's grep claim to be true.
-- **Actual** **`data.project` IS read.** `backend/src/api/tenant-import.js:451` `if (data.project) {`
-  and `:452` `const p = data.project;` — the project upsert/insert block. The note's
-  "re-verified by grep this session" is therefore a **false negative**: the grep looked for
-  `data.project` and the code does read it. The matrix row (**O**) is the correct half; the note
-  (**I**) is the stale half, left over from A.2 F1.
-- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Cross-doc** this is the third of three in the same folder (**N‑4**, **N‑5**), and the only one
-  where the doc contradicts *itself in one file*.
-
-### N‑4 · [[tenant-import-schema]] §"Schema-level findings" item 2 — "`project` validated but inert" · FALSE · P2
-
-- **Origin** audit B entry `N‑4` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-schema.md`
-- **Source** `docs/10-tenant-import/tenant-import-schema.md` — the section named in the heading above
-- **Claim** "2. **`project` validated but inert**: runImport never reads `data.project` (verified by
-  grep — zero references); rooms need exactly one existing project (`defaultCampId`, else the
-  INSERT…SELECT guard 404s). Only identity mode creates a project (from identity fields)."
-- **Expected** `runImport` to skip the `project` block.
-- **Actual** `tenant-import.js:451` reads it. **The same file's §2 table, 190 lines earlier, says the
-  opposite and correctly**: the `project.name` row is annotated "**written** (section 0, :344–411):
-  updates the tenant's oldest live project, or INSERTs `proj_`+uuid12 when the tenant owns none", and
-  the `project.type` row says "→ `projects.project_type`, assigned directly (NOT COALESCEd) — added
-  after A.1". So `tenant-import-schema.md` documents the behaviour correctly in its reference table
-  and then denies it in its findings list.
-- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Note** the §2 table's line range (`:344–411`) is itself stale — the block is at `:451`+ in a
-  1,151-line file. The `project.type` and `project.status` "assigned directly, not COALESCEd" claims
-  are unverifiable from what I read but consistent with the schema row types.
-
-### N‑5 · [[tenant-import-appendix]] Table 3 A1 — "Entire `project` block … Parses, never read" · FALSE · P2
-
-- **Origin** audit B entry `N‑5` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-appendix.md`
-- **Source** `docs/10-tenant-import/tenant-import-appendix.md` — the section named in the heading above
-- **Claim** "| A1 | Entire `project` block (`name`/`location`/`capacity`/`status`) | Parses, **never
-  read by `runImport` in either mode**. (Same root cause as F1; listed here as the accepted-ignored
-  instance.) |"
-- **Expected** the `project` section to be inert.
-- **Actual** `tenant-import.js:451` reads it, in both modes — the block sits inside `runImport`, which
-  both modes call. Same defect as **N‑3**/**N‑4**, third carrier.
-- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale for N‑3/N‑4/N‑5 as a group** one stale finding has propagated to three documents
-  in one folder, and in **two** of them it now contradicts that same document's own reference table.
-  A manifest author reading A1 would conclude their `project` block is doing nothing and would not
-  use `project.type` to set `projects.project_type` — a real, silent capability loss. The finding
-  dates from A.2 (2026-09-30); the `project` block became a real writer when A.4 added `project.type`,
-  and the reference tables were updated while the findings lists were not.
-
-### N‑8 · [[BLOCKED-pos-products-composite-pk]] §5 — "Identity-path rollback assessment — **SKIPPED**" · **STALE** · P2
-
-- **Origin** audit B entry `N‑8` · baseline `ddc63c6` · source `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md`
-- **Source** `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md` — the section named in the heading above
-- **Claim** §5.1: "**Existing test coverage of the identity path is insufficient** …
-  `backend/tests/tenant-import.test.js:787-1038` is **the only identity-path suite** (16 tests) …
-  **Nothing exercises the branch that would carry the rollback** — the post-provisioning failure at
-  `tenant-import.js:829-832`, where `importTenantManifest` returns `status >= 400` *after* steps 1–4
-  have committed. There is no fixture that makes `runImport` fail on the identity path, so a rollback
-  would land with zero safety net and no way to prove it works." §5.3: the Wave 8 carry-forward item,
-  restating that the `if (result.status >= 400)` branch "carries the comment … but performs **no
-  cleanup**".
-- **Expected** no identity-path rollback, and one identity-path suite.
-- **Actual** **Both are superseded.**
-  (1) `backend/tests/tenant-import-identity.test.js` **exists** — it is the 2026-10-02 `a2-saga-status`
-  mission's suite, with **9** tests (`M1`–`M6` + `S1`–`S3`), recorded verbatim at
-  `AGENT_LOGBOOK_HISTORY.md:9684`: "**tenant-import-identity.test.js** +3 tests … **S1** a 409 through
-  the saga … asserts the shell WAS inserted and undone, tenant deleted last, every table back at
-  baseline. **S2** a guarded 404 through the saga … **S3** the manifest-schema 400 through the saga".
-  (2) The handler now **does** clean up: `rollbackCreated()` at `tenant-import.js:1007`, called at
-  `:1099`, `:1103`, `:1118` — the logbook's **A1/M2** closure, whose finding was literally "identity
-  mode answers 500, not 400" and whose fix was to "run the SAME `rollbackCreated()` it always ran,
-  then return that Response".
-  (3) There is also `backend/tests/tenant-import-rollback.test.js`, a fourth-case saga suite the same
-  entry names among "the 7 pre-existing tenant-import suites".
-- **Class** STALE · **Severity** **P2** · **Action** UPDATE-DOC
-- **Severity** P2 · **Action** UPDATE-DOC
-- **Severity rationale** this is a doc whose whole value proposition is "a verdict and an unblock
-  condition, kept separate from the schema docs so an open question is never filed under 'here is how
-  it works'" (**N‑10**). §5 is a *verdict* that has since been reversed, and §5.3 hands the reader a
-  "Wave 8 item to carry forward" that is already done. A reader would carry a closed item forward and
-  skip the one that is genuinely still open (`pos_products.id`, §"Parity D3, identifier half").
-
-### N‑9 · [[BLOCKED-pos-products-composite-pk]] §5.2 — the cited line range and the superseded quote
-
-- **Origin** audit B entry `N‑9` · baseline `ddc63c6` · source `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md`
-- **Source** `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md` — the section named in the heading above
-- **Claim** "That is exactly the surface F-A17-02 declined to authorise — `tenant-import.js:723-726`
-  records 'Imported *rows* are not rolled back (the plan's "or" option — two-phase upload-then-insert-
-  with-cleanup — was chosen; **no D1 rollback was authorized**)', and the R2 rollback that *was* built
-  is scoped to `MEDIA_BUCKET` keys only."
-- **Expected** that quote at `:723-726` of `tenant-import.js`.
-- **Actual** **`tenant-import.js:723-726` no longer holds that text.** In the current 1,151-line file,
-  `:719-728` is the `meal_categories` / `meal_categories_lang` INSERT building
-  (`catStmts.push(env.DB.prepare("INSERT INTO meal_categories …"))`). The line reference predates the
-  file's growth. Separately, the *substance* — "no D1 rollback was authorized" — is superseded for
-  the identity path by `rollbackCreated()` (**N‑8**), while it remains true of the existing-tenant
-  path (which never deletes) and of cross-section atomicity, which
-  `tenant-import-appendix.md` Table 4 K6 still records correctly ("Per-section `DB.batch` calls, no
-  cross-section transaction").
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-
-### N‑13 · [[tenant-import-appendix]] §4 — "Each file covers 84 of the 88 leaf fields" · **83, not 84** · STALE
-
-- **Origin** audit B entry `N‑13` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-appendix.md`
-- **Source** `docs/10-tenant-import/tenant-import-appendix.md` — the section named in the heading above
-- **Claim** "Each file covers **84 of the 88** leaf fields (measured 2026-10-02 against the schema's key
-  census, not asserted by hand). The four it omits are all deliberate:" followed by a four-row
-  omission table (`products[].campId`, `rooms[].roomStatus`, `rooms[].cleaningStatus`,
-  `project.type`).
-- **Expected** 84/88 with exactly those four omissions.
-- **Actual** **83 / 88, with five omissions.** Recomputed mechanically: a schema extracted from the
-  handler's `z.object` literals (**N‑1** — 88 fields), then presence-checked against each shipped
-  manifest. All five A.4 files are identical:
-  **present 83 / 88**, missing `project.type`, `products.campId`, `rooms.roomStatus`,
-  `rooms.cleaningStatus`, **and `menu.meals.mealCategoryId`**. The four named are correct; the fifth
-  is the `mealCategoryId` placeholder the appendix's *own prose* two paragraphs below already
-  documents as removed ("The files previously carried a `mealCategoryId: "mcat_existing_*"`
-  placeholder on one meal each … It was removed: the id it named exists in no database") — the
-  reason is written down, the omission was simply never counted.
-- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
-- **Severity** P3 · **Action** UPDATE-DOC
-- **Severity rationale** the discrepancy is one field, but the claim is explicitly framed as a
-  measurement ("not asserted by hand"), and the same section's companion number is
-  **exact**: `docs/examples/tenant-manifest.example.json` is **69 / 88** as claimed ("69 of 88 leaf
-  fields (no `identity` at all)"), missing 11 (`project.type`, `products.categoryId`,
-  `products.campId`, `rooms.roomStatus`, `rooms.cleaningStatus`, `ratePlans.id`,
-  `ratePlans.productId`, `menu.meals.id`, `menu.meals.mealCategoryId`, `menu.meals.isActive`,
-  `posUsers.storeId`). One number in a pair of self-declared measurements is off by one; that is
-  enough to make a reader re-run both.
+<!-- 1 entry still in this folder: N‑19 -->
 
 ### N‑19 · All five `10-tenant-import` docs — `code-references` · MATCHED
 
@@ -3721,3 +2433,1868 @@ that look like defects are deliberate and correct: **A‑2** (the `0109`/`0125` 
   in a file where `resolveImage` now begins at `:76` — the same line-drift as **N‑9**.
 - **Class** MATCHED · **Severity** P3 · **Action** UPDATE-DOC (the range)
 - **Severity** P3 · **Action** UPDATE-DOC (the range)
+
+
+---
+
+# Resolved
+
+The 2026-10-06 reconciliation pass (**FIX DOCS ONLY** — the owner's decision, so every entry
+below was closed by editing the doc that made the claim, and **not one** by changing code)
+closed the following **71** `STALE`/`FALSE` findings from this note: **69** entry blocks filed
+by folder below, plus **Entry #1** (the migration-head drift) which is not a `###` and whose
+nested **D‑13** is counted inside it. Each carries the commit that fixed it. Nothing here was
+deleted — the folder's own rule is that a queue which forgets what it caught cannot tell a
+reader whether a gap was closed or never seen.
+
+| Status | Count | What it means |
+|---|---|---|
+| `RESOLVED-DOC` | **71** | the cited doc was corrected; the claim was wrong, the code was right |
+| `RESOLVED-REJECTED` | **1** | the alleged thing never existed — `A‑11`, filed in [[unimplemented]] |
+| `DEFERRED` | **16** | owner-parked feature or measurement; 4 here, 6 in [[unverified]], 6 in [[code-vs-code]] |
+| `OPEN` | **2** | still undecidable — `Q‑5`, `P‑6`, both in [[unverified]] |
+| `RESOLVED-CODE` | **0** | no finding in any of the three notes was closed by a code change |
+| **Total triaged** | **106** | 75 rows here · 25 in [[unimplemented]] + [[unverified]] · 6 in [[code-vs-code]] |
+
+The seven `MATCHED`-only bodies still under *Entries by folder* and the 112 foot controls
+are **outside** this ledger: they are the controls the findings quote by ID, they carry no
+action, and the folder rule forbids filing a `MATCHED` entry as a gap.
+
+## Entry #1 — the migration-head drift · `RESOLVED-DOC` 2026-10-06, all three carriers
+
+> **RESOLVED-DOC 2026-10-06** — all three carriers corrected. `docs/07-data/migrations.md` §1 and
+> `docs/07-data/README.md` in `1a1574c` *docs(07-data): fix 7 stale/false claims — gaps round 1*;
+> repo-root `AGENTS.md` §2 in `8146c4e` *docs(AGENTS): fix migration head/count claim — gaps round 1*;
+> `docs/98-history/sessions/WAVE6_EXIT_REPORT.md` in `310f582`
+> *docs(98-history): annotate WAVE6 pre-squash counts — gaps round 1* — annotated, **not** rewritten,
+> because that page is a dated 2026-09-21 record. The nested `D‑13` (head **in the tree** vs head
+> **applied**) rode the same `1a1574c`.
+>
+> The entry text below is **verbatim** from the source audit, not rewritten here: the record is what
+> the three docs *claimed* on 2026-10-06 beside what the tree *was*, and the reason this entry was
+> filed first — that two of the three issue a *destructive* instruction computed from the wrong
+> number — only reads as the finding it was if the wrong numbers stay legible.
+
+**This is the first entry because it is the only gap with three independent carriers and a live
+destructive consequence.** Every other entry is one doc disagreeing with the code. This one is three
+docs disagreeing with each other *and* with the code, and two of them issue instructions computed from
+the wrong number — so an agent that trusts any one of them authors a migration into a slot that has
+been taken for months.
+
+| Doc | Claim | Truth | Action |
+|---|---|---|---|
+| `AGENTS.md:70` §2 project-structure tree | 53 files, i.e. head `0053_camp_ownership.sql` | **40** files, head `0127_meals_tenant_composite_pk.sql` | `UPDATE-DOC` `AGENTS.md` — rewrite the tree's `migrations/` row to **40** files, head `0127`, and say `legacy/` = 99 |
+| `docs/07-data/migrations.md:29` §1 | **"Current head: `0123_storefront_order_items_fk_pos_products.sql`** (37 files total: `0001`–`0014` + `0100`–`0123` minus reserved-absent `0109`, filesystem-verified" | **40** files, head `0127` — three migrations landed after this paragraph | `UPDATE-DOC` `migrations.md` §1 — 40 files / `0127_meals_tenant_composite_pk.sql`, and state the `0124`/`0126`/`0127` additions |
+| `docs/98-history/sessions/WAVE6_EXIT_REPORT.md:23` | **"All 18 docs verified against code. Counts: 99 migrations (`0099_normalize_marketplace_payouts_ids.sql`)"** (repeated at `:27` and `:28`) | **40** files; 99 is the size of `legacy/` | `UPDATE-DOC` `WAVE6_EXIT_REPORT.md` — annotate the 99 as the pre-squash count that now lives in `legacy/`, keeping the 2026-09-21 record honest as of its own date |
+
+- **Origin** consolidation entry, 2026-10-06 · the three carriers are named above · baselines `dee3124`
+  (audit A) and `ddc63c6` (audit B) · re-verified directly against the tree for this entry
+- **Source** `AGENTS.md` §2 · `docs/07-data/migrations.md` §1 "What migrations are" and §2 step 1 ·
+  `docs/98-history/sessions/WAVE6_EXIT_REPORT.md` (header + Commits list)
+- **Claim** three claims, quoted in the table above: 53 / `0053`, 37 / `0123`, 99 / `0099`
+- **Expected** one migration ledger. Whichever number a doc states, it should be the number in
+  `backend/migrations/`
+- **Actual** `ls backend/migrations/*.sql | wc -l` → **40**. Highest-numbered:
+  `0127_meals_tenant_composite_pk.sql`. Full sequence, all 40:
+  `0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014 0100 0101 0102 0103 0104
+  0105 0106 0107 0108 0110 0111 0112 0113 0114 0115 0116 0117 0118 0119 0120 0121 0122 0123 0124 0126
+  0127` — the two blocks `0001`–`0014` then `0100`–`0127` with **`0109` and `0125` deliberately
+  absent** (entry **A‑2**). There is **no top-level `0053*`** and **no top-level `0099*`**;
+  `backend/migrations/legacy/` holds **99** files including `0053_camp_ownership.sql`,
+  `0099_normalize_marketplace_payouts_ids.sql` and the never-applied
+  `0076_sanitize_user_data.sql`, and is excluded from the lineage (entry **A‑3** / **D‑9**).
+  `docs/07-data/migrations.md:37` §2 step 1 still instructs "Create
+  `backend/migrations/0124_<slug>.sql` with the next number (head is `0123`)" while
+  `backend/migrations/0124_guest_folios.sql` **exists** — entry **D‑2**, whose failure mode is
+  destructive. `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md` reserves `0100_tip_amount.sql` as
+  a free slot while `0100_add_project_id_nullable.sql` has been live for six migrations — entry
+  **R‑12**.
+- **The correct figures are already published in the vault**, twice, and both are right:
+  `docs/01-architecture/ARCHITECTURE.md` §5 (**A‑1**: "40 top-level `.sql` files, head
+  `0127_meals_tenant_composite_pk.sql`… It is *not* a contiguous range: `0001`–`0014`, then
+  `0100`–`0127`") and `docs/07-data/README.md:64-69` (**D‑12**: "⚠️ **Migration-head drift is still
+  live.** … The tree has **40** migrations with head `0127_meals_tenant_composite_pk.sql`"). The
+  folder index caught it; the guide it indexes was missed. Keep the `07-data` callout until all three
+  carriers are corrected, then delete it in the same commit that fixes the last one.
+- **One distinction no doc carries** (`D‑13`): `0127`'s own header says **"⚠️ PENDING-APPLY. This
+  file is committed but NOT applied to any database."** (`backend/migrations/0127_meals_tenant_composite_pk.sql:4-6`).
+  So "head" means *highest in the tree*, not *applied*. Three docs state a head; none distinguishes
+  the two meanings, and the tenant-import folder already reasons about `0127` as a landed change
+  ("Reusable across tenants since 0127").
+- **Class** STALE (all three claims — each was true of the pre-squash tree) → **FALSE in consequence**:
+  the instructions derived from two of them (**D‑2**, **R‑12**) name slots that are taken
+- **Severity** **P1**
+- **Action** `UPDATE-DOC` — three separate edits, one per carrier, as itemised in the table above;
+  then remove the `docs/07-data/README.md` drift callout
+- **Controls** **A‑1**, **A‑2**, **A‑3**, **D‑9**, **D‑12** (all `MATCHED`) — reproduced under
+  *Matched controls* below
+
+
+## docs/01-architecture — 7 resolved
+
+### A‑4 · [[ARCHITECTURE]] §5a — monitor D1 binding · **FALSE**
+
+- **Origin** audit A entry `A‑4` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
+- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
+- **Claim** "| D1 | `campmaster-monitor-db`, `migrations_dir = migrations` |"
+- **Expected** a `[[d1_databases]]` binding in `monitor/wrangler.toml` naming `campmaster-monitor-db`
+  with `migrations_dir = migrations`.
+- **Actual** **`monitor/wrangler.toml` has no `[[d1_databases]]` block at all** (64 lines, full file
+  read). Lines 14–21 say so explicitly: *"there is NO relational binding on this worker any more, and
+  no `migrations/`"*. Storage is a single R2 bucket, `MONITOR_BUCKET` = `campmaster-monitor-media`
+  (`monitor/wrangler.toml:39-41`). `monitor/migrations/` no longer exists and `monitor/src/db.js` was
+  deleted. `campmaster-monitor-db` survives only as an orphaned Cloudflare resource the owner must delete
+  manually.
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Note** this is a *known* deferral, not a new discovery: the 2026-10-03 `mon-probe-selfcheck` logbook
+  entry records it verbatim — *"the rest of that same `docs/ARCHITECTURE.md` monitor block still
+  describes `D1 | campmaster-monitor-db, migrations_dir = migrations` … both untrue since the monitor's
+  D1 migration completed (phases 1–7 …), i.e. this block has been describing a pre-R2 worker."*
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `3b753e4` *docs(01-architecture): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### A‑5 · [[ARCHITECTURE]] §5a — monitor retention wording · STALE
+
+- **Origin** audit A entry `A‑5` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
+- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
+- **Claim** "| Retention | cron-written tables are pruned (`checks` 14d, `reports` 30d, orphaned
+  `alert_state`) |"
+- **Expected** a daily prune over D1 tables named `checks` and `reports`, 14 and 30 days, plus
+  orphaned alert state.
+- **Actual** The day counts are still correct constants — `CHECKS_RETENTION_DAYS = 14`,
+  `REPORTS_RETENTION_DAYS = 30` (`monitor/src/storage.js:48-49`), swept by `runRetention`
+  (`monitor/src/index.js:1881-1882`). But the substrate is no longer tables: they are R2 objects under
+  key prefixes `checks/<YYYY-MM-DD>/<HH-MM>.json` and `reports/…` (`monitor/wrangler.toml:26-27`).
+  "tables" is a pre-R2 word for objects that no longer exist as tables.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `3b753e4` *docs(01-architecture): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### A‑16 · [[ARCHITECTURE]] §4 — rate-limit policy table · prefix count FALSE
+
+- **Origin** audit A entry `A‑16` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
+- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
+- **Claim** "The limiter is a ~20-entry ordered policy table keyed `${cf-connecting-ip}:${path}` (first
+  match wins) with per-entry env dials, plus a tenant-scoped second layer on **7 prefixes**; it keys on
+  `cf-connecting-ip` only (not spoofable) and **fails closed** (429 on KV error)."
+- **Expected** ~20 ordered entries; a tenant-scoped layer on 7 prefixes.
+- **Actual** The table is `RATE_LIMIT_POLICIES` at `backend/src/middleware/rateLimit.js:25-112` — **23**
+  entries (line range matches the doc's `rateLimit.js:25-113` code-reference), so "~20" is fair.
+  First-match-wins confirmed by the header comment at `rateLimit.js:13`. Keying confirmed at
+  `rateLimit.js:181-182`: `const ip = c.req.header('cf-connecting-ip') || 'unknown'`. Fail-closed
+  confirmed at `:211` and `:246`: `c.json({ success: false, error: 'Rate limit check failed' }, 429)`.
+  **The prefix count is wrong: the tenant-scoped second layer is mounted on 36 prefixes, not 7** —
+  `grep -oE "app\.use\('/api/[^']*', tenantAwareLimiter\(\)\)"` over `backend/src/index.js` returns 36
+  distinct mounts (`/api/admin/*`, `/api/ai/*`, `/api/audit/*`, `/api/categories/*`, `/api/crm/*`,
+  `/api/financials/*`, `/api/folios/*`, `/api/hr/*`, `/api/inbox/*`, `/api/inventory/*`,
+  `/api/leads/*`, `/api/meal-categories/*`, `/api/meals/*`, `/api/me/*`, `/api/orders/*`,
+  `/api/plans/*`, `/api/pos-tables/*`, `/api/pos/*`, `/api/price-overrides/*`, `/api/products/*`,
+  `/api/projects/items/*`, `/api/projects/links/*`, `/api/projects/:projectId/meta/*`,
+  `/api/projects/:projectId/tags/*`, `/api/promotions/*`, `/api/rateplans/*`, `/api/reports/*`,
+  `/api/rooms/*`, `/api/services/*`, `/api/storefront/*`, `/api/supply/*`, `/api/tags/*`,
+  `/api/tenant/billing/*`, `/api/tenants/import/*`, `/api/tenants/:tenantId/meta/*`, `/api/upload/*`).
+- **Class** FALSE (the 7-prefix figure) · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Why it matters** 7 vs 36 understates the tenant-scoped surface by 5×, and this is the layer that makes
+  multi-tenant rate limiting real. It was probably true when a handful of mounts existed and was never
+  re-counted.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `3b753e4` *docs(01-architecture): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### A‑20 · [[ARCHITECTURE]] §7 — test-count table · three STALE rows
+
+- **Origin** audit A entry `A‑20` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
+- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
+- **Claim** (table) Backend unit **124** files / **2701** tests (`3f66503`) · Frontend unit **154** /
+  **3611** (`09ff710`) · Monitor unit **7** / **72** (`921e871`) · Root integration **37** files /
+  **255** registered.
+- **Expected** the latest committed suite result for each suite.
+- **Actual** Suites were **not** re-run (the mission says to read them, not to spend 90s+ per suite).
+  Source: the latest suite result recorded per suite in
+  `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` — `cd backend && npx vitest run` → **127 files /
+  2743 tests** PASS (2026-10-02 `a2-saga-status`, re-confirmed same day by `a7-workstream-closure`);
+  `cd app && npx vitest run` → **155 files / 3632 tests** PASS (2026-10-03 `tenant-outage-vs-404`);
+  `cd monitor && npx vitest run` → **7 files / 191 tests** PASS (2026-10-03 `mon-probe-selfcheck`).
+  So backend is **3 files / 42 tests** behind, frontend **1 file / 21 tests** behind, monitor **119
+  tests** behind — monitor's count is off by more than 2×. Root integration 37/255 is the only row still
+  current.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Mitigation already in the doc** each row is labelled with its producing commit, which is exactly why
+  the drift is visible rather than authoritative. That design choice worked; it just needs a refresh.
+- **Cross-doc** `QUICK_START.md` §4 carries a *third*, older set of numbers. See **Q‑4**.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `3b753e4` *docs(01-architecture): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### A‑21 · [[ARCHITECTURE]] §7 — E2E spec count and the `AGENT_LOGBOOK.md` pointer · STALE
+
+- **Origin** audit A entry `A‑21` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
+- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
+- **Claim** "`tests/e2e/` now holds 96 spec files across 8 Playwright projects (`marketplace`, `tenant`,
+  `admin`, `auth`, `cross-cutting`, `pos`, `public`, `routing`)." and "The last full gate recorded in
+  `AGENT_LOGBOOK.md` is 919 passed / 0 failed / 15 env-skipped (2026-09-06, per-project)."
+- **Expected** 96 specs, 8 projects, and the gate figure still findable in `AGENT_LOGBOOK.md`.
+- **Actual** `find tests/e2e -name "*.spec.ts" | wc -l` → **96**. Eight projects named exactly as listed,
+  `playwright.config.ts:…`. **The gate figure is no longer in `AGENT_LOGBOOK.md`** — that file is 182
+  lines and now holds only the persistent-learnings tier; the append-only task history (9,725 lines)
+  moved to `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` in the 2026-10-06 restructure, and the
+  919/0/15 line lives there. The pointer is dangling.
+- **Class** STALE (pointer) · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Credit where due** the counts themselves are exact and the decision to publish *no* E2E total rather
+  than a remembered one is the right call. Only the citation needs re-pointing.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `3b753e4` *docs(01-architecture): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### A‑26 · [[ARCHITECTURE]] — header provenance
+
+- **Origin** audit A entry `A‑26` · baseline `dee3124` · source `docs/01-architecture/ARCHITECTURE.md`
+- **Source** `docs/01-architecture/ARCHITECTURE.md` — the section named in the heading above
+- **Claim** "Verified against `dbcb382` on 2026-10-02." while §5 in the same file says "At `dbcb382` that is
+  **40 top-level `.sql` files**, head `0127`".
+- **Expected** the named commit is an ancestor and its content matches the file.
+- **Actual** `dbcb382` resolves in history, but the file has been edited since (the 0127 half was
+  committed later) and HEAD is now `dee3124`. So the header names a commit that no longer matches the
+  file's own §5, which cites the same commit for a number that commit did not have.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `3b753e4` *docs(01-architecture): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### Q‑4 · §4 — test counts · **a third, older set** · STALE
+
+- **Origin** audit A entry `Q‑4` · baseline `dee3124` · source `docs/01-architecture/QUICK_START.md`
+- **Source** `docs/01-architecture/QUICK_START.md` — the section named in the heading above
+- **Claim** (block) "backend unit: 2225 tests / 84 files · frontend unit: 3416 tests / 137 files · root
+  integration: 255 tests / 37 files · E2E: 929 total / 919 gate (14 env-skipped)"
+- **Expected** agreement with `ARCHITECTURE.md` §7 and with the logbook.
+- **Actual** Latest committed results (`AGENT_LOGBOOK_HISTORY.md`, same source as **A‑20**): backend
+  **127 / 2743**, frontend **155 / 3632**, monitor **7 / 191**. Root integration 37/255 is the one row
+  still right. E2E: `ARCHITECTURE.md` §7 deliberately publishes **no** total, while this file still
+  prints "929 total / 919 gate" and says **14** env-skipped where `ARCHITECTURE.md` says **15** — the two
+  in-scope docs disagree with each other on a number neither can source.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** raised above P3 because this is not one drifted number in one doc: three
+  different count sets for the same suites are live in the same folder, and the E2E total this file
+  preserves is precisely the figure the sibling doc's design decision deleted for being unverifiable.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `3b753e4` *docs(01-architecture): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/02-api — 9 resolved
+
+### C‑1 · [[API_CONTRACT]] §1 — exported function count · STALE
+
+- **Origin** audit A entry `C‑1` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
+- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
+- **Claim** "`app/src/lib/api.ts` — a typed client with **~276 exported functions** covering every
+  endpoint the frontend uses."
+- **Expected** ≈276.
+- **Actual** `app/src/lib/api.ts` is **2,838 lines** (the `api.ts:1-2838` code-reference is exact).
+  `export … function` declarations: **286**. Plus one exported const (`API_BASE`) → 287 exported
+  callables/symbols. Plus 60 `export type|interface`.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Direction** the client has *grown* past the stated figure, so the claim understates coverage. The
+  repo `README.md` was already corrected to "~290" by the same 2026-10-02 pass; this file was missed.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### C‑2 · [[API_CONTRACT]] §2 + §5 — generated types and the system row · **`/api/health` is FALSE**
+
+- **Origin** audit A entry `C‑2` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
+- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
+- **Claim** §2: "`backend/openapi.json` — generated OpenAPI 3 document … `npm run gen:openapi` …
+  `npm run gen:types` … the Worker serves the schema at `/api/openapi.json`." §5 table, System row:
+  "`/api/openapi.json`, `/api/health` | schema + health".
+- **Expected** both endpoints exist; `/api/health` at that path.
+- **Actual** `index.js:477` `app.get('/api/openapi.json', …)` ✓ and `backend/openapi.json` exists
+  (OpenAPI 3.0.0, 88 paths, `servers[0] = https://sinaicamps.com`). **The health endpoint is `/healthz`,
+  not `/api/health`** — `backend/src/index.js:164` `app.get('/healthz', async (c) => {` returning
+  `{ status, version: '3.0.0', checks: { database, kv, r2 } }`. `grep -E "app\.(get|post)\('/(api/)?health"`
+  returns that one line only. Neither `/healthz` nor `/api/openapi.json` appears in `openapi.json`.
+- **Class** FALSE (the `/api/health` path) · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** a wrong URL in the one table a client author reads before wiring a monitor or
+  an uptime check.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### C‑3 · [[API_CONTRACT]] §3 — RBAC hierarchy · **FALSE, and it contradicts [[ARCHITECTURE]]**
+
+- **Origin** audit A entry `C‑3` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
+- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
+- **Claim** "| Admin dashboard | JWT (`env.JWT_SECRET`) | `Authorization: Bearer <jwt>` | Admin/owner
+  panel, RBAC hierarchy: `admin` > `staff` |"
+- **Expected** a two-rank hierarchy naming `staff`.
+- **Actual** **There is no `staff` role.** `app/src/lib/rbac.ts:7-12` is `super_admin: 100, admin: 80,
+  manager: 50, cashier: 30`, mirroring `ROLE_RANKS` in `backend/src/middleware/requireAuth.js`. The
+  string `'staff'` appears in the frontend only as a **nav-tab id** (`AdminApp.tsx:146` `{ id: 'staff',
+  label: 'Staff', icon: IconStaff }`, `:437` `case 'staff':`) and a drilldown view name
+  (`TenantDrilldown.tsx:35,160`) — a UI grouping over the `pos_users`-backed `StaffPanel`, not a rank.
+- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Note** this exact error was found and fixed in `ARCHITECTURE.md` by the 2026-10-02 `a5` pass — whose
+  logbook entry says *"**role hierarchy admin > staff** — there is no `staff` role"* — and left in place
+  here. The two docs in this audit now disagree about the authorization model of the admin dashboard.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### C‑7 · [[API_CONTRACT]] §7 — 401 vs 403 · **all eleven strings verbatim**
+
+- **Origin** audit A entry `C‑7` · baseline `dee3124` · source `docs/02-api/API_CONTRACT.md`
+- **Source** `docs/02-api/API_CONTRACT.md` — the section named in the heading above
+- **Claim** The 401/403 message table, and "Checks run in this order — signature → token-type → realm →
+  role → activity → tenant scope (`evaluate`, requireAuth.js) — so the FIRST failure wins."
+- **Expected** every message byte-identical, and the order.
+- **Actual** **All eleven messages match verbatim**, in both files:
+  `requireAuth.js:66` `'Missing or invalid Authorization header'` (401),
+  `:67` `'Session expired or invalid signature'` (401),
+  `:68` `'Forbidden: POS sessions are not allowed to access admin routes'` (403),
+  `:69` `'Forbidden: Insufficient permissions'` (403),
+  `:70` `'Account deactivated'` (401),
+  `:71` `'Forbidden: Access denied to this tenant partition'` (403);
+  `resolveScope.js:200` `'Forbidden: project scope mismatch'` (403),
+  `:208,236` `'Unauthorized: missing tenant context'` (401),
+  plus `'Invalid token type'` as the documented `typeMismatch` override. The role-scope claims hold:
+  `pos-users.js:100` `roles: ['super_admin', 'admin']`; the SSE gate at `index.js:431-440` is
+  `realm: 'admin'`, `roles: ['admin','super_admin']`, so POS sessions and non-admins get 403 as documented.
+  **The stated order is incomplete**: `evaluate()` inserts a **1b NULL-tenant hard guard**
+  (`requireAuth.js:160-163`, `if (decoded.role !== 'super_admin' && !decoded.tenantId) return
+  deny(options, 'scopeDenied')`) *before* the token-type check, with a comment saying it runs "before
+  type/realm/role checks". So the true order is signature → null-tenant → token-type → realm → role →
+  activity → tenant.
+- **Class** MATCHED (messages) + STALE (the order sentence) · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Credit** this is the most carefully written section in the three folders: every string is right, and
+  the doc's own "Where" column points at real lines. The single omission is an *extra* gate, not a
+  missing one — the doc errs toward understating the strictness of the gate, never toward overstating it.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑2 · [[API_SURFACE_MAP]] — Frontend Function column · **64 of 249 do not exist** · **P1**
+
+- **Origin** audit A entry `S‑2` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
+- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
+- **Claim** 268 rows each naming a `Frontend Function` from `app/src/lib/api.ts`, e.g. `createCategory(data)`,
+  `getSettings()`, `updateSettings(data)`, `getMarketplaceProjects(params?)`,
+  `addCrmTicketComment(ticketId, content, internal?)`, `getPublicServices(slug)`, `createPlan(data)`.
+- **Expected** every named export resolves in `app/src/lib/api.ts`.
+- **Actual** 249 distinct function names are referenced across the section. **64 have no definition
+  anywhere under `app/src`.** Verified two ways: (a) absence from the 287-symbol export set, and (b) a
+  direct search for six spot-checks — `addCrmTicketComment`, `getSettings`, `updateSettings`,
+  `getMarketplaceProjects`, `createPlan`, `getPublicServices` — across every `.ts`/`.tsx`/`.astro` file in
+  `app/src`, which returned **nothing**. Full list of the 64: `addCrmTicketComment`, `adjustSupplyStock`,
+  `assignServiceBooking`, `confirmSupplyTransfer`, `createAiAutomationRule`, `createAiPriceRule`,
+  `createCategory`, `createCrmContact`, `createCrmKnowledgeArticle`, `createCrmLead`,
+  `createCrmOpportunity`, `createCrmTask`, `createCrmTicket`, `createInventoryAdjustment`, `createPlan`,
+  `createServiceAvailabilitySlot`, `createServiceDefinition`, `createServiceItem`,
+  `createStorefrontBlogPost`, `createStorefrontPage`, `createSupplyBom`,
+  `createSupplyManufacturingOrder`, `createSupplyPurchaseOrder`, `createSupplyTransfer`,
+  `createSupplyWarehouse`, `deleteAiPriceRule`, `deleteInboxItem`, `deleteTag`, `getAiForecast`,
+  `getInventoryAdjustments`, `getMarketplaceProjects`, `getMarketplaceReviews`,
+  `getMarketplaceTenantProfile`, `getPublicServices`, `getReorderSuggestions`, `getServiceAvailability`,
+  `getServiceBooking`, `getServiceDefinition`, `getServiceItem`, `getServiceReviews`, `getSettings`,
+  `getTag`, `getTenantMeta`, `progressSupplyManufacturingOrder`, `receiveSupplyPurchaseOrder`,
+  `setProjectTags`, `setTenantMeta`, `submitMarketplaceReview`, `submitServiceReview`, `updateAiPriceRule`,
+  `updateCategory`, `updateCrmContact`, `updateCrmLeadStatus`, `updateCrmOpportunityStage`,
+  `updateCrmTaskStatus`, `updatePlan`, `updateServiceBookingStatus`, `updateServiceDefinition`,
+  `updateServiceItem`, `updateServicePricing`, `updateSettings`, `updateStorefrontBlogPost`,
+  `updateStorefrontPage`, `updateTag`.
+  They cluster by domain: all of Services (12), CRM (8), Supply (8), Financial (7), Tags (5), Meta (4),
+  Storefront CMS (4), Inventory (3), AI (5), Marketplace (4), Plans (2), Categories (2).
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** the Endpoint column of the same rows is real (S‑11), so a reader has no internal
+  signal that this column is not. Following it produces TypeScript that will not compile, in 30+ domains.
+  The correct fix is per-row: replace the name with `—`, or point at whatever the client actually calls.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑3 · [[API_SURFACE_MAP]] — React Hook column · **120 of 195 do not exist** · **P1**
+
+- **Origin** audit A entry `S‑3` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
+- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
+- **Claim** 195 distinct `use*` names across the same rows, e.g. `useTagsQuery()`, `useCrmContactsQuery()`,
+  `useStorefrontProductsQuery()`, `useSuperCRMOverviewQuery()`, `useTaxRatesQuery()`.
+- **Expected** every named hook is exported from `app/src/hooks/`.
+- **Actual** `app/src/hooks/` holds exactly five files: `useAdminData.ts`, `usePosQueries.ts`,
+  `useQueryHooks.ts`, `useSseInbox.ts`, `useSseOrders.ts`. Enumerating every `export const|function` in
+  all 632 exported `use*` symbols across `app/src/**/*.ts{,x}` (plus `export {}` blocks) leaves **120**
+  of the 195 documented hooks unaccounted for, including every `useTag*`, `useStorefront*`,
+  `useSuper*`, `useTax*`, `useFinancial*`, `useHr*`, `useSupply*`, `useCr*`, `useService*`,
+  `useAi{Automation,Prediction,Price}*` and `useMarketplace*` hook. `useQueryHooks.ts` is 1,891 lines with
+  113 top-level exports, and `useCrmContactsQuery` genuinely exists at `useQueryHooks.ts:1549` — which is
+  why the sample count (75/195) looks plausible until you check all 195. Full 120-name list is
+  reproducible with the method in S‑2.
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** same as S‑2 and worse in one respect: the hooks file is the documented
+  integration surface ("TanStack Query hooks generated per endpoint group"), so a reader concludes the
+  generation is incomplete rather than that the table is wrong.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑4 · [[API_SURFACE_MAP]] — DB Tables column · **13 of 84 tables do not exist** · **P1**
+
+- **Origin** audit A entry `S‑4` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
+- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
+- **Claim** 84 distinct table names in the `DB Tables` column, including `ai_predictions`,
+  `ai_price_rules`, `ai_automation_rules`, `ai_automation_logs`, `crm_contacts`, `crm_leads`,
+  `crm_opportunities`, `crm_tickets`, `crm_ticket_comments`, `crm_knowledge_articles`,
+  `storefront_pages`, `storefront_cart`, `storefront_cart_items`, `storefront_blog_posts`.
+- **Expected** each named table exists in the migration lineage.
+- **Actual** Harvesting every `CREATE TABLE` from all 139 `.sql` files under `backend/migrations/`
+  (40 top-level + 99 legacy) yields 199 distinct table names; **13 of the 84 claimed tables are in
+  neither set**, and a wider `grep -rl "\b<table>\b" backend/migrations --include=*.sql` returns **0
+  files** for each — so they appear under no SQL verb at all, in either lineage. The 13 are exactly:
+  `ai_automation_logs`, `ai_automation_rules`, `ai_predictions`, `ai_price_rules`, `crm_contacts`,
+  `crm_knowledge_articles`, `crm_opportunities`, `crm_ticket_comments`, `crm_tickets`,
+  `storefront_blog_posts`, `storefront_cart`, `storefront_cart_items`, `storefront_pages`.
+  (`crm_leads` *does* exist and is not in the failing set.)
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** combined with S‑2 and S‑3 this means a third independent column of the same
+  table is also unbacked. Three columns of asserted plumbing, none of the three cross-checkable against
+  the code.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑5 · [[API_SURFACE_MAP]] — `/products/:id` GET marked "OpenAPI-registered" · FALSE
+
+- **Origin** audit A entry `S‑5` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
+- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
+- **Claim** "| `/products/:id` | GET | — | `GET /api/products/:id` | `products`, `product_lang` | — |
+  Get single product (**OpenAPI-registered**; no client wrapper/hook found) |"
+- **Expected** a `get` operation on `/api/products/{id}` in `backend/openapi.json`.
+- **Actual** `backend/openapi.json` → `/api/products/{id}` has operations **put, delete** only. No `get`.
+  The same annotation error repeats twice more: `/rateplans/:id` GET is called "OpenAPI-registered" but
+  `/api/rateplans/{id}` has **put, delete** only; and `/meal-schedules/:id` GET and PUT are both listed
+  while `/api/meal-schedules/{id}` has **delete** only.
+- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** "OpenAPI-registered" is the annotation a reader uses to decide whether a route is
+  documented or accidental. Three rows tell them the opposite of the truth.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑6 · [[API_SURFACE_MAP]] — Marketplace rows list the `camps` table · **FALSE**
+
+- **Origin** audit A entry `S‑6` · baseline `dee3124` · source `docs/02-api/API_SURFACE_MAP.md`
+- **Source** `docs/02-api/API_SURFACE_MAP.md` — the section named in the heading above
+- **Claim** "| `/marketplace/projects` | GET | `getMarketplaceProjects(params?)` | … | `camps`, `tenants`,
+  `project_meta` |" and the two rows below it list `camps`.
+- **Expected** `camps` to be a real table, or to be `projects`.
+- **Actual** `camps` exists **only** in the excluded `legacy/` lineage — `legacy/0001_init.sql:20`
+  `CREATE TABLE camps`, dropped by `legacy/0063_rename_camps_to_projects.sql:60`. No `FROM camps` /
+  `JOIN camps` / `INTO camps` exists in `backend/src`; the only occurrence outside legacy is a *comment*,
+  `backend/src/routes/registry.js:285` `// Wire rows: \`SELECT * FROM camps\``, and a comment in
+  `backend/migrations/0104_provision_default_projects.sql:15`. **This file contradicts itself 200 lines
+  earlier**: its own Camps section says "There is no `camps` table — the table is `projects`".
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0ce48fd` *docs(02-api): fix 13 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/03-frontend — 8 resolved
+
+### F‑2 · [[COMPONENT_CATALOG]] §2 — admin panel count · **STALE by 38 files** · **P1**
+
+- **Origin** audit A entry `F‑2` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
+- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
+- **Claim** "## 2. Admin — `components/admin/` (**25 files**) `AdminApp.tsx` + panels: `BookingCalendar`,
+  `CampsPanel`, `DashboardPanel`, `InboxPanel`, `ListingWizard` (+ `PhotosStep`), `LowStockPanel`,
+  `MealsPanel`, `MenuPanel`, `MenuPlannerPanel`, `OrdersPanel`, `PasswordPanel`, `PlanningPanel`,
+  `RatePlansPanel`, `ReportsPanel`, `RoomsPanel`, `SettingsPanel`, `StaffPanel`, `SuperDashboardPanel`,
+  `SuperOrdersPanel`, plus auth pages (`ForgotPasswordPage`, `RegisterPage`, `ResetPasswordPage`) and
+  `icons.tsx`."
+- **Expected** 25 files; every named file present.
+- **Actual** `find app/src/components/admin -type f` → **63 files** (all `.tsx`). Every one of the 23 named
+  components exists (verified individually), so the enumeration is correct — it is the *count* and the
+  *coverage* that are wrong. **40 files are undocumented**, including every major feature area added
+  since: `AIPanel`, `AnalyticsPanel`, `AuditLogPanel`, `BillingPanel`, `BrowserAIPanel`, `CashDeskPanel`,
+  `CRMPanel`, `DynamicForm`, `FeedbackPanel`, `FinancialPanel`, `FolioDetail`, `FolioReceipt`, `FoliosPanel`,
+  `HRPanel`, `PaymentReceipt`, `ProjectItemsPanel`, `PromotionsPanel`, `RecordPaymentModal`,
+  `ServiceBookingsPanel`, `ServicesPanel`, `StorefrontPanel`, `SubscriptionsPanel`, `SuperAIPanel`,
+  `SuperCRMPanel`, `SuperFinancialsPanel`, `SuperHRPanel`, `SuperReportsPanel`, `SuperStorefrontPanel`,
+  `SuperSupplyPanel`, `SuperTenantsPanel`, `SupplyPanel`, `SystemHealthPanel`, `SystemSettingsPanel`,
+  `TenantDrilldown`, `TenantImportPanel`, `TenantPerformancePanel`, `UsersPanel`, plus `AdminShell.tsx`
+  (one of the two `client:only` shell islands, A‑8).
+- **Class** STALE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** the front-matter tag already says `needs-refresh`, so the doc knows — but this is
+  the layer-1 inventory a reader uses to find a panel, and 40 of 63 panels (64%) are invisible in it. Note
+  that `PERF_BASELINE.md` (P‑9) counts "**All 48** admin/super-admin panels" as `React.lazy` from
+  `AdminApp.tsx:60-107` — a number that contradicts both 25 and 63, and is the one that is actually
+  right about the render graph. The doc set has three different answers and no reconciliation.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### F‑4 · [[COMPONENT_CATALOG]] §3 — POS views count · STALE
+
+- **Origin** audit A entry `F‑4` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
+- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
+- **Claim** "## 3. POS — `components/pos/` (**8 views**) `CartPanel`, `DashboardView`, `LoginView`,
+  `OrdersView`, `ProductsView`, `ReceiptModal`, `ShiftDashboard`, `ShiftOverlay` + supporting files."
+- **Expected** 8 view files; the eight named present.
+- **Actual** `ls app/src/components/pos/views/` → **11**: the eight named, plus **`KitchenView.tsx`**,
+  **`ProjectPicker.tsx`**, **`TableView.tsx`**. (Total under `components/pos/` is 14 files: 11 views +
+  `POSApp.tsx` + `PosShell.tsx` + `types.ts`.) `PosShell.tsx` is the second `client:only` island (A‑8).
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **UNDOCUMENTED (P3)** the three extra views. `TableView.tsx` is the restaurant-table surface that
+  `API_SURFACE_MAP.md` documents as `/pos-tables/*`, so its absence from the catalog means the POS table
+  feature has no layer-1 entry point anywhere in scope.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### F‑5 · [[COMPONENT_CATALOG]] §5 — hooks
+
+- **Origin** audit A entry `F‑5` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
+- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
+- **Claim** "## 5. Hooks — `hooks/` (**5**) `useAdminData`, `useApiError`, `useQueryHooks`, `useSseInbox`,
+  `useSseOrders`."
+- **Expected** 5 files; the five named present.
+- **Actual** `ls app/src/hooks/ | wc -l` → **5**: `useAdminData.ts`, `usePosQueries.ts`, `useQueryHooks.ts`,
+  `useSseInbox.ts`, `useSseOrders.ts`. **Four of the five names are right; `useApiError` does not exist**
+  and `usePosQueries` — the entire POS data layer, a real 5th file — is not listed.
+- **Class** STALE (one wrong name, one omission) · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Note** the `useApiError` error is a known repo-wide one: the 2026-10-02 `a5` logbook entry records it
+  as *"REPORTED-NOT-FIXED … `AGENTS.md` §2 and `README.md` still list a `useApiError` hook that does not
+  exist on disk"*. This file is a third carrier of the same phantom. It is P3 rather than P2 precisely
+  because it is already documented as a known defect elsewhere — but that also means it has now survived
+  three separate documentation passes.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### F‑7 · [[COMPONENT_CATALOG]] §7 — stories · **all eight named stories do not exist** · **P2**
+
+- **Origin** audit A entry `F‑7` · baseline `dee3124` · source `docs/03-frontend/COMPONENT_CATALOG.md`
+- **Source** `docs/03-frontend/COMPONENT_CATALOG.md` — the section named in the heading above
+- **Claim** "`stories/` mirrors the UI primitives — **8 new a11y stories were added with the T9 expansion
+  (Checkbox, Radio, Switch, Textarea, FormField, Separator, Tooltip, Accordion)** alongside the
+  pre-existing set."
+- **Expected** 8 story files for those 8 components.
+- **Actual** `find app -name "*.stories.*" -not -path "*/node_modules/*"` → **10 files** in
+  `app/src/stories/`: `Badge`, `Button`, `Card`, `DataTable`, `EmptyState`, `Input`, `LoadingSpinner`,
+  `Modal`, `StatCard`, `Toast`. **Not one of the eight named components has a story** — and per **F‑1**,
+  none of the eight even has a source file, so a story for them could not exist. Every real story belongs
+  to a component that *does* have a file.
+- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** the claim has a specific shape — a named PR-era deliverable with an exact
+  component list — and every element of that shape is wrong. It also inverts the catalog's own honest §1
+  finding ("these 9 have no file") by then claiming stories for them.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### P‑1 · [[PERF_BASELINE]] header vs §Status — the TBT threshold contradicts itself · **FALSE**
+
+- **Origin** audit A entry `P‑1` · baseline `dee3124` · source `docs/03-frontend/PERF_BASELINE.md`
+- **Source** `docs/03-frontend/PERF_BASELINE.md`, header block and the `**Status**:` paragraph
+- **Claim** (header) "TBT threshold is **300ms** in harness (`tests/lighthouse/run.ts`), **not 200ms**."
+  vs (Status) "Active enforcement now lives in `app/budget.json` + `npm run lighthouse` (T15, 2026-08-13) —
+  the same targets (**CLS < 0.1, LCP < 2.5 s, TBT < 200 ms**, resource sizes) are enforced there against a
+  live preview URL."
+- **Expected** the two paragraphs to agree.
+- **Actual** Three separate facts, none matching the Status paragraph. (1) `tests/lighthouse/run.ts:52`
+  `const LIGHTHOUSE_TARGETS = { cls: 0.1, lcpMs: 2500, tbtMs: 300, enforced: false };` — **300 ms**, and
+  **`enforced: false`**. (2) `app/budget.json` (33 lines) contains **no CLS, LCP or TBT target at all** —
+  only Lighthouse *resource* budgets: `script` 300, `stylesheet` 100, `image` 1500, `font` 400, `total`
+  2500, all `metric: "transferSize"`. There is no 200 ms anywhere in `budget.json`. (3) The committed
+  `tests/lighthouse/lighthouse-baseline.json` records `"targets":{"cls":0.1,"lcpMs":2500,"tbtMs":300,
+  "enforced":false}` and `"note":"Dev/preview server baseline … Not enforced this pass."`
+- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** "Active enforcement now lives in app/budget.json" is the sentence that tells an
+  operator where the perf gate *is*. It is wrong about which metrics live there, wrong about the TBT
+  number (200 vs the actual 300, which the same file's header corrects two paragraphs earlier), and wrong
+  about `enforced: false` being "active". The file's own header is the accurate one — the doc contradicts
+  itself, which is worse than either version being merely stale.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### Y‑1 · [[03-frontend/README]] — "four public islands exist by design" · **FALSE**
+
+- **Origin** audit A entry `Y‑1` · baseline `dee3124` · source `docs/03-frontend/README.md`
+- **Source** `docs/03-frontend/README.md` §Concepts
+- **Claim** "**Islands are rationed** — **four** public islands exist by design. `client:visible` for
+  below-fold content, and adding an island is a deliberate cost, not a default."
+- **Expected** 4 public islands.
+- **Actual** **9** public-facing island directive sites, from the census in **A‑8**:
+  `client:visible` ×6 — `CampBooking` inside `TenantLanding.astro:203`, `MarketplaceDirectory` in
+  `marketplace.astro:14`, and the four storefront islands at `storefront/index.astro:54`,
+  `storefront/cart.astro:52`, `storefront/checkout.astro:53`,
+  `storefront/order/[orderNumber]/confirmation.astro:54`; `client:load` ×3 —
+  `ReservationSummary` in `BookPage.astro:45`, `TenantMenu` in `MenuPage.astro:48`, and the debug-gated
+  `DebugFeedbackWidget` in `PublicLayout.astro:778`. The 8 `client:only` sites are SPA hosts, not content
+  islands. So the honest figures are **8** public content islands plus 1 debug-gated widget, or **9** if the
+  debug widget counts.
+- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** the number 4 comes from the repo's `AGENTS.md`, which predates the storefront
+  islands. `ARCHITECTURE.md` §3 in this same audit counts 17 total sites (6 visible / 3 load) and is
+  right; this README is wrong in a way that would let the next agent add four more "since there are only
+  four" — the exact failure the rationing rule exists to prevent. The "islands are rationed" *intent* is
+  correct and worth keeping; only the count needs the storefronts folded in.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### Y‑2 · [[03-frontend/README]] — "nothing fetches data outside `@/lib/api`"
+
+- **Origin** audit A entry `Y‑2` · baseline `dee3124` · source `docs/03-frontend/README.md`
+- **Source** `docs/03-frontend/README.md` — the section named in the heading above
+- **Claim** "**Hooks are the data layer** — `useAdminData`, `useQueryHooks`, `useApiError`, `useSseInbox`,
+  `useSseOrders`. The admin SPA runs entirely on TanStack Query; nothing fetches data outside `@/lib/api`."
+- **Expected** the hook list to be the real one; no data fetch bypassing the client.
+- **Actual** Three of the five names are right; `useApiError` does not exist and `usePosQueries` is
+  missing — the same defect as **F‑5**. The TanStack Query / `@/lib/api` claim is confirmed by **F‑3**
+  (zero network `fetch` under admin and pos; all 9 `fetch(`-shaped hits are `refetch()`).
+- **Class** STALE (hook names) / MATCHED (the fetch claim) · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### Y‑3 · [[03-frontend/README]] — "app/budget.json holds the enforced limits"
+
+- **Origin** audit A entry `Y‑3` · baseline `dee3124` · source `docs/03-frontend/README.md`
+- **Source** `docs/03-frontend/README.md` — the section named in the heading above
+- **Claim** "**Bundle budget** — `app/budget.json` holds the enforced limits; `PERF_BASELINE.md` records
+  what browsers actually download, the top-15 chunks and the top-3 suspects."
+- **Expected** `budget.json` to hold the enforced limits.
+- **Actual** `app/budget.json` holds five Lighthouse **resource-size** budgets (`script` 300,
+  `stylesheet` 100, `image` 1500, `font` 400, `total` 2500 KB, all `metric: "transferSize"`). It is
+  genuinely consumed by the tool — `app/package.json`'s `lighthouse` script passes
+  `--budget-path=budget.json` — so "enforced" is right **for resource sizes** and wrong as an unqualified
+  statement: the CLS/LCP/TBT targets the sibling doc attributes to this file are in
+  `tests/lighthouse/run.ts:52` and are `enforced: false`.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Note** this is the same defect as **P‑1** seen from the third doc that carries it. The
+  `budget.json` → "CLS/LCP/TBT" → "200 ms" → "enforced" chain is stated three times across two folders and
+  is wrong in each.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8b01b00` *docs(03-frontend): fix 11 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/04-testing — 9 resolved
+
+### T‑1 · [[TESTING]] suite table — backend and frontend rows · STALE
+
+- **Origin** audit B entry `T‑1` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** "| Backend unit | `cd backend && npx vitest run` | **2610 tests / 115 files** |" ·
+  "| Frontend unit | `cd app && npx vitest run` | **3561 tests / 149 files** |"
+- **Expected** the latest committed result for each.
+- **Actual** Backend **2743 / 127**, frontend **3632 / 155** (**T‑0**). Backend is 3 files / 133
+  tests behind; frontend 1 file / 71 tests behind. The header of the very table these sit under
+  says "Suites and counts (verified)".
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑2 · [[TESTING]] suite table — the E2E row is two months and one generation stale · STALE
+
+- **Origin** audit B entry `T‑2` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** "| E2E | `CI=true npx playwright test` | **566 total / 552 gate passed, 14
+  env-skipped** |"
+- **Expected** the latest committed full gate.
+- **Actual** **919 passed / 0 failed / 15 skipped** (**T‑0**), from the 2026-09-06 per-project run.
+  The 566/552/14 figure traces to `AGENT_LOGBOOK_HISTORY.md:6630` — **2026-08-12**, "CLEAN RE-RUN
+  (verified 2026-08-12, ~07:10) … 552 passed / 0 failed / 14 skipped (17.8m), 566 total". So the row
+  is a verbatim, correctly-transcribed result from two months and roughly 350 tests ago.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Worse than the arithmetic** the number is not just wrong, it is *wrong in the direction that
+  understates*: a reader sizing the E2E gate reads 566 where the suite now runs 919+.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑4 · [[TESTING]] "Writing tests" — the two file counts · STALE
+
+- **Origin** audit B entry `T‑4` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** "**Unit**: Vitest. Backend tests live in `backend/` (**115 files**); frontend in `app/`
+  (**149 files**, colocated or under `app/src/**/__tests__`)."
+- **Expected** 115 backend test files, 149 frontend.
+- **Actual** Backend is **127** files, frontend **155** (**T‑0**) — the same drift as **T‑1**, stated
+  a second time so a single correction does not fix the doc.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑5 · [[TESTING]] §"Quick reference: all admin panel tab IDs" — **28 of 46 admin IDs and 2 of 6 POS IDs are missing** · **P1**
+
+- **Origin** audit B entry `T‑5` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** Three tables: "Super Admin (**3 tabs**)": `super_dashboard`, `super_tenants`,
+  `super_reservations`. "Tenant Admin (**15 tabs**)": `dashboard`, `camps`, `rooms`, `rateplans`,
+  `reservations`, `inbox`, `calendar`, `meals`, `menu-planner`, `menu`, `planning`, `reports`,
+  `low-stock`, `staff`, `settings`. "POS (**4 tabs**)": `dashboard`, `products`, `orders`, `shift`.
+- **Expected** every nav tab in the app to appear.
+- **Actual** The nav arrays were enumerated exhaustively, not sampled:
+  `app/src/components/admin/AdminApp.tsx` carries **46** `{ id: '…', label: … }` entries —
+  **29 tenant** and **17 super**. `app/src/components/pos/POSApp.tsx:39-44` carries **6** POS views.
+  Every documented ID exists in code (0 documented-but-missing), so this is incompleteness, not
+  invention. Missing:
+  - **14 tenant IDs** — `cashdesk`, `folios`, `analytics`, `promotions`, `services`,
+    `service-bookings`, `financials`, `hr`, `supply`, `crm`, `storefront`, `ai`, `billing`, `import`
+  - **14 super IDs** — `super_feedback`, `super_users`, `super_settings`, `super_audit`,
+    `super_subscriptions`, `super_financials`, `super_hr`, `super_supply`, `super_crm`,
+    `super_storefront`, `super_ai`, `super_reports`, `super_health`, `super_performance`
+  - **2 POS views** — `tables`, `kitchen`
+- **Class** STALE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** the table's own purpose is stated twice — as the reference E2E selectors
+  "depend on", and as the "only place in the repo" carrying these IDs (**T‑6**). A reader using it
+  to find a tab finds 39% of them, and the missing set is precisely the post-T13 feature areas.
+  Twelve of the missing IDs are actually selected on by E2E specs (verified: `'analytics'`,
+  `'billing'`, `'crm'`, `'financials'`, `'hr'`, `'promotions'`, `'service-bookings'`, `'storefront'`,
+  `'supply'`, `'super_audit'`, `'super_health'`, `'super_performance'` all appear quoted in
+  `tests/e2e/**`), so the dependency the README asserts is real *and* the table cannot service it.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑6 · [[04-testing/README]] — "Admin tab IDs live only here" · **FALSE**
+
+- **Origin** audit B entry `T‑6` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** "**Admin tab IDs live only here** — the 3 super-admin / 15 tenant-admin / 4 POS tab IDs
+  are the only place in the repo that carries them; E2E selectors depend on this table staying put."
+- **Expected** no other place in the repo enumerates them.
+- **Actual** `AdminApp.tsx` carries all 46 and `POSApp.tsx` carries all 6, by definition — they are
+  the source the table transcribes. The counts (3/15/4) are the stale half (**T‑5**).
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** this is the sentence that makes the stale table authoritative. It tells a
+  reader the table cannot drift from the code because nothing else carries the data — which is the
+  opposite of the situation, and the reason the drift went unnoticed.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑7 · [[04-testing/README]] — env-skipped count · STALE
+
+- **Origin** audit B entry `T‑7` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** "**Env-skipped tests are counted, not hidden** — 14 tests skip on missing env."
+- **Expected** 14.
+- **Actual** **15** in the latest committed full gate (**T‑0**). The 14 traces to the 2026-08-12 run
+  (line 6630) — the same stale source as **T‑2**.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Note** `docs/01-architecture/ARCHITECTURE.md` §7 says 15 and `docs/01-architecture/QUICK_START.md`
+  §4 says 14, per Part 8a entries **A‑21**/**Q‑4**. So the vault now carries 14 and 15 for the same
+  suite in two different folders, and this is one of the two places 14 survives.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑8 · [[TESTING]] §"Ground truth" — two gitignored paths and a moved file · STALE
+
+- **Origin** audit B entry `T‑8` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** "`test-results/.last-run.json` records the previous run's results. If
+  `tests/e2e/results/*` disagree with `AGENT_LODBOOK.md`, the `.last-run.json` and the full log are
+  authoritative."
+- **Expected** both paths to be locatable, and `AGENT_LOGBOOK.md` to hold the suite results.
+- **Actual** **Both artifact paths are gitignored and absent from the tree** —
+  `git check-ignore` confirms `tests/e2e/results/` matches `.gitignore:14`, and `.gitignore:10`
+  ignores `test-results/`; `ls test-results/` returns an empty directory. The advice is correct as
+  operator practice but points at nothing a reader can inspect. And **`AGENT_LOGBOOK.md` no longer
+  holds suite results**: it is now the 188-line reference tier, and the append-only history with
+  every suite result moved to `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md` in the 2026-10-06
+  restructure (Part 8a **A‑21** records the same dangling pointer in `ARCHITECTURE.md`).
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑12 · [[TESTING]] §CI checks before shipping · MATCHED
+
+- **Origin** audit B entry `T‑12` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** Five ordered gates: backend unit · app unit · root integration · `cd app && npm run build`
+  · `CI=true npx playwright test` with a passed/failed/skipped figure.
+- **Expected** all five real; the build script real.
+- **Actual** `app/package.json` has a `build` script; the three vitest commands are real;
+  `npx playwright test` is the config's `testDir`. The figure on the last line is stale (**T‑2**).
+- **Class** MATCHED (the five gates) / STALE (the figure) · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### T‑14 · [[04-testing/README]] — "verified counts, not remembered counts" · FALSE as stated
+
+- **Origin** audit B entry `T‑14` · baseline `ddc63c6` · source `docs/04-testing/TESTING.md`
+- **Source** `docs/04-testing/TESTING.md` — the section named in the heading above
+- **Claim** "**Verified counts, not remembered counts** — the suite table is filesystem-verified and
+  dated. A count in this file is a claim with a date on it."
+- **Expected** the suite table to carry a date or a producing commit per count.
+- **Actual** `TESTING.md`'s table carries **no date and no commit** on any of its four rows, and the
+  file's front matter says `verified: never`. `docs/01-architecture/ARCHITECTURE.md` §7 — which made
+  the opposite design choice, "each row is labelled with its producing commit, which is exactly why
+  the drift is visible rather than authoritative" (Part 8a **A‑20**) — does the labelling this README
+  claims for it. The 566/552/14 row (**T‑2**) is a **2026-08-12** result with nothing in the file
+  saying so.
+- **Class** FALSE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** this is a meta-claim about the folder's own reliability, and it is the
+  reason **T‑1**/**T‑2**/**T‑4** could rot unnoticed for two months. The claim is what a reader would
+  use to decide *not* to re-run a suite; it should not be there unless each count carries its date.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `a5cf366` *docs(04-testing): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/05-operations — 7 resolved
+
+### O‑16 · [[AUDIT_MASTER_FINDINGS]] PART 1 — all six P0s are fixed in the tree, and the doc still presents them as open · STALE · P2
+
+- **Origin** audit B entry `O‑16` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
+- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md`, PART 1 "TOP PRIORITY FINDINGS
+  (deploy-blocking / money / data-integrity)" and PART 6 "RECOMMENDED FIX SEQUENCE (proposed — needs
+  your go-ahead)"
+- **Claim** Six P0s requiring fixes: P0.1 onboarding SQL interpolation · P0.2 `sanitizeInput()` is a
+  silent no-op · P0.3 storefront leaks `cost_price` · P0.4 `orders.kitchen_status` CHECK omits
+  `'canceled'` · P0.5 `/api/services/public/:slug` queries columns that don't exist on `tenants` ·
+  P0.6 public signup mints live unverified admins.
+- **Expected** each P0 to be open, given PART 6 asks for go-ahead.
+- **Actual** **All six are fixed**, and each fix is present in the tree with a comment naming the
+  finding:
+  - P0.1 — `backend/src/api/onboarding.js:31-38` `tenantUpdateSchema` is a `z.object({...}).strip()`
+    whitelist of six keys, with `:29` "Any key outside this list is stripped by `.strip() and can never
+    reach the UPDATE". The interpolation at `:241` survives but is unreachable for attacker keys.
+    `:254` records the token burn ("T1 (P0.1): the onboarding token is cleared once consumed").
+  - P0.2 — `backend/src/middleware/sanitize.js` **does not exist**; the removal note is at
+    `index.js:149-154`.
+  - P0.3 — `backend/src/api/storefront.js:73-76` "T3 (M1): public product projection — explicitly
+    excludes `cost_price`", and `:198` selects named columns.
+  - P0.4 — the live CHECK **includes** `'canceled'`: `0002_orders.sql:29` and `0004_pos.sql:156`
+    (`CHECK(kitchen_status IN ('pending','confirmed','preparing','ready','served','canceled'))`),
+    re-asserted in `0112:238`.
+  - P0.5 — `services.js:443-450` "T5 (M2): tenants has no `slug`/`is_active` columns — the tenant
+    handle is its `subdomain`, liveness is `status = 'active'`".
+  - P0.6 — `onboarding.js:22` `password: z.string().min(8, …)`, and `:123` "gate `is_active = 1`
+    (auth.js), so the account cannot be used until …".
+- **Class** STALE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** above P3 because of the shape, not the content. PART 6 is written as a
+  proposal awaiting an owner's go-ahead, listing "Wave 1 — Security & correctness fires
+  (deploy-blocking) … 1. P0.1 Onboarding SQL injection → zod `.strip()` whitelist". A reader who
+  opens this file to decide what to fix next finds six deploy-blocking items, all six already done
+  months ago. The doc is correctly tagged `status/archived` and dated 2026-09-05 — the defect is
+  that the *fix sequence* section reads in the present tense and nothing marks it spent.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `b06990c` *docs(05-operations): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### O‑17 · [[AUDIT_MASTER_FINDINGS]] P0.4 — the cited migration is in the excluded lineage
+
+- **Origin** audit B entry `O‑17` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
+- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
+- **Claim** "**Where:** `backend/migrations/0069_restaurant_tables.sql:47` (also
+  `pos_transactions.kitchen_status` at `:55`)"
+- **Expected** the CHECK to be located in a migration that is actually applied.
+- **Actual** `backend/migrations/0069_restaurant_tables.sql` exists **only under
+  `backend/migrations/legacy/`**, which is excluded from the applied lineage (**D‑9**). The CHECK an
+  operator would find is `0002_orders.sql:29` (`orders`) and `0004_pos.sql:156`
+  (`pos_transactions`). The finding is stale in the same way as **D‑1** — it was written before the
+  squash.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `b06990c` *docs(05-operations): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### O‑18 · [[AUDIT_MASTER_FINDINGS]] PART 5 — the test-count green light · STALE
+
+- **Origin** audit B entry `O‑18` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
+- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
+- **Claim** "Backend unit **1,988/1,988 pass** (72 files) · Frontend unit **3,489/3,489 pass** (137
+  files) · Root unit **158/158 pass** (10 files)"
+- **Expected** current counts, or a date.
+- **Actual** **2743 / 127**, **3632 / 155**, **255 / 37** (**T‑0**). The green-light block carries no
+  date and no commit, and PART 4's `tsc` row is similarly undated (**O‑20**).
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `b06990c` *docs(05-operations): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### O‑19 · [[AUDIT_MASTER_FINDINGS]] PART 5 — the migration-count green light · STALE
+
+- **Origin** audit B entry `O‑19` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
+- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
+- **Claim** "91/91 migrations sequential & fully applied; `PRAGMA foreign_key_check` = 0 violations."
+- **Expected** 91 applied migrations.
+- **Actual** The applied lineage is **40 top-level files**, head `0127` (**D‑1**). 91 was the
+  pre-squash `0001`–`0099`-era count (the `legacy/` folder holds 99 files today). The
+  `foreign_key_check` claim is not re-derivable without a replay and was not run.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `b06990c` *docs(05-operations): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### O‑20 · [[AUDIT_MASTER_FINDINGS]] PART 4 — `tsc` counts, and PART 5's `DB.batch`/index/`escHtml` figures · STALE
+
+- **Origin** audit B entry `O‑20` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
+- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
+- **Claim** PART 4: "`tsc --noEmit` **426 errors**: 97 src (90 non-story) + 329 tests + 7 stories.
+  77% is test-fixture debt" and the five src hotspots. PART 5: "`escHtml()` used 67×,
+  `normalizeAssetUrl()` 39×"; "`DB.batch` already used in 27 places"; "~167 indexes cover every hot
+  query".
+- **Expected** the current values, or a date.
+- **Actual** The `tsc` figure is dead: `AGENT_LOGBOOK_HISTORY.md` records `npx tsc --noEmit` → **0
+  errors TOTAL (src + tests)** at the 2026-09-06 `T33 TEST-FIXTURE TSC DEBT: DONE (329 → 0)` entry
+  (line 9086), and the latest recorded run (2026-10-03, `tenant-outage-vs-404`) reports "the same
+  **2 PRE-EXISTING** errors in `tests/unit/tenant-name-escape.test.tsx`". `escHtml()` is now **18**
+  (**S‑8**) not 67 — corrected by the security guide. `DB.batch` is now in **48** call sites under
+  `backend/src`, not 27. The index figure was measured on the 91-migration lineage; the current
+  top-level lineage contains 550 `CREATE INDEX` statements (many are re-creations inside rebuilds, so
+  distinct index names are fewer — the exact number needs a replay).
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Note** `tsc` was **not** run by this audit, so "0 then 2" is quoted from the logbook, not
+  re-derived — the same source discipline as **T‑0**.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `b06990c` *docs(05-operations): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### O‑21 · [[AUDIT_MASTER_FINDINGS]] M3 and M21 — two PART 2 findings that are now moot
+
+- **Origin** audit B entry `O‑21` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
+- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
+- **Claim** M3: "Feature flags are window dressing: `FEATURE_USER_REGISTRATION`/`FEATURE_TWO_FACTOR_AUTH`
+  have zero code usages" (citing `wrangler.toml [vars]`). M21: "Regression:
+  `tests/core/migration-integrity.test.js` — **20 unsafe `DROP TABLE`** (no `IF EXISTS`) in 11
+  migrations | `0014/0039/0040/0042/0046/0047/0054/0069/0091`"
+- **Expected** both open.
+- **Actual** M3: neither `FEATURE_USER_REGISTRATION` nor `FEATURE_TWO_FACTOR_AUTH` appears anywhere
+  in `backend/` or `app/src`, **including `backend/wrangler.toml`** — the flags are gone from the
+  config, so the finding's premise no longer exists. M21: every one of the 11 cited files is under
+  `backend/migrations/legacy/`; in the applied top-level lineage there are now **6** `DROP TABLE`
+  without `IF EXISTS`, across **6** files (`0107`, `0108`, `0111`, `0112`, `0115`, `0126`) — and
+  `tests/core/migration-integrity.test.js` exists and passes.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Note** M21's live residue (6 unsafe drops) is **not** claimed by the doc, so the finding is
+  *resolved* rather than merely restated; a reader who trusts "20 in 11 migrations" will
+  under-protect the 6 that remain.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `b06990c` *docs(05-operations): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### O‑22 · [[AUDIT_MASTER_FINDINGS]] M11 — "4th public island (`MarketplaceDirectory client:load`)" · STALE
+
+- **Origin** audit B entry `O‑22` · baseline `ddc63c6` · source `docs/05-operations/AUDIT_MASTER_FINDINGS.md`
+- **Source** `docs/05-operations/AUDIT_MASTER_FINDINGS.md` — the section named in the heading above
+- **Claim** "| M11 | Frontend | MED | 4th public island (`MarketplaceDirectory client:load`) beyond
+  documented 3; sibling `/camps` is fully SSR | `app/src/pages/marketplace.astro:14` |"
+- **Expected** `client:load` at `marketplace.astro:14`.
+- **Actual** `app/src/pages/marketplace.astro:14` is **`client:visible`**, and the directive census
+  (Part 8a **A‑8**) is 17 real sites — 8 `client:only` / 6 `client:visible` / 3 `client:load`. So M11
+  both mis-names the directive and describes a 3-island world that no longer exists.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Cross-doc** this is the **fourth** doc in the vault to carry a stale public-island count, after
+  `AGENTS.md` (4), `03-frontend/README.md` (4, Part 8a **Y‑1**) and this one — while
+  `01-architecture/ARCHITECTURE.md` §3 counts 17 and is right.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `b06990c` *docs(05-operations): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/06-security — 4 resolved
+
+### S‑2 · [[security-guide]] §Rate Limiting — "the second, tenant-scoped layer … is mounted on 7 prefixes" · **FALSE** · P2
+
+- **Origin** audit B entry `S‑2` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
+- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
+- **Claim** "**A second, tenant-scoped layer** (`tenantAwareLimiter`) is mounted on 7 prefixes
+  (`/api/tenants/:tenantId/meta/*`, `/api/tenants/import/*`, `/api/admin/*`,
+  `/api/tenant/billing/*`, `/api/pos/*`, `/api/reports/*`, `/api/inventory/*`)"
+- **Expected** 7 `app.use(…, tenantAwareLimiter())` mounts.
+- **Actual** **36.** `grep -oE "app\.use\('[^']*', tenantAwareLimiter\(\)\)" backend/src/index.js`
+  returns 36 distinct mounts. The 7 named are the **first 7 in declaration order** — the list grew
+  by 29 and was never re-counted. Full set: `/api/tenants/:tenantId/meta/*`,
+  `/api/tenants/import/*`, `/api/admin/*`, `/api/tenant/billing/*`, `/api/pos/*`, `/api/reports/*`,
+  `/api/inventory/*`, `/api/price-overrides/*`, `/api/plans/*`, `/api/meal-categories/*`,
+  `/api/categories/*`, `/api/meals/*`, `/api/promotions/*`, `/api/services/*`, `/api/inbox/*`,
+  `/api/leads/*`, `/api/me/*`, `/api/products/*`, `/api/rooms/*`, `/api/rateplans/*`,
+  `/api/projects/links/*`, `/api/projects/items/*`, `/api/orders/*`, `/api/folios/*`,
+  `/api/upload/*`, `/api/projects/:projectId/meta/*`, `/api/tags/*`,
+  `/api/projects/:projectId/tags/*`, `/api/audit/*`, `/api/pos-tables/*`, `/api/financials/*`,
+  `/api/hr/*`, `/api/supply/*`, `/api/crm/*`, `/api/storefront/*`, `/api/ai/*`.
+- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** 7 vs 36 understates the tenant-scoped rate-limit surface by 5×, and this is
+  the layer that makes per-tenant limiting real. An auditor sizing blast radius reads 7.
+- **Cross-doc** `docs/01-architecture/ARCHITECTURE.md` §4 carries the *same* 7-prefix figure (Part
+  8a **A‑16**), and the security guide's own §Verification note repeats it a second time
+  ("plus a second tenant-scoped layer on 7 prefixes"). **This is now a three-site defect**, and the
+  security guide is the one an auditor is most likely to read.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ff264db` *docs(06-security): fix 6 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑3 · [[security-guide]] §Rate Limiting — the policy-table size · STALE
+
+- **Origin** audit B entry `S‑3` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
+- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
+- **Claim** "a ~20-entry ordered policy table keyed `${cf}:${path}`"
+- **Expected** ~20 entries.
+- **Actual** `RATE_LIMIT_POLICIES` (`rateLimit.js:25-97`) holds **23 non-`default` entries plus
+  `default`** — lines 33, 34, 35, 36, 37, 38, 39, 41, 43, 44, 45, 46, 49, 51, 56, 85, 86, 87, 88, 92,
+  93, 94, 95 and the `default` at 96.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Credit** "~20" is a fair reading of 23, and the doc's insistence on naming the *mechanism*
+  (first-match-wins, per-entry `envKey`, mid-path vs trailing `*`) is what makes the table auditable
+  at all. Only the number is loose.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ff264db` *docs(06-security): fix 6 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑13 · [[security-guide]] §CSRF table — "All API requests use JSON bodies" · STALE
+
+- **Origin** audit B entry `S‑13` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
+- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
+- **Claim** "| `Content-Type: application/json` | **Defense-in-depth** | **All API requests use JSON
+  bodies.** Simple cross-origin form submissions can only send
+  `application/x-www-form-urlencoded`, `multipart/form-data`, or `text/plain`. |"
+- **Expected** every mutating API to take JSON.
+- **Actual** **`POST /api/upload` accepts `application/octet-stream`** with a `?filename=` query —
+  `backend/src/api/upload.js:84` documents that path, alongside the multipart branch, with the
+  ≤8 MB cap (`:7`) and the five MIME types (`:15-19`). A cross-origin `<form enctype="multipart/
+  form-data">` can therefore reach it, so the third mechanism's stated basis does not hold for the
+  one endpoint where a file is expected.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Severity rationale** low, because the primary defence (bearer header, no cookie) is unaffected —
+  the request still arrives without the JWT. But the sentence says **all**, and an auditor reading a
+  "defense-in-depth" row wants the exceptions.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ff264db` *docs(06-security): fix 6 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### S‑16 · [[security-guide]] — two stale pre-restructure paths · STALE
+
+- **Origin** audit B entry `S‑16` · baseline `ddc63c6` · source `docs/06-security/security-guide.md`
+- **Source** `docs/06-security/security-guide.md` — the section named in the heading above
+- **Claim** §Token lifecycle: "Full matrix: `docs/API_CONTRACT.md` §7 (sourced from
+  `backend/src/middleware/requireAuth.js` `DEFAULT_MESSAGES`)". §XSS Layer 2: "full inventory:
+  `docs/audit-2026-09-30-eschtml-inventory.md`".
+- **Expected** both paths to resolve.
+- **Actual** Neither. `docs/API_CONTRACT.md` → **no such file**; the doc is at
+  `docs/02-api/API_CONTRACT.md`. `docs/audit-2026-09-30-eschtml-inventory.md` → **no such file**; it
+  is at `docs/98-history/worksheets/audit-2026-09-30-eschtml-inventory.md`. Both *targets* are real
+  and both *claims* are correct — the prose paths were not converted in the 2026-10-06 restructure
+  (which fixed *wikilinks* but left these two markdown-path citations).
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ff264db` *docs(06-security): fix 6 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/07-data — 5 resolved
+
+### D‑1 · [[migrations]] §1 — migration head and count · **FALSE as written** · STALE
+
+- **Origin** audit B entry `D‑1` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
+- **Source** `docs/07-data/migrations.md` §1 "What migrations are"
+- **Claim (verbatim)** "**Current head: `0123_storefront_order_items_fk_pos_products.sql`** (37
+  files total: `0001`–`0014` + `0100`–`0123` minus reserved-absent `0109`, filesystem-verified)"
+- **Expected** 37 top-level `.sql` files; highest-numbered `0123_*`.
+- **Actual** `ls backend/migrations/*.sql | wc -l` → **40**. Highest =
+  `0127_meals_tenant_composite_pk.sql`. Sequence `0001…0014 0100…0108 0110…0124 0126 0127`.
+  Three migrations landed after this paragraph was written: `0124_guest_folios.sql`,
+  `0126_tenant_scoped_unique_sku_email.sql`, `0127_meals_tenant_composite_pk.sql`.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Note the folder contradicts itself.** `docs/07-data/README.md:64-69` carries an explicit callout
+  naming this exact drift and stating the correct figures ("The tree has **40** migrations with head
+  `0127_meals_tenant_composite_pk.sql`"), and correctly attributes the fix to an owner content edit
+  deliberately left out of the 2026-10-06 restructure. The live guide was missed; the index caught
+  it.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `1a1574c` *docs(07-data): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### D‑2 · [[migrations]] §2 step 1 — the "create the next migration" instruction now names a taken slot · **P1**
+
+- **Origin** audit B entry `D‑2` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
+- **Source** `docs/07-data/migrations.md` — the section named in the heading above
+- **Claim** "1. Create `backend/migrations/0124_<slug>.sql` with the next number (head is `0123`;
+  never reuse reserved-absent `0109`)."
+- **Expected** either the real head, or a slot that is free.
+- **Actual** `backend/migrations/0124_guest_folios.sql` **exists** (a real, applied migration
+  creating `folios` / `folio_charges` / `folio_settlements`, header dated 2026-09/10). An agent
+  following this instruction literally authors a second `0124_*`, which `wrangler d1 migrations
+  apply` orders ambiguously (filename sort) and `scripts/check-deploy-parity.sh` will flag as a
+  ledger mismatch. The correct next free slot is **`0128`**.
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** unlike every other stale count in this audit, this one is an *instruction*
+  with a destructive failure mode. It is the first thing the guide tells a reader to do, and the
+  doc it is filed under is `status/live` with `type/guide`.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `1a1574c` *docs(07-data): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### D‑3 · [[migrations]] §6 — verification test counts · STALE
+
+- **Origin** audit B entry `D‑3` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
+- **Source** `docs/07-data/migrations.md` — the section named in the heading above
+- **Claim** (code block) `cd backend && npx vitest run` → `# 2610 tests / 115 files` ·
+  `cd app && npx vitest run` → `# 3561 tests / 149 files` · root integration `# 255 tests / 37 files`
+- **Expected** the latest committed result for each suite.
+- **Actual** Not re-run (source note on **T‑1**). Backend is **127 files / 2743 tests**, app is
+  **155 / 3632**. Root integration 37/255 is the one row still correct. Backend is **3 files / 133
+  tests** behind; frontend **1 file / 71 tests** behind.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `1a1574c` *docs(07-data): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### D‑5 · [[migrations]] §5 "earlier" row — the series range understates by one
+
+- **Origin** audit B entry `D‑5` · baseline `ddc63c6` · source `docs/07-data/migrations.md`
+- **Source** `docs/07-data/migrations.md` — the section named in the heading above
+- **Claim** "`0100`–`0118` project-scoping series (+ `0111` SET NULL idiom)"
+- **Expected** the project-scoping series ends at 0118.
+- **Actual** `backend/migrations/0119_pos_shifts_store_id.sql` is part of the same project-scoping
+  work (POS shifts get `store_id`), and `DEVELOPER_ROADMAP.md` T20 groups `0118`+`0119`+`0120`
+  together as "Phase 4 project-scoping". The series runs 0100–0119.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `1a1574c` *docs(07-data): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### D‑11 · [[07-data/README]] §Concepts — the lineage range glosses a deliberate gap
+
+- **Origin** audit B entry `D‑11` · baseline `ddc63c6` · source `docs/07-data/README.md`
+- **Source** `docs/07-data/README.md` — the section named in the heading above
+- **Claim** "the live top level (`0001`–`0014` + `0100`–`0127`) is what wrangler scans"
+- **Expected** the two ranges to be accurate as ranges.
+- **Actual** Accurate as ranges, but it reads as contiguous. `0125` is **absent and deliberately so**
+  (the same fact `docs/01-architecture/ARCHITECTURE.md` §5 documents with its reason). A reader who
+  takes the range as contiguous will conclude a migration is missing.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `1a1574c` *docs(07-data): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/08-guides — 2 resolved
+
+### G‑4 · [[analytics-guide]] §Exporting Data — "no PDF" is FALSE
+
+- **Origin** audit B entry `G‑4` · baseline `ddc63c6` · source `docs/08-guides/analytics-guide.md`
+- **Source** `docs/08-guides/analytics-guide.md` — the section named in the heading above
+- **Claim** "Navigate to the desired report tab (**tenant panel has no Export button — exports live
+  in super-admin templates as CSV/JSON, no PDF**)". And §Scheduled Reports: "reports are generated
+  from templates (schedules persist in memory only, no email delivery)".
+- **Expected** the tenant-panel half true; the format list accurate.
+- **Actual** The **first half is MATCHED**: neither `reports.js` nor `admin-reports.js` declares any
+  `/export` route, so the tenant panel genuinely has no export endpoint. The **"no PDF" half is
+  FALSE**: `backend/src/api/admin-reports.js` `REPORT_TEMPLATES` declares `formats: ['csv', 'pdf']` on
+  **five of seven** templates — `:24` (`revenue_by_tenant`), `:32` (`tenant_performance`), `:43`
+  (`occupancy_report`), `:59` (`inventory_value`), `:69` (`crm_pipeline`) — and `['csv']` only on
+  `:51` (`employee_headcount`) and `:77` (`system_health`). The in-memory-store half is MATCHED:
+  `admin-reports.js:81-82` "In-memory report job store (ephemeral — lost on worker restart)".
+- **Class** FALSE (the "no PDF" clause) / MATCHED (the rest) · **Severity** P2 · **Action**
+- **Severity** P2 · **Action** UPDATE-DOC
+  UPDATE-DOC
+- **Severity rationale** a tenant admin told "no PDF" will not build a PDF workflow; five templates
+  offer the format. Note the guide is otherwise admirably honest here — it invented no export button
+  and invented no email delivery — so this is a one-clause fix.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0f0c09a` *docs(08-guides): fix 5 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### G‑8 · [[camp-guide]] §Room Status Lifecycle — "four-state" is stale · STALE
+
+- **Origin** audit B entry `G‑8` · baseline `ddc63c6` · source `docs/08-guides/camp-guide.md`
+- **Source** `docs/08-guides/camp-guide.md` — the section named in the heading above
+- **Claim** "Rooms follow a four-state lifecycle: `available → reserved → occupied → cleaning →
+  available`", with a four-row table.
+- **Expected** the state set the admin API accepts.
+- **Actual** `PATCH /api/rooms/:id/status` (`backend/src/api/camps.js:946-961`) accepts **five**
+  values: `:952` `const allowed = ['available', 'reserved', 'occupied', 'cleaning', 'out_of_service']`.
+  The endpoint also writes **two** columns — `:955` `SET status = ?, room_status = ?` — and a separate
+  `cleaning_status` column exists with its own four-value CHECK
+  (`0003_products.sql:44` `CHECK(cleaning_status IN ('dirty','in_progress','clean','inspected'))`),
+  maintained by a **different** endpoint (`:907` rejects an invalid `cleaning_status`). The guide
+  mentions neither `out_of_service` nor `cleaning_status`.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Cross-doc** `tenant-import-schema.md`'s `rooms.roomStatus` row gets this exactly right — "**no DB
+  CHECK**, so this enum is a policy choice mirroring the values `PATCH /api/rooms/:id/status`
+  accepts" — and its `cleaningStatus` row gets the CHECK right. So the correct, complete state model
+  exists in the vault; the walkthrough that a tenant admin reads does not have it.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `0f0c09a` *docs(08-guides): fix 5 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/09-plans — 12 resolved
+
+### R‑1 · [[DEVELOPER_ROADMAP]] T9 — "ui library is now 26 components" · STALE
+
+- **Origin** audit B entry `R‑1` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
+- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
+- **Claim** "| T9 | Design-system expansion | +8 a11y-first UI primitives (Accordion, Checkbox,
+  FormField, Radio, Separator, Switch, Textarea, Tooltip) + 8 stories; **ui library is now 26
+  components** |"
+- **Expected** 26 files under `app/src/components/ui/`.
+- **Actual** `ls app/src/components/ui/ | wc -l` → **20**. The 8 named primitives **do not exist** as
+  files (`test -f` → no match for each), so the "+8" was never realised; the "+8 stories" was not
+  either (Part 8a **F‑7**: `find app -name "*.stories.*"` → 10 files, none for those 8). So the row
+  marks as **Done** a task whose deliverables are absent, and miscounts the result by 6.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Cross-doc** `docs/03-frontend/COMPONENT_CATALOG.md` §1 gets this right and is self-aware about it
+  ("9 cataloged entries have no file … 3 present files were undocumented"), and Part 8a **F‑1** rates
+  it "the single most honest count claim in the three folders". This roadmap row is the same number
+  stated wrongly by a document that has no way to check it.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑2 · [[DEVELOPER_ROADMAP]] T13 — "16/16 panels use `@/lib/api`" · STALE
+
+- **Origin** audit B entry `R‑2` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
+- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
+- **Claim** "| T13 | Admin query migration | Verified already complete: admin SPA fully on TanStack
+  Query, zero raw `fetch` data loads, zero `window.*` globals, **16/16 panels use `@/lib/api`** |"
+- **Expected** 16 panels.
+- **Actual** `AdminApp.tsx` carries **46** nav tabs and **48** `lazy()` calls in `:60-107` (Part 8a
+  **P‑9**, verified exact), and `find app/src/components/admin -type f` → **63** files. The row's
+  *substantive* claims all still hold: Part 8a **F‑3** confirmed zero network `fetch` under
+  `components/admin` + `components/pos` (all 9 `fetch(`-shaped hits are `refetch()`) and zero
+  `window.*` data globals (**A‑11**). Only the denominator is stale.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑3 · [[DEVELOPER_ROADMAP]] T14 — "8 POS views" · STALE
+
+- **Origin** audit B entry `R‑3` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
+- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
+- **Claim** "| T14 | POS terminal | Shipped (**8 POS views**, `pos_token` auth, shifts, cart/checkout) |"
+- **Expected** 8 view files.
+- **Actual** `ls app/src/components/pos/views/` → **11**: the eight named in `COMPONENT_CATALOG.md`
+  plus `KitchenView.tsx`, `ProjectPicker.tsx`, `TableView.tsx` (Part 8a **F‑4**). `POSApp.tsx:17-25`
+  lazy-imports **nine** view modules plus `CartPanel`.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑4 · [[DEVELOPER_ROADMAP]] T19 — "53 migrations, 18 admin panels, 552 E2E gate" · STALE
+
+- **Origin** audit B entry `R‑4` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
+- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
+- **Claim** "| T19 | Docs refresh | README + AGENTS + … updated to match the codebase (repo now
+  `campmaster`, no i18n, **53 migrations**, **18 admin panels**, **552 E2E gate**, R2/DO bindings) |"
+- **Expected** 53 migrations / 18 panels / 552 E2E.
+- **Actual** **40** migrations, head `0127` (**D‑1**); **46** admin nav tabs / **63** component files
+  (**R‑2**); **919** E2E gate / 15 skipped (**T‑2**). All three numbers describe the pre-squash,
+  pre-T13, pre-2026-09-06 tree.
+- **Class** STALE · **Severity** P2 · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** raised above the other roadmap rows because this is the row that *establishes
+  the codebase description every other row inherits*. It is the doc's own summary of "what matches
+  the codebase", and three of its five figures no longer do.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑7 · [[DEVELOPER_ROADMAP]] §Remaining — "Push blocked on OAuth `workflow` scope" · FALSE
+
+- **Origin** audit B entry `R‑7` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
+- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
+- **Claim** "| Git remote + push | **Repo created** — `github.com/Michaelhehelmy/campmaster`
+  (private), `origin` set; commit `5d11305` local. **Push blocked on OAuth `workflow` scope** — approve
+  the `gh auth refresh -h github.com -s workflow` device flow, or drop `.github/workflows/*` from
+  pushed history |"
+- **Expected** pushes to be blocked.
+- **Actual** **Pushes land.** This audit's baseline check (`git branch -r --contains ddc63c6` →
+  `origin/main`) is itself a push to `origin/main`, and the six preceding vault commits
+  (`2dba33a`…`ddc63c6`) are all on the remote. The blocker is resolved and the row still lists it as
+  open.
+- **Class** FALSE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Credit** the row is honest about *how* to unblock it ("or drop `.github/workflows/*` from pushed
+  history") — which is the kind of alternative an owner action should carry.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑8 · [[DEVELOPER_ROADMAP]] §"Known pre-existing type errors" — the 153-error baseline · FALSE
+
+- **Origin** audit B entry `R‑8` · baseline `ddc63c6` · source `docs/09-plans/DEVELOPER_ROADMAP.md`
+- **Source** `docs/09-plans/DEVELOPER_ROADMAP.md` — the section named in the heading above
+- **Claim** "`BookPage.astro` (`apiBase` prop) and `MenuPage.astro` (meal/mealCategory types) have LSP
+  errors that predate this backlog batch (part of the known **153-error baseline**). They do not block
+  `astro build` or the test suites."
+- **Expected** a 153-error `tsc` baseline with the named files in it.
+- **Actual** **The baseline is dead twice over.** (1) `AGENT_LOGBOOK_HISTORY.md:9086` is the 2026-09-06
+  heading **"T33 TEST-FIXTURE TSC DEBT: DONE (329 → 0)"** with `npx tsc --noEmit` → **0 errors TOTAL
+  (src + tests)**; the latest recorded run (2026-10-03) reports "the same **2 PRE-EXISTING** errors in
+  `tests/unit/tenant-name-escape.test.tsx`". (2) **`tsc` cannot type-check `.astro` files at all** —
+  the same 2026-10-03 entry says so explicitly ("`tsc` does not type-check `.astro` files at all, and
+  `@astrojs/check` is NOT installed"). So the two named "errors" are LSP-level, outside `tsc`'s
+  reach, and the 153 figure predates a session that drove it to 0.
+- **Class** FALSE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Note** the claim "They do not block `astro build`" is *correct* and is the only part that matters
+  operationally — that sentence should be kept and the number dropped.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑9 · [[BACKLOG_VOID_REFUND]] §Current — "`POST /api/pos/orders/:id/void` exists (manager-gated, stock restore, audit)" · **FALSE** · **P1**
+
+- **Origin** audit B entry `R‑9` · baseline `ddc63c6` · source `docs/09-plans/BACKLOG_VOID_REFUND.md`
+- **Source** `docs/09-plans/BACKLOG_VOID_REFUND.md` — the section named in the heading above
+- **Claim** "## Current — `POST /api/pos/orders/:id/void` exists (manager-gated, stock restore,
+  audit). No partial refund, no Paymob refund call, no `refunds` ledger table."
+- **Expected** a POS order-void route.
+- **Actual** **It does not exist.** The POS router's complete route list is ten entries —
+  `pos/index.js:278` POST `/auth/login`, `:305` POST `/auth/refresh`, `:402` GET `/products`,
+  `:426` POST `/orders`, `:1032` GET `/orders`, `:1064` GET `/orders/:id`, `:1098` GET `/dashboard`,
+  `:1212` GET `/shifts/active`, `:1238` POST `/shifts/open`, `:1277` POST `/shifts/close` — **no
+  void**. A repo-wide search for a void route finds exactly one:
+  `backend/src/api/folios.js:337` `foliosRoutes.post('/:id/void', …)` → `POST /api/folios/:id/void`,
+  an **admin-only folio** status flip (`:351` `UPDATE folios SET status = 'voided' …`), added by
+  `0124_guest_folios.sql`. Nothing ever writes `status = 'voided'` on a POS transaction: the
+  `status != 'voided'` filters at `pos/index.js:1163,1168,1308` and `reports.js:183,220,235,294,317`
+  are defensive exclusions for a value no writer produces.
+- **Class** FALSE · **Severity** **P1** · **Action** UPDATE-DOC
+- **Severity** P1 · **Action** UPDATE-DOC
+- **Severity rationale** the file's own header is "Status: proposal only — no code changed", and the
+  §Current block is the *present-state* half of a proposal — the half a reader trusts to be true and
+  builds the rest of the proposal on. Its first bullet describes an endpoint that does not exist, and
+  the *second* bullet ("no partial refund…") is true. A reader concludes void-then-refund is a
+  one-route extension when it is a greenfield build. Note the related claim is falsifiable in the
+  wrong direction too: the folder README calls this file "**Live 18-line backlog proposal**" whose
+  "current state" is "the most falsifiable sentence in the repo".
+- **Positive**: the third bullet, "Booking-order tips persist (`PATCH /api/orders/:id/tip`); POS tips
+  receipt-only", is **MATCHED** (`orders.js:1382`, and `pos_transactions.tip_amount` exists) —
+  though **R‑10** shows the "next cycle" list contradicts it.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑10 · [[BACKLOG_VOID_REFUND]] §Next cycle item 3 — a "proposed" migration that already shipped · FALSE · P2
+
+- **Origin** audit B entry `R‑10` · baseline `ddc63c6` · source `docs/09-plans/BACKLOG_VOID_REFUND.md`
+- **Source** `docs/09-plans/BACKLOG_VOID_REFUND.md` — the section named in the heading above
+- **Claim** "3. POS tip persistence: **add `tip_amount` to `pos_transactions` via migration** +
+  backfill 0, surface in reports."
+- **Expected** `pos_transactions.tip_amount` to be absent.
+- **Actual** **It shipped**, as this same file's own `code-references` block admits: it lists
+  `backend/migrations/0120_add_tip_amount_to_pos_transactions.sql` — and that file exists, adding
+  `tip_amount REAL DEFAULT 0`, with the bind already present (Part 8a **A‑23** notes the same
+  migration as the fix for the `tip_amount` drift). `pos/index.js` binds `tipAmount || 0`; the only
+  genuinely open half is "surface in reports", which **G‑13** confirms is still not done ("no tip
+  handling in `admin-reports.js`").
+- **Class** FALSE (the migration half) / MATCHED (the reports half) · **Severity** **P2** · **Action**
+- **Severity** P2 · **Action** UPDATE-DOC
+  UPDATE-DOC
+- **Severity rationale** paired with **R‑9** this is the second way the same 43-line file
+  misdescribes the present: an endpoint that does not exist, and a migration that does. Both sit in
+  a document whose §Next-cycle item 7.3 in the wave plan points at as the canonical void/refund
+  backlog.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑11 · [[BACKLOG_VOID_REFUND]] §A11y/Perf notes — "4 islands" and a stale path · STALE
+
+- **Origin** audit B entry `R‑11` · baseline `ddc63c6` · source `docs/09-plans/BACKLOG_VOID_REFUND.md`
+- **Source** `docs/09-plans/BACKLOG_VOID_REFUND.md` — the section named in the heading above
+- **Claim** "Island discipline recorded in ARCHITECTURE.md (**4 islands**, prefer `client:visible`)."
+  And "F-A19 / F-A20 IDs do not exist in repo (DEEP_AUDIT uses C/W scheme) — no per-component commits
+  to make."
+- **Expected** 4 islands; a resolvable path.
+- **Actual** **9** public-facing island directive sites, not 4 (Part 8a **A‑8**/**Y‑1**: 6
+  `client:visible` + 3 `client:load`, 17 total including the two `client:only` SPA hosts). And
+  `ARCHITECTURE.md` as a bare filename no longer resolves — it is at
+  `docs/01-architecture/ARCHITECTURE.md`. The second note (the F-A19/F-A20 IDs genuinely do not exist)
+  is **MATCHED** and is the right way to close a stale backlog line: name the ID, say it is absent.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑12 · [[FINAL_IMPLEMENTATION_PLAN_v3_waves]] §"Migration budget" — "Current 99, head `0099`" · **FALSE** · P2
+
+- **Origin** audit B entry `R‑12` · baseline `ddc63c6` · source `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md`
+- **Source** `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md` §"Migration budget (through Waves
+  1-7)"
+- **Claim** (table) "| Current | **99** | head `0099` |" · "| Q4 tip (`0100_tip_amount.sql`) | +1 →
+  **100** | within raised cap (200) |" · "| Future auth/SSE/logging | +2 → **102** | within raised cap |"
+- **Expected** a budget anchored on the real migration count.
+- **Actual** The applied lineage is **40 top-level files**, head
+  `0127_meals_tenant_composite_pk.sql` (**D‑1**). The table is anchored on the pre-squash
+  `0001`–`0099` world — the same 99 that survives as `legacy/` (**D‑9**). Worse, the tip slot it
+  reserves is **`0100_add_project_id_nullable.sql`**, a file that already exists and is part of the
+  project-scoping series; the tip column landed as
+  `0120_add_tip_amount_to_pos_transactions.sql` (**D‑4**/**R‑10**). So a reader following the budget
+  would author a second `0100_*`.
+- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** this is the second **actionable** stale instruction in this audit after
+  **D‑2**, and it is worse in one respect: it names `0100_*` as a *free* slot when that slot has been
+  taken for ~6 migrations. A migration budget is only useful while it is true.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑14 · [[FINAL_IMPLEMENTATION_PLAN_v3_waves]] §6 — the acceptance-criteria baselines · STALE
+
+- **Origin** audit B entry `R‑14` · baseline `ddc63c6` · source `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md`
+- **Source** `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md` — the section named in the heading above
+- **Claim** (table) "Backend unit tests | **2158 / 83 files** | every wave | any fail → do not
+  proceed" · "Frontend unit tests | **3363 / 137 files**" · "Root integration | **255 / 37 files**" ·
+  "tsc | **8 pre-existing errors**"
+- **Expected** the baseline every wave is measured against to be the current one.
+- **Actual** Backend **2743 / 127** and frontend **3632 / 155** (**T‑0**); `tsc` **0 → 2**, not 8
+  (**R‑8**/**O‑20**). Root integration 255/37 is still exact (**T‑3**). The gate thresholds
+  ("**below threshold pair** (83/72/89/89)", "> 8 → gate") are the durable part and match
+  `AGENTS.md` §6.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Severity rationale** kept at P3 because the *mechanism* is intact — the thresholds are the
+  enforceable half and they are unchanged. But a "not worse than baseline − 0.5%" rule measured
+  against a 755-test-old baseline cannot detect a regression in the 585 tests added since.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### R‑19 · [[09-plans/README]] §Docs — "Live 18-line backlog proposal" · STALE
+
+- **Origin** audit B entry `R‑19` · baseline `ddc63c6` · source `docs/09-plans/README.md`
+- **Source** `docs/09-plans/README.md` — the section named in the heading above
+- **Claim** "| [[BACKLOG_VOID_REFUND|BACKLOG_VOID_REFUND.md]] | Live **18-line** backlog proposal for
+  the next POS cycle. |"
+- **Expected** `BACKLOG_VOID_REFUND.md` to be 18 lines.
+- **Actual** **43 lines.** (Its substantive claims are audited at **R‑9**/**R‑10**/**R‑11**.)
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Severity rationale** small on its own, but it is a count in the very table whose purpose is to
+  let a reader size the folder before opening a file — and **R‑9** shows what the file it points at
+  contains.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `ae7162b` *docs(09-plans): fix 9 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## docs/10-tenant-import — 6 resolved
+
+### N‑3 · [[tenant-import-types]] §3 — the matrix row and its own evidence note contradict each other · FALSE · P2
+
+- **Origin** audit B entry `N‑3` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-types.md`
+- **Source** `docs/10-tenant-import/tenant-import-types.md`
+- **Claim** The matrix row "| project | **O** | O | O | O† | O† |" with the legend "**O** = optional,
+  accepted and processed identically … **I** = schema-valid but never read — **zero cells since the
+  `project` block became a real writer**". But per-section evidence note 2: "**project (I × 5).**
+  Schema `.optional()` at `:92`. `runImport` contains **zero references to `data.project`** (A.2 F1,
+  **re-verified by grep this session**). **Inert** in both modes for every type".
+- **Expected** the row and the note to agree, and the note's grep claim to be true.
+- **Actual** **`data.project` IS read.** `backend/src/api/tenant-import.js:451` `if (data.project) {`
+  and `:452` `const p = data.project;` — the project upsert/insert block. The note's
+  "re-verified by grep this session" is therefore a **false negative**: the grep looked for
+  `data.project` and the code does read it. The matrix row (**O**) is the correct half; the note
+  (**I**) is the stale half, left over from A.2 F1.
+- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Cross-doc** this is the third of three in the same folder (**N‑4**, **N‑5**), and the only one
+  where the doc contradicts *itself in one file*.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8d9ec8e` *docs(10-tenant-import): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### N‑4 · [[tenant-import-schema]] §"Schema-level findings" item 2 — "`project` validated but inert" · FALSE · P2
+
+- **Origin** audit B entry `N‑4` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-schema.md`
+- **Source** `docs/10-tenant-import/tenant-import-schema.md` — the section named in the heading above
+- **Claim** "2. **`project` validated but inert**: runImport never reads `data.project` (verified by
+  grep — zero references); rooms need exactly one existing project (`defaultCampId`, else the
+  INSERT…SELECT guard 404s). Only identity mode creates a project (from identity fields)."
+- **Expected** `runImport` to skip the `project` block.
+- **Actual** `tenant-import.js:451` reads it. **The same file's §2 table, 190 lines earlier, says the
+  opposite and correctly**: the `project.name` row is annotated "**written** (section 0, :344–411):
+  updates the tenant's oldest live project, or INSERTs `proj_`+uuid12 when the tenant owns none", and
+  the `project.type` row says "→ `projects.project_type`, assigned directly (NOT COALESCEd) — added
+  after A.1". So `tenant-import-schema.md` documents the behaviour correctly in its reference table
+  and then denies it in its findings list.
+- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Note** the §2 table's line range (`:344–411`) is itself stale — the block is at `:451`+ in a
+  1,151-line file. The `project.type` and `project.status` "assigned directly, not COALESCEd" claims
+  are unverifiable from what I read but consistent with the schema row types.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8d9ec8e` *docs(10-tenant-import): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### N‑5 · [[tenant-import-appendix]] Table 3 A1 — "Entire `project` block … Parses, never read" · FALSE · P2
+
+- **Origin** audit B entry `N‑5` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-appendix.md`
+- **Source** `docs/10-tenant-import/tenant-import-appendix.md` — the section named in the heading above
+- **Claim** "| A1 | Entire `project` block (`name`/`location`/`capacity`/`status`) | Parses, **never
+  read by `runImport` in either mode**. (Same root cause as F1; listed here as the accepted-ignored
+  instance.) |"
+- **Expected** the `project` section to be inert.
+- **Actual** `tenant-import.js:451` reads it, in both modes — the block sits inside `runImport`, which
+  both modes call. Same defect as **N‑3**/**N‑4**, third carrier.
+- **Class** FALSE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale for N‑3/N‑4/N‑5 as a group** one stale finding has propagated to three documents
+  in one folder, and in **two** of them it now contradicts that same document's own reference table.
+  A manifest author reading A1 would conclude their `project` block is doing nothing and would not
+  use `project.type` to set `projects.project_type` — a real, silent capability loss. The finding
+  dates from A.2 (2026-09-30); the `project` block became a real writer when A.4 added `project.type`,
+  and the reference tables were updated while the findings lists were not.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8d9ec8e` *docs(10-tenant-import): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### N‑8 · [[BLOCKED-pos-products-composite-pk]] §5 — "Identity-path rollback assessment — **SKIPPED**" · **STALE** · P2
+
+- **Origin** audit B entry `N‑8` · baseline `ddc63c6` · source `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md`
+- **Source** `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md` — the section named in the heading above
+- **Claim** §5.1: "**Existing test coverage of the identity path is insufficient** …
+  `backend/tests/tenant-import.test.js:787-1038` is **the only identity-path suite** (16 tests) …
+  **Nothing exercises the branch that would carry the rollback** — the post-provisioning failure at
+  `tenant-import.js:829-832`, where `importTenantManifest` returns `status >= 400` *after* steps 1–4
+  have committed. There is no fixture that makes `runImport` fail on the identity path, so a rollback
+  would land with zero safety net and no way to prove it works." §5.3: the Wave 8 carry-forward item,
+  restating that the `if (result.status >= 400)` branch "carries the comment … but performs **no
+  cleanup**".
+- **Expected** no identity-path rollback, and one identity-path suite.
+- **Actual** **Both are superseded.**
+  (1) `backend/tests/tenant-import-identity.test.js` **exists** — it is the 2026-10-02 `a2-saga-status`
+  mission's suite, with **9** tests (`M1`–`M6` + `S1`–`S3`), recorded verbatim at
+  `AGENT_LOGBOOK_HISTORY.md:9684`: "**tenant-import-identity.test.js** +3 tests … **S1** a 409 through
+  the saga … asserts the shell WAS inserted and undone, tenant deleted last, every table back at
+  baseline. **S2** a guarded 404 through the saga … **S3** the manifest-schema 400 through the saga".
+  (2) The handler now **does** clean up: `rollbackCreated()` at `tenant-import.js:1007`, called at
+  `:1099`, `:1103`, `:1118` — the logbook's **A1/M2** closure, whose finding was literally "identity
+  mode answers 500, not 400" and whose fix was to "run the SAME `rollbackCreated()` it always ran,
+  then return that Response".
+  (3) There is also `backend/tests/tenant-import-rollback.test.js`, a fourth-case saga suite the same
+  entry names among "the 7 pre-existing tenant-import suites".
+- **Class** STALE · **Severity** **P2** · **Action** UPDATE-DOC
+- **Severity** P2 · **Action** UPDATE-DOC
+- **Severity rationale** this is a doc whose whole value proposition is "a verdict and an unblock
+  condition, kept separate from the schema docs so an open question is never filed under 'here is how
+  it works'" (**N‑10**). §5 is a *verdict* that has since been reversed, and §5.3 hands the reader a
+  "Wave 8 item to carry forward" that is already done. A reader would carry a closed item forward and
+  skip the one that is genuinely still open (`pos_products.id`, §"Parity D3, identifier half").
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8d9ec8e` *docs(10-tenant-import): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### N‑9 · [[BLOCKED-pos-products-composite-pk]] §5.2 — the cited line range and the superseded quote
+
+- **Origin** audit B entry `N‑9` · baseline `ddc63c6` · source `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md`
+- **Source** `docs/10-tenant-import/BLOCKED-pos-products-composite-pk.md` — the section named in the heading above
+- **Claim** "That is exactly the surface F-A17-02 declined to authorise — `tenant-import.js:723-726`
+  records 'Imported *rows* are not rolled back (the plan's "or" option — two-phase upload-then-insert-
+  with-cleanup — was chosen; **no D1 rollback was authorized**)', and the R2 rollback that *was* built
+  is scoped to `MEDIA_BUCKET` keys only."
+- **Expected** that quote at `:723-726` of `tenant-import.js`.
+- **Actual** **`tenant-import.js:723-726` no longer holds that text.** In the current 1,151-line file,
+  `:719-728` is the `meal_categories` / `meal_categories_lang` INSERT building
+  (`catStmts.push(env.DB.prepare("INSERT INTO meal_categories …"))`). The line reference predates the
+  file's growth. Separately, the *substance* — "no D1 rollback was authorized" — is superseded for
+  the identity path by `rollbackCreated()` (**N‑8**), while it remains true of the existing-tenant
+  path (which never deletes) and of cross-section atomicity, which
+  `tenant-import-appendix.md` Table 4 K6 still records correctly ("Per-section `DB.batch` calls, no
+  cross-section transaction").
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8d9ec8e` *docs(10-tenant-import): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+### N‑13 · [[tenant-import-appendix]] §4 — "Each file covers 84 of the 88 leaf fields" · **83, not 84** · STALE
+
+- **Origin** audit B entry `N‑13` · baseline `ddc63c6` · source `docs/10-tenant-import/tenant-import-appendix.md`
+- **Source** `docs/10-tenant-import/tenant-import-appendix.md` — the section named in the heading above
+- **Claim** "Each file covers **84 of the 88** leaf fields (measured 2026-10-02 against the schema's key
+  census, not asserted by hand). The four it omits are all deliberate:" followed by a four-row
+  omission table (`products[].campId`, `rooms[].roomStatus`, `rooms[].cleaningStatus`,
+  `project.type`).
+- **Expected** 84/88 with exactly those four omissions.
+- **Actual** **83 / 88, with five omissions.** Recomputed mechanically: a schema extracted from the
+  handler's `z.object` literals (**N‑1** — 88 fields), then presence-checked against each shipped
+  manifest. All five A.4 files are identical:
+  **present 83 / 88**, missing `project.type`, `products.campId`, `rooms.roomStatus`,
+  `rooms.cleaningStatus`, **and `menu.meals.mealCategoryId`**. The four named are correct; the fifth
+  is the `mealCategoryId` placeholder the appendix's *own prose* two paragraphs below already
+  documents as removed ("The files previously carried a `mealCategoryId: "mcat_existing_*"`
+  placeholder on one meal each … It was removed: the id it named exists in no database") — the
+  reason is written down, the omission was simply never counted.
+- **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
+- **Severity** P3 · **Action** UPDATE-DOC
+- **Severity rationale** the discrepancy is one field, but the claim is explicitly framed as a
+  measurement ("not asserted by hand"), and the same section's companion number is
+  **exact**: `docs/examples/tenant-manifest.example.json` is **69 / 88** as claimed ("69 of 88 leaf
+  fields (no `identity` at all)"), missing 11 (`project.type`, `products.categoryId`,
+  `products.campId`, `rooms.roomStatus`, `rooms.cleaningStatus`, `ratePlans.id`,
+  `ratePlans.productId`, `menu.meals.id`, `menu.meals.mealCategoryId`, `menu.meals.isActive`,
+  `posUsers.storeId`). One number in a pair of self-declared measurements is off by one; that is
+  enough to make a reader re-run both.
+
+> **RESOLVED-DOC 2026-10-06** — the cited doc was corrected by `8d9ec8e` *docs(10-tenant-import): fix 7 stale/false claims — gaps round 1*.
+>
+> The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
+> the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
+> both halves must stay readable for a later pass to tell a closed gap from a reopened one.
