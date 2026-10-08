@@ -48,15 +48,17 @@ backend was reachable at build time):
 | `transportation.json` | Transport operator: fleet-as-products + staff | `type: 'transportation'` |
 | `curated-listing.json` | Listing-only showcase | `type: 'other'` + `businessType: 'curated-listing'` |
 
-Each file covers **84 of the 88** leaf fields (measured 2026-10-02 against
-the schema's key census, not asserted by hand). The four it omits are all
-deliberate:
+Each file covers **83 of the 88** leaf fields (re-measured 2026-10-06 by
+enumerating every `(section, field)` pair of the schema census and intersecting
+it with the union of keys actually present across the five files — **not**
+asserted by hand). The five omissions are all deliberate:
 
 | Omitted | Why |
 |---|---|
 | `products[].campId` | these five files use create mode, whose project id is a `proj_`+uuid minted at provisioning time that no manifest can name, so any shipped value is a guaranteed 400 (§2, mistake #3b) |
 | `rooms[].roomStatus`, `rooms[].cleaningStatus` | added to the schema after A.4 was authored; a fresh tenant's rooms are `available`/`clean` anyway, which is what an omitted field binds |
 | `project.type` | added to the schema after A.4 was authored; omitting it binds the handler default `'camp'` |
+| `menu.meals.mealCategoryId` | **not previously listed.** It was removed from all five files in Wave 8 item 3 (the `mcat_existing_*` placeholder is gone — see the SUPERSEDED callout at §3.3), so the omission count is one higher than the table used to admit. The path is still real and still blind; it just cannot be demonstrated in a create-mode example. |
 
 They resolve rooms/ratePlans through
 both `productName` and `productId`, meals through `categoryName` only, and use
@@ -92,9 +94,9 @@ campId/categoryId/storeId placeholder guidance.
 
 | # | Key | Effect |
 |---|---|---|
-| A1 | Entire `project` block (`name`/`location`/`capacity`/`status`) | Parses, never read by `runImport` in either mode. (Same root cause as F1; listed here as the accepted-ignored instance.) |
-| A2 | `rooms[].campId` wire key | The rooms Zod object has no `camp_id` and the schema is `.strip()` → the key never survives validation; the handler's `room.camp_id` read is dead — rooms always land in `defaultCampId`. (A.1 finding 3.) |
-| A3 | Unknown meal `categoryName` | Accepted → `meal_category_id` null, no error — asymmetric with unknown `productName` → 400 for rooms/ratePlans. |
+| A1 | Entire `project` block (`name`/`location`/`capacity`/`status`) | **NOT accepted-ignored — this row was wrong and contradicted §7 mistake #2 and the round-trip ledger below, which both say the block is written.** `tenant-import.js:451` reads `data.project` inside `runImport` (`:368`), which both modes call, and writes it in two branches: COALESCE-UPDATE the tenant's oldest live project (`:456-492`) or INSERT `proj_`+uuid12 (`:498-509`). **This row has no reason to exist; it should be deleted, not corrected.** |
+| A2 | `rooms[].campId` wire key | The rooms Zod object (`:146-166`) has no `camp_id` and `manifestSchema` is `.strip()` (`:207`) → the key never survives validation; the handler's `room.camp_id` read at `:631` is dead — rooms always land in `defaultCampId`. (A.1 finding 3.) |
+| A3 | Unknown meal `categoryName` | **No longer accepted-ignored.** The `unresolvableMealCategory` pre-flight (`tenant-import.js:319-338`) makes it a **400 before any write**, resolved against the manifest's own `menu.categories[].name` plus the categories the tenant already owns. This row is stale; the surviving asymmetry is the blind `mealCategoryId` path (A4 / K4). |
 | A4 | `products[].categoryId`, `posUsers[]` explicit `storeId` | Accepted and stored verbatim with no existence check (see FK table K5). |
 | — | Top-level `images` block | Explicitly NOT a gap — the doc's Images section documents it as stripped/inert, and `.strip()` confirms it. Stated explicitly per mission. |
 
@@ -105,7 +107,7 @@ campId/categoryId/storeId placeholder guidance.
 | K1 | `rooms_new` | Guarded `INSERT…SELECT`: requires a `projects` row (`id` = campId, same tenant, not deleted) AND a `pos_products` row (`id` = productId, same tenant); zero changes → per-room 404. | Matches doc. |
 | K2 | `rate_plans_new` | Guarded `INSERT…SELECT` on `pos_products` (`id` + tenant); zero changes → per-plan 404; `camp_id` inherited from the product. | Guard matches doc; inheritance undocumented (U3). |
 | K3 | `pos_products` + `products` mirror | Plain batch `INSERT`; duplicate SKU/ID surfaces as UNIQUE → 409. `ensureProductInProductsTable` mirrors into `products` via `INSERT OR IGNORE…SELECT`, best-effort (errors swallowed). | Matches doc. |
-| K4 | `meals.meal_category_id` | Blind: unknown `categoryName` → null; an explicit `mealCategoryId` is used verbatim with no existence check → dangling reference or an FK-violation 500 (thrown → wrapper generic 500), depending on D1 FK enforcement. | Doc silent. |
+| K4 | `meals.meal_category_id` | **Half-fixed.** Unknown `categoryName` is no longer blind: the `unresolvableMealCategory` pre-flight (`:319-338`, called by the route before the shell exists) rejects it with a 400 before any row is written. An **explicit `mealCategoryId` is still bound verbatim with no existence check** → dangling reference or an FK-violation 500 (thrown → wrapper generic 500), depending on D1 FK enforcement. That half is what makes create mode unable to name a category id (mint at import time as `mcat_<uuid12>`). | Doc silent. |
 | K5 | `products.category_id`, `pos_users.store_id` | Blind stores, no existence checks. | Doc silent. |
 | K6 | Cross-section atomicity | Per-section `DB.batch` calls, no cross-section transaction — partial D1 writes persist if a later section fails (only R2 uploads roll back, U1). | Doc silent. |
 
@@ -171,23 +173,13 @@ the 400s locally.
 
 ---
 
-## 6. Export CLI + round-trip losses
-
-`scripts/export-tenant.mjs` (zero-dep, read-only; A.6) rebuilds an A.1-shaped
-manifest (tenant/project/products/rooms/ratePlans/menu/posUsers — **never**
-`identity`, export cannot provision) from live GETs. Reads only: public
-tenant/projects/products/rooms/rateplans/meal-categories/meals with
-`x-tenant-id`, plus authed `GET /api/pos-users` when a JWT is supplied. No
-POST/PUT/DELETE, no KV, no R2:
-
-```bash
-node scripts/export-tenant.mjs acaciacamp --staging --out /tmp/acacia-export.json
-node scripts/export-tenant.mjs acaciacamp --out /tmp/acacia-local.json   # local :8787 default
-node scripts/export-tenant.mjs acaciacamp --staging --jwt "$TOKEN" --out /tmp/acacia-full.json
-npm run validate-manifest -- /tmp/acacia-export.json   # export → validate is the round-trip check
-```
-
 ## 6. Export CLI + what round-trips vs what drops
+
+> **This heading and its three-paragraph intro used to appear TWICE, verbatim,**
+> under `## 6. Export CLI + round-trip losses` and `## 6. Export CLI + what
+> round-trips vs what drops` — same prose, same three `bash` lines, byte for
+> byte, with the round-trip ledger hanging off the second copy only. The
+> duplicate is gone; this is the surviving heading.
 
 `scripts/export-tenant.mjs` (zero-dep, read-only; A.6) rebuilds an A.1-shaped
 manifest (tenant/project/products/rooms/ratePlans/menu/posUsers — **never**
@@ -277,13 +269,20 @@ edge-collideid    products=0 rooms=0 rate_plans=0 meals=0 posUsers=0   ← step 
 ```
 
 Each rejected tenant still owns its committed `admins` row, POS organization + store,
-`tenant_org_mapping` row and default `project` — provisioning steps 1–4 of
-`tenant-import.js:801-822` run **before** `runImport`, and `tenant-import.js:829-832`
-returns the error response without touching them. This is the pre-existing
-"no D1 rollback" decision (F-A17-02), not a regression from `a5dec09`/`1378d27` — but
-those two fixes moved the *meal-category* and *campId* failures forward to before the
-first data write, so the residue is now "tenant shell only" instead of "tenant + partial
-catalogue". The shell is strictly smaller than before; it is not gone.
+`tenant_org_mapping` row and default `project` — provisioning steps 1–4 run
+**before** `runImport`, and the identity saga now **undoes them**: the
+`if (result.status >= 400)` branch at `tenant-import.js:1096` calls
+`rollbackCreated()` (`:1007`, called at `:1099`, `:1103`, `:1118`). This finding
+is therefore **superseded for the identity path** — the measurement below is the
+pre-rollback residue, kept as the record that produced the fix. It remains
+accurate for the **existing-tenant** path, which passes no undo log and therefore
+still never deletes. See `BLOCKED-pos-products-composite-pk.md`.
+
+The residue recorded here is also not a regression from `a5dec09`/`1378d27` — those two
+fixes moved the *meal-category* and *campId* failures forward to before the first data
+write, so what was left shrank from "tenant + partial catalogue" to "tenant shell only".
+The shell is strictly smaller than before; on the identity path it is now gone entirely,
+and on the existing-tenant path it was never created.
 
 > **SUPERSEDED (2026-10-02, Wave 8 item 3):** the shipped `mcat_existing_*`
 > placeholder has been REMOVED from all five `docs/examples/manifests/*.json`
@@ -380,8 +379,9 @@ Top-10 mistakes (every item handler-verified):
    project *first*, so the manifest's block updates that same row (one INSERT
    + one UPDATE, never two projects).
 3. **Sending `rooms[].campId` to place rooms.** No `camp_id` in the rooms Zod
-   object + `.strip()` means the key never survives; the `:528` read is dead
-   — rooms always land in `defaultCampId` (A.1 finding 3).
+   object + `.strip()` means the key never survives; the read at
+   `tenant-import.js:631` is dead — rooms always land in `defaultCampId`
+   (A.1 finding 3).
 3b. **Sending an unverified `products[].campId`.** The import now 400s with
    `Product "<name>" references unknown camp "<campId>". campId must name a project this tenant already owns; omit it to attach the row to the tenant default project.`
    and writes nothing — and only a *live* project of *this* tenant counts, so
@@ -396,7 +396,8 @@ Top-10 mistakes (every item handler-verified):
    ratePlans 400 on unknown names; pre-create the products or fix the names
    (dup names: last imported wins, A.2 U4).
 5. **Assuming an unknown `categoryName` fails quietly.** It does not: the
-   import now 400s with
+   import now 400s with (pre-flight `unresolvableMealCategory`,
+   `tenant-import.js:319-338`)
    `Meal "<name>" references unknown category "<categoryName>". Declare the category in menu.categories[] or remove categoryName.`
    and writes nothing. (This paragraph previously claimed the opposite —
    "stores null silently" — which was never true at head: the null

@@ -16,11 +16,21 @@ relates-to:
   - "[[10-tenant-import/README]]"
   - "[[98-history/merged/audit-2026-09-30-tenant-manifest-schema]]"
 code-references:
-  - "backend/src/api/tenant-import.js"
+  - "backend/src/api/tenant-import.js:13-22"
+  - "backend/src/api/tenant-import.js:102-207"
+  - "backend/src/api/tenant-import.js:319-338"
+  - "backend/src/api/tenant-import.js:451-523"
+  - "backend/src/api/tenant-import.js:569-617"
+  - "backend/src/api/tenant-import.js:631"
+  - "backend/src/api/tenant-import.js:689"
+  - "backend/src/api/tenant-import.js:76-97"
   - "backend/tests/tenant-import-smoke.test.js"
   - "backend/tests/tenant-import.test.js"
   - "backend/src/utils/response.js"
+  - "backend/migrations/0002_orders.sql"
+  - "backend/migrations/0115_rooms_new_tenant_not_null_fk.sql"
   - "docs/examples/tenant-manifest.example.json"
+  - "docs/examples/manifests/"
   - "scripts/validate-manifest.mjs"
 verified: never
 ---
@@ -29,6 +39,11 @@ verified: never
 > The 88-leaf-field manifest schema table, the D1 `IN (…)` probe caps, and the 2026-09-30
 > schema-level findings. Part of the [[tenant-import]] set.
 ## 2. Full schema table (88 leaf fields at the current handler)
+
+> `manifestSchema` is `backend/src/api/tenant-import.js:102-207` and `identitySchema`
+> is `:13-22`. Section line ranges: `tenant` `:103-124` · `project` `:125-131` ·
+> `products` `:132-145` · `rooms` `:146-166` · `rate_plans` `:167-178` ·
+> `menu.categories` `:180-183` · `menu.meals` `:184-193` · `pos_users` `:195-206`.
 
 `Default` = Zod-level default (almost always none); handler runtime fallbacks
 live in Notes. Required = Zod-required. All 8 top-level sections are
@@ -68,7 +83,7 @@ Field census: `identity` 8 · `tenant` 20 · `project` 5 · `products` 12 ·
 | tenant | activities | JSON-encoded string | no | keep existing | stored verbatim as string |
 | tenant | capacity | number | no | keep existing | `??` (so 0 stores correctly; text fields use `\|\|`, see §6 pitfall 7) |
 | tenant | menuConfig | JSON-encoded string | no | keep existing | stored verbatim as string |
-| project | name | string min 1 (when present) | no | — | **written** (section 0, :344–411): updates the tenant's oldest live project, or INSERTs `proj_`+uuid12 when the tenant owns none |
+| project | name | string min 1 (when present) | no | — | **written** (section 0, `tenant-import.js:451-509`, *not* `:344–411`): updates the tenant's oldest live project, or INSERTs `proj_`+uuid12 when the tenant owns none |
 | project | type | enum camp/supermarket/transportation/other | no | handler `'camp'` | → `projects.project_type`, assigned directly (NOT COALESCEd) — added after A.1 |
 | project | location | string | no | COALESCE (never blanks an existing value) | same section 0 |
 | project | capacity | number min 0 | no | COALESCE | same section 0 |
@@ -138,7 +153,7 @@ write** — it cannot half-apply the way the old behavior did.
 unresolvable name used to bind NULL and fail the meals batch as an opaque
 500 `Failed to import tenant data` *after* the project, branding, products,
 rooms, rate plans and meal categories were already written; that partial
-write no longer happens. A meal carrying an explicit `mealCategoryId` is
+write no longer happens (pre-flight at `:319-338`, reject string `:334-335`). A meal carrying an explicit `mealCategoryId` is
 skipped by the pre-flight — the id is bound verbatim, unvalidated.
 
 `campId` is resolved by a pre-flight of its own (the first thing `runImport`
@@ -157,10 +172,10 @@ mints a `proj_`+uuid that no manifest key can name. `campId` is accepted on
 `products[]` only — see mistake #3 for the rooms key.
 
 `rate_plans.camp_id` comes from the referenced product's camp (`p.camp_id`
-in the SELECT, :585–588) — no manifest key feeds it. Duplicate product names:
+in the SELECT, `tenant-import.js:689`) — no manifest key feeds it. Duplicate product names:
 last imported row wins the name map; imported names beat pre-existing ones
-(:471–514). `defaultCampId` is null unless the tenant owns exactly one
-non-deleted project (:414–417): with 0 or 2+ projects, products import with
+(`:569-617`, map built at `:569`, merge at `:615-617`). `defaultCampId` is null unless the tenant owns exactly one
+non-deleted project (`:512-515`): with 0 or 2+ projects, products import with
 `camp_id` null silently while every room 404s.
 
 ### Probe caps — the two `IN (…)` probes and the D1 bind ceiling
@@ -234,18 +249,36 @@ half of parity D3.
 
 1. **All 8 top-level sections optional** → `{}` parses (no-op import; still needs POS org or 409).
    `images`/`identity` documentation blocks are stripped by `.strip()` on the import path.
-2. **`project` validated but inert**: runImport never reads `data.project` (verified by grep —
-   zero references); rooms need exactly one existing project (`defaultCampId`, else the
-   INSERT…SELECT guard 404s). Only identity mode creates a project (from identity fields).
-3. **Rooms `camp_id` discrepancy**: handler reads `room.camp_id` (:302) but `camp_id` is NOT in
-   the rooms Zod object and the schema is `.strip()` → the key never survives validation, so rooms
-   always land in `defaultCampId`. (Recorded, not fixed — mission is read-only.)
-4. **Reference-resolution asymmetry**: unknown `productName` → 400 (rooms, ratePlans); unknown
-   `categoryName` → null (meals, no error).
-5. **Image rule** (resolveImage :38–58): `data:image/(jpg|jpeg|png|webp|gif);base64,…` ≤ 8 MB →
+2. **`project` is validated AND WRITTEN** (this finding previously read "validated but inert:
+   runImport never reads `data.project` (verified by grep — zero references)" — **a false
+   negative**). `runImport` opens the section at `tenant-import.js:451` (`if (data.project) {`)
+   and reads the payload at `:452`. If the tenant owns a live project it COALESCEs an UPDATE
+   onto the tenant's **oldest** live one (`:456-492`); else it INSERTs `proj_`+uuid12
+   (`:498-509`). It runs BEFORE default-camp resolution (`:512-515`) so the products and rooms
+   written later in the same import attach to it via `resolvedProjectId` (`:523`). Both modes
+   reach it; in identity mode it updates the project the identity block already created. Rooms
+   still need exactly one existing project for `defaultCampId` to be non-null (`:515`), else the
+   INSERT…SELECT guard 404s — but that is a fallback rule, not evidence the block is inert.
+3. **Rooms `camp_id` discrepancy**: the handler reads `room.camp_id` at
+   `tenant-import.js:631` (not `:302`) but `camp_id` is NOT in the rooms Zod object
+   (`:146-166`) and `manifestSchema` is `.strip()` (`:207`) → the key never survives validation,
+   so rooms always land in `defaultCampId`. (Recorded, not fixed — mission is read-only.)
+4. **Reference resolution — the asymmetry is GONE.** This finding previously read "unknown
+   `productName` → 400 (rooms, ratePlans); unknown `categoryName` → null (meals, no error)".
+   The meal half was superseded by the `unresolvableMealCategory` pre-flight
+   (`tenant-import.js:319-338`), which the route runs **before** the shell is created: an
+   unknown `categoryName` is now a **400 before any row is written**, resolved against this
+   manifest's own `menu.categories[].name` plus the categories the tenant already owns. All
+   three name-resolved sections behave the same way now. **The asymmetry that remains is a
+   different one:** an explicit `mealCategoryId` is skipped by the pre-flight and bound
+   verbatim with no existence check (`§2`, mistake #5b).
+5. **Image rule** (`resolveImage` `tenant-import.js:76-97`, cap `MAX_UPLOAD_BYTES` `:24` = 8 MB):
+   `data:image/(jpg|jpeg|png|webp|gif);base64,…` ≤ 8 MB →
    R2 `MEDIA_BUCKET` → `/api/media/…` URL (tracked for rollback on failure); `http(s)` /
    `/api/media/` passthrough; anything else (incl. unbound bucket) → null. Applies to
    tenant logo/favicon/hero, product image_url, meal image_url. No KV writes.
-6. **Companion guide**: `docs/tenant-import.md` (§ Sections reference) + sample
+6. **Companion guide**: `docs/tenant-import.md` (§ Sections reference; that path is preserved
+   for the 30+ files that cite it — the walkthrough itself) + sample
    `docs/examples/tenant-manifest.example.json` + gate
-   `cd backend && npx vitest run tests/tenant-import-smoke.test.js`.
+   `cd backend && npx vitest run tests/tenant-import-smoke.test.js` (4 its). The five A.4
+   example manifests live in `docs/examples/manifests/`.

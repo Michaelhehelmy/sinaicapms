@@ -17,8 +17,14 @@ relates-to:
   - "[[98-history/merged/audit-2026-10-02-tenant-import-edge-cases]]"
 code-references:
   - "backend/migrations/0127_meals_tenant_composite_pk.sql"
-  - "backend/src/api/tenant-import.js:829-832"
-  - "backend/tests/tenant-import.test.js:787-1038"
+  - "backend/src/api/tenant-import.js:369-372"
+  - "backend/src/api/tenant-import.js:871"
+  - "backend/src/api/tenant-import.js:876-878"
+  - "backend/src/api/tenant-import.js:1007-1022"
+  - "backend/src/api/tenant-import.js:1096-1118"
+  - "backend/tests/tenant-import.test.js"
+  - "backend/tests/tenant-import-identity.test.js"
+  - "backend/tests/tenant-import-rollback.test.js"
   - "deploy.sh"
   - "backend/tests/meals-tenant-composite-pk.test.js"
 verified: never
@@ -160,27 +166,68 @@ or ID)"`, and the `meals` half already answers a clear `400` naming the meal and
 before loading the same catalogue twice. Carried forward from parity finding D3, which
 `0126` only partially closed.
 
-## Identity-path rollback assessment — **SKIPPED** (Wave 8 item)
+## Identity-path rollback assessment — **SUPERSEDED, IT SHIPPED** (Wave 8 item)
 
-**Decision: do not implement the identity-path try/catch rollback.** Both spec
-preconditions fail, and the second one is decisive.
+> **Everything below §5 was written when the answer was "do not implement this",
+> and that decision was overtaken.** The identity-path rollback **is implemented**
+> and **is covered by tests**. Re-verified at HEAD:
+>
+> - `rollbackCreated()` is defined at `backend/src/api/tenant-import.js:1007` and
+>   called at `:1099` (deliberate rejection), `:1103` (rolled-back failure) and
+>   `:1118` (thrown error). The branch it lives in is
+>   `if (result.status >= 400)` at **`:1096`** — not `:829-832`, which is now the
+>   `pos_users` INSERT.
+> - The undo log is threaded through `runImport`'s `created` out-parameter
+>   (`:369-372`, documented at `:876-878`): every section pushes
+>   `{ table, column: 'tenant_id', value }` AFTER its write succeeds, and the
+>   route deletes them in reverse order.
+> - Coverage exists in **two** suites that did not exist when §5.1 was written:
+>   `backend/tests/tenant-import-identity.test.js` (9 tests, added `5df3ed2`
+>   2026-10-02) — including **M5** "rolls the whole tenant back when the 5th
+>   product fails on a duplicate SKU" and **S1/S2/S3**, which assert a deliberate
+>   409, a guarded 404 and the schema 400 each keep their own status through the
+>   undo; and `backend/tests/tenant-import-rollback.test.js` (4 tests, added
+>   `3f66503` 2026-10-02) — **T1** "rolls the whole shell back to zero rows when
+>   the data import fails in its last section", **T2** pre-write failure deletes
+>   nothing, **T3** the existing-tenant branch never deletes and reports partial
+>   data instead, **T4** the success path issues no DELETE.
+> - The existing-tenant path still passes no log, so it can never delete a
+>   pre-existing tenant's rows — the asymmetry §5 relied on is preserved on
+>   purpose and is pinned by T3.
+>
+> **§5 is kept as the record that produced the fix.** Its reasoning about *why* a
+> naive "delete just the tenant" try/catch was wrong was sound and is now the
+> design: the rollback is a **reverse-order per-table tenant-scoped DELETE log**,
+> each step in its own `try`/`catch` so a blocked step cannot hide the rest
+> (`:1007-1022`), not a single transaction.
+>
+> **What is still true below:** the FK-ordering facts (§5.2's list) are real and
+> are the reason the log exists; and "no D1 rollback was authorized" survives as
+> the `importTenantManifest` docstring's account of the R2-only F-A17-02 scope —
+> but it moved, and it now describes R2, not the identity saga.
 
-### 5.1 Existing test coverage of the identity path is insufficient
+**Original decision (2026-09-21, since implemented): do not implement the
+identity-path try/catch rollback.** Both spec preconditions failed at the time,
+and the second one was decisive.
 
-`backend/tests/tenant-import.test.js:787-1038` is the only identity-path suite
-(16 tests). It covers the happy path (201 + the created ids, the tenant/admin/org/project
-INSERTs, the project-block reuse, the identity-strip) and every **pre-provisioning**
-rejection (403 non-super-admin, 400 bad subdomain format / taken subdomain / duplicate
-email / missing fields).
+### 5.1 Existing test coverage of the identity path is insufficient — **NO LONGER TRUE**
 
-**Nothing exercises the branch that would carry the rollback** — the post-provisioning
-failure at `tenant-import.js:829-832`, where `importTenantManifest` returns `status >= 400`
-*after* steps 1–4 have committed. There is no fixture that makes `runImport` fail on the
-identity path, so a rollback would land with zero safety net and no way to prove it works.
+`backend/tests/tenant-import.test.js` **was** the only identity-path suite when this was
+written (53 tests today, 16 then). It covers the happy path (201 + the created ids, the
+tenant/admin/org/project INSERTs, the project-block reuse, the identity-strip) and every
+**pre-provisioning** rejection (403 non-super-admin, 400 bad subdomain format / taken
+subdomain / duplicate email / missing fields).
 
-### 5.2 The change is not small
+At the time nothing exercised the post-provisioning failure, because the branch did not
+exist — `tenant-import.js:829-832` is now the `pos_users` INSERT and the real branch is
+`:1096`. **The fixture asked for in §5.3 now exists**: a manifest that makes `runImport`
+fail on the identity path is exactly what **M5** (5th product, duplicate SKU) and **T1**
+(last section, `pos_users`) set up, and the deliberate-rejection paths have **S1/S2/S3**.
 
-"Delete only the newly-created tenant" is not a small try/catch here:
+### 5.2 The change is not small — **and it was not small, which is why the undo is a log**
+
+"Delete only the newly-created tenant" is not a small try/catch here. Every bullet below
+turned out to be a real constraint on the shipped implementation:
 
 - **D1 has no cross-request transaction.** Provisioning commits `tenants`, `admins`,
   the POS org + store + `tenant_org_mapping` (via `ensureTenantOrg`) and `projects` as
@@ -193,29 +240,38 @@ identity path, so a rollback would land with zero safety net and no way to prove
   `RESTRICT`/`NO ACTION`. Deleting just the tenant row trips
   `FOREIGN KEY constraint failed`; deleting the whole set is a wide multi-table sweep
   over the same 9–10 tables the d4/d5 tests enumerate, each needing its own ordering.
-- **That is exactly the surface F-A17-02 declined to authorise** —
-  `tenant-import.js:723-726` records "Imported *rows* are not rolled back (the plan's
-  'or' option — two-phase upload-then-insert-with-cleanup — was chosen; **no D1 rollback
-  was authorized**)", and the R2 rollback that *was* built is scoped to `MEDIA_BUCKET`
-  keys only.
+- **That is exactly the surface F-A17-02 declined to authorise** — but the citation
+  moved. `tenant-import.js:723-726` is now the `meal_categories` /
+  `meal_categories_lang` INSERT build; the quote "Imported *rows* are not rolled back
+  (the plan's 'or' option — two-phase upload-then-insert-with-cleanup — was chosen;
+  **no D1 rollback was authorized**)" lives in the `importTenantManifest` docstring at
+  **`:871`**, and it is accurate there: it scopes the **R2** rollback, which is real and
+  limited to `MEDIA_BUCKET` keys. It is NOT a statement about the identity saga any more
+  — the saga's D1 rollback is the undo log described above. **The existing-tenant path
+  remains exactly as this bullet describes: rows are not rolled back.**
 - **A partial rollback is worse than the honest orphan.** §3.2 shows the current residue
   is a clean tenant shell: an admin who retries with a fresh subdomain succeeds, and an
   admin who notices the orphan can delete one row. A rollback that deletes the tenant
   first and then fails open on the FKs would leave a half-deleted shell that is harder
   to reason about and impossible to retry.
 
-### 5.3 Wave 8 item to carry forward
+### 5.3 Wave 8 item — **CLOSED**
 
-> **Identity-path rollback on a post-provisioning failure.** The
+> **Identity-path rollback on a post-provisioning failure.** ~~The
 > `if (result.status >= 400)` branch at `backend/src/api/tenant-import.js:829-832` carries
 > the comment *"If import returned an error response, clean up partial provisioning"*
-> but performs **no cleanup**. Measured on a fresh 0126 local D1 (2026-09-30 edge audit):
-> a rejected identity import leaves an `admins` row, a POS organization + store, a
-> `tenant_org_mapping` row and a default `project` behind. Any fix must (a) cover all
-> nine import-written tables plus the four provisioning tables in FK-safe order, or wrap
-> provisioning + import in one `DB.batch` (D1 batches are transactional, but a single
-> batch cannot span the R2 uploads and `hashPassword`), and (b) ship with a fixture that
-> fails `runImport` on the identity path — which does not exist today.
+> but performs **no cleanup**.~~ **Shipped.** The branch is at **`:1096`**, it performs
+> the cleanup, and both halves of the required fix are in the tree: (a) the ordering
+> requirement is met by the reverse-order `created[]` log rather than one `DB.batch`
+> (a single batch cannot span the R2 uploads and `hashPassword` — that reasoning in the
+> original item was right and is why the log is the shape it is), and (b) the fixture
+> that "does not exist today" now exists and is pinned by **M5**, **S1–S3** and
+> **T1–T4**.
+>
+> **Still open, and it is not this item:** `pos_products.id` remains the global text
+> primary key, so parity finding **D3's identifier half is unclosed** (see § *Parity D3,
+> identifier half* above). The rollback question and the composite-PK question are
+> separate, and closing the first does not move the second.
 
 ---
 
