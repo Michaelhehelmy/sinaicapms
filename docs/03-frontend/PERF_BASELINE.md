@@ -127,9 +127,20 @@ Server-side SSR (NOT downloaded by browsers) is emitted separately to
 | 14 | 20.9 | `_astro/useQueryHooks.BPntfxud.js` |
 | 15 | 20.7 | `_astro/HRPanel.CQoPLCg4.js` |
 
-Storefront islands stay small (all code-split per route): `StorefrontCheckout`
-5.8 KiB, `ShopCatalog` 3.6 KiB, `StorefrontCart` 3.3 KiB,
-`StorefrontConfirmation` 2.7 KiB.
+**Four storefront islands, all code-split per route and all `client:visible`** —
+verified structurally: `app/src/pages/storefront/checkout.astro:53`,
+`cart.astro:52`, `index.astro:54` and
+`order/[orderNumber]/confirmation.astro:54`, with a chunk emitted for each.
+**No per-island byte figure is quoted here.** Byte figures unverifiable against
+unpinned `dist/`: `app/dist` is gitignored (`.gitignore:2`) and its build
+provenance is not recorded, so a measurement taken from it describes one
+unreproducible build. Measuring the only tree artefact gives raw 6.00 / 3.94 /
+3.63 / 6.17 KiB for `StorefrontCheckout` / `ShopCatalog` / `StorefrontCart` /
+`StorefrontConfirmation` — within ~0.3 KiB of this file's earlier 5.8 / 3.6 /
+3.3 / 2.7 on three of four, but `StorefrontConfirmation` is 2.7 → 6.17, a 2.3×
+gap no build drift explains, and with no recorded provenance **I cannot say which
+number is wrong**. Re-derive with `ANALYZE=1 npm run build` against a known
+commit before quoting any of them.
 
 ## Top-3 suspects
 
