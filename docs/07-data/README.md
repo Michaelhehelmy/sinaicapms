@@ -32,9 +32,16 @@ archived planning note whose open questions the tree has since answered.
 
 - **Migrations are numbered `.sql` files in `backend/migrations/`** — applied in filename order, and
   **never edited after being applied**: a change is a new numbered file, not a rewrite of history.
-- **The lineage has two halves** — the live top level (`0001`–`0014` + `0100`–`0127`) is what wrangler
-  scans, and the pre-squash `0001`–`0099` lineage sits in `backend/migrations/legacy/` for
-  archaeology only. Reading the legacy folder to answer "what does the schema look like" is a trap.
+- **The lineage has two halves** — the live top level is what wrangler scans, and
+  the pre-squash `0001`–`0099` lineage (99 files) sits in `backend/migrations/legacy/`
+  for archaeology only. Reading the legacy folder to answer "what does the schema
+  look like" is a trap. **Two numbers in the top-level ranges are absent on purpose**:
+  `0109` (reserved by its successor's header, `0110_create_payment_records.sql:20-23`)
+  and `0125` (free when D3 took `0126`). A gap is not a missing migration.
+- **"Head in the tree" ≠ "head applied"** — `0127_meals_tenant_composite_pk.sql`
+  is committed and **not applied to any database** (its own header says so). The
+  tree answers the first question; only `d1 migrations list --remote` answers the
+  second, and no doc should state an applied head it cannot check.
 - **Authoring style is additive and idempotent** — `CREATE TABLE IF NOT EXISTS` /
   `ALTER TABLE ... ADD COLUMN`, never a destructive rewrite in the same file as a feature.
 - **SQLite cannot drop an index-backed constraint** — any migration that needs to re-scope a
@@ -61,12 +68,17 @@ archived planning note whose open questions the tree has since answered.
   the schema-direction planning note. It still heads "Decision Required" after 40 migrations landed;
   every decision it left open is resolved in the tree and in `AGENT_LOGBOOK_HISTORY.md`.
 
-> ⚠️ **Migration-head drift is still live.** This doc's §1 says head `0123_…` / 37 files,
-> `AGENTS.md` §2 says `0053_camp_ownership.sql` / 53 files, and the archived
-> [[WAVE6_EXIT_REPORT\|98-history/sessions/WAVE6_EXIT_REPORT.md]] says
-> `0099_…` / 99 files. The tree has **40** migrations with head
-> `0127_meals_tenant_composite_pk.sql`. Fixing it is an owner content edit and was deliberately
-> left out of the 2026-10-06 restructure.
+> ⚠️ **Migration-head drift: one carrier fixed, two remain.** [[migrations|migrations.md]] §1
+> used to say head `0123_…` / 37 files while this index published the truth; that carrier is
+> corrected as of 2026-10-06 (**40** files, head `0127_meals_tenant_composite_pk.sql`, derived by
+> the two commands in §1 rather than transcribed). Two carriers outside `docs/07-data` still carry
+> superseded numbers and are **not** fixed by this folder: repo-root `AGENTS.md` §2 says
+> `0053_camp_ownership.sql` / 53 files, and the archived
+> [[WAVE6_EXIT_REPORT|98-history/sessions/WAVE6_EXIT_REPORT.md]] says `0099_…` / 99 files —
+> **99 is the size of the excluded `legacy/` folder**, and the WAVE6 figure was true on its
+> `created:` date. Three copies of a number is the failure mode; the rule that prevents it is in
+> [[migrations|migrations.md]] §1: derive the count and head from the directory, and say which of
+> "in the tree" / "applied" you mean.
 
 ## Related
 
