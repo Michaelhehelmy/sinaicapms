@@ -16,7 +16,7 @@ relates-to:
   - "[[API_SURFACE]]"
   - "[[README]]"
 code-references:
-  - "app/src/lib/api.ts:1-2838"
+  - "app/src/lib/api.ts:1-2837"
   - "backend/src/routes/registry.js:1-3494"
   - "backend/openapi.json"
 verified: never

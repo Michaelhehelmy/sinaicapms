@@ -69,7 +69,7 @@ claiming them or by filing the code half as a queue item in [[code-vs-code]].
 **Scope of the ledger.** Every row below is one *triaged* gap entry across the folder's four notes:
 the **75** rows triage A produced for this note (73 class-bearing `###` entries + `Entry #1` + the
 `D‑13` nested inside it), the **25** rows triage B+C produced for [[unimplemented]] (10) and
-[[unverified]] (15), and the **6** new rows in [[code-vs-code]]. Entries carrying no action are
+[[unverified]] (15), and the **8** rows in [[code-vs-code]]. Entries carrying no action are
 outside it: the seven `MATCHED`-only bodies under *Entries by folder* (`A‑6`, `A‑13`, `S‑7`, `P‑4`,
 `P‑10`, `O‑25`, `N‑19`), the 112 foot controls, and `T‑0`, which is the provenance table every
 test-count entry is measured against rather than a claim.
@@ -78,10 +78,21 @@ test-count entry is measured against rather than a claim.
 |---|---|---|---|
 | `RESOLVED-DOC` | **87** | the cited doc was corrected; the claim was wrong and the code was right | 71 here · 9 in [[unimplemented]] · 7 in [[unverified]] |
 | `RESOLVED-REJECTED` | **1** | the alleged artefact never existed, so no doc edit was warranted | `A‑11`, in [[unimplemented]] |
-| `DEFERRED` | **16** | real, or correct as labelled, and **owner-parked** rather than closed | 4 here · 6 in [[unverified]] · 6 in [[code-vs-code]] |
+| `DEFERRED` | **18** | real, or correct as labelled, and **owner-parked** rather than closed | 4 here · 6 in [[unverified]] · 8 in [[code-vs-code]] |
 | `OPEN` | **2** | still undecidable from the tree, and no probe was authorised | `Q‑5`, `P‑6`, both in [[unverified]] |
 | `RESOLVED-CODE` | **0** | closed by changing source — **none**, by owner decision | — |
-| **Total triaged** | **106** | | |
+| **Total triaged** | **108** | | |
+
+> **Amended 2026-10-08 — `DEFERRED` 16 → 18 and total 106 → 108, both from [[code-vs-code]], and
+> nothing else moved.** This ledger published **6** code-vs-code rows while that note held **7** `C‑`
+> entries: `C‑0` (the test that polices the six migrations) had never been counted, because the note's
+> own header called the note's contents "6" and every count in the folder was copied from that
+> header. `C‑7` (the monitor suite, red on `main`) was then filed 2026-10-08. The alternative to
+> fixing the count — demoting `C‑0` out of the entry series so the arithmetic closed — was rejected on
+> purpose: **that would have removed a real `OPEN` finding from the ledger to make a number agree,
+> which is the same defect as leaving a doc claim standing.** `RESOLVED-DOC` 87, `RESOLVED-REJECTED`
+> 1 and `OPEN` 2 are untouched, and `RESOLVED-CODE` is still **0** — no source has been edited in this
+> folder at any point.
 
 **How the ledger divides by note.** This note holds **75** rows: 71 `RESOLVED-DOC` (moved to
 [[code-vs-docs#Resolved]] at the foot, each with its fixing SHA), **4** `DEFERRED` (kept in place —
@@ -118,11 +129,12 @@ defect.
 **One residue the doc pass could not close, and did not pretend to.** `O‑21`'s M21 half claimed "20
 unsafe `DROP TABLE` in 11 migrations", all eleven of which live in the excluded `legacy/` lineage.
 The doc is corrected (`b06990c`), but the *applied* lineage's own residue is a **code** finding, and
-this folder is not where code findings go. It is filed as six rows in [[code-vs-code]] — verified
-`file:line` by `file:line`, `Severity` **P2**, `Action` `FIX-CODE`, deferred to **Wave 9** — together
-with the code-side observation that the test which claims to police this
-(`tests/core/migration-integrity.test.js:80`) greps raw file text and therefore counts SQL `--`
-comments, so its `:90` assertion cannot pass as written. That finding is **recorded, not edited**.
+this folder is not where code findings go. It is filed as **eight** rows in [[code-vs-code]] —
+verified `file:line` by `file:line`, `Severity` **P2**, `Action` `FIX-CODE`, deferred to **Wave 9** —
+of which six are the migrations, one (`C‑0`) is the test that claims to police them, and one (`C‑7`,
+added 2026-10-08) is a defect from a different subsystem entirely: the monitor suite is red on
+`main` because its fixtures are stamped `2026-10-03` and the code it reads is stamped `now`. Both of
+those code-side observations are **recorded, not edited**.
 
 ## The three worst things in this note
 
@@ -2720,9 +2732,13 @@ been taken for months.
 - **Claim** "`app/src/lib/api.ts` — a typed client with **~276 exported functions** covering every
   endpoint the frontend uses."
 - **Expected** ≈276.
-- **Actual** `app/src/lib/api.ts` is **2,838 lines** (the `api.ts:1-2838` code-reference is exact).
-  `export … function` declarations: **286**. Plus one exported const (`API_BASE`) → 287 exported
-  callables/symbols. Plus 60 `export type|interface`.
+- **Actual** `app/src/lib/api.ts` is **2,837 lines** (`wc -l`, trailing newline present, so `sed -n '$='`
+  agrees) — corrected 2026-10-08; both the audit's own `2,838` and its parenthetical "the
+  `api.ts:1-2838` code-reference is exact" were an off-by-one, and `0ce48fd` republished the figure
+  as a code-reference in `docs/02-api/API_CONTRACT.md:22` and `docs/02-api/README.md:19`.
+  **A line count is a measurement, not a property, so the entry now publishes the command rather
+  than an adjective: `wc -l`, not "exact".** `export … function` declarations: **286**. Plus one
+  exported const (`API_BASE`) → 287 exported callables/symbols. Plus 60 `export type|interface`.
 - **Class** STALE · **Severity** P3 · **Action** UPDATE-DOC
 - **Severity** P3 · **Action** UPDATE-DOC
 - **Direction** the client has *grown* past the stated figure, so the claim understates coverage. The

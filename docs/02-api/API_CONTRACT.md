@@ -19,7 +19,7 @@ relates-to:
   - "[[COMPONENT_CATALOG]]"
   - "[[security-guide]]"
 code-references:
-  - "app/src/lib/api.ts:1-2838"
+  - "app/src/lib/api.ts:1-2837"
   - "app/src/lib/api.ts:150,1273,1558,2688 (the four deliberate raw fetches)"
   - "app/src/lib/api.ts:121-214"
   - "backend/src/routes/registry.js:1-3494 (128 createRoute calls)"

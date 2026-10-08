@@ -157,7 +157,7 @@ Order **deletion** also frees the room, same guard (`orders.js:452-463`), and th
 
 ### The manual endpoint (admin override)
 
-`PATCH /api/rooms/:id/status` (`backend/src/api/camps.js:947-964`) accepts **five**
+`PATCH /api/rooms/:id/status` (`backend/src/api/camps.js:946-961`) accepts **five**
 values — `camps.js:952`:
 
 ```js

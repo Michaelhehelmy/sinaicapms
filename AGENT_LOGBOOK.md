@@ -261,3 +261,35 @@ history.
 - **Append your task log entry** to `docs/98-history/sessions/AGENT_LOGBOOK_HISTORY.md`, under its
   `### Task Log` heading.
 - **Add a new gotcha** to `## Persistent Learnings & Codebase Gotchas` above, in this file.
+
+### 2026-10-08 — gaps round 1: monitor suite red on `main`, and the counts that corrected themselves
+- **The monitor unit suite is red on `main` and nothing in `monitor/` caused it.** 6 failed / 185
+  passed of 191 (7 files), all six in `monitor/tests/api.test.js`, deterministic across four runs.
+  `git diff 1616727..HEAD -- monitor/` is **empty**. Root cause in one line: **every fixture is
+  stamped `2026-10-03` and the code they read is stamped `now`** — `newestRun`
+  (`monitor/src/index.js:341-353`) scans only today+yesterday (`for (const daysAgo of [0, 1])`,
+  `:342`) and `readHistoryWindow` filters `since = now − hours` (`:496`), so the seeded data is
+  invisible from 2026-10-05 onward. **Confirmed, not inferred:** pinning the clock to the fixtures'
+  own instant turns all 65 tests green (throwaway `/tmp` shim via `NODE_OPTIONS=--require`, no repo
+  edit). `vi.setSystemTime` appears 19× in that file and the six failures are exactly the tests that
+  omit it. **Never widen `newestRun`'s two-day lookback or `readHistoryWindow`'s window to fix this** —
+  both are correct, both are documented, both have their own passing tests; loosening them trades a
+  red suite for a monitor that reports a five-day-old probe as current. Filed as `C-7` in
+  `docs/99-gaps/code-vs-code.md`; evidence in `.opencode/audits/monitor-suite-red-2026-10-06.md`.
+- **A file/test count in a table is not a verdict.** `9e809bd` recorded "7 files / 191 tests PASS";
+  the counts are still exactly right and only the verdict rotted — which is precisely why a suite row
+  citing a SHA cannot be read as green without re-running it. `docs/01-architecture/ARCHITECTURE.md`
+  §7's Monitor row now carries a one-line note, not a rewritten figure.
+- **`code-vs-code.md` counted 6 entries while holding 7 headings, and the note's own header is why.**
+  Every count in the folder was copied from that header, so `C-0` was invisible to the ledger. Fixed by
+  moving the counts (folder `DEFERRED` 16→18, total 106→108) rather than demoting `C-0` — demoting a
+  real finding to make arithmetic close is the same defect as leaving a doc claim standing. The note's
+  "all from one finding (O-21's M21 half)" sentence also had to go: `C-0` and `C-7` are not from
+  `O-21`. **A note that describes its entries by a shared origin must keep that origin true for every
+  entry it holds; where it cannot, the origin sentence moves.**
+- **Two corrections invalidated themselves inside the commit that wrote them** (caught by the Phase 6
+  re-verification, not by review): `docs/09-plans/README.md` published `BACKLOG_VOID_REFUND.md` as
+  "43 lines" in the same commit that grew it 43→85, and `api.ts:1-2838` was republished three times
+  from an off-by-one (the file is **2837** lines). **A count measured in the same change that moves the
+  thing counted is measured pre-edit** — measure after the edit, or publish the command instead of the
+  number.

@@ -42,7 +42,9 @@ the `file:line` its claim was measured against.
 doc-fix commits plus one runtime probe closed most of the queue — with **zero code changes**, so every
 resolution is a documentation resolution. Entries are now **not** all queued: each note carries a
 status, and the folder-wide ledger is `## Status as of 2026-10-06` in [[code-vs-docs]]:
-**87 `RESOLVED-DOC` · 1 `RESOLVED-REJECTED` · 16 `DEFERRED` · 2 `OPEN` · 0 `RESOLVED-CODE`**. What
+**87 `RESOLVED-DOC` · 1 `RESOLVED-REJECTED` · 18 `DEFERRED` · 2 `OPEN` · 0 `RESOLVED-CODE`** (108
+triaged entries; `DEFERRED` and the total moved 16/106 → 18/108 on 2026-10-08 — see the amendment note
+in [[code-vs-docs]]). What
 remains open is stated there and nowhere else, so a reader never has to infer "still broken" from
 absence.
 
@@ -101,7 +103,7 @@ absence.
 | [[code-vs-docs\|code-vs-docs.md]] | **`STALE` + `FALSE` claims** — 80 entries, plus the 112 `MATCHED` controls they rest on. Entry **#1** was the migration-head drift: `AGENTS.md` said 53 / `0053`, `docs/07-data/migrations.md` said 37 / `0123`, `WAVE6_EXIT_REPORT.md` said 99 / `0099`, and the tree had **40** with head `0127_meals_tenant_composite_pk.sql` (`legacy/` = 99). **All 71 of its class-bearing findings are `RESOLVED-DOC`** and now sit in `## Resolved` at the foot, each with its fixing commit; 4 are `DEFERRED` and stay in place. |
 | [[unverified\|unverified.md]] | **`UNVERIFIED` claims** — 15 entries the tree cannot answer: needs a build, a live host, a Cloudflare console, a manual checklist, or a diff against a pinned SHA. Not defects; the honest edge of a read-only audit. **7 `RESOLVED-DOC`, 6 `DEFERRED`, and 2 still `OPEN`** (`Q‑5` staging DNS, `P‑6` island byte figures — neither probed). |
 | [[unimplemented\|unimplemented.md]] | **`UNDOCUMENTED` code** — 10 entries of real code no doc claims, from `DELETE /api/media/*` to the ~199 endpoints that have no OpenAPI registration at all. The class only reading the source can produce. **9 `RESOLVED-DOC`, 1 `REJECTED`** (`A‑11`), plus the `## Advanced analytics` section holding the three owner-deferred items (`G‑1`/`G‑2`/`G‑3`). |
-| [[code-vs-code\|code-vs-code.md]] | **The residue a docs-only pass cannot close** — 6 entries, one per migration carrying a bare `DROP TABLE`, `Severity` P2 / `Action` `FIX-CODE`, all deferred to **Wave 9**, plus the code-side finding that the test policing them (`tests/core/migration-integrity.test.js:80`) matches SQL comments and so cannot pass as written. Created 2026-10-06; all 6 `OPEN`, `RESOLVED-CODE` still **0**. |
+| [[code-vs-code\|code-vs-code.md]] | **The residue a docs-only pass cannot close** — **8** entries, all `Severity` P2 / `Action` `FIX-CODE`, all deferred to **Wave 9**: six migrations carrying a bare `DROP TABLE`; `C‑0`, the test that polices them (`tests/core/migration-integrity.test.js:80`) matching SQL comments and so unable to pass as written; and `C‑7`, the monitor unit suite, **red on `main`** with six clock-coupled fixtures (`.opencode/audits/monitor-suite-red-2026-10-06.md`). Created 2026-10-06; `OPEN` and `DEFERRED` overlap by design, `RESOLVED-CODE` still **0**. |
 
 **Four notes, not three, and the fourth answers a question the other three cannot.** The first three
 all ask *does the code match the docs?* — which a docs-only pass can fully resolve, and did.
@@ -136,9 +138,9 @@ recording the unrecorded one would have converted a documented risk into an undo
   a queue that forgets what it caught cannot tell a reader whether a gap was closed or never seen.
 - Never add a `MATCHED` entry to a gap note. Controls belong in [[code-vs-docs]], at the foot,
   because a finding that quotes "**A‑1**" is only auditable if **A‑1** is readable there.
-- Give every entry **exactly one** resolution status, and say explicitly when two apply — six entries
-  in [[code-vs-code]] are simultaneously `OPEN` (nobody has made the fix) and `DEFERRED` (no wave is
-  assigned yet), which is the only honest way to write it.
+- Give every entry **exactly one** resolution status, and say explicitly when two apply — the eight
+  entries in [[code-vs-code]] are simultaneously `OPEN` (nobody has made the fix) and `DEFERRED` (no
+  wave is assigned yet), which is the only honest way to write it.
 - `verified: 2026-10-06` on these notes means *the claims were checked on that date against that
   baseline*, not that the docs are correct. What was and was not re-run is recorded in
   [[code-vs-docs]] and repeated in each note's header. **Round 1 re-ran no suite at all**: every test
@@ -167,9 +169,9 @@ says the placeholder "stays … until the gaps sweep runs" is now historical; th
 tracked here, and this folder's own claims — the totals, the entry counts, the workflow — are tracked
 the same way:
 
-- **[[code-vs-docs]]** · [[unverified]] · [[unimplemented]] · [[code-vs-code]] — **106 triaged gap
+- **[[code-vs-docs]]** · [[unverified]] · [[unimplemented]] · [[code-vs-code]] — **108 triaged gap
   entries**, filed from two read-only audits on 2026-10-06 plus one probe, and now resolved:
-  **87 `RESOLVED-DOC`**, **1 `RESOLVED-REJECTED`**, **16 `DEFERRED`**, **2 `OPEN`**, **`0
+  **87 `RESOLVED-DOC`**, **1 `RESOLVED-REJECTED`**, **18 `DEFERRED`**, **2 `OPEN`**, **`0
   RESOLVED-CODE`**. The 112 `MATCHED` controls are not entries; they are what the findings quote.
 - **Out of scope, and deliberately so**: `docs/README.md`, `docs/contributing.md`, the path-preserving
   stubs (`docs/API_SURFACE.md`, `docs/tenant-import.md`) and the whole `98-history` bucket. `98-history`
@@ -180,8 +182,8 @@ the same way:
   [[code-vs-docs]] and was **deliberately not corrected**, because correcting it would have been
   fixing a doc, and the audit pass was audit-only. Round 1 left it alone for the same reason and
   recorded it here instead.
-- **This note's own new claims are unverified too.** The 106/87/1/16/2/0 ledger above is a count of
+- **This note's own new claims are unverified too.** The 108/87/1/18/2/0 ledger above is a count of
   *triaged rows*, assembled from the two triage reports — not an independent re-measurement of the
-  tree. `[[code-vs-code]]`'s six entries **were** re-measured here, by running the
+  tree. `[[code-vs-code]]`'s six migration entries **were** re-measured here, by running the
   `migration-integrity.test.js:80` regex over the applied lineage, and that measurement is the only
   one in the folder derived from the tree rather than from a prior pass's row.

@@ -181,7 +181,7 @@ bare number rots silently:
 | --- | --- | --- | --- | --- |
 | Backend unit | `cd backend && npx vitest run` | **127** | **2743** | `9e58dae` (`a2-saga-status`) |
 | Frontend unit | `cd app && npx vitest run` | **155** | **3632** | `88f307a` (`tenant-outage-vs-404`) |
-| Monitor unit | `cd monitor && npx vitest run` | **7** | **191** | `9e809bd` (`mon-probe-selfcheck`) |
+| Monitor unit | `cd monitor && npx vitest run` | **7** | **191** | `9e809bd` (`mon-probe-selfcheck`) — **6 failing since ~2026-10-05; counts still right, only the verdict rotted** (clock-coupled fixtures, `.opencode/audits/monitor-suite-red-2026-10-06.md`) |
 | Root integration | `npx vitest run --config vitest.integration.config.ts` | **37** | **255** registered | 2026-09-28; see the caveat below |
 | E2E (Playwright) | `CI=true npx playwright test` | **96** specs, 8 projects | not re-run for this pass | see below |
 

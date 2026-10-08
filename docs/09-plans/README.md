@@ -68,7 +68,7 @@ spent plan is a record of a decision and is allowed to be stale.
 | Doc | What it is |
 |---|---|
 | [[DEVELOPER_ROADMAP\|DEVELOPER_ROADMAP.md]] | **The live backlog state**, folded forward through 2026-09-28. |
-| [[BACKLOG_VOID_REFUND\|BACKLOG_VOID_REFUND.md]] | Live backlog proposal for the next POS cycle — **43 lines** (`wc -l`). Its § *Current* was wrong about the endpoint it opens on: `POST /api/pos/orders/:id/void` **does not exist**, the only void in the backend is the admin-only folio flip at `backend/src/api/folios.js:337`. |
+| [[BACKLOG_VOID_REFUND\|BACKLOG_VOID_REFUND.md]] | Live backlog proposal for the next POS cycle — **85 lines** (`wc -l`, re-measured 2026-10-08; the `43` this row published on 2026-10-06 was measured *before* `ae7162b` grew the file, in the same commit). Its § *Current* was wrong about the endpoint it opens on: `POST /api/pos/orders/:id/void` **does not exist**, the only void in the backend is the admin-only folio flip at `backend/src/api/folios.js:337`. |
 | [[FINAL_IMPLEMENTATION_PLAN_v3_waves\|FINAL_IMPLEMENTATION_PLAN_v3_waves.md]] | Wave plan, dependency graph, acceptance criteria and risk register — the execution tier of the deep-audit plan. |
 | [[FINAL_IMPLEMENTATION_PLAN_v3_appendices\|FINAL_IMPLEMENTATION_PLAN_v3_appendices.md]] | Governance-incident closure (G1–G4) and the 9.1–9.6 evidence appendices. |
 
