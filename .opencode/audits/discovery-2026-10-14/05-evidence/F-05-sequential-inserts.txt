@@ -1,0 +1,19 @@
+# F-05 — sequential per-line INSERT awaits (4 sites)
+
+`grep -n "for (const line" backend/src/api/financials.js backend/src/api/supply.js`:
+- financials.js:290-296 (entry_lines), :370-377 (invoice_lines)
+- supply.js:369-375 (PO lines), :497-503 (bom_lines)
+
+`sed -n '288,298p' backend/src/api/financials.js`:
+```
+  for (const line of lines) {
+    const lineId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      `INSERT INTO entry_lines (id, entry_id, account_id, debit, credit)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(lineId, entryId, line.accountId, line.debit || 0, line.credit || 0).run();
+  }
+```
+`sed -n '367,379p'` shows identical shape for invoice_lines.
+Contrast `grep -rn "\.batch(" backend/src --include="*.js"` (reservations, folios:215,
+tenant-import, supply.js:452,609 use batch). Verified by orchestrator 2026-10-14.
