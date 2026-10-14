@@ -30,7 +30,7 @@ jobs:
             command: npx vitest run
           - name: Integration
             working-directory: .
-            command: npx vitest run
+            command: npx vitest run --config vitest.integration.config.ts
     steps:
       - uses: actions/checkout@v4
 
@@ -180,7 +180,10 @@ jobs:
           BASE_URL: ${{ github.ref_name == 'staging' && 'https://staging.sinaicamps.com' || 'https://sinaicamps.com' }}
         run: |
           echo "Running E2E tests against $BASE_URL..."
-          npx playwright test --grep="@smoke" --reporter=list || echo "⚠️ Some E2E tests failed (non-blocking)"
+          # Discovery P1-1 (2026-10-14): a smoke failure must fail the job.
+          # The previous `|| echo ... (non-blocking)` swallow let a total smoke
+          # failure deploy green.
+          npx playwright test --grep="@smoke" --reporter=list
 
   # ─────────────────────────────────────────────
   # Notify on completion
