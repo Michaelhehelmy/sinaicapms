@@ -41,8 +41,11 @@ verified: 2026-10-08
 
 The other three notes in this folder ask **"does the code do what the docs say?"** This one asks the
 question that survived a docs-only reconciliation: **"where does the code assert a property it does
-not actually enforce?"** It holds **8** entries. Every one is `Severity` **P2**, `Action`
-**`FIX-CODE`**, and deferred to **Wave 9**.
+not actually enforce?"** It holds **8** entries (`C‑0`…`C‑7`). Every one of those eight is `Severity`
+**P2**, `Action** **`FIX-CODE`**, and deferred to **Wave 9**. A 2026-10-14 discovery addendum at the
+foot files **`D‑1`…`D‑9`** — new code-safety entries from a fresh read-only audit, all `Status`
+`OPEN`, wave unassigned (owner to triage); severities are per-entry (P1–P2). The eight above are
+unchanged, and the folder ledger in [[code-vs-docs]] is unchanged pending owner triage of the nine.
 
 **They do not all come from one finding, and this note used to say that they did.** The sentence
 this paragraph replaces read "all from one finding (**`O‑21`**'s M21 half)" — and `C‑0`'s own
@@ -499,3 +502,77 @@ who finds `C‑7` under the `O‑21` heading would also file it as the same resi
 - [[AUDIT_MASTER_FINDINGS]] — the archived 2026-09-05 source of `O‑21` / M21, `status/archived`
 - `.opencode/audits/gaps-triage-A-2026-10-06.md:188-190` — where the live residue was first named
 - `.opencode/audits/monitor-suite-red-2026-10-06.md` — the unabridged evidence for `C‑7`
+
+## Addendum 2026-10-14 — discovery audit `D‑1`…`D‑9` (Status OPEN, wave unassigned)
+
+Filed from `.opencode/audits/discovery-2026-10-14/` (branch `main` @ `8d6e3ba`), read-only, each
+re-verified by the orchestrator with the quoted command. No existing entry is altered; overlaps name
+the existing entry. Full 5-tuple evidence (location / reproduction / impact / falsification /
+severity) lives in `02-findings.md` + `05-evidence/F-*.txt` of that audit.
+
+### `D‑1` · `GET /api/supply/boms` N+1 read · P1 · FIX-CODE · OPEN
+- **File** `backend/src/api/supply.js:462-477` (loop `:472`).
+- **Observed** 1 BOM-list query + 1 `SELECT * FROM bom_lines WHERE bom_id = ?` per BOM, no `IN()`
+  batching, no outer `LIMIT`. Same file fixed this pattern with `IN()`+`batch` at `:598-603`.
+- **Repro** `sed -n '462,477p' backend/src/api/supply.js`.
+
+### `D‑2` · sequential per-line INSERT awaits on 4 write paths · P1 · FIX-CODE · OPEN
+- **Files** `backend/src/api/financials.js:290-296` (entry_lines), `:370-377` (invoice_lines);
+  `backend/src/api/supply.js:369-375` (PO lines), `:497-503` (bom_lines).
+- **Observed** lone `await … INSERT … .run()` per line, no `DB.batch()` — N×RTT latency plus
+  non-atomic partial writes. Batch idiom established (`folios.js:215`, `supply.js:452,609`).
+- **Repro** `grep -n "for (const line" backend/src/api/financials.js backend/src/api/supply.js`.
+
+### `D‑3` · `GET /api/camps` unbounded fallback when `?limit` absent · P2 · FIX-CODE · OPEN
+- **File** `backend/src/api/camps.js:205-221`.
+- **Observed** `if (limit)` branch paginates; else full `SELECT * FROM projects …` (tenant) or
+  cross-tenant `SELECT c.* … GROUP BY c.tenant_id` with zero `LIMIT`.
+- **Repro** `sed -n '205,221p' backend/src/api/camps.js`.
+
+### `D‑4` · hottest public GETs bypass `cachedJsonResponse`; `Vary` covers 1 of 3 dimensions · P2 · FIX-CODE · OPEN
+- **Files** `backend/src/api/meals.js`, `meal-plans.js`, `marketplace.js`, `storefront.js` (all
+  `jsonResponse`); `backend/src/utils/response.js:64-76,72`; `middleware/tenant.js:9`,
+  `middleware/resolveScope.js:17,158`.
+- **Observed** zero `cachedJsonResponse` on anonymous tenant/slug-keyed reads despite
+  `response.js:58-61` naming products/meals/plans as intended users; single `Vary: x-tenant-id`
+  vs hostname/query/header resolution. Overlaps `code-vs-docs` `:900` (helper contract) — that row
+  describes the helper; this row describes its non-use.
+- **Repro** `grep -rn "cachedJsonResponse" backend/src/api/meals.js backend/src/api/marketplace.js backend/src/api/storefront.js backend/src/api/meal-plans.js` → zero.
+
+### `D‑5` · refresh rotation without revocation; logout no-op · P2 · FIX-CODE · OPEN
+- **Files** `backend/src/api/auth.js:235-245` (re-issue), `:263-266` (logout); POS mirror
+  `backend/src/routes/pos/index.js:292-304` (comment admits "no revocation table yet").
+- **Observed** no store/invalidation of the old refresh token; logout returns success only. Stolen
+  refresh mints access until its own 7d exp. No D1 table, KV entry, or used-flag found.
+- **Repro** `sed -n '235,270p' backend/src/api/auth.js`.
+
+### `D‑6` · inline-script fetch bypass + fragile `window.__API_BASE` bridge · P2 · FIX-CODE · OPEN
+- **Files** writers `CampsSection.astro:186,190,191`; readers `MarketplaceHome.astro:247`,
+  `CampsSection.astro:251,281,312`, `gallery.astro:141-182`; hand-rolled base
+  `contact.astro:132-133`, `sitemap.xml.ts:15`.
+- **Observed** public/lead traffic bypasses `@/lib/api` with a duplicated tri-branch base URL;
+  `MarketplaceHome` consumes `window.__API_BASE` it never sets. Distinct from `A‑11` (which was a
+  *comment*, REJECTED) — these are live assignments/reads.
+- **Repro** `grep -rn "window\.__" app/src --include="*.astro" --include="*.tsx"`.
+
+### `D‑7` · `cashier_id TEXT NOT NULL`, no FK, mismatched to `pos_users.id INTEGER` · P2 · FIX-CODE · OPEN
+- **File** `backend/migrations/0004_pos.sql:125,219` vs `:183`; workaround `0119:43` (`CAST`).
+- **Observed** orphan cashier references unenforceable without a type migration. Overlaps
+  `code-vs-docs:1795` (which records the *naming* fact `cashier_id`≠`staff_id`); this row records the
+  *typing/FK* fact. `staff_id` column does not exist (comment-only hits).
+- **Repro** `grep -n "cashier_id" backend/migrations/0004_pos.sql`.
+
+### `D‑8` · `escHtml` ×4 with semantic drift · P2 · FIX-CODE · OPEN
+- **Files** `app/src/lib/utils.ts:3`, `backend/src/utils/response.js:108`,
+  `MarketplaceHome.astro:201`, `CampsSection.astro:195`.
+- **Observed** same name/signature, different implementations: DOM versions escape all entities,
+  regex/chained versions escape 5 chars. Overlaps `S‑8`/`S‑9` MATCHED controls (which census
+  *occurrences*); this row records *implementation divergence* of the four definitions.
+- **Repro** `grep -rIn 'function escHtml' app/src backend/src`.
+
+### `D‑9` · `workers.uptime` is epoch-ms rendered as days · P2 · FIX-CODE · OPEN
+- **Files** producer `backend/src/api/admin-health.js:70` (`uptime: Date.now()`); consumer
+  `SystemHealthPanel.tsx:103` (`/ 86400_000` + "d"); `index.js:202 uptime_ms` is a different,
+  correct field (excluded).
+- **Observed** panel shows days-since-epoch (~20,000+d). Fix is duration or rename to `serverTime`.
+- **Repro** `sed -n '55,85p' backend/src/api/admin-health.js`.
