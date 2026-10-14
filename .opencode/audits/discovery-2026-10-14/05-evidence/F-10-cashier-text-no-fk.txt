@@ -1,0 +1,11 @@
+# F-10 — cashier_id TEXT NOT NULL, no FK, type-mismatched to pos_users.id INTEGER
+
+`grep -n "cashier_id" backend/migrations/0004_pos.sql`:
+- :125 `pos_transactions.cashier_id TEXT NOT NULL` (no REFERENCES)
+- :219 `pos_shifts.cashier_id TEXT NOT NULL`
+Parent: `0004_pos.sql:183` `pos_users.id INTEGER PRIMARY KEY AUTOINCREMENT`.
+`grep -rn "staff_id" backend/migrations/*.sql` → comment-only (no such column;
+naming-confusion reports disproved).
+`sed -n '18,54p' backend/migrations/0119_pos_shifts_store_id.sql` documents the
+`CAST(pos_users.id AS TEXT)` join workaround. `grep -n "REFERENCES" 0004_pos.sql`
+around both cashier lines → no adjacent FK clause. Verified 2026-10-14.
