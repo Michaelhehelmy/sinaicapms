@@ -1,0 +1,30 @@
+# F-01 — integration-tests CI red on main (migration-integrity 3 failed)
+
+Command: `npx vitest run --config vitest.integration.config.ts tests/core/migration-integrity.test.js`
+Re-ran by orchestrator 2026-10-14, branch main @ 8d6e3ba.
+
+Tail output (verbatim):
+```
+- Expected
++ Received
+
+- 40
++ 127
+
+ ❯ tests/core/migration-integrity.test.js:121:23
+    119|     if (match) {
+    120|       const lastNum = parseInt(match[1]);
+    121|       expect(lastNum).toBe(migrationFiles.length);
+    122|     }
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 7 passed (10)
+```
+
+Failing assertions (read 2026-10-14):
+- tests/core/migration-integrity.test.js:27-35 descriptive-names (`match[1].length > 2`; offenders `0007_hr.sql`, `0012_ai.sql`)
+- :76-91 no-DROP-TABLE-without-IF-EXISTS (raw-text regex, no comment stripping)
+- :115-123 latest-sequential (`lastNum == fileCount`; 127 vs 40)
+
+Subagent ran twice (default + --reporter=verbose), same 3 failed / 7 passed.
+`git log --since=2026-10-06 -- tests/ backend/tests/ app/tests/ .github/workflows/` = empty (pre-existing red).
