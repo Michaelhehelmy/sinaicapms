@@ -1,0 +1,14 @@
+# F-11 — escHtml x4 with semantic drift
+
+`grep -rIn 'function escHtml' app/src backend/src` (2026-10-14):
+```
+app/src/components/public/MarketplaceHome.astro:201:  function escHtml(s) {
+app/src/components/public/CampsSection.astro:195:  function escHtml(s) {
+app/src/lib/utils.ts:3:export function escHtml(str: string): string {
+backend/src/utils/response.js:108:export function escHtml(str) {
+```
+Bodies: utils.ts:3 regex-map, response.js:108 chained-replace (both escape 5 chars
+`&<>"'`); both .astro versions use DOM `textContent→innerHTML` (escapes all entities).
+`normalizeAssetUrl` likewise inline in both .astro files + canonical `utils.ts:34`.
+`toSnake` frontend/backend pair is a documented mirror (utils.ts:119-121) — excluded.
+Verified by ±5-line reads 2026-10-14.
