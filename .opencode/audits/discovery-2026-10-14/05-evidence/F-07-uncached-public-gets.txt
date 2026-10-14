@@ -1,0 +1,12 @@
+# F-07 — hot public GETs bypass cachedJsonResponse
+
+`grep -rn "cachedJsonResponse" backend/src/api/*.js` → only
+camps.js (6), categories.js (2), meta.js (3), tenants.js (3), orders.js (3).
+Zero hits in meals.js, meal-plans.js, marketplace.js, storefront.js:
+`grep -rn "cachedJsonResponse" backend/src/api/meals.js backend/src/api/marketplace.js backend/src/api/storefront.js backend/src/api/meal-plans.js` → (no output, verified 2026-10-14).
+Those files use `jsonResponse` (Cache-Control: no-store) on anonymous
+tenant/slug-keyed reads (marketplace home, tenant profile, products/blog, meals).
+`backend/src/utils/response.js:58-61` docstring lists "products, availability,
+rateplans, categories, meals, plans" as intended cachedJsonResponse users.
+Single `Vary: x-tenant-id` (response.js:72) vs resolution dimensions
+header/query/hostname (middleware/tenant.js:9, resolveScope.js:17,158).
