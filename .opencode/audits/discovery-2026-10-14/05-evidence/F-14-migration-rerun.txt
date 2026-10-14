@@ -1,0 +1,13 @@
+# F-14 — migration rerun hazards (2 unsafe drops + non-rerunnable ADD COLUMN)
+
+`grep -rn "DROP TABLE [^I]" backend/migrations/*.sql | grep -v "IF EXISTS" | grep -v "^.*--"` (2026-10-14):
+```
+backend/migrations/0108_add_meals_project_id.sql:68:DROP TABLE _0108_project_guard;
+backend/migrations/0115_rooms_new_tenant_not_null_fk.sql:108:DROP TABLE rooms_new;
+```
+Full `grep -n "DROP TABLE"` → ~40 hits, all others carry IF EXISTS; 4 extra raw-text
+matches (0107:53, 0111:42, 0112:374, 0126:96) are `--` comments (sed-verified).
+`grep -n "ADD COLUMN" backend/migrations/0100_add_project_id_nullable.sql | wc -l` → 15 statements;
+`grep -rn "ADD COLUMN IF NOT EXISTS" backend/migrations/*.sql` → 0 (SQLite/D1 has no such syntax;
+0100:38-41 self-documents "applied once"). `CREATE TRIGGER` without IF NOT EXISTS (15 sites)
+is safe same-file (DROP TRIGGER IF EXISTS precedes each) — not filed.
