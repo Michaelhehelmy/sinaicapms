@@ -1,0 +1,11 @@
+# F-12 — workers.uptime is epoch-ms, rendered as days
+
+Producer `backend/src/api/admin-health.js:70`:
+`const workers = { status: 'ok', uptime: Date.now(), requests: 0, errors: 0 };`
+Consumer `app/src/components/admin/SystemHealthPanel.tsx:103`:
+`Uptime: {health?.workers?.uptime ? `${Math.floor(health.workers.uptime / 86400_000)}d` : 'N/A'}`
+Type `app/src/lib/api.ts:2707` `uptime?: number` (unitless).
+`node -e "console.log(86400_000===86400000)"` → true (divisor correct; grouping only looks wrong).
+`backend/src/index.js:202 uptime_ms` is a correct duration, NOT the same field.
+No startTime/delta anywhere in admin-health.js:55-85. Health panel shows
+days-since-epoch (~20,000+d). Verified 2026-10-14.
