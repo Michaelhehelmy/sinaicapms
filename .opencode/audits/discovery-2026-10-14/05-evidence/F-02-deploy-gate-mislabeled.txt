@@ -1,0 +1,22 @@
+# F-02 — deploy.yml Integration runs the unit suite; e2e non-blocking
+
+`sed -n '20,60p' .github/workflows/deploy.yml` (2026-10-14):
+```
+    strategy:
+      matrix:
+        suite:
+          - name: Backend
+            working-directory: backend
+            command: npx vitest run
+          - name: Frontend
+            working-directory: app
+            command: npx vitest run
+          - name: Integration
+            working-directory: .
+            command: npx vitest run
+```
+Root `vitest.config.ts` include = `tests/unit/**` only (vs `vitest.integration.config.ts` = 37 files).
+`grep -n "e2e-verify\|non-blocking\|@smoke" .github/workflows/deploy.yml` shows
+`npx playwright test --grep="@smoke" ... || echo "(non-blocking)"`.
+`docs/04-testing/TESTING.md:231-246` scopes workflow truth to `ci.yml` + `e2e.yml` only —
+`deploy.yml` undocumented. Verified by orchestrator read 2026-10-14.
