@@ -1,0 +1,16 @@
+# F-13 — dead config knobs in .env.example + bindings comment gap
+
+Doc side `grep -n "RATE_LIMIT_\|PUBLIC_" .env.example` (2026-10-14):
+```
+19:RATE_LIMIT_KV_ENABLED=false
+20:RATE_LIMIT_WINDOW_MS=60000
+21:RATE_LIMIT_MAX_REQUESTS=100
+29:PUBLIC_STRIPE_KEY=
+32:PUBLIC_API_URL=http://localhost:8787
+```
+Code side (zero hits, verified 2026-10-14):
+`grep -rn "RATE_LIMIT_WINDOW_MS\|RATE_LIMIT_MAX_REQUESTS" backend/src app/src backend/wrangler.toml` → none.
+`grep -rn "PUBLIC_API_URL\|PUBLIC_STRIPE_KEY" app/src backend/src` → none (only PUBLIC_REPORT_* family in reporter.ts).
+Live dials are `RATE_LIMIT_LOGIN/API/+8 envKey`s (rateLimit.js:25-97); base URL hardcoded
+(api.ts:34-35). Bindings comment in .env.example names DB/KV_CACHE/MEDIA_BUCKET/BROADCASTER
+but omits live `RATE_LIMIT_KV` (wrangler.toml:25-26; .get/.put rateLimit.js:195,202).
