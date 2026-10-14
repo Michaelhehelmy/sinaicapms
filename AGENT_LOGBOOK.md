@@ -293,3 +293,29 @@ history.
   from an off-by-one (the file is **2837** lines). **A count measured in the same change that moves the
   thing counted is measured pre-edit** — measure after the edit, or publish the command instead of the
   number.
+
+### 2026-10-08 — `monitor`: fixtures stamped with a calendar date leave a windowed read silently empty
+- **Six assertions in `monitor/tests/api.test.js` read a run that had aged out of a real window.** Two
+  production reads are windowed against `now`: `newestRun` (`monitor/src/index.js:341-353`) scans only
+  today and yesterday (`for (const daysAgo of [0, 1])`, `:342`) and `readHistoryWindow` filters
+  `since = now − hours` (`:496`). Every fixture was stamped `2026-10-03`, so from **2026-10-05** the
+  status page answered "never run" and `/api/history` answered `[]`. **`vi.setSystemTime` appears 19×
+  in that file and the failures were exactly the six tests that omitted it** — the pinning was the
+  fix the other tests already had.
+- **The silent part is worse than the red.** With everything stale, `/api/history` returning `[]` is
+  indistinguishable from a filter that rejects everything, so the suite could not tell "correctly
+  windowed" from "broken" — it asserted a length of 3 and got 0, with no way to say why. Fixtures read
+  against the real clock are now **relative** (`NOW = Date.now()` + `agoMs`/`agoIso`, `MINUTE`, `HOUR`),
+  which is what makes the boundary assertable at all.
+- **Fixtures anchored in MINUTES, not hours.** `newestRun` looks back by UTC *day prefix*, so a fixture
+  "2 hours ago" at 00:02 UTC is still today's or yesterday's prefix and stays inside the lookback; one
+  pinned to an hour boundary is not guaranteed to. Verified by running the whole suite with the clock
+  forced to 00:02 UTC (194 pass).
+- **Never widen a window to rescue a fixture.** Both windows are the behaviour the dashboard promises:
+  a status page must not present a three-day-old probe as current. Widening `newestRun` to
+  `[0,1,2,3]` or setting `since = 0` makes the suite green the wrong way round — checked by mutation,
+  and each mutation is caught by the new boundary tests.
+- **Two new tests name the boundary instead of implying it.** `a run older than the two-day lookback is
+  INVISIBLE, and the page says so` (+ the in-window twin) and `drops entries older than the window and
+  keeps the ones inside it`. Both fail under a widened window and pass under the real one — so a future
+  "fix" that loosens the window cannot land silently.

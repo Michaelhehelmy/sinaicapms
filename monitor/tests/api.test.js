@@ -58,10 +58,42 @@ const envFor = (extra = {}) =>
     ...extra,
   });
 
+// ─── THE CLOCK ───
+//
+// Fixtures that are read against the REAL clock are stamped RELATIVE to it, not
+// with a calendar date. The reason is not tidiness: two production reads are
+// windowed against `now`, and a fixture carrying a fixed instant silently leaves
+// those windows once the calendar passes it.
+//
+//   · `newestRun` (src/index.js:341-353) scans ONLY today and yesterday —
+//     `for (const daysAgo of [0, 1])`, `:342`. A run under `checks/2026-10-03/`
+//     became invisible on 2026-10-05.
+//   · `readHistoryWindow` (src/index.js:495-505) filters on `since = now − hours`.
+//
+// Both windows are correct and are what the suite exists to protect, so the
+// fixtures move — never the windows. (Six assertions in this file were reading a
+// run that had aged out; see `.opencode/audits/monitor-suite-red-2026-10-06.md`.)
+//
+// The offsets are MINUTES, deliberately: they keep a seeded run inside the
+// two-day `newestRun` lookback even when the suite starts within a few minutes
+// of midnight UTC, where "5 minutes ago" is already yesterday.
+//
+// Tests that PIN the clock with `vi.setSystemTime` keep absolute instants, and
+// that is not an oversight: pinning both sides to the same literal is what makes
+// a window-boundary assertion exact and reproducible. Those tests pass on any
+// calendar day by construction — the clock they read is the clock they set.
+const NOW = Date.now();
+const MINUTE = 60_000;
+const HOUR = 3_600_000;
+
+// An instant `ms` before the moment the module was evaluated.
+const agoMs = (ms) => new Date(NOW - ms);
+const agoIso = (ms) => new Date(NOW - ms).toISOString();
+
 // A bucket holding one healthy run for every target, a fully-up rollup, and one
 // history-ring entry each: the smallest fixture that renders a dashboard as OK
 // with a populated "Recent checks" table.
-function okBucket({ at = '2026-10-03T12:00:00.000Z', ok = () => true } = {}) {
+function okBucket({ at = agoIso(5 * MINUTE), ok = () => true } = {}) {
   const bucket = makeR2();
   const when = new Date(at);
   seedRun(bucket, when, TARGETS.map((t) => ({ name: t.name, ok: ok(t) })));
@@ -180,7 +212,7 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
     expect(body.overall).toBe('ok');
     // `checked_at` is the newest run object's own `run_at` — the D1 version's
     // MAX(checked_at) over the probe table, same meaning, same ISO form.
-    expect(body.checked_at).toBe('2026-10-03T12:00:00.000Z');
+    expect(body.checked_at).toBe(agoIso(5 * MINUTE));
     // Top-level only: `cached` reports whether THIS response came out of the
     // 20s read cache. The per-target rows below must NOT gain the key.
     expect(body.cached).toBe(false);
@@ -198,7 +230,7 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
 
   it('mixed health degrades overall', async () => {
     const bucket = makeR2();
-    const at = new Date('2026-10-03T12:00:00.000Z');
+    const at = agoMs(5 * MINUTE);
     seedRun(bucket, at, [
       { name: TARGETS[0].name, ok: true },
       { name: TARGETS[1].name, ok: false },
@@ -207,6 +239,34 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
     const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
     const body = await res.json();
     expect(['degraded', 'down']).toContain(body.overall);
+  });
+
+  // The boundary the six clock-coupled fixtures used to blur. `newestRun`
+  // (src/index.js:341-353) scans today and yesterday only, which is a real
+  // property of the code and NOT a test artefact: widening it to rescue a stale
+  // fixture would let the status page present a three-day-old probe as current.
+  // This test is what makes that a decision rather than an accident.
+  it('a run older than the two-day lookback is INVISIBLE, and the page says so', async () => {
+    // Three days back: past `for (const daysAgo of [0, 1])`.
+    const stale = agoMs(3 * 24 * HOUR);
+    const bucket = makeR2();
+    seedRun(bucket, stale, TARGETS.map((t) => ({ name: t.name, ok: true })));
+    const body = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket })).then((r) => r.json());
+    expect(body.checked_at).toBeNull();
+    expect(body.overall).toBe('down');
+    // Every target is still LISTED — "never seen", not "vanished".
+    expect(body.targets).toHaveLength(TARGETS.length);
+    for (const row of body.targets) expect(row.up).toBe(false);
+  });
+
+  it('with an in-window run present, it wins and the stale one is not merged in', async () => {
+    const inWindow = agoMs(2 * HOUR);
+    const bucket = makeR2();
+    seedRun(bucket, agoMs(3 * 24 * HOUR), TARGETS.map((t) => ({ name: t.name, ok: true })));
+    seedRun(bucket, inWindow, TARGETS.map((t) => ({ name: t.name, ok: true })));
+    const body = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket })).then((r) => r.json());
+    expect(body.checked_at).toBe(inWindow.toISOString());
+    expect(body.overall).toBe('ok');
   });
 
   it('an empty bucket reports every target as never seen, not as an empty list', async () => {
@@ -292,12 +352,16 @@ describe('GET /api/status (public aggregate, read from R2)', () => {
     // threshold, so `up` must come from the RUN's ok bit — otherwise one or two
     // bad probes would render as healthy.
     const bucket = makeR2();
-    seedRun(bucket, new Date('2026-10-03T12:00:00.000Z'), [
+    seedRun(bucket, agoMs(5 * MINUTE), [
       { name: TARGETS[0].name, ok: false, statusCode: 503 },
       ...TARGETS.slice(1).map((t) => ({ name: t.name, ok: true })),
     ]);
     seedAlertState(bucket, {
-      [TARGETS[0].name]: { last_state: 'up', consecutive_failures: 1, updated_at: '2026-10-03T12:00:00.000Z' },
+      [TARGETS[0].name]: {
+        last_state: 'up',
+        consecutive_failures: 1,
+        updated_at: agoIso(5 * MINUTE),
+      },
     });
     const res = await app.request('/api/status', {}, envFor({ MONITOR_BUCKET: bucket }));
     const body = await res.json();
@@ -348,7 +412,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
   });
 
   it('200 shape for a known target, oldest first, from the stored ring', async () => {
-    const at = new Date('2026-10-03T12:00:00.000Z');
+    const at = agoMs(5 * MINUTE);
     const bucket = makeR2();
     seedRing(bucket, 'marketplace', [
       ringEntry(at, 30),
@@ -371,9 +435,37 @@ describe('GET /api/history (public, target required, read from R2)', () => {
       expect(Object.keys(check).sort()).toEqual(['checked_at', 'ok', 'response_ms', 'status_code']);
     }
     // Oldest first, so the sparkline draws left to right.
-    expect(body.checks[0].checked_at).toBe('2026-10-03T11:30:00.000Z');
-    expect(body.checks[2].checked_at).toBe('2026-10-03T11:55:00.000Z');
+    expect(body.checks[0].checked_at).toBe(agoIso(35 * MINUTE));
+    expect(body.checks[2].checked_at).toBe(agoIso(10 * MINUTE));
     expect(body.checks[1]).toMatchObject({ ok: 0, status_code: 500, response_ms: 900 });
+  });
+
+  // The read window on the REAL clock — `readHistoryWindow` filters on
+  // `since = now − hours` (src/index.js:496). This is the assertion the
+  // clock-coupled fixtures made impossible to write: with everything stamped
+  // 2026-10-03, every seeded entry was outside every window and the endpoint
+  // correctly returned nothing, which is indistinguishable from a broken filter.
+  it('drops entries older than the window and keeps the ones inside it', async () => {
+    const bucket = makeR2();
+    seedRing(bucket, 'marketplace', [
+      ringEntry(agoMs(25 * HOUR), 0), // outside a 24h window
+      ringEntry(agoMs(30 * HOUR), 0), // outside
+      ringEntry(agoMs(23 * HOUR), 0), // inside
+      ringEntry(agoMs(2 * HOUR), 0), // inside
+    ]);
+    const body = await app
+      .request('/api/history?target=marketplace&hours=24', {}, envFor({ MONITOR_BUCKET: bucket }))
+      .then((r) => r.json());
+    expect(body.checks.map((c) => c.checked_at)).toEqual([
+      agoIso(23 * HOUR),
+      agoIso(2 * HOUR),
+    ]);
+    // A wider window brings the older samples back out of the SAME object —
+    // the filter is the window, not a truncation of what was stored.
+    const wider = await app
+      .request('/api/history?target=marketplace&hours=48', {}, envFor({ MONITOR_BUCKET: bucket }))
+      .then((r) => r.json());
+    expect(wider.checks).toHaveLength(4);
   });
 
   it('reads only the requested window', async () => {
@@ -407,7 +499,7 @@ describe('GET /api/history (public, target required, read from R2)', () => {
 
   it('rejects hours over the R2 window with the ceiling named (never clamps)', async () => {
     const bucket = makeR2();
-    seedRing(bucket, 'marketplace', [ringEntry(new Date('2026-10-03T12:00:00.000Z'), 5)]);
+    seedRing(bucket, 'marketplace', [ringEntry(agoMs(5 * MINUTE), 5)]);
     const res = await app.request(
       `/api/history?target=marketplace&hours=${HISTORY_MAX_WINDOW_HOURS + 1}`,
       {},
@@ -442,7 +534,9 @@ describe('GET /api/history (public, target required, read from R2)', () => {
   it('costs one bucket read for the whole window', async () => {
     // The reason the endpoint reads a rolling document instead of the run
     // objects its window covers: at the cron cadence `hours=24` is 288 objects.
-    const at = new Date('2026-10-03T12:00:00.000Z');
+    // 288 entries at one minute apart spans 287 minutes, comfortably inside the
+    // 24h window the endpoint filters on.
+    const at = agoMs(5 * MINUTE);
     const bucket = makeR2();
     seedRing(bucket, 'marketplace', Array.from({ length: 288 }, (_, i) => ringEntry(at, i)));
     const res = await app.request(
@@ -457,15 +551,16 @@ describe('GET /api/history (public, target required, read from R2)', () => {
   });
 
   it('caps the response at 500 entries (the D1 LIMIT, unchanged)', async () => {
-    const at = new Date('2026-10-03T12:00:00.000Z');
+    const at = agoMs(5 * MINUTE);
     const bucket = makeR2();
     seedRing(bucket, 'marketplace', Array.from({ length: 520 }, (_, i) => ringEntry(at, i)));
     const body = await app
       .request('/api/history?target=marketplace&hours=48', {}, envFor({ MONITOR_BUCKET: bucket }))
       .then((r) => r.json());
     expect(body.checks).toHaveLength(500);
-    // Newest survive: the cut is at the FRONT of the oldest-first list.
-    expect(body.checks[499].checked_at).toBe('2026-10-03T12:00:00.000Z');
+    // Newest survive: the cut is at the FRONT of the oldest-first list. The
+    // newest of the 520 is the entry seeded at `at` itself (i = 0).
+    expect(body.checks[499].checked_at).toBe(at.toISOString());
   });
 });
 
@@ -1292,7 +1387,7 @@ describe('the 404 envelope', () => {
 });
 
 describe('readRecentChecks (dashboard table, merged from the rings)', () => {
-  const at = new Date('2026-10-03T12:00:00.000Z');
+  const at = agoMs(5 * MINUTE);
   const env = (bucket) => envFor({ MONITOR_BUCKET: bucket });
 
   it('merges every target newest-first and honours the limit', async () => {
@@ -1419,7 +1514,7 @@ describe('GET / dashboard (cookie-session HTML)', () => {
 
   it('accepts session cookie too and escapes report content', async () => {
     const bucket = makeR2();
-    const at = new Date('2026-10-03T12:00:00.000Z');
+    const at = agoMs(5 * MINUTE);
     // The probe error string is operator-adjacent data (a probe URL can carry a
     // token), and it is the one server-rendered value left: it must arrive
     // escaped.
