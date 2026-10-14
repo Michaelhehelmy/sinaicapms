@@ -8,7 +8,7 @@ tags:
   - domain/docs
   - status/live
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-14
 relates-to:
   - "[[99-gaps/README]]"
   - "[[code-vs-docs]]"
@@ -43,17 +43,28 @@ the claim sits outside what any repository can answer. **15 entries.**
 ## Status as of 2026-10-06
 
 These are not defects and are not filed as such. They are the honest boundary of an audit that ran
-read-only, and they are what a later pass with a runtime would pick up. Fifteen entries, **two** of
-which are still open; the rest closed or parked on 2026-10-06.
+read-only, and they are what a later pass with a runtime would pick up. Fifteen entries, **one** of
+which is still open; `Q‑5` closed on 2026-10-14 by owner verification and the rest closed or parked
+on 2026-10-06.
 
 | Status | Count | Entries |
 |---|---|---|
 | `RESOLVED-DOC` | **7** | `Q‑6`, `P‑3`, `P‑8`, `P‑13`, **`O‑7`**, `S‑18`, `G‑18` — the tree settled them and the cited doc was wrong |
+| `RESOLVED` | **1** | **`Q‑5`** — verified externally 2026-10-14; the claim was correct, so no doc needed editing |
 | `DEFERRED` | **6** | `P‑2`, `P‑5`, `T‑13`, `O‑12`, `O‑13`, `G‑20` — correct as labelled, or a human gate no repo can answer |
-| `OPEN` | **2** | **`Q‑5`**, **`P‑6`** — still undecidable, and **no probe was authorised for either** |
+| `OPEN` | **1** | **`P‑6`** — four byte figures against a gitignored, unpinned build artefact; **no probe authorised** |
 | `RESOLVED-REJECTED` | **0** | |
 | `RESOLVED-CODE` | **0** | the owner chose FIX DOCS ONLY, so not one closed by changing source |
 | **Total** | **15** | |
+
+**`RESOLVED` is a status of its own here, and `Q‑5` is the first entry to earn it.** Every other row
+closes by somebody *changing* something — a doc (`RESOLVED-DOC`), source (`RESOLVED-CODE`), or a
+judgement about the claim (`RESOLVED-REJECTED`). `Q‑5` closed because **the claim turned out to be
+true and nothing needed changing at all**: the owner read the Cloudflare console on 2026-10-14 and
+`staging.sinaicamps.com` resolves to the edge (`104.21.72.218`, `172.67.155.160`, + IPv6). Filing that
+as `RESOLVED-DOC` would have implied `QUICK_START.md` was wrong; it was not. Leaving it `OPEN` until
+a request was issued to the hostname would have been a different kind of wrong, because the question
+the entry was filed on was the DNS record, not the health of the Worker behind it.
 
 **The one entry that changed class rather than closed is `O‑7`, and the direction matters.** It was
 `UNKNOWN (external)` because no audit pass had ever issued its five `curl`s. Five owner-approved GETs
@@ -65,10 +76,11 @@ wording, because `GET /api/me` is **public by design** and a `4xx` was never the
 a documentation imprecision, not a defect**, and the runbook quotes the probe rather than restating a
 guard that would mislead the next deploy.
 
-**Neither `OPEN` entry was promoted to a finding on the strength of "cannot check it here."** That
-rule is the reason this note is small: `Q‑5` is a Cloudflare-console DNS fact the owner chose to
-confirm himself rather than have probed, and `P‑6` is four byte figures against a gitignored,
-unpinned build artefact. `edb07db` **removed** the `P‑6` figures and recorded why they cannot be
+**No entry was ever promoted to a finding on the strength of "cannot check it here."** That rule is
+the reason this note is small, and it is what `Q‑5` finally demonstrates by closing on a *confirmation*
+rather than on a probe: the owner answered the one question the tree could not hold, and the answer
+was that the doc was right. `P‑6` is the same shape and is still open — four byte figures against a
+gitignored, unpinned build artefact. `edb07db` **removed** the `P‑6` figures and recorded why they cannot be
 verified, keeping the structural half (four `client:visible` storefront islands) which is checkable
 from source. Recording a number nobody can reproduce would have been worse than recording its absence.
 
@@ -77,7 +89,7 @@ Split by why:
 | Why it could not be verified | Entries |
 |---|---|
 | Needs a build or a bundle re-run (`ANALYZE=1 npm run build`, the Lighthouse harness) | **P‑2**, **P‑3**, **P‑5**, **P‑6**, **P‑8**, **P‑13** |
-| External state — a live host, a Cloudflare plan limit, a console DNS record | **Q‑5**, **O‑7**, **O‑12** |
+| External state — a live host, a Cloudflare plan limit, a console DNS record | **Q‑5** (owner-confirmed 2026-10-14), **O‑7** (probed), **O‑12** |
 | Process, not code — a manual checklist or a human gate | **T‑13**, **O‑13** |
 | A claim that needs diffing against a pinned SHA, or tracing one call path further | **S‑18**, **G‑18**, **G‑20** |
 
@@ -110,6 +122,33 @@ note's, added 2026-10-06, and is the only line not from the audit.
 - **Class** UNVERIFIED (external state) · **Severity** P3 · **Action** VERIFY-RUNTIME
 - **Severity** P3 · **Action** VERIFY-RUNTIME
 
+> ### Status — `RESOLVED` 2026-10-14, by owner verification.
+>
+> **The owner confirmed it from the Cloudflare console on 2026-10-14**, which is the check this entry
+> asked for and the only party who could perform it:
+>
+> ```
+> staging.sinaicamps.com → 104.21.72.218, 172.67.155.160  (+ IPv6)
+> ```
+>
+> The record exists and resolves to the Cloudflare edge, so `deploy.sh --staging` has the route it
+> needs. **This is a `RESOLVED` rather than `RESOLVED-DOC` because nothing in any doc was wrong** — no
+> edit was made to `QUICK_START.md` and none was needed: its `Claim` already reads "Staging requires
+> `staging.sinaicamps.com` → Workers DNS to be created in Cloudflare first **(human action)**", and
+> labelling a control-plane step as a human action was correct. The entry existed to prove the claim,
+> and the claim held.
+>
+> **What "resolves to the Cloudflare edge" does and does not prove.** It settles the question the
+> entry was filed on: the DNS record is present and points at Cloudflare. It is **not** a claim that
+> staging is healthy — no request was issued to the hostname, so the Worker route behind those two
+> addresses, its bindings and its migrations remain unexercised by this entry. Those are the parts
+> `./deploy.sh --staging` and the staging smoke list cover, and neither was run here.
+>
+> **The rule held.** This entry sat `OPEN` for eight days and was **not** promoted to a finding at
+> any point on the reasoning that "a staging deploy is the risky step, so it must be broken".
+> *"Important" is not "measurable from here"*, and `VERIFY-RUNTIME` means what it says. One console
+> lookup cost one console lookup and produced one true answer instead of a fabricated one.
+>
 > ### Status — `OPEN` 2026-10-06, and it stays open by choice.
 >
 > **No probe was issued.** The code half was re-verified and holds: `deploy.sh:39-40` sets

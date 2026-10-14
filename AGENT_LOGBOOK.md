@@ -319,3 +319,25 @@ history.
   INVISIBLE, and the page says so` (+ the in-window twin) and `drops entries older than the window and
   keeps the ones inside it`. Both fail under a widened window and pass under the real one — so a future
   "fix" that loosens the window cannot land silently.
+
+### 2026-10-08 — `Q‑5` closed with nothing edited; a ledger gains a status before a row
+- **Two owner verifications closed the last two externally-blocked items.** `campmaster-monitor-db`
+  is deleted (`wrangler d1 list` shows only `campmaster-db` and `campmaster-db-staging`), and
+  `staging.sinaicamps.com` resolves to the Cloudflare edge (`104.21.72.218`, `172.67.155.160`, + IPv6).
+  Neither was probed by an agent: the first is an account-level delete the owner performed, the second
+  a console fact only the owner could read.
+- **`Q‑5` closed as `RESOLVED`, a status that did not exist before this commit** — because the claim
+  turned out to be **true** and nothing needed changing. `docs/01-architecture/QUICK_START.md` already
+  read "…must be created in Cloudflare first **(human action)**", so filing it as `RESOLVED-DOC` would
+  have implied a doc was fixed that never was. **A resolution that edits nothing is still a
+  resolution**, and a ledger with no row for it has to bend one of its existing rows into a lie.
+- **`C‑7` closed as `RESOLVED-CODE`, and `monitor/src/` never moved.** The fix was tests-only
+  (`97bb5bd`), which is the finding confirmed rather than worked around: `newestRun`'s two-day lookback
+  and `readHistoryWindow`'s `now − hours` filter are still exactly as tight. Archive: `docs/01-architecture/ARCHITECTURE.md`
+  §7's Monitor row moved 191 → **194** and `9e809bd` → `97bb5bd`.
+- **The folder ledger had a second, stale copy of itself and nobody caught it for two rounds.** The
+  `## Resolved` section carried a mini-ledger still reading `DEFERRED 16 · OPEN 2 · total 106` while
+  the ledger at the top had been amended twice. **Two ledgers for one set of entries is the defect,
+  not the drift** — the top one is now authoritative and the mirror says so.
+- **The three-file count agrees after the move:** 87 `RESOLVED-DOC` + 1 `RESOLVED` + 1
+  `RESOLVED-REJECTED` + 17 `DEFERRED` + 1 `OPEN` + 1 `RESOLVED-CODE` = **108**, unchanged.

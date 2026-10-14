@@ -8,7 +8,7 @@ tags:
   - domain/vault
   - status/live
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-14
 relates-to:
   - "[[code-vs-docs]]"
   - "[[unverified]]"
@@ -42,9 +42,9 @@ the `file:line` its claim was measured against.
 doc-fix commits plus one runtime probe closed most of the queue — with **zero code changes**, so every
 resolution is a documentation resolution. Entries are now **not** all queued: each note carries a
 status, and the folder-wide ledger is `## Status as of 2026-10-06` in [[code-vs-docs]]:
-**87 `RESOLVED-DOC` · 1 `RESOLVED-REJECTED` · 18 `DEFERRED` · 2 `OPEN` · 0 `RESOLVED-CODE`** (108
-triaged entries; `DEFERRED` and the total moved 16/106 → 18/108 on 2026-10-08 — see the amendment note
-in [[code-vs-docs]]). What
+**87 `RESOLVED-DOC` · 1 `RESOLVED` · 1 `RESOLVED-REJECTED` · 17 `DEFERRED` · 1 `OPEN` ·
+1 `RESOLVED-CODE`** (108 triaged entries; amended 2026-10-08 and again 2026-10-14 — see the amendment
+notes in [[code-vs-docs]]). What
 remains open is stated there and nowhere else, so a reader never has to infer "still broken" from
 absence.
 
@@ -101,9 +101,9 @@ absence.
 | Doc | What it is |
 |---|---|
 | [[code-vs-docs\|code-vs-docs.md]] | **`STALE` + `FALSE` claims** — 80 entries, plus the 112 `MATCHED` controls they rest on. Entry **#1** was the migration-head drift: `AGENTS.md` said 53 / `0053`, `docs/07-data/migrations.md` said 37 / `0123`, `WAVE6_EXIT_REPORT.md` said 99 / `0099`, and the tree had **40** with head `0127_meals_tenant_composite_pk.sql` (`legacy/` = 99). **All 71 of its class-bearing findings are `RESOLVED-DOC`** and now sit in `## Resolved` at the foot, each with its fixing commit; 4 are `DEFERRED` and stay in place. |
-| [[unverified\|unverified.md]] | **`UNVERIFIED` claims** — 15 entries the tree cannot answer: needs a build, a live host, a Cloudflare console, a manual checklist, or a diff against a pinned SHA. Not defects; the honest edge of a read-only audit. **7 `RESOLVED-DOC`, 6 `DEFERRED`, and 2 still `OPEN`** (`Q‑5` staging DNS, `P‑6` island byte figures — neither probed). |
+| [[unverified\|unverified.md]] | **`UNVERIFIED` claims** — 15 entries the tree cannot answer: needs a build, a live host, a Cloudflare console, a manual checklist, or a diff against a pinned SHA. Not defects; the honest edge of a read-only audit. **7 `RESOLVED-DOC`, 1 `RESOLVED` (`Q‑5`, owner-confirmed in the console 2026-10-14), 6 `DEFERRED`, and 1 still `OPEN`** (`P‑6` island byte figures — no probe authorised). |
 | [[unimplemented\|unimplemented.md]] | **`UNDOCUMENTED` code** — 10 entries of real code no doc claims, from `DELETE /api/media/*` to the ~199 endpoints that have no OpenAPI registration at all. The class only reading the source can produce. **9 `RESOLVED-DOC`, 1 `REJECTED`** (`A‑11`), plus the `## Advanced analytics` section holding the three owner-deferred items (`G‑1`/`G‑2`/`G‑3`). |
-| [[code-vs-code\|code-vs-code.md]] | **The residue a docs-only pass cannot close** — **8** entries, all `Severity` P2 / `Action` `FIX-CODE`, all deferred to **Wave 9**: six migrations carrying a bare `DROP TABLE`; `C‑0`, the test that polices them (`tests/core/migration-integrity.test.js:80`) matching SQL comments and so unable to pass as written; and `C‑7`, the monitor unit suite, **red on `main`** with six clock-coupled fixtures (`.opencode/audits/monitor-suite-red-2026-10-06.md`). Created 2026-10-06; `OPEN` and `DEFERRED` overlap by design, `RESOLVED-CODE` still **0**. |
+| [[code-vs-code\|code-vs-code.md]] | **The residue a docs-only pass cannot close** — **8** entries, all `Severity` P2: six migrations carrying a bare `DROP TABLE`; `C‑0`, the test that polices them (`tests/core/migration-integrity.test.js:80`) matching SQL comments and so unable to pass as written; and `C‑7`, the monitor unit suite, which was **red on `main`** with six clock-coupled fixtures. Created 2026-10-06. `C‑7` is now **`RESOLVED-CODE`** (`97bb5bd`, 2026-10-14 — relative fixtures, `monitor/src/` untouched); the remaining seven are `OPEN` **and** `DEFERRED` to **Wave 9**, which is why both counts are published. |
 
 **Four notes, not three, and the fourth answers a question the other three cannot.** The first three
 all ask *does the code match the docs?* — which a docs-only pass can fully resolve, and did.
@@ -171,8 +171,8 @@ the same way:
 
 - **[[code-vs-docs]]** · [[unverified]] · [[unimplemented]] · [[code-vs-code]] — **108 triaged gap
   entries**, filed from two read-only audits on 2026-10-06 plus one probe, and now resolved:
-  **87 `RESOLVED-DOC`**, **1 `RESOLVED-REJECTED`**, **18 `DEFERRED`**, **2 `OPEN`**, **`0
-  RESOLVED-CODE`**. The 112 `MATCHED` controls are not entries; they are what the findings quote.
+  **87 `RESOLVED-DOC`**, **1 `RESOLVED`**, **1 `RESOLVED-REJECTED`**, **17 `DEFERRED`**, **1 `OPEN`**,
+  **`1 `RESOLVED-CODE`**. The 112 `MATCHED` controls are not entries; they are what the findings quote.
 - **Out of scope, and deliberately so**: `docs/README.md`, `docs/contributing.md`, the path-preserving
   stubs (`docs/API_SURFACE.md`, `docs/tenant-import.md`) and the whole `98-history` bucket. `98-history`
   is an archive: a dated claim is checked against the tree as of its `created:` date, and only one file
@@ -182,7 +182,7 @@ the same way:
   [[code-vs-docs]] and was **deliberately not corrected**, because correcting it would have been
   fixing a doc, and the audit pass was audit-only. Round 1 left it alone for the same reason and
   recorded it here instead.
-- **This note's own new claims are unverified too.** The 108/87/1/18/2/0 ledger above is a count of
+- **This note's own new claims are unverified too.** The 108/87/1/1/17/1/1 ledger above is a count of
   *triaged rows*, assembled from the two triage reports — not an independent re-measurement of the
   tree. `[[code-vs-code]]`'s six migration entries **were** re-measured here, by running the
   `migration-integrity.test.js:80` regex over the applied lineage, and that measurement is the only

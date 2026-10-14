@@ -8,7 +8,7 @@ tags:
   - domain/docs
   - status/live
 created: 2026-10-06
-updated: 2026-10-08
+updated: 2026-10-14
 relates-to:
   - "[[99-gaps/README]]"
   - "[[code-vs-docs]]"
@@ -64,16 +64,27 @@ is `monitor/` code and `monitor/` tests, which this mission may not edit. That i
 the note exists: a fix-docs-only pass closes a doc claim about a code defect and leaves the defect
 standing, which is correct only if somebody records that it is still standing.
 
-## Status as of 2026-10-08
+## Status as of 2026-10-14
 
 | Status | Count | Entries |
 |---|---|---|
-| `OPEN` | **8** | `C‑0` … `C‑7` — six migration files carrying a bare `DROP TABLE`, the test that polices them, and the monitor suite |
-| `DEFERRED` | **8** | the same eight, **deferred to Wave 9**; `OPEN` and `DEFERRED` are not exclusive here (see below) |
-| `RESOLVED-CODE` | **0** | no code changed — and none was touched while filing `C‑7` either |
+| `RESOLVED-CODE` | **1** | **`C‑7`** — the monitor suite, fixed by `97bb5bd` (relative fixtures + two boundary tests) |
+| `OPEN` | **7** | `C‑0` … `C‑6` — six migration files carrying a bare `DROP TABLE`, and the test that polices them |
+| `DEFERRED` | **7** | the same seven, **deferred to Wave 9**; `OPEN` and `DEFERRED` are not exclusive here (see below) |
 | `RESOLVED-DOC` | **0** | no doc needed changing — the live claim was already corrected in `b06990c` |
 | `RESOLVED-REJECTED` | **0** | |
 | **Total entries** | **8** | |
+
+**This note now has a `RESOLVED-CODE` row, and that is the point of it.** The whole reason this
+folder exists is that a fix-docs-only pass closes a doc claim about a code defect and leaves the
+defect standing — which is correct only if somebody records that it is still standing, and equally
+only if the record can later be **closed**. `C‑7` was filed on 2026-10-08, routed to the code
+workstream, and fixed on the same day (`97bb5bd`) without any `src/` change: the fixtures now anchor
+to `Date.now()` instead of a calendar literal, and two tests name the `newestRun` / `readHistoryWindow`
+window boundaries that the old suite structurally could not assert. `194` tests pass on any calendar
+day, verified with the clock pinned one year ahead, twenty days back, and at `00:02` UTC. **The
+production code was never wrong and was never touched** — the entry closed by changing the tests that
+misread it, which is the only way it could have been closed honestly.
 
 **The folder-wide ledger, where each entry gets exactly one status, is `## Status as of 2026-10-06`
 in [[code-vs-docs]]** — that ledger keeps its 2026-10-06 *heading* because it is a dated record that
@@ -81,18 +92,20 @@ four other notes name by name, and its two rows that moved on 2026-10-08 carry a
 line instead. This note's own table is dated by its heading, so its heading moved.
 
 **`OPEN` and `DEFERRED` overlap here and the overlap is the point.** In the other three notes the two
-are alternatives — an entry is either waiting for a decision or waiting for a pass. In this note all
-eight are waiting for *both*: an owner slot to work in and a code change nobody has made. Reporting
-them as `DEFERRED` alone would understate the queue; reporting them as `OPEN` alone would imply the
-work is unowned. **Both counts are true, and the row above is the honest way to say so.**
+are alternatives — an entry is either waiting for a decision or waiting for a pass. In this note the
+seven that remain are waiting for *both*: an owner slot to work in and a code change nobody has made.
+Reporting them as `DEFERRED` alone would understate the queue; reporting them as `OPEN` alone would
+imply the work is unowned. **Both counts are true, and the row above is the honest way to say so.**
+The eighth, `C‑7`, was in exactly this state on 2026-10-08 and left it on 2026-10-14 — which is the
+overlap doing its job rather than being a permanent condition.
 
 **Why "Wave 9" when the wave plan stops at 7 — flagged here, once, and nowhere else.**
 `docs/09-plans/FINAL_IMPLEMENTATION_PLAN_v3_waves.md` §5 plans **Waves 0 → 7**, and "Wave 8" was
 already used ad hoc for the tenant-import carry-forward (`BLOCKED-pos-products-composite-pk.md` §5.3,
 closed). **Wave 9 is therefore the first free slot, and the number is this note's convention, not a
-slot the plan reserved.** This paragraph is the **only** flag: the eight `Deferred to` rows below
+slot the plan reserved.** This paragraph is the **only** flag: the seven `Deferred to` rows below
 carry `Wave 9` as *data* and none of them re-argues the provenance, so a rename is this paragraph
-plus a replace on the number — not a judgement restated eight times. It used to end by inviting the
+plus a replace on the number — not a judgement restated seven times. It used to end by inviting the
 reader to rename it "in one place — this line and the `Deferred to` row on each entry", which named
 nine sites and identified none of them as *the* site.
 
@@ -141,7 +154,9 @@ finding.
 headers explain the discipline. Two files step outside it. **That is the actual defect class:** not
 "migrations are unsafe" but "the idiom's own convention is enforced by habit, not by anything".
 
-**Severity P2 for all eight, and the reasoning, because "P2" hides a judgement.** `P1` in this repo's
+**Severity P2 for all eight, and the reasoning, because "P2" hides a judgement.** *(The severity
+has not moved with `C‑7`'s resolution — `P2` recorded the risk the entry carried when filed, and
+history is not re-scored.)* `P1` in this repo's
 scale is "a reader or agent acting on the doc breaks something". These six cannot break anything by
 being read — they execute only during `wrangler d1 migrations apply`. `P0` is a production bug, and
 none of these is one: in every case the drop is preceded in the same file by a statement that fails
@@ -161,7 +176,9 @@ otherwise assume the deferral is a formality:
 
 1. **The owner scoped this round to documentation.** `RESOLVED-CODE = 0` across the whole folder.
    `C‑7` is the same rule seen from the other side: its fix is `monitor/tests/api.test.js` and
-   `monitor/src/index.js`, and this mission is forbidden to edit either.
+   `monitor/src/index.js`, and this mission is forbidden to edit either. *(Both halves of that
+   sentence were true on 2026-10-08 and are history now: `C‑7` was fixed the same day, by
+   `97bb5bd`, and the folder's `RESOLVED-CODE` is 1.)*
 2. **Editing an already-applied migration is not free.** All six migration files are in the applied
    lineage (`0126` landed 2026-10-02, `5ff57a7`). Adding `IF EXISTS` is *semantically* a no-op on
    every database that already applied them — but it changes a checksum-relevant artefact, and the
@@ -397,8 +414,36 @@ purpose — it is the finding that made the other six legible — and `C‑7` is
 - **Class** **CLOCK-COUPLED-FIXTURE** — a third class for this note, and the one that has no `IF
   EXISTS` to add. Nothing in the codebase promises the fixture instant stays current; the suite
   silently assumed it. · **Severity** **P2** · **Action** **`FIX-CODE/TEST`**
-- **Deferred to** **Wave 9** · **Reason** the fix belongs to the code workstream, and this mission is
-  forbidden to touch `monitor/`
+- **Deferred to** ~~Wave 9~~ **— never deferred. RESOLVED 2026-10-14 by `97bb5bd`.**
+
+> ### Status — `RESOLVED-CODE` 2026-10-14, commit `97bb5bd`
+>
+> `test(monitor): use relative timestamps in fixtures — fixes red suite on main`, one commit, tests
+> only. **`monitor/src/` was not touched** — `git diff --stat monitor/src/` is empty — which is the
+> whole finding confirmed: the six failures were fixtures misreading two correct windows.
+>
+> - Fixtures read against the real clock now anchor to `Date.now()` (`NOW` / `MINUTE` / `HOUR` /
+>   `agoMs` / `agoIso`) rather than to `2026-10-03`. Offsets are **minutes** on purpose:
+>   `newestRun` looks back by UTC *day prefix*, so a fixture anchored in hours is not guaranteed to
+>   stay inside the lookback when the suite starts near midnight.
+> - The 19 tests that already pinned the clock with `vi.setSystemTime` **kept their absolute
+>   instants** — pinning both sides to one literal is what makes a boundary assertion exact.
+> - Two tests added, because with every fixture stale `/api/history` returning `[]` was
+>   indistinguishable from a filter rejecting everything: `a run older than the two-day lookback is
+>   INVISIBLE, and the page says so` (+ its in-window twin), and `drops entries older than the window
+>   and keeps the ones inside it`. Both were **mutation-checked** — widening `newestRun` to
+>   `[0, 1, 2, 3]` fails the first, `since = 0` fails the second — so a future change that loosens a
+>   window cannot land silently.
+> - **Verified:** 7 files / 194 tests pass, three consecutive identical runs, plus green with the
+>   clock pinned one year ahead, twenty days back, and at `00:02` UTC.
+>
+> The `Wave 9` slot this entry was parked in is therefore **free again**; `C‑0`…`C‑6` still hold it.
+>
+> ### Status — `DEFERRED` to Wave 9, filed 2026-10-08
+>
+> *Retained as the record of why it was not fixed during the documentation round.*
+>
+> The fix belonged to the code workstream, and that mission was forbidden to touch `monitor/`.
 - **The fix is in the tests, not the production code.** Pin the clock in the six tests the way their
   siblings do, or derive the fixtures from the existing `NOW` constant (`tests/api.test.js:473`)
   instead of a literal. **Do not widen `newestRun`'s two-day lookback or `readHistoryWindow`'s window

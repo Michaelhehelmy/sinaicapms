@@ -8,7 +8,7 @@ tags:
   - domain/docs
   - status/live
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-14
 relates-to:
   - "[[99-gaps/README]]"
   - "[[unverified]]"
@@ -78,10 +78,30 @@ test-count entry is measured against rather than a claim.
 |---|---|---|---|
 | `RESOLVED-DOC` | **87** | the cited doc was corrected; the claim was wrong and the code was right | 71 here · 9 in [[unimplemented]] · 7 in [[unverified]] |
 | `RESOLVED-REJECTED` | **1** | the alleged artefact never existed, so no doc edit was warranted | `A‑11`, in [[unimplemented]] |
-| `DEFERRED` | **18** | real, or correct as labelled, and **owner-parked** rather than closed | 4 here · 6 in [[unverified]] · 8 in [[code-vs-code]] |
-| `OPEN` | **2** | still undecidable from the tree, and no probe was authorised | `Q‑5`, `P‑6`, both in [[unverified]] |
-| `RESOLVED-CODE` | **0** | closed by changing source — **none**, by owner decision | — |
+| `RESOLVED` | **1** | verified externally; the claim was **correct**, so nothing needed changing | `Q‑5`, in [[unverified]] — owner read the Cloudflare console 2026-10-14 |
+| `DEFERRED` | **17** | real, or correct as labelled, and **owner-parked** rather than closed | 4 here · 6 in [[unverified]] · 7 in [[code-vs-code]] |
+| `OPEN` | **1** | still undecidable from the tree, and no probe was authorised | `P‑6`, in [[unverified]] |
+| `RESOLVED-CODE` | **1** | closed by changing code — **one**, and it is a *test* file, not `src/` | `C‑7`, in [[code-vs-code]] — `97bb5bd` |
 | **Total triaged** | **108** | | |
+
+> **Amended 2026-10-14 — `RESOLVED-CODE` 0 → 1, `OPEN` 2 → 1, `DEFERRED` 18 → 17, and a new `RESOLVED`
+> row. The total did not move.** Two entries closed since the 2026-10-08 amendment, one in each
+> direction, and **the ledger gains a status before it gains a row**: `RESOLVED` exists because
+> `Q‑5` closed without anything being edited. It was filed as a claim to prove, the owner proved it
+> from the Cloudflare console (`staging.sinaicamps.com` → `104.21.72.218`, `172.67.155.160`, + IPv6),
+> and `docs/01-architecture/QUICK_START.md` was **correct all along** — its claim already read
+> "(human action)". Filing that as `RESOLVED-DOC` would have implied a doc was fixed that never was,
+> which is the same failure as the count this folder once got wrong in the other direction.
+>
+> **`C‑7` is the first and only `RESOLVED-CODE` in the folder, and it closed by touching tests rather
+> than `src/`** (`97bb5bd`, 2026-10-14): `monitor/src/` is byte-identical to its state when the entry
+> was filed, which is the finding confirmed — the suite was misreading two correct windows, and
+> `newestRun`'s two-day lookback and `readHistoryWindow`'s `now − hours` filter are still exactly as
+> tight. Two new tests name those boundaries and were mutation-checked, so a future change that
+> loosens a window fails rather than landing quietly.
+>
+> The 2026-10-08 amendment below is retained verbatim; both amendments are cumulative and neither
+> rewrites the other.
 
 > **Amended 2026-10-08 — `DEFERRED` 16 → 18 and total 106 → 108, both from [[code-vs-code]], and
 > nothing else moved.** This ledger published **6** code-vs-code rows while that note held **7** `C‑`
@@ -115,9 +135,12 @@ stale `STALE`/`FALSE` count of **80** this note opened with is a *pre-fix* censu
   and deliberately restated **no figure**, because updating the numbers would destroy the evidence
   the section exists to carry. `DEFER` is the source entry's own `Action`.
 
-**What `OPEN` means here.** Both open rows are in [[unverified]] and neither was promoted to a
-finding on the strength of "cannot check it here". `Q‑5` is a Cloudflare-console DNS fact the owner
-chose to confirm himself rather than have probed. `P‑6` is four island byte figures against an
+**What `OPEN` means here.** One open row remains — `P‑6`, in [[unverified]] — and it was never
+promoted to a finding on the strength of "cannot check it here". `Q‑5` was the second open row and
+**closed on 2026-10-14 by owner verification, not by a probe**: the owner read the Cloudflare
+console, `staging.sinaicamps.com` resolves to the edge (`104.21.72.218`, `172.67.155.160`, + IPv6),
+and the doc it came from was correct. It is filed as `RESOLVED` — a status that exists in this folder
+because an entry can close with **nothing edited at all**. `P‑6` is four island byte figures against an
 unpinned, gitignored `dist/` — `edb07db` removed the figures and stated why they are unverifiable
 rather than picking a winner, and the structural half of the claim (four `client:visible` storefront
 islands) is kept and re-verified. `O‑7` was the third `UNKNOWN` and is now **closed**: five
@@ -2463,10 +2486,16 @@ reader whether a gap was closed or never seen.
 |---|---|---|
 | `RESOLVED-DOC` | **71** | the cited doc was corrected; the claim was wrong, the code was right |
 | `RESOLVED-REJECTED` | **1** | the alleged thing never existed — `A‑11`, filed in [[unimplemented]] |
-| `DEFERRED` | **16** | owner-parked feature or measurement; 4 here, 6 in [[unverified]], 6 in [[code-vs-code]] |
-| `OPEN` | **2** | still undecidable — `Q‑5`, `P‑6`, both in [[unverified]] |
-| `RESOLVED-CODE` | **0** | no finding in any of the three notes was closed by a code change |
-| **Total triaged** | **106** | 75 rows here · 25 in [[unimplemented]] + [[unverified]] · 6 in [[code-vs-code]] |
+| `RESOLVED` | **1** | verified externally, nothing edited — `Q‑5`, in [[unverified]] |
+| `DEFERRED` | **17** | owner-parked feature or measurement; 4 here, 6 in [[unverified]], 7 in [[code-vs-code]] |
+| `OPEN` | **1** | still undecidable — `P‑6`, in [[unverified]] |
+| `RESOLVED-CODE` | **1** | closed by a code change — `C‑7`, in [[code-vs-code]], fixed by `97bb5bd` (tests only) |
+| **Total triaged** | **108** | 75 rows here · 25 in [[unimplemented]] + [[unverified]] · 8 in [[code-vs-code]] |
+
+*This table was stale and nobody noticed for two rounds: it carried the 2026-10-06 figures while the
+folder ledger above had been amended twice. **Two ledgers for one set of entries is the defect, not
+the drift** — the fix is that the folder ledger at the top is authoritative and this one is a
+mirror of it, restated whenever the top moves.*
 
 The seven `MATCHED`-only bodies still under *Entries by folder* and the 112 foot controls
 are **outside** this ledger: they are the controls the findings quote by ID, they carry no
