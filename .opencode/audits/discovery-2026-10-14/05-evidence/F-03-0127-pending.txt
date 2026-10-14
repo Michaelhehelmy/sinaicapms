@@ -1,0 +1,16 @@
+# F-03 — 0127 in tree, NOT applied
+
+`ls backend/migrations/*.sql | sort | tail -1` → `0127_meals_tenant_composite_pk.sql`
+`find backend/migrations -maxdepth 1 -name '*.sql' | wc -l` → 40
+`sed -n '1,12p' backend/migrations/0127_meals_tenant_composite_pk.sql`:
+```
+-- Migration 0127: tenant-scoped composite PRIMARY KEY on `meals`.
+-- (parity finding D3, `meals` half — WRITE-ONLY, NOT applied.)
+--
+-- ⚠️ PENDING-APPLY. This file is committed but NOT applied to any database.
+-- Owner command (never run by an agent):
+--     cd backend && npx wrangler d1 migrations apply campmaster-db --remote
+```
+Consumers assuming new shape: `backend/src/api/meals.js:67,288,319`, `backend/src/api/admin.js:77`
+(`grep -rn "0127" backend/src/api/`). `docs/07-data/migrations.md:75,114` agrees on
+"head in tree 0127; head applied elsewhere". Verified by orchestrator 2026-10-14.
