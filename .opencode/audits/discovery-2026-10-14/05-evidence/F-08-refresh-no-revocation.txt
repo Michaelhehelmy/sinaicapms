@@ -1,0 +1,20 @@
+# F-08 — refresh rotation without revocation; logout no-op
+
+`sed -n '235,270p' backend/src/api/auth.js` (2026-10-14):
+```
+      const token = await generateToken({ ... }, secret, 'access');
+      const newRefreshToken = await generateToken({ ... }, secret, 'refresh');
+      ...
+      return jsonResponse({ success: true, token, refreshToken: newRefreshToken, ... });
+    } catch (e) { return errorResponse('Failed to process refresh'); }  }
+  // ───── POST /api/auth/logout ─────
+  if (subRoute === 'logout' && method === 'POST') {
+    return jsonResponse({ success: true });
+  }
+```
+No store/invalidation of old refresh token; logout returns success only.
+`grep -rn "refresh_tokens\|revoke\|blacklist" backend/src/api/auth.js backend/src/middleware/` →
+only stream-token jti mint/burn, no refresh revocation table.
+POS mirror: `backend/src/routes/pos/index.js:292-304` same stateless pattern
+(comment: "previously issued ones remain valid until their own 7d expiry —
+there is no revocation table yet"). Verified by orchestrator 2026-10-14.
