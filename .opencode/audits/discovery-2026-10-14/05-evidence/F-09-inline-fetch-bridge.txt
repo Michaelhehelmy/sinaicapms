@@ -1,0 +1,19 @@
+# F-09 — inline-script fetch bypass + window.__API_BASE bridge
+
+`grep -rn "window\.__" app/src --include="*.astro" --include="*.tsx"` (2026-10-14):
+- writer: CampsSection.astro:186 `window.__API_BASE = API_BASE`, :190 __SSR_RENDERED, :191 __TYPE_LABELS
+- reader: MarketplaceHome.astro:247 `fetch(window.__API_BASE + '/tenants', ...)` (no assignment in that file:
+  `grep -n "__API_BASE" .../MarketplaceHome.astro` → only line 247)
+- readers: CampsSection.astro:251,281,312; gallery.astro:141,145,159 (`__galleryImages/openLightbox/closeLightbox`)
+
+`sed -n '125,140p' app/src/pages/contact.astro`:
+```
+      var host = window.location.hostname;
+      var isLocal = host === 'localhost' || ...;
+      var isSinaicampsDomain = host === 'sinaicamps.com' || ...;
+      var API = isLocal ? 'http://localhost:8787/api/v1' : isSinaicampsDomain ? window.location.origin + '/api/v1' : 'https://sinaicamps.com/api/v1';
+      var response = await fetch(API + '/leads', {...
+```
+Base-URL tri-branch duplicated across contact.astro, CampsSection.astro:251,
+MarketplaceHome.astro:247, sitemap.xml.ts:15 — bypasses `@/lib/api` (auth/base/error envelope).
+Paymob/SSE/reporter fetches excluded as intentional (third-party/transport/telemetry).
