@@ -4343,3 +4343,46 @@ been taken for months.
 > The entry text **above** this line is **verbatim** from the source audit, not rewritten here:
 > the point of the record is what the doc *claimed* on 2026-10-06 and what the code *was*, and
 > both halves must stay readable for a later pass to tell a closed gap from a reopened one.
+
+## Addendum 2026-10-14 — re-measurements `R‑1`…`R‑4` (Status OPEN, Action UPDATE-DOC)
+
+Filed from `.opencode/audits/discovery-2026-10-14/` (branch `main` @ `8d6e3ba`), read-only. Each row
+re-measures a previously-logged carrier — no existing entry is altered, and the `## Status as of`
+ledger above is unchanged pending owner triage. Full evidence in that audit's `02-findings.md` +
+`05-evidence/`.
+
+### `R‑1` · `integration-tests` CI job red on `main` — `C‑0`'s file fails 3/10 · STALE · P1 · OPEN
+- **Previously-logged carriers** [[code-vs-code]] `C‑0` (the guard file) + [[TESTING]] CI-claims family.
+- **Claim** the `ci.yml → integration-tests` gate passes on `main`.
+- **Actual** `npx vitest run --config vitest.integration.config.ts
+  tests/core/migration-integrity.test.js` → **3 failed / 7 passed** (re-ran 2026-10-14):
+  descriptive-names (`0007_hr`, `0012_ai`), raw-text DROP TABLE regex (2 statements + 4 `--`
+  comments), `lastNum(127) == fileCount(40)`. `git log --since=2026-10-06` on test/workflow paths =
+  empty: pre-existing red.
+
+### `R‑2` · `deploy.yml` "Integration" runs the unit suite; smoke can't fail; TESTING.md omits the file · STALE · P1 · OPEN
+- **Previously-logged carrier** [[TESTING]] (`docs/04-testing/TESTING.md:231-246` scopes workflow
+  truth to `ci.yml` + `e2e.yml`).
+- **Claim** (by label) "Integration" tests run pre-deploy; (by omission) `ci.yml`+`e2e.yml` are the
+  checks that matter.
+- **Actual** `deploy.yml` matrix `Integration / working-directory: . / command: npx vitest run`
+  executes root `vitest.config.ts` (`include: tests/unit/**` only), never the 37-file integration
+  suite; `e2e-verify` ends `|| echo "(non-blocking)"`. Production deploys past integration coverage.
+
+### `R‑3` · `.env.example` dead knobs + bindings-comment gap · STALE · P3 · OPEN
+- **Previously-logged carriers** 2026-09-06 audit note (already called `PUBLIC_*` dead) +
+  rate-limit policy family (`S‑2·sec`).
+- **Claim** (by presence) `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS` / `PUBLIC_API_URL` /
+  `PUBLIC_STRIPE_KEY` configure something; bindings comment enumerates the bindings.
+- **Actual** repo-wide grep → **zero** code readers for all four (live dials are the `envKey`
+  family in `rateLimit.js:25-97`; base URL hardcoded `api.ts:34-35`); comment omits live
+  `RATE_LIMIT_KV` (`wrangler.toml:25-26`, used `rateLimit.js:195,202`).
+
+### `R‑4` · doc count slips in previously-logged derivations · STALE · P3 · OPEN
+- **Previously-logged carriers** `docs/02-api/API_CONTRACT.md:44` (own derivation command),
+  `docs/02-api/README.md:19`, `docs/04-testing/TESTING.md:148-149`, `deploy.yml` job name.
+- **Claim** "287 exported functions"; "2,838 lines" / `api.ts:1-2838`; POS_NAV "`:39-44`"; job
+  "Deploy Frontend to Cloudflare Pages".
+- **Actual** `grep -cE "^export (async )?function "` → **286** + sole `export const API_BASE` (`:34`)
+  = 287 symbols (noun wrong, count right); `wc -l api.ts` → **2837**; POS_NAV declared `:38`
+  (entries `:39-44` right); deploy step itself says Workers (Pages retired per `AGENTS.md`).
