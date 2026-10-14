@@ -1,0 +1,15 @@
+# F-15 — doc count slips (symbols-vs-functions, line count, labels)
+
+- `grep -cE "^export (async )?function " app/src/lib/api.ts` → 286
+  (24 async + 262 sync); `grep -n "^export const " app/src/lib/api.ts` → only :34 API_BASE.
+  So 286 functions + 1 const = 287 symbols. `AGENTS.md:52` + `docs/02-api/API_CONTRACT.md:44`
+  word it "287 exported functions".
+- `wc -l app/src/lib/api.ts` → 2837; `docs/02-api/API_CONTRACT.md:44` ("2,838 lines"),
+  `docs/02-api/README.md:19`, `docs/99-gaps/code-vs-docs.md:2723` (`api.ts:1-2838`) overshoot EOF by 1.
+- `docs/04-testing/TESTING.md:148-149` cites POS_NAV `:39-44`; declaration is `:38`
+  (`grep -n "POS_NAV" app/src/components/pos/POSApp.tsx`; 6 entries :39-44 correct).
+- `.github/workflows/deploy.yml` job `name: Deploy Frontend to Cloudflare Pages` vs its own
+  `Deploy to Workers` step + `app/wrangler.toml` (Pages retired per AGENTS.md).
+All verified 2026-10-14. Counts otherwise healthy: migrations 40/head 0127, api modules 57,
+POS routes 10, hooks 5, admin 63 files/46 tabs, POS views 11, ui 20, rate table 23+default,
+tenantAwareLimiter 36 — all match docs (see 04-subagent-notes).
