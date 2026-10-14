@@ -1,0 +1,23 @@
+# F-04 — GET /api/supply/boms N+1
+
+`sed -n '462,477p' backend/src/api/supply.js` (2026-10-14):
+```
+  const rows = await c.env.DB.prepare(
+    `SELECT b.*, p.name as product_name
+     FROM boms b
+     LEFT JOIN pos_products p ON b.product_id = p.id
+     WHERE b.tenant_id = ?
+     ORDER BY b.name`
+  ).bind(tenantId).all();
+  const boms = rows.results || [];
+
+  for (const bom of boms) {
+    const lines = await c.env.DB.prepare(
+      'SELECT * FROM bom_lines WHERE bom_id = ?'
+    ).bind(bom.id).all();
+    bom.lines = lines.results || [];
+  }
+```
+`grep -n "for (const bom" backend/src/api/supply.js` → 472.
+Same file fixed this pattern for MO completion with IN()+batch (supply.js:598-603).
+No LIMIT on outer query. Verified by orchestrator 2026-10-14.
