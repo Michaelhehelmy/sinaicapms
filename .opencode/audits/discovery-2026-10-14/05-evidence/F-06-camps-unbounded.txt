@@ -1,0 +1,20 @@
+# F-06 — GET /api/camps unbounded fallback
+
+`sed -n '205,221p' backend/src/api/camps.js` (2026-10-14):
+```
+  const limit = c.req.query('limit');
+  const offset = c.req.query('offset');
+  if (limit) {
+    const query = marketplace
+      ? `${CROSS_TENANT_SELECT} ... GROUP BY c.tenant_id LIMIT ? OFFSET ?`
+      : "SELECT * FROM projects WHERE tenant_id = ? AND deleted_at IS NULL LIMIT ? OFFSET ?";
+    ...
+    return cachedJsonResponse(results.map(parseGalleryImages));
+  }
+  const query = marketplace
+    ? `${CROSS_TENANT_SELECT} WHERE c.status = 'active' AND c.deleted_at IS NULL GROUP BY c.tenant_id`
+    : "SELECT * FROM projects WHERE tenant_id = ? AND deleted_at IS NULL";
+```
+`grep -n "LIMIT ? OFFSET" backend/src/api/camps.js` → only the if-branch.
+Marketplace branch SELECTs `c.*` (all columns incl. JSON blobs) with zero LIMIT.
+Verified by orchestrator 2026-10-14.
