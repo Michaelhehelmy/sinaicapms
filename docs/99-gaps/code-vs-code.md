@@ -8,7 +8,7 @@ tags:
   - domain/docs
   - status/live
 created: 2026-10-06
-updated: 2026-10-14
+updated: 2026-10-15
 relates-to:
   - "[[99-gaps/README]]"
   - "[[code-vs-docs]]"
@@ -44,8 +44,11 @@ question that survived a docs-only reconciliation: **"where does the code assert
 not actually enforce?"** It holds **8** entries (`C‑0`…`C‑7`). Every one of those eight is `Severity`
 **P2**, `Action** **`FIX-CODE`**, and deferred to **Wave 9**. A 2026-10-14 discovery addendum at the
 foot files **`D‑1`…`D‑9`** — new code-safety entries from a fresh read-only audit, all `Status`
-`OPEN`, wave unassigned (owner to triage); severities are per-entry (P1–P2). The eight above are
-unchanged, and the folder ledger in [[code-vs-docs]] is unchanged pending owner triage of the nine.
+`OPEN`, wave unassigned (owner to triage); severities are per-entry (P1–P2). On 2026-10-15
+**`C‑0` moved to `RESOLVED-CODE`** (`b109014`), P1-1/P1-3 closed alongside it, and **`W9‑1`…`W9‑3`**
+were filed to Wave 9 — see `## Resolutions 2026-10-15` and `## Wave 9 intake` at the foot. The eight
+above are otherwise unchanged, and the folder ledger in [[code-vs-docs]] is unchanged pending owner
+triage of the nine plus three.
 
 **They do not all come from one finding, and this note used to say that they did.** The sentence
 this paragraph replaces read "all from one finding (**`O‑21`**'s M21 half)" — and `C‑0`'s own
@@ -576,3 +579,73 @@ severity) lives in `02-findings.md` + `05-evidence/F-*.txt` of that audit.
   correct field (excluded).
 - **Observed** panel shows days-since-epoch (~20,000+d). Fix is duration or rename to `serverTime`.
 - **Repro** `sed -n '55,85p' backend/src/api/admin-health.js`.
+
+## Resolutions 2026-10-15 — P1-1, P1-2, P1-3
+
+No existing entry is rewritten; each resolution names the entry it closes and the commit that
+closed it, per folder rules. `C‑0` below is the same `C‑0` filed above — its status moves, its text
+does not.
+
+### P1-1 · deploy.yml "Integration" ran the unit suite; smoke could not fail · RESOLVED 2026-10-15 · `64cafc9`
+- **Closed by** `64cafc9` *ci(deploy): run the integration suite under the integration job + make
+  smoke failures fail the job — discovery P1-1*: matrix command is now
+  `npx vitest run --config vitest.integration.config.ts`, and the e2e-verify `|| echo ...
+  (non-blocking)` swallow is removed (YAML-validated).
+- **Note: CI validation pending next main push.** `deploy.yml` triggers only on `main`/`staging`
+  pushes, so no test branch could exercise it; on the next main push check the "Run Integration
+  tests" step log for `--config vitest.integration.config.ts`.
+
+### P1-2 · Integration CI red on main · RESOLVED 2026-10-15 · `b109014`
+- **Closed by** `b109014` *test(integration): repair 3 red assertions — discovery P1-2*: the three
+  `C‑0` assertions repaired (grandfathered `hr`/`ai` slugs; comment-stripping DROP guard with two
+  pinned intentional statements; uniqueness + strictly-increasing numbering). File now 10/10 green.
+  **`C‑0` is therefore `RESOLVED-CODE`** — the second in this note after `C‑7`.
+- **Note: 55 failures, not 3.** The full suite showed 55 failed, not the 3 the discovery sampled:
+  **40 were class C** — the local D1 was stranded at `0110` while the code expects `0127`
+  (repaired by wiping local state and replaying 0001→0127 clean, plus restoring the hand-seeded
+  `marketplace` row; backup at `/tmp/opencode/d1-backup/d1.sqlite`; no production systems
+  touched); **3 were class A** test drift, fixed by `b109014`; **10 remain class A** (the meals
+  cluster, the smoke Sunset, the superadmin list premise — see W9 intake below) for Wave 9.
+  Suite stands at 236 passed / 10 failed; backend 2743/2743, frontend 3632/3632, monitor 194/194.
+
+### P1-3 · `0127` pending-apply on prod · RESOLVED 2026-10-14
+- **Closed by owner apply on 2026-10-14** (no repo commit): `npx wrangler d1 migrations list
+  campmaster-db --remote` now reports "No migrations to apply!".
+- **Note: `0126` was also pending; both applied 2026-10-14.** The discovery named only `0127`
+  because it checked the head, not the full gap — the method now requires the list command
+  (`.opencode/audits/discovery-2026-10-14/01-method.md`, amendment 2026-10-14).
+
+## Wave 9 intake 2026-10-15 — `W9‑1`…`W9‑3` (Status DEFERRED to Wave 9)
+
+The 10 residual integration failures, grouped by root cause. All `Action` `FIX-TEST` (update the
+test bodies to the intended post-Sep-23 API shape), all `Status` `DEFERRED` to Wave 9.
+
+### `W9‑1` · meals-cluster test bodies omit `project_id` (8 tests, 6 files) · P1 · FIX-TEST · DEFERRED
+- **Files** `tests/core/meal-categories-crud.test.js:27` (POST sends `{name}` only),
+  `tests/core/meals-ingredients-full.test.js`, `tests/tenant/meals.test.js`,
+  `tests/security/row-isolation.test.js` (Meals case), `tests/tenant/cascade.test.js`
+  (meal-category case), `tests/tenant/concurrency-extended.test.js` (meal updates).
+- **Observed** `POST /api/meal-categories` requires `project_id`
+  (`backend/src/api/meal-categories.js:10`, added `772e8f9`, 2026-09-23 project-scoping) but the
+  test bodies predate it → 400, and every downstream GET/PUT/DELETE in the same files 404s on the
+  never-created row. Class A drift; the API is right.
+- **Repro** full `npx vitest run --config vitest.integration.config.ts` on a 0127-shape local DB.
+
+### `W9‑2` · superadmin list premise impossible (1 test, 1 file) · P3 · FIX-TEST · DEFERRED
+- **Files** `tests/superadmin/tenants.test.js:23-29` ("at least the marketplace tenant") vs
+  `backend/src/api/tenants.js:106,109` (public list excludes `marketplace` by design, since
+  `737d7c2`).
+- **Observed** the test can only pass when some *other* active tenant happens to exist (parallel
+  workers' tenants) — timing-dependent by construction. Either seed a listable tenant in the test
+  or assert on the super-admin branch, which does not filter by `status`.
+- **Repro** same full-suite command on a clean local DB: `expected 0 to be greater than 0`.
+
+### `W9‑3` · smoke Sunset expectation vs intentional sunset alias (1 test, 1 file) · P3 · FIX-TEST · DEFERRED
+- **Files** `tests/core/smoke.test.js:132` (expects no `Sunset` on `/api/v1/*`) vs
+  `backend/src/api/camps-alias.js` (`Sunset: Fri, 23 Oct 2026`, added `b1dd0a1`, 2026-09-23
+  `/api/camps` → `/api/projects` rename).
+- **Observed** the header is intentional until the 2026-10-23 deletion date; the test needs a
+  time-aware update, not the code. **Resolves 2026-10-23** — on or after that date, either the
+  alias (and header) is gone and the test passes, or the alias survived and the test is still
+  correctly red.
+- **Repro** same full-suite command: `expected 'Fri, 23 Oct 2026 00:00:00 GMT' to be null`.
